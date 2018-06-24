@@ -165,6 +165,8 @@ const size_t   P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT          = 5000;          //
 const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
 
 const char* const SEED_NODES[] = {
-
+       "node-sg1.wrkz.work:17855",
+       "node-pr1.wrkz.work:17855",
+		"node-us1.wrkz.work:17855"
 };
 } // CryptoNote
