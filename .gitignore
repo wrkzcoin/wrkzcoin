@@ -1,0 +1,14 @@
+.DS_Store
+/build
+/tags
+.idea
+.ycm_extra_conf.py
+.ycm_extra_conf.pyc
+Release
+Debug
+src/CMakeCache.txt
+src/CMakeFiles/
+src/Makefile
+src/build/
+src/cmake_install.cmake
+*.swp
