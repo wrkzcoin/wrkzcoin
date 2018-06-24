@@ -167,6 +167,6 @@ const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
 const char* const SEED_NODES[] = {
        "node-sg1.wrkz.work:17855",
        "node-pr1.wrkz.work:17855",
-		"node-us1.wrkz.work:17855"
+       "node-us1.wrkz.work:17855"
 };
 } // CryptoNote
