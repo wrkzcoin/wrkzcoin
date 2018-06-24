@@ -15,6 +15,8 @@ sudo apt-get install librocksdb-dev
 
 - `git clone hhttps://github.com/wrkzdev/wrkzcoin`
 - `cd wrkzcoin`
+- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
+- `chmod +x ./external/rocksdb/build_tools/version.sh`
 - `mkdir build && cd $_`
 - `cmake ..`
 - `make`
