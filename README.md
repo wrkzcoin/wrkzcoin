@@ -25,6 +25,7 @@ sudo apt-get install librocksdb-dev
 
 ##### Prerequisites
 
+- Install Homebrew https://brew.sh/ (if you don't have it)
 - Install [cmake](https://cmake.org/). See [here](https://stackoverflow.com/questions/23849962/cmake-installer-for-mac-fails-to-create-usr-bin-symlinks) if you are unable call `cmake` from the terminal after installing.
 - Install the [boost](http://www.boost.org/) libraries. Either compile boost manually or run `brew install boost`.
 - Install XCode and Developer Tools.
@@ -33,6 +34,8 @@ sudo apt-get install librocksdb-dev
 
 - `git clone https://github.com/wrkzdev/wrkzcoin`
 - `cd wrkzcoin`
+- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
+- `chmod +x ./external/rocksdb/build_tools/version.sh`
 - `mkdir build && cd $_`
 - `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
   from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
