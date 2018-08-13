@@ -28,9 +28,9 @@ namespace CryptoNote {
   /*                                                                      */
   /************************************************************************/
   template<class t_array>
-  struct array_hasher: std::unary_function<t_array&, std::size_t>
+  struct array_hasher: std::unary_function<t_array&, size_t>
   {
-    std::size_t operator()(const t_array& val) const
+    size_t operator()(const t_array& val) const
     {
       return boost::hash_range(&val.data[0], &val.data[sizeof(val.data)]);
     }

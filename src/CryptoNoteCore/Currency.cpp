@@ -76,14 +76,7 @@ bool Currency::init() {
 bool Currency::generateGenesisBlock() {
   genesisBlockTemplate = boost::value_initialized<BlockTemplate>();
 
-  //account_public_address ac = boost::value_initialized<AccountPublicAddress>();
-  //std::vector<size_t> sz;
-  //constructMinerTx(0, 0, 0, 0, 0, ac, m_genesisBlock.baseTransaction); // zero fee in genesis
-  //BinaryArray txb = toBinaryArray(m_genesisBlock.baseTransaction);
-  //std::string hex_tx_represent = Common::toHex(txb);
-
-  // Hard code coinbase tx in genesis block, because through generating tx use random, but genesis should be always the same
-  std::string genesisCoinbaseTxHex = "012801ff00038090cad2c60e02484ab563a5ec4cb8aa159b878e4ca0a417e7258ec4fd338128059f2b7193dcaa8090cad2c60e02655ed6ab140ef3ca45d8d913125b8bc8917c590af4d1b9d7b4a67396e4a764088090cad2c60e020e06bf1587f9768cfd735a95e8254e98c68604f690e699f8403058422ede04282101c47eee4cfef6f30b5368d0251ad66a5800e2f0b2b70a4a3034c7bba3c5d0d6e0";
+  std::string genesisCoinbaseTxHex = CryptoNote::parameters::GENESIS_COINBASE_TX_HEX;
   BinaryArray minerTxBlob;
 
   bool r =
@@ -300,7 +293,7 @@ bool Currency::isFusionTransaction(const std::vector<uint64_t>& inputsAmounts, c
 
   uint64_t inputAmount = 0;
   for (auto amount: inputsAmounts) {
-    if (amount < defaultDustThreshold(height)) {
+    if (amount < defaultFusionDustThreshold(height)) {
       return false;
     }
 
@@ -309,7 +302,7 @@ bool Currency::isFusionTransaction(const std::vector<uint64_t>& inputsAmounts, c
 
   std::vector<uint64_t> expectedOutputsAmounts;
   expectedOutputsAmounts.reserve(outputsAmounts.size());
-  decomposeAmount(inputAmount, defaultDustThreshold(height), expectedOutputsAmounts);
+  decomposeAmount(inputAmount, defaultFusionDustThreshold(height), expectedOutputsAmounts);
   std::sort(expectedOutputsAmounts.begin(), expectedOutputsAmounts.end());
 
   return expectedOutputsAmounts == outputsAmounts;
@@ -341,7 +334,7 @@ bool Currency::isAmountApplicableInFusionTransactionInput(uint64_t amount, uint6
     return false;
   }
 
-  if (amount < defaultDustThreshold(height)) {
+  if (amount < defaultFusionDustThreshold(height)) {
     return false;
   }
 
@@ -436,8 +429,12 @@ Difficulty Currency::getNextDifficulty(uint8_t version, uint32_t blockIndex, std
     {
         return nextDifficulty(version, blockIndex, timestamps, cumulativeDifficulties);
     }
+    else if (blockIndex < CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX_V2)
+    {
+        return nextDifficultyV3(timestamps, cumulativeDifficulties);
+    }
 
-    return nextDifficultyV3(timestamps, cumulativeDifficulties);
+    return nextDifficultyV4(timestamps, cumulativeDifficulties);
 }
 
 // LWMA-2 difficulty algorithm 
@@ -480,6 +477,52 @@ Difficulty Currency::nextDifficultyV3(std::vector<std::uint64_t> timestamps, std
 
     return static_cast<uint64_t>(next_D);
 }
+
+template <typename T>
+T clamp(const T& n, const T& lower, const T& upper) {
+  return std::max(lower, std::min(n, upper));
+}
+
+// LWMA-2 difficulty algorithm 
+// Copyright (c) 2017-2018 Zawy, MIT License
+// https://github.com/zawy12/difficulty-algorithms/issues/3
+Difficulty Currency::nextDifficultyV4(std::vector<std::uint64_t> timestamps, std::vector<Difficulty> cumulativeDifficulties) const
+{
+    int64_t T = CryptoNote::parameters::DIFFICULTY_TARGET;
+    int64_t N = CryptoNote::parameters::DIFFICULTY_WINDOW_V3;
+    int64_t L(0), ST, sum_3_ST(0), next_D, prev_D;
+
+    if (timestamps.size() <= static_cast<uint64_t>(N))
+    {
+        return 1000;
+    }
+
+    for (int64_t i = 1; i <= N; i++)
+    {  
+        ST = clamp(-6 * T, static_cast<int64_t>(timestamps[i]) - static_cast<int64_t>(timestamps[i-1]), 6 * T);
+
+        L +=  ST * i; 
+
+        if (i > N-3)
+        {
+            sum_3_ST += ST;
+        } 
+    }
+
+    next_D = (static_cast<int64_t>(cumulativeDifficulties[N] - cumulativeDifficulties[0]) * T * (N+1) * 99) / (100 * 2 * L);
+    prev_D = cumulativeDifficulties[N] - cumulativeDifficulties[N-1];
+
+    /* Make sure we don't divide by zero if 50x attacker (thanks fireice) */
+    next_D = std::max((prev_D*67)/100, std::min(next_D, (prev_D*150)/100));
+
+    if (sum_3_ST < (8 * T) / 10)
+    {  
+        next_D = std::max(next_D, (prev_D * 110) / 100);
+    }
+
+    return static_cast<uint64_t>(next_D);
+}
+
 
 Difficulty Currency::nextDifficulty(std::vector<uint64_t> timestamps,
   std::vector<Difficulty> cumulativeDifficulties) const {
@@ -650,21 +693,21 @@ std::vector<uint64_t> cumulativeDifficulties_o(cumulativeDifficulties);
   return (low + timeSpan - 1) / timeSpan;  // with version
 }
 
-bool Currency::checkProofOfWorkV1(Crypto::cn_context& context, const CachedBlock& block, Difficulty currentDifficulty) const {
+bool Currency::checkProofOfWorkV1(const CachedBlock& block, Difficulty currentDifficulty) const {
   if (BLOCK_MAJOR_VERSION_1 != block.getBlock().majorVersion) {
     return false;
   }
 
-  return check_hash(block.getBlockLongHash(context), currentDifficulty);
+  return check_hash(block.getBlockLongHash(), currentDifficulty);
 }
 
-bool Currency::checkProofOfWorkV2(Crypto::cn_context& context, const CachedBlock& cachedBlock, Difficulty currentDifficulty) const {
+bool Currency::checkProofOfWorkV2(const CachedBlock& cachedBlock, Difficulty currentDifficulty) const {
   const auto& block = cachedBlock.getBlock();
   if (block.majorVersion < BLOCK_MAJOR_VERSION_2) {
     return false;
   }
 
-  if (!check_hash(cachedBlock.getBlockLongHash(context), currentDifficulty)) {
+  if (!check_hash(cachedBlock.getBlockLongHash(), currentDifficulty)) {
     return false;
   }
 
@@ -690,15 +733,15 @@ bool Currency::checkProofOfWorkV2(Crypto::cn_context& context, const CachedBlock
   return true;
 }
 
-bool Currency::checkProofOfWork(Crypto::cn_context& context, const CachedBlock& block, Difficulty currentDiffic) const {
+bool Currency::checkProofOfWork(const CachedBlock& block, Difficulty currentDiffic) const {
   switch (block.getBlock().majorVersion) {
   case BLOCK_MAJOR_VERSION_1:
-    return checkProofOfWorkV1(context, block, currentDiffic);
+    return checkProofOfWorkV1(block, currentDiffic);
 
   case BLOCK_MAJOR_VERSION_2:
   case BLOCK_MAJOR_VERSION_3:
   case BLOCK_MAJOR_VERSION_4:
-    return checkProofOfWorkV2(context, block, currentDiffic);
+    return checkProofOfWorkV2(block, currentDiffic);
   }
 
   logger(ERROR, BRIGHT_RED) << "Unknown block major version: " << block.getBlock().majorVersion << "." << block.getBlock().minorVersion;

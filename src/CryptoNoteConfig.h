@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <limits>
 #include <initializer_list>
+#include <boost/uuid/uuid.hpp>
 
 namespace CryptoNote {
 namespace parameters {
@@ -24,6 +25,7 @@ const uint64_t CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX       = 999730; // Wrkz
 const uint32_t CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW          = 40;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT            = 60 * 60 * 2;
 const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V3         = 3 * DIFFICULTY_TARGET;
+const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V4         = 6 * DIFFICULTY_TARGET;
 
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW             = 60;
 const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW_V3          = 11;
@@ -32,9 +34,11 @@ const size_t   BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW_V3          = 11;
 const uint64_t MONEY_SUPPLY                                  = UINT64_C(50000000000000);
 const uint32_t ZAWY_DIFFICULTY_BLOCK_INDEX                   = 20160;
 const size_t ZAWY_DIFFICULTY_V2                              = 0;
-const uint8_t ZAWY_DIFFICULTY_DIFFICULTY_BLOCK_VERSION       = 0;
+const uint8_t ZAWY_DIFFICULTY_DIFFICULTY_BLOCK_VERSION       = 3;
 
-const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX                 = 800000;
+const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX                 = 100000; // Update this.
+const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V2              = LWMA_2_DIFFICULTY_BLOCK_INDEX;
+
 const uint64_t DIFFICULTY_WINDOW_V3                          = 60;
 const uint64_t DIFFICULTY_BLOCKS_COUNT_V3                    = DIFFICULTY_WINDOW_V3 + 1;
 
@@ -42,6 +46,7 @@ const unsigned EMISSION_SPEED_FACTOR                         = 22;
 const uint64_t GENESIS_BLOCK_REWARD                          = UINT64_C(MONEY_SUPPLY * 3 / 100);
 static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 
+const char     GENESIS_COINBASE_TX_HEX[]                     = "012801ff00038090cad2c60e02484ab563a5ec4cb8aa159b878e4ca0a417e7258ec4fd338128059f2b7193dcaa8090cad2c60e02655ed6ab140ef3ca45d8d913125b8bc8917c590af4d1b9d7b4a67396e4a764088090cad2c60e020e06bf1587f9768cfd735a95e8254e98c68604f690e699f8403058422ede04282101c47eee4cfef6f30b5368d0251ad66a5800e2f0b2b70a4a3034c7bba3c5d0d6e0";
 const size_t   CRYPTONOTE_REWARD_BLOCKS_WINDOW               = 100;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE     = 100000; //size of block (bytes) after which reward for block calculated using block size
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2  = 20000;
@@ -52,12 +57,12 @@ const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 2;
 const uint64_t MINIMUM_FEE                                   = UINT64_C(5);
 
 const uint64_t MINIMUM_MIXIN_V1                              = 0;
-const uint64_t MAXIMUM_MIXIN_V1                              = 100;
-const uint64_t MINIMUM_MIXIN_V2                              = 7;
+const uint64_t MAXIMUM_MIXIN_V1                              = 30;
+const uint64_t MINIMUM_MIXIN_V2                              = 3;
 const uint64_t MAXIMUM_MIXIN_V2                              = 7;
 
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
-const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 200000;
+const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
 
 const uint64_t DEFAULT_MIXIN                                 = MINIMUM_MIXIN_V2;
 
@@ -65,6 +70,7 @@ const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(10);
 const uint64_t DEFAULT_DUST_THRESHOLD_V2                     = UINT64_C(0);
 
 const uint32_t DUST_THRESHOLD_V2_HEIGHT                      = MIXIN_LIMITS_V2_HEIGHT;
+const uint32_t FUSION_DUST_THRESHOLD_HEIGHT_V2               = 400000;
 
 const uint64_t EXPECTED_NUMBER_OF_BLOCKS_PER_DAY             = 24 * 60 * 60 / DIFFICULTY_TARGET;
 const size_t   DIFFICULTY_WINDOW                             = 17;
@@ -105,23 +111,27 @@ const uint32_t UPGRADE_WINDOW                                = EXPECTED_NUMBER_O
 static_assert(0 < UPGRADE_VOTING_THRESHOLD && UPGRADE_VOTING_THRESHOLD <= 100, "Bad UPGRADE_VOTING_THRESHOLD");
 static_assert(UPGRADE_VOTING_WINDOW > 1, "Bad UPGRADE_VOTING_WINDOW");
 
-/* The index in the FORK_HEIGHTS array that this version of the software will
-   support. For example, if CURRENT_FORK_INDEX is 1, this version of the
-   software will support the fork at 100,000 blocks. */
-const uint8_t CURRENT_FORK_INDEX = 1;
-
 /* Block heights we are going to have hard forks at */
 const uint64_t FORK_HEIGHTS[] = {
     1,
     40000,
     100000,
-    600000,
-    1200000,
-    1800000
+    250000
 };
 
-/* Make sure CURRENT_FORK_INDEX is a valid index */
-static_assert(CURRENT_FORK_INDEX < (sizeof(FORK_HEIGHTS)/sizeof(*FORK_HEIGHTS)), "CURRENT_FORK_INDEX out of range of FORK_HEIGHTS!");
+const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
+
+/* The index in the FORK_HEIGHTS array that this version of the software will
+   support. For example, if CURRENT_FORK_INDEX is 3, this version of the
+   software will support the fork at 600,000 blocks.
+
+   This will default to zero if the FORK_HEIGHTS array is empty, so you don't
+   need to change it manually. */
+const uint8_t CURRENT_FORK_INDEX = FORK_HEIGHTS_SIZE == 0 ? 0 : 2;
+
+static_assert(CURRENT_FORK_INDEX >= 0, "CURRENT FORK INDEX must be >= 0");
+/* Make sure CURRENT_FORK_INDEX is a valid index, unless FORK_HEIGHTS is empty */
+static_assert(FORK_HEIGHTS_SIZE == 0 || CURRENT_FORK_INDEX < FORK_HEIGHTS_SIZE, "CURRENT_FORK_INDEX out of range of FORK_HEIGHTS!");
 
 const char     CRYPTONOTE_BLOCKS_FILENAME[]                  = "blocks.wrkz.bin";
 const char     CRYPTONOTE_BLOCKINDEXES_FILENAME[]            = "blockindexes.wrkz.bin";
@@ -163,6 +173,11 @@ const uint32_t P2P_DEFAULT_PING_CONNECTION_TIMEOUT           = 2000;          //
 const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT                    = 60 * 2 * 1000; // 2 minutes
 const size_t   P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT          = 5000;          // 5 seconds
 const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
+
+const static boost::uuids::uuid CRYPTONOTE_NETWORK =
+{
+    {  0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9  } 
+};
 
 const char* const SEED_NODES[] = {
        "node-sg1.wrkz.work:17855",

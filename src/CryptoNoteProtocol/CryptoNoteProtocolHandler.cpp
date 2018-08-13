@@ -587,18 +587,32 @@ bool CryptoNoteProtocolHandler::on_connection_synchronized() {
     logger(Logging::INFO)
       << ENDL ;
       logger(INFO, BRIGHT_MAGENTA) << "===[ Wrkz Tip! ]=============================" << ENDL ;
-      logger(INFO, WHITE) << " Always exit Wrkz and ZedWallet with the \"exit\" command to preserve your chain and wallet data." << ENDL ;
+      logger(INFO, WHITE) << " Always exit Wrkz and zedwallet with the \"exit\" command to preserve your chain and wallet data." << ENDL ;
       logger(INFO, WHITE) << " Use the \"help\" command to see a list of available commands." << ENDL ;
-      logger(INFO, WHITE) << " Use the \"export_keys\" command in ZedWallet to display your keys for restoring a corrupted wallet." << ENDL ;
-      logger(INFO, WHITE) << " If you need more assistance, visit the #help channel in the Wrkz Discord Chat - https://chat.wrkz.work" << ENDL ;
+      logger(INFO, WHITE) << " Use the \"export_keys\" command in zedwallet to display your keys for restoring a corrupted wallet." << ENDL ;
+      logger(INFO, WHITE) << " If you need more assistance, visit the #wrkz-general-help channel in the Wrkz Discord Chat - https://chat.wrkz.work" << ENDL ;
       logger(INFO, BRIGHT_MAGENTA) << "===================================================" << ENDL << ENDL ;
 
       logger(INFO, BRIGHT_GREEN) <<
 	  // TODO: at later stage
       #ifdef _WIN32
-      "\nWRKZCOIN" << ENDL;
+      "\n _    _______ _   __ ______\n"
+      "| |  | | ___ \\ | / /|___  /\n"
+      "| |  | | |_/ / |/ /    / / \n"
+      "| |/\\| |    /|    \\   / /  \n"
+      "\\  /\\  / |\\ \\| |\\  \\./ /___\n"
+      " \\/  \\/\\_| \\_\\_| \\_/\\_____/\n" << ENDL;
       #else
-      "\nWRKZCOIN" << ENDL;
+      "\n                                             \n"
+      " ▄█     █▄     ▄████████    ▄█   ▄█▄  ▄███████▄  \n"
+      "███     ███   ███    ███   ███ ▄███▀ ██▀     ▄██ \n"
+      "███     ███   ███    ███   ███▐██▀         ▄███▀ \n"
+      "███     ███  ▄███▄▄▄▄██▀  ▄█████▀     ▀█▀▄███▀▄▄ \n"
+      "███     ███ ▀▀███▀▀▀▀▀   ▀▀█████▄      ▄███▀   ▀ \n"
+      "███     ███ ▀███████████   ███▐██▄   ▄███▀       \n"
+      "███ ▄█▄ ███   ███    ███   ███ ▀███▄ ███▄     ▄█ \n"
+      " ▀███▀███▀    ███    ███   ███   ▀█▀  ▀████████▀ \n"
+      "              ███    ███   ▀                     \n" << ENDL;
       #endif
 
     m_observerManager.notify(&ICryptoNoteProtocolObserver::blockchainSynchronized, m_core.getTopBlockIndex());

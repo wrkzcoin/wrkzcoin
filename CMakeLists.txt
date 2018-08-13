@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 2.8.6)
 
+# Required for finding Threads on arm
+enable_language(C)
+enable_language(CXX)
+find_package(Threads)
+
 set(VERSION "0.1")
-# $Format:Packaged from commit %H%nset(COMMIT %h)%nset(REFS "%d")$
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
@@ -9,7 +13,8 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build, options are
 set(CMAKE_SKIP_INSTALL_RULES OFF)
 set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
 set(CMAKE_SUPPRESS_REGENERATION ON)
-set(DO_TESTS ON CACHE STRING "Spend time making tests? Defaults to ON")
+set(ENABLE_READLINE ON CACHE BOOL "Enable readline support for zedwallet on Linux and Mac? Defaults to ON")
+
 set(STATIC ON CACHE BOOL "Link libraries statically")
 
 set(ENABLE_AVX OFF CACHE STRING "Enable RocksDB AVX/AVX2 support detection? Defaults to OFF")
@@ -20,20 +25,37 @@ set(ENABLE_SYNC_FILE_RANGE_WRITE OFF CACHE STRING "Enable RocksDB SYNC_FILE_RANG
 set(ENABLE_PTHREAD_MUTEX_ADAPTIVE_NP OFF CACHE STRING "Enable RocksDB PTHREAD_MUTEX_ADAPTIVE_NP support detection? Defaults to OFF")
 set(ENABLE_MALLOC_USABLE_SIZE OFF CACHE STRING "Enable RocksDB MALLOC_USABLE_SIZE support detection? Defaults to OFF")
 set(ENABLE_SCHED_GETCPU OFF CACHE STRING "Enable RocksDB SCHED_GETCPU support detection? Defaults to OFF")
-
-if(DO_TESTS)
-  message(STATUS "BUILD TESTS: enabled")
-  enable_testing()
-else()
-  message(STATUS "BUILD TESTS: disabled")
-endif()
-
-# copy CTestCustom.cmake to build dir to disable long running tests in 'make test'
-configure_file(${CMAKE_CURRENT_SOURCE_DIR}/CTestCustom.cmake ${CMAKE_CURRENT_BINARY_DIR})
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 project(WrkzCoin)
 
-include_directories(include src external "${CMAKE_CURRENT_BINARY_DIR}/version")
+set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include commit ID in version")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/version")
+if (NOT COMMIT_ID_IN_VERSION)
+  set(VERSION "${VERSION}-unknown")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
+  add_custom_target(version ALL)
+elseif(DEFINED COMMIT)
+  string(REPLACE "." "\\." VERSION_RE "${VERSION}")
+  if(NOT REFS MATCHES "(\\(|, )tag: v${VERSION_RE}(\\)|, )")
+    set(VERSION "${VERSION}-g${COMMIT}")
+  endif()
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
+  add_custom_target(version ALL)
+else()
+  find_package(Git QUIET)
+  if(Git_FOUND OR GIT_FOUND)
+    message(STATUS "Found Git: ${GIT_EXECUTABLE}")
+    add_custom_target(version ALL "${CMAKE_COMMAND}" "-D" "VERSION=${VERSION}" "-D" "GIT=${GIT_EXECUTABLE}" "-D" "TO=${CMAKE_CURRENT_BINARY_DIR}/version/version.h" "-P" "${CMAKE_CURRENT_SOURCE_DIR}/src/version.cmake" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+  else()
+    message(STATUS "WARNING: Git was not found!")
+    set(VERSION "${VERSION}-unknown")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
+    add_custom_target(version ALL)
+  endif()
+endif()
+
+include_directories(include "${CMAKE_CURRENT_BINARY_DIR}/version" src external)
 if(APPLE)
   include_directories(SYSTEM /usr/include/malloc)
   enable_language(ASM)
@@ -48,6 +70,20 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Posix)
 else()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Linux)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Platform/Posix)
+endif()
+
+# Don't bother searching for readline on windows
+# Don't search if readline disabled
+if (NOT MSVC AND ENABLE_READLINE)
+    find_package(Readline)
+
+    if(READLINE_FOUND)
+        message(STATUS "Found GNU readline")
+        add_definitions(-DHAVE_READLINE)
+        include_directories(${Readline_INCLUDE_DIR})
+    else()
+        message(FATAL_ERROR "Could not find GNU Readline library!\nYou can fix this by either re-running cmake like so:\ncmake .. -DENABLE_READLINE=FALSE\nAlternatively, you can install the readline package for your operating system.\nUbuntu: sudo apt-get install libreadline-dev\nApple: brew install readline; brew link --force readline")
+    endif()
 endif()
 
 if(MSVC)
@@ -89,11 +125,17 @@ else()
   endif()
   set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes")
   set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${MINGW_FLAG} ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} -maes")
+  
+  # -maes is not supported on arm
+  if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${MINGW_FLAG} ${STATICASSERTC_FLAG} ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} -maes")
+  endif()
   if(NOT APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 ${MINGW_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} -maes")
+  if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 ${MINGW_FLAG} ${STATICASSERTCPP_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} -maes")
+  endif()
   if(APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_HAS_TR1_TUPLE=0")
   endif()
@@ -104,18 +146,13 @@ else()
   endif()
   set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
   if(NOT APPLE)
-    # There is a clang bug that does not allow to compile code that uses AES-NI intrinsics if -flto is enabled
     if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_NAME STREQUAL "Linux" 
         AND CMAKE_BUILD_TYPE STREQUAL "Release" AND ((CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.9) OR (CMAKE_C_COMPILER_VERSION VERSION_EQUAL 4.9)))
-      # On linux, to build in lto mode, check that ld.gold linker is used: 'update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold HIGHEST_PRIORITY'
       set(CMAKE_AR gcc-ar)
       set(CMAKE_RANLIB gcc-ranlib)
     endif()
-    #set(RELEASE_FLAGS "${RELEASE_FLAGS} -flto")
   endif()
-  #if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND NOT MINGW)
-  #  set(RELEASE_FLAGS "${RELEASE_FLAGS} -fno-fat-lto-objects")
-  #endif()
+
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${DEBUG_FLAGS}")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} ${DEBUG_FLAGS}")
   set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${RELEASE_FLAGS}")
@@ -143,43 +180,14 @@ elseif(NOT MSVC)
   set(Boost_LIBRARIES "${Boost_LIBRARIES};rt")
 endif()
 
-set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include commit ID in version")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/version")
-if (NOT COMMIT_ID_IN_VERSION)
-  set(VERSION "${VERSION}-unknown")
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
-  add_custom_target(version ALL)
-elseif(DEFINED COMMIT)
-  string(REPLACE "." "\\." VERSION_RE "${VERSION}")
-  if(NOT REFS MATCHES "(\\(|, )tag: v${VERSION_RE}(\\)|, )")
-    set(VERSION "${VERSION}-g${COMMIT}")
-  endif()
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
-  add_custom_target(version ALL)
-else()
-  find_package(Git QUIET)
-  if(Git_FOUND OR GIT_FOUND)
-    message(STATUS "Found Git: ${GIT_EXECUTABLE}")
-    add_custom_target(version ALL "${CMAKE_COMMAND}" "-D" "VERSION=${VERSION}" "-D" "GIT=${GIT_EXECUTABLE}" "-D" "TO=${CMAKE_CURRENT_BINARY_DIR}/version/version.h" "-P" "${CMAKE_CURRENT_SOURCE_DIR}/src/version.cmake" WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
-  else()
-    message(STATUS "WARNING: Git was not found!")
-    set(VERSION "${VERSION}-unknown")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/version/version.h")
-    add_custom_target(version ALL)
-  endif()
-endif()
-
 add_subdirectory(external)
 add_subdirectory(src)
-
-if(DO_TESTS)
-  add_subdirectory(tests)
-endif()
 
 ## We need to setup the RocksDB build environment to match our system
 if(NOT MSVC)
   execute_process(
-    COMMAND cmake ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DWITH_GFLAGS=0 -B${PROJECT_BINARY_DIR}/rocksdb
+    COMMAND cmake ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=MinSizeRel -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -B${PROJECT_BINARY_DIR}/rocksdb
   )
   set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
 endif()
+
