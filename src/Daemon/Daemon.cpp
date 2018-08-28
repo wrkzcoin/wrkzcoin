@@ -230,7 +230,6 @@ int main(int argc, char* argv[])
     logManager.configure(buildLoggerConfiguration(cfgLogLevel, cfgLogFile));
 
     logger(INFO, BRIGHT_GREEN) <<
-	// TODO: at later stage
       #ifdef _WIN32
       "\n _    _______ _   __ ______\n"
       "| |  | | ___ \\ | / /|___  /\n"

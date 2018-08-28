@@ -233,8 +233,7 @@ std::string createIntegratedAddress(std::string address, std::string paymentID)
     CryptoNote::AccountPublicAddress addr;
 
     /* Get the private + public key from the address */
-    const bool valid = CryptoNote::parseAccountAddressString(prefix, addr,
-                                                             address);
+    CryptoNote::parseAccountAddressString(prefix, addr, address);
 
     /* Pack as a binary array */
     CryptoNote::BinaryArray ba;
@@ -247,4 +246,45 @@ std::string createIntegratedAddress(std::string address, std::string paymentID)
         CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
         paymentID + keys
     );
+}
+
+uint64_t getScanHeight()
+{
+    while (true)
+    {
+        std::cout << "What height would you like to begin scanning "
+                  << "your wallet from?"
+                  << std::endl
+                  << "This can greatly speed up the initial wallet "
+                  << "scanning process."
+                  << std::endl
+                  << "If you do not know the exact height, "
+                  << std::endl
+                  << "err on the side of caution so transactions do not "
+                  << "get missed."
+                  << std::endl
+                  << "Hit enter for the default of zero: ";
+
+        std::string stringHeight;
+
+        std::getline(std::cin, stringHeight);
+
+        /* Remove commas so user can enter height as e.g. 200,000 */
+        boost::erase_all(stringHeight, ",");
+
+        if (stringHeight == "")
+        {
+            return 0;
+        }
+
+        try
+        {
+            return std::stoi(stringHeight);
+        }
+        catch (const std::invalid_argument &)
+        {
+            std::cout << WarningMsg("Failed to parse height - input is not ")
+                      << WarningMsg("a number!") << std::endl << std::endl;
+        }
+    }
 }

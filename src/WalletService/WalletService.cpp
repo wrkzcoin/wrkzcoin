@@ -1,19 +1,8 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-//
-// This file is part of Bytecoin.
-//
-// Bytecoin is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Bytecoin is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Bytecoin.  If not, see <http://www.gnu.org/licenses/>.
+// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2018, The TurtleCoin Developers
+// 
+// Please see the included LICENSE file for more information.
 
 #include "WalletService.h"
 
@@ -333,9 +322,15 @@ std::vector<std::string> collectDestinationAddresses(const std::vector<PaymentSe
   return result;
 }
 
-std::vector<CryptoNote::WalletOrder> convertWalletRpcOrdersToWalletOrders(const std::vector<PaymentService::WalletRpcOrder>& orders) {
+std::vector<CryptoNote::WalletOrder> convertWalletRpcOrdersToWalletOrders(const std::vector<PaymentService::WalletRpcOrder>& orders, const std::string nodeAddress, const uint32_t nodeFee) {
   std::vector<CryptoNote::WalletOrder> result;
-  result.reserve(orders.size());
+  
+  if (!nodeAddress.empty() && nodeFee != 0) {
+    result.reserve(orders.size() + 1);
+    result.emplace_back(CryptoNote::WalletOrder {nodeAddress, nodeFee});
+  } else {
+    result.reserve(orders.size());
+  }
 
   for (const auto& order: orders) {
     result.emplace_back(CryptoNote::WalletOrder {order.address, order.amount});
@@ -366,8 +361,8 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
     CryptoNote::AccountBase::generateViewFromSpend(spendKey.secretKey, private_view_key);
 
-    wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key);
-    address = wallet->createAddress(spendKey.secretKey);
+    wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key, 0, true);
+    address = wallet->createAddress(spendKey.secretKey, 0, true);
 
 	  log(Logging::INFO, Logging::BRIGHT_WHITE) << "New wallet is generated. Address: " << address;
   }
@@ -386,8 +381,8 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
     }
 
     CryptoNote::AccountBase::generateViewFromSpend(private_spend_key, private_view_key);
-    wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key);
-    address = wallet->createAddress(private_spend_key);
+    wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key, conf.scanHeight, false);
+    address = wallet->createAddress(private_spend_key, conf.scanHeight, false);
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported wallet successfully.";
   }
   else
@@ -414,8 +409,8 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
 		  Crypto::SecretKey private_spend_key = *(struct Crypto::SecretKey *) &private_spend_key_hash;
 		  Crypto::SecretKey private_view_key = *(struct Crypto::SecretKey *) &private_view_key_hash;
 
-		  wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key);
-		  address = wallet->createAddress(private_spend_key);
+		  wallet->initializeWithViewKey(conf.walletFile, conf.walletPassword, private_view_key, conf.scanHeight, false);
+		  address = wallet->createAddress(private_spend_key, conf.scanHeight, false);
 		  log(Logging::INFO, Logging::BRIGHT_WHITE) << "Imported wallet successfully.";
 	  }
   }
@@ -452,9 +447,41 @@ void WalletService::init() {
   loadWallet();
   loadTransactionIdIndex();
 
+  getNodeFee();
   refreshContext.spawn([this] { refresh(); });
-
+  
   inited = true;
+}
+
+void WalletService::getNodeFee() {
+  logger(Logging::DEBUGGING) <<
+    "Trying to retrieve node fee information." << std::endl;
+    
+  m_node_address = node.feeAddress();
+  m_node_fee = node.feeAmount();
+  
+  if (!m_node_address.empty() && m_node_fee != 0) {
+    // Partially borrowed from <zedwallet/Tools.h>
+    uint32_t div = static_cast<uint32_t>(pow(10, CryptoNote::parameters::CRYPTONOTE_DISPLAY_DECIMAL_POINT));
+    uint32_t coins = m_node_fee / div;
+    uint32_t cents = m_node_fee % div;
+    std::stringstream stream;
+    stream << std::setfill('0') << std::setw(CryptoNote::parameters::CRYPTONOTE_DISPLAY_DECIMAL_POINT) << cents;
+    std::string amount = std::to_string(coins) + "." + stream.str();
+    
+    logger(Logging::INFO, Logging::RED) << 
+      "You have connected to a node that charges " <<
+      "a fee to send transactions." << std::endl;
+    
+    logger(Logging::INFO, Logging::RED) << 
+      "The fee for sending transactions is: " <<
+      amount << " per transaction." << std::endl ;
+    
+    logger(Logging::INFO, Logging::RED) <<
+      "If you don't want to pay the node fee, please " <<
+      "relaunch this program and specify a different " <<
+      "node or run your own." << std::endl;
+  }
 }
 
 void WalletService::saveWallet() {
@@ -524,31 +551,31 @@ std::error_code WalletService::exportWallet(const std::string& fileName) {
   return std::error_code();
 }
 
-std::error_code WalletService::resetWallet() {
+std::error_code WalletService::resetWallet(const uint64_t scanHeight) {
   try {
     System::EventLock lk(readyEvent);
 
-    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Reseting wallet";
+    logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Resetting wallet";
 
     if (!inited) {
       logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Reset impossible: Wallet Service is not initialized";
       return make_error_code(CryptoNote::error::NOT_INITIALIZED);
     }
 
-    reset();
+    reset(scanHeight);
     logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Wallet has been reset";
   } catch (std::system_error& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while reseting wallet: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while resetting wallet: " << x.what();
     return x.code();
   } catch (std::exception& x) {
-    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while reseting wallet: " << x.what();
+    logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while resetting wallet: " << x.what();
     return make_error_code(CryptoNote::error::INTERNAL_WALLET_ERROR);
   }
 
   return std::error_code();
 }
 
-std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecretKeyText) {
+std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecretKeyText, const uint64_t scanHeight, const bool newAddress) {
   try {
     System::EventLock lk(readyEvent);
 
@@ -564,7 +591,7 @@ std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecre
       return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
     }
 
-    replaceWithNewWallet(viewSecretKey);
+    replaceWithNewWallet(viewSecretKey, scanHeight, newAddress);
     logger(Logging::INFO, Logging::BRIGHT_WHITE) << "The container has been replaced";
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while replacing container: " << x.what();
@@ -577,7 +604,7 @@ std::error_code WalletService::replaceWithNewWallet(const std::string& viewSecre
   return std::error_code();
 }
 
-std::error_code WalletService::createAddress(const std::string& spendSecretKeyText, std::string& address) {
+std::error_code WalletService::createAddress(const std::string& spendSecretKeyText, uint64_t scanHeight, bool newAddress, std::string& address) {
   try {
     System::EventLock lk(readyEvent);
 
@@ -589,7 +616,7 @@ std::error_code WalletService::createAddress(const std::string& spendSecretKeyTe
       return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
     }
 
-    address = wallet.createAddress(secretKey);
+    address = wallet.createAddress(secretKey, scanHeight, newAddress);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating address: " << x.what();
     return x.code();
@@ -600,7 +627,7 @@ std::error_code WalletService::createAddress(const std::string& spendSecretKeyTe
   return std::error_code();
 }
 
-std::error_code WalletService::createAddressList(const std::vector<std::string>& spendSecretKeysText, std::vector<std::string>& addresses) {
+std::error_code WalletService::createAddressList(const std::vector<std::string>& spendSecretKeysText, uint64_t scanHeight, bool newAddress, std::vector<std::string>& addresses) {
   try {
     System::EventLock lk(readyEvent);
 
@@ -626,7 +653,7 @@ std::error_code WalletService::createAddressList(const std::vector<std::string>&
       secretKeys.push_back(std::move(key));
     }
 
-    addresses = wallet.createAddressList(secretKeys);
+    addresses = wallet.createAddressList(secretKeys, scanHeight, newAddress);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating addresses: " << x.what();
     return x.code();
@@ -654,7 +681,7 @@ std::error_code WalletService::createAddress(std::string& address) {
   return std::error_code();
 }
 
-std::error_code WalletService::createTrackingAddress(const std::string& spendPublicKeyText, std::string& address) {
+std::error_code WalletService::createTrackingAddress(const std::string& spendPublicKeyText, uint64_t scanHeight, bool newAddress, std::string& address) {
   try {
     System::EventLock lk(readyEvent);
 
@@ -666,7 +693,7 @@ std::error_code WalletService::createTrackingAddress(const std::string& spendPub
       return make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_KEY_FORMAT);
     }
 
-    address = wallet.createAddress(publicKey);
+    address = wallet.createAddress(publicKey, scanHeight, true);
   } catch (std::system_error& x) {
     logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Error while creating tracking address: " << x.what();
     return x.code();
@@ -949,7 +976,7 @@ std::error_code WalletService::sendTransaction(SendTransaction::Request& request
     std::transform(request.paymentId.begin(), request.paymentId.end(), request.paymentId.begin(), ::toupper);
 
     std::vector<std::string> paymentIDs;
-
+    
     for (auto &transfer : request.transfers)
     {
         std::string addr = transfer.address;
@@ -1051,7 +1078,7 @@ std::error_code WalletService::sendTransaction(SendTransaction::Request& request
     }
 
     sendParams.sourceAddresses = request.sourceAddresses;
-    sendParams.destinations = convertWalletRpcOrdersToWalletOrders(request.transfers);
+    sendParams.destinations = convertWalletRpcOrdersToWalletOrders(request.transfers, m_node_address, m_node_fee);
     sendParams.fee = request.fee;
     sendParams.mixIn = request.anonymity;
     sendParams.unlockTimestamp = request.unlockTime;
@@ -1090,7 +1117,7 @@ std::error_code WalletService::createDelayedTransaction(const CreateDelayedTrans
     }
 
     sendParams.sourceAddresses = request.addresses;
-    sendParams.destinations = convertWalletRpcOrdersToWalletOrders(request.transfers);
+    sendParams.destinations = convertWalletRpcOrdersToWalletOrders(request.transfers, m_node_address, m_node_fee);
     sendParams.fee = request.fee;
     sendParams.mixIn = request.anonymity;
     sendParams.unlockTimestamp = request.unlockTime;
@@ -1307,8 +1334,7 @@ std::error_code WalletService::createIntegratedAddress(const std::string &addres
   CryptoNote::AccountPublicAddress addr;
 
   /* Get the private + public key from the address */
-  const bool valid = CryptoNote::parseAccountAddressString(prefix, addr,
-                                                           address);
+  CryptoNote::parseAccountAddressString(prefix, addr, address);
 
   /* Pack as a binary array */
   CryptoNote::BinaryArray ba;
@@ -1322,6 +1348,13 @@ std::error_code WalletService::createIntegratedAddress(const std::string &addres
       paymentId + keys
   );
 
+  return std::error_code();
+}
+
+std::error_code WalletService::getFeeInfo(std::string& address, uint32_t& amount) {
+  address = m_node_address;
+  amount = m_node_fee;
+  
   return std::error_code();
 }
 
@@ -1342,18 +1375,11 @@ void WalletService::refresh() {
   }
 }
 
-void WalletService::reset() {
-  wallet.save(CryptoNote::WalletSaveLevel::SAVE_KEYS_ONLY);
-  wallet.stop();
-  wallet.shutdown();
-  inited = false;
-  refreshContext.wait();
-
-  wallet.start();
-  init();
+void WalletService::reset(const uint64_t scanHeight) {
+  wallet.reset(scanHeight);
 }
 
-void WalletService::replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey) {
+void WalletService::replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey, const uint64_t scanHeight, const bool newAddress) {
   wallet.stop();
   wallet.shutdown();
   inited = false;
@@ -1376,7 +1402,7 @@ void WalletService::replaceWithNewWallet(const Crypto::SecretKey& viewSecretKey)
   }
 
   wallet.start();
-  wallet.initializeWithViewKey(config.walletFile, config.walletPassword, viewSecretKey);
+  wallet.initializeWithViewKey(config.walletFile, config.walletPassword, viewSecretKey, scanHeight, newAddress);
   inited = true;
 }
 
