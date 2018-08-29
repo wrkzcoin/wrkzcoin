@@ -1,12 +1,10 @@
 ### How To Compile
 #### Linux
-On Linux or Mac on a non standard architecture, and can't get GNU Readline installed?
 
-You can disable it with `cmake .. -DENABLE_READLINE=FALSE`
 ##### Prerequisites
 
 - You will need the following packages: boost (1.55 or higher), rocksdb, cmake, git, gcc (4.9 or higher), g++ (4.9 or higher), make, and python. Most of these should already be installed on your system.
-- For example on Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev libreadline-dev`
+- For example on Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
 
 ##### Building
 
@@ -25,7 +23,6 @@ You can disable it with `cmake .. -DENABLE_READLINE=FALSE`
 - Install Homebrew https://brew.sh/ (if you don't have it)
 - Install [cmake](https://cmake.org/). See [here](https://stackoverflow.com/questions/23849962/cmake-installer-for-mac-fails-to-create-usr-bin-symlinks) if you are unable call `cmake` from the terminal after installing.
 - Install the [boost](http://www.boost.org/) libraries. Either compile boost manually or run `brew install boost`.
-- Install GNU Readline by running `brew install readline; brew link --force readline`.
 - Install XCode and Developer Tools.
 
 ##### Building
