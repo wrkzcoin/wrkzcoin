@@ -63,13 +63,20 @@ const uint64_t MINIMUM_FEE                                   = UINT64_C(5);
 
 const uint64_t MINIMUM_MIXIN_V1                              = 0;
 const uint64_t MAXIMUM_MIXIN_V1                              = 30;
+
 const uint64_t MINIMUM_MIXIN_V2                              = 3;
 const uint64_t MAXIMUM_MIXIN_V2                              = 7;
 
+/* The heights to activate the mixin limits at */
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
 const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
 
-const uint64_t DEFAULT_MIXIN                                 = MINIMUM_MIXIN_V2;
+
+/* The mixin to use by default with zedwallet and wrkz-service */
+/* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
+const uint64_t DEFAULT_MIXIN_V0                              = 3;
+const uint64_t DEFAULT_MIXIN_V1                              = MAXIMUM_MIXIN_V1;
+const uint64_t DEFAULT_MIXIN_V2                              = MAXIMUM_MIXIN_V2;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(10);
 const uint64_t DEFAULT_DUST_THRESHOLD_V2                     = UINT64_C(0);

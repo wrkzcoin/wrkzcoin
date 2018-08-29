@@ -1358,6 +1358,11 @@ std::error_code WalletService::getFeeInfo(std::string& address, uint32_t& amount
   return std::error_code();
 }
 
+uint64_t WalletService::getDefaultMixin() const
+{
+    return CryptoNote::getDefaultMixinByHeight(node.getLastKnownBlockHeight());
+}
+
 void WalletService::refresh() {
   try {
     logger(Logging::DEBUGGING) << "Refresh is started";
