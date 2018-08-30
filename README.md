@@ -4,7 +4,13 @@
 ##### Prerequisites
 
 - You will need the following packages: boost (1.55 or higher), rocksdb, cmake, git, gcc (4.9 or higher), g++ (4.9 or higher), make, and python. Most of these should already be installed on your system.
-- For example on Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
+- For Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
+- For CentOS 7 (x64): `yum install git-svn make cmake gcc gcc-c++ libstdc++-static -y`
+  - Note for CentOS 7: to install later version of boost devel in CentOS 7:
+  - `wget https://phoenixnap.dl.sourceforge.net/project/boost/boost/1.58.0/boost_1_58_0.tar.gz`
+  - `tar -xzf boost_1_58_0.tar.gz`
+  - `./bootstrap.sh --prefix=/opt/boost`
+  - `./b2 install --prefix=/opt/boost --with=all`
 
 ##### Building
 
@@ -14,6 +20,7 @@
 - `chmod +x ./external/rocksdb/build_tools/version.sh`
 - `mkdir build && cd $_`
 - `cmake ..`
+- Or `cmake -DBOOST_ROOT=/opt/boost ..` for CentOS 7
 - `make`
 
 #### Apple
