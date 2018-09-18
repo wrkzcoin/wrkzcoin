@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #include "PaymentServiceJsonRpcMessages.h"
@@ -69,6 +69,7 @@ void GetStatus::Request::serialize(CryptoNote::ISerializer& serializer) {
 void GetStatus::Response::serialize(CryptoNote::ISerializer& serializer) {
   serializer(blockCount, "blockCount");
   serializer(knownBlockCount, "knownBlockCount");
+  serializer(localDaemonBlockCount, "localDaemonBlockCount");
   serializer(lastBlockHash, "lastBlockHash");
   serializer(peerCount, "peerCount");
 }

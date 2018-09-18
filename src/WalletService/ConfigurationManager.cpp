@@ -62,7 +62,7 @@ bool ConfigurationManager::init(int argc, char** argv) {
 
   if (cmdOptions.count("version") > 0) {
     /* TODO: Take this from a variable for easier forking */
-    std::cout << "turtle-service v" << PROJECT_VERSION_LONG << std::endl;
+    std::cout << "wrkz-service v" << PROJECT_VERSION_LONG << std::endl;
     return false;
   }
 

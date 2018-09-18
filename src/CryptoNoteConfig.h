@@ -67,9 +67,12 @@ const uint64_t MAXIMUM_MIXIN_V1                              = 30;
 const uint64_t MINIMUM_MIXIN_V2                              = 3;
 const uint64_t MAXIMUM_MIXIN_V2                              = 7;
 
+const uint64_t MINIMUM_MIXIN_V3                              = 3;
+const uint64_t MAXIMUM_MIXIN_V3                              = 3;
 /* The heights to activate the mixin limits at */
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
 const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
+const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 600000;
 
 
 /* The mixin to use by default with zedwallet and wrkz-service */
@@ -77,6 +80,7 @@ const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
 const uint64_t DEFAULT_MIXIN_V0                              = 3;
 const uint64_t DEFAULT_MIXIN_V1                              = MAXIMUM_MIXIN_V1;
 const uint64_t DEFAULT_MIXIN_V2                              = MAXIMUM_MIXIN_V2;
+const uint64_t DEFAULT_MIXIN_V3                              = MAXIMUM_MIXIN_V3;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(10);
 const uint64_t DEFAULT_DUST_THRESHOLD_V2                     = UINT64_C(0);
@@ -131,6 +135,9 @@ const uint64_t FORK_HEIGHTS[] = {
     250000 //3
 };
 
+/* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
+const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX                 = 2;
+
 const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
 /* The index in the FORK_HEIGHTS array that this version of the software will
@@ -139,7 +146,7 @@ const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
    This will default to zero if the FORK_HEIGHTS array is empty, so you don't
    need to change it manually. */
-const uint8_t CURRENT_FORK_INDEX = FORK_HEIGHTS_SIZE == 0 ? 0 : 2;
+const uint8_t CURRENT_FORK_INDEX = FORK_HEIGHTS_SIZE == 0 ? 0 : SOFTWARE_SUPPORTED_FORK_INDEX;
 
 static_assert(CURRENT_FORK_INDEX >= 0, "CURRENT FORK INDEX must be >= 0");
 /* Make sure CURRENT_FORK_INDEX is a valid index, unless FORK_HEIGHTS is empty */
@@ -170,9 +177,18 @@ const size_t   COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT         =  1000;
 
 const int      P2P_DEFAULT_PORT                              =  17855;
 const int      RPC_DEFAULT_PORT                              =  17856;
+const int      SERVICE_DEFAULT_PORT                          =  7856;
 
 const size_t   P2P_LOCAL_WHITE_PEERLIST_LIMIT                =  1000;
 const size_t   P2P_LOCAL_GRAY_PEERLIST_LIMIT                 =  5000;
+
+// P2P Network Configuration Section - This defines our current P2P network version
+// and the minimum version for communication between nodes
+const uint8_t  P2P_CURRENT_VERSION                           = 2;
+const uint8_t  P2P_MINIMUM_VERSION                           = 1;
+// This defines the number of versions ahead we must see peers before we start displaying
+// warning messages that we need to upgrade our software.
+const uint8_t  P2P_UPGRADE_WINDOW                            = 2;
 
 const size_t   P2P_CONNECTION_MAX_WRITE_BUFFER_SIZE          = 32 * 1024 * 1024; // 32 MB
 const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT                 = 8;
@@ -186,7 +202,8 @@ const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT                    = 60 * 2 * 1000; //
 const size_t   P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT          = 5000;          // 5 seconds
 const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
 
-const static boost::uuids::uuid CRYPTONOTE_NETWORK =
+const char     LATEST_VERSION_URL[]                          = "https://latest.wrkz.work";
+const static   boost::uuids::uuid CRYPTONOTE_NETWORK         =
 {
     {  0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9  } 
 };
