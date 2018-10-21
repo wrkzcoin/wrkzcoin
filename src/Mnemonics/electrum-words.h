@@ -177,7 +177,7 @@ namespace crypto
     {
       /* Uncommenting these will allow importing of different languages, exporting
          in different languages however has not been added, as it will require
-         changing the export_keys command to take an argument to specify what
+         changing the backup command to take an argument to specify what
          language the seed should be exported in. For now, multilanguage support
          has been disabled as there are a couple of issues - we can't print out
          what words aren't present in the dictionary if we don't know what
