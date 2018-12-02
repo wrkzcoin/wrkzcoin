@@ -13,7 +13,7 @@
 
 #include <zedwallet/ColouredMsg.h>
 #include <zedwallet/Tools.h>
-#include <zedwallet/WalletConfig.h>
+#include <config/WalletConfig.h>
 
 size_t makeFusionTransaction(CryptoNote::WalletGreen &wallet, 
                              uint64_t threshold, uint64_t height)

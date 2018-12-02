@@ -19,7 +19,7 @@
 #include <zedwallet/Transfer.h>
 #include <zedwallet/Types.h>
 #include <zedwallet/PasswordContainer.h>
-#include <zedwallet/WalletConfig.h>
+#include <config/WalletConfig.h>
 
 std::shared_ptr<WalletInfo> createViewWallet(CryptoNote::WalletGreen &wallet)
 {
@@ -323,8 +323,8 @@ std::shared_ptr<WalletInfo> openWallet(CryptoNote::WalletGreen &wallet,
 
 Crypto::SecretKey getPrivateKey(std::string msg)
 {
-    const size_t privateKeyLen = 64;
-    size_t size;
+    const uint64_t privateKeyLen = 64;
+    uint64_t size;
 
     std::string privateKeyString;
     Crypto::Hash privateKeyHash;

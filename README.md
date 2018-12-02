@@ -3,7 +3,7 @@
 
 ##### Prerequisites
 
-- You will need the following packages: boost (1.55 or higher), rocksdb, cmake, git, gcc (4.9 or higher), g++ (4.9 or higher), make, and python. Most of these should already be installed on your system.
+- You will need the following packages: boost (1.55 or higher), cmake (3.8 or higher), git, gcc/g++ (7.0 or higher) or Clang (6.0 or higher), make, and python. Most of these should already be installed on your system.
 - For Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
 - For CentOS 7 (x64): `yum install git-svn make cmake gcc gcc-c++ libstdc++-static -y`
   - Note for CentOS 7: to install later version of boost devel:
@@ -32,8 +32,27 @@
 - Install the [boost](http://www.boost.org/) libraries. Either compile boost manually or run `brew install boost`.
 - Install XCode and Developer Tools.
 
-##### Building
+##### Building using Clang
 
+- `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
+- `brew install --force cmake boost llvm`
+- `export CC=/usr/local/opt/llvm/bin/clang`
+- `export CXX=/usr/local/opt/llvm/bin/clang++`
+- `git clone https://github.com/wrkzdev/wrkzcoin`
+- `cd wrkzcoin`
+- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
+- `chmod +x ./external/rocksdb/build_tools/version.sh`
+- `mkdir build && cd $_`
+- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
+  from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
+- `make`
+
+##### Building using GCC
+
+- `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
+- `brew install --force cmake boost llvm gcc@8`
+- `export CC=gcc-8`
+- `export CXX=g++-8`
 - `git clone https://github.com/wrkzdev/wrkzcoin`
 - `cd wrkzcoin`
 - `chmod +x ./external/rocksdb/build_tools/build_detect_platform`

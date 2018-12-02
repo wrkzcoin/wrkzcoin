@@ -20,7 +20,7 @@
 
 namespace PaymentService {
 
-PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher& sys, System::Event& stopEvent, WalletService& service, Logging::ILogger& loggerGroup, PaymentService::Configuration& config)
+PaymentServiceJsonRpcServer::PaymentServiceJsonRpcServer(System::Dispatcher& sys, System::Event& stopEvent, WalletService& service, Logging::ILogger& loggerGroup, PaymentService::ConfigurationManager& config)
   : JsonRpcServer(sys, stopEvent, loggerGroup, config)
   , service(service)
   , logger(loggerGroup, "PaymentServiceJsonRpcServer")
@@ -58,7 +58,7 @@ void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue&
   try {
     prepareJsonResponse(req, resp);
 
-    if (!config.legacySecurity) {
+    if (!config.serviceConfig.legacySecurity) {
       std::string clientPassword;
       if (!req.contains("password")) {
         makeInvalidPasswordResponse(resp);
@@ -73,7 +73,7 @@ void PaymentServiceJsonRpcServer::processJsonRpcRequest(const Common::JsonValue&
       std::vector<uint8_t> rawData(clientPassword.begin(), clientPassword.end());
       Crypto::Hash hashedPassword = Crypto::Hash();
       cn_slow_hash_v0(rawData.data(), rawData.size(), hashedPassword);
-      if (hashedPassword != config.rpcPassword) {
+      if (hashedPassword != config.rpcSecret) {
         makeInvalidPasswordResponse(resp);
         return;
       }
@@ -188,7 +188,7 @@ std::error_code PaymentServiceJsonRpcServer::handleSendTransaction(SendTransacti
   return service.sendTransaction(request, response.transactionHash);
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleCreateDelayedTransaction(const CreateDelayedTransaction::Request& request, CreateDelayedTransaction::Response& response) {
+std::error_code PaymentServiceJsonRpcServer::handleCreateDelayedTransaction(CreateDelayedTransaction::Request& request, CreateDelayedTransaction::Response& response) {
   return service.createDelayedTransaction(request, response.transactionHash);
 }
 
@@ -200,7 +200,7 @@ std::error_code PaymentServiceJsonRpcServer::handleDeleteDelayedTransaction(cons
   return service.deleteDelayedTransaction(request.transactionHash);
 }
 
-std::error_code PaymentServiceJsonRpcServer::handleSendDelayedTransaction(const SendDelayedTransaction::Request& request, SendDelayedTransaction::Response& response) {
+std::error_code PaymentServiceJsonRpcServer::handleSendDelayedTransaction(SendDelayedTransaction::Request& request, SendDelayedTransaction::Response& response) {
   return service.sendDelayedTransaction(request.transactionHash);
 }
 

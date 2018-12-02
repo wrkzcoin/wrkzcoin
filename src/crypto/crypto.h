@@ -15,7 +15,6 @@
 
 #include <CryptoTypes.h>
 
-#include "generic-ops.h"
 #include "hash.h"
 
 namespace Crypto {
@@ -80,14 +79,19 @@ struct EllipticCurveScalar {
     friend KeyImage scalarmultKey(const KeyImage & P, const KeyImage & a);
     static void hash_data_to_ec(const uint8_t*, std::size_t, PublicKey&);
     friend void hash_data_to_ec(const uint8_t*, std::size_t, PublicKey&);
-    static void generate_ring_signature(const Hash &, const KeyImage &,
-      const PublicKey *const *, size_t, const SecretKey &, size_t, Signature *);
-    friend void generate_ring_signature(const Hash &, const KeyImage &,
-      const PublicKey *const *, size_t, const SecretKey &, size_t, Signature *);
     static bool check_ring_signature(const Hash &, const KeyImage &,
       const PublicKey *const *, size_t, const Signature *, bool);
     friend bool check_ring_signature(const Hash &, const KeyImage &,
       const PublicKey *const *, size_t, const Signature *, bool);
+
+    public:
+
+        static std::tuple<bool, std::vector<Signature>> generateRingSignatures(
+            const Hash prefixHash,
+            const KeyImage keyImage,
+            const std::vector<PublicKey> publicKeys,
+            const Crypto::SecretKey transactionSecretKey,
+            uint64_t realOutput);
   };
 
   /* Generate a value filled with random bytes.
@@ -107,7 +111,6 @@ struct EllipticCurveScalar {
   public:
     typedef T result_type;
 
-#ifdef __clang__
     constexpr static T min() {
       return (std::numeric_limits<T>::min)();
     }
@@ -115,15 +118,7 @@ struct EllipticCurveScalar {
     constexpr static T max() {
       return (std::numeric_limits<T>::max)();
     }
-#else
-    static T(min)() {
-      return (std::numeric_limits<T>::min)();
-    }
 
-    static T(max)() {
-      return (std::numeric_limits<T>::max)();
-    }
-#endif
     typename std::enable_if<std::is_unsigned<T>::value, T>::type operator()() {
       return rand<T>();
     }
@@ -231,12 +226,6 @@ struct EllipticCurveScalar {
     crypto_ops::hash_data_to_ec(data, len, key);
   }
 
-  inline void generate_ring_signature(const Hash &prefix_hash, const KeyImage &image,
-    const PublicKey *const *pubs, std::size_t pubs_count,
-    const SecretKey &sec, std::size_t sec_index,
-    Signature *sig) {
-    crypto_ops::generate_ring_signature(prefix_hash, image, pubs, pubs_count, sec, sec_index, sig);
-  }
   inline bool check_ring_signature(const Hash &prefix_hash, const KeyImage &image,
     const PublicKey *const *pubs, size_t pubs_count,
     const Signature *sig, bool checkKeyImage) {
@@ -245,21 +234,9 @@ struct EllipticCurveScalar {
 
   /* Variants with vector<const PublicKey *> parameters.
    */
-  inline void generate_ring_signature(const Hash &prefix_hash, const KeyImage &image,
-    const std::vector<const PublicKey *> &pubs,
-    const SecretKey &sec, size_t sec_index,
-    Signature *sig) {
-    generate_ring_signature(prefix_hash, image, pubs.data(), pubs.size(), sec, sec_index, sig);
-  }
   inline bool check_ring_signature(const Hash &prefix_hash, const KeyImage &image,
     const std::vector<const PublicKey *> &pubs,
     const Signature *sig, bool checkKeyImage) {
     return check_ring_signature(prefix_hash, image, pubs.data(), pubs.size(), sig, checkKeyImage);
   }
-
 }
-
-CRYPTO_MAKE_HASHABLE(PublicKey)
-CRYPTO_MAKE_HASHABLE(KeyImage)
-CRYPTO_MAKE_COMPARABLE(Signature)
-CRYPTO_MAKE_COMPARABLE(SecretKey)

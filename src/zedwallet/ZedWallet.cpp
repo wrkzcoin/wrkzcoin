@@ -6,10 +6,9 @@
 #include <zedwallet/ZedWallet.h>
 ////////////////////////////////
 
+#include <config/CliHeader.h>
 #include <Common/SignalHandler.h>
-
 #include <CryptoNoteCore/Currency.h>
-
 #include <Logging/FileLogger.h>
 #include <Logging/LoggerManager.h>
 
@@ -21,7 +20,7 @@
 #include <zedwallet/Menu.h>
 #include <zedwallet/ParseArguments.h>
 #include <zedwallet/Tools.h>
-#include <zedwallet/WalletConfig.h>
+#include <config/WalletConfig.h>
 
 int main(int argc, char **argv)
 {
@@ -35,11 +34,7 @@ int main(int argc, char **argv)
 
     Config config = parseArguments(argc, argv);
 
-    /* User requested --help or --version, or invalid arguments */
-    if (config.exit)
-    {
-        return 0;
-    }
+    std::cout << InformationMsg(CryptoNote::getProjectCLIHeader()) << std::endl;
 
     Logging::LoggerManager logManager;
 
@@ -105,7 +100,7 @@ int main(int argc, char **argv)
                       << std::endl << std::endl;
         }
     }
-    
+
     /*
       This will check to see if the node responded to /feeinfo and actually
       returned something that it expects us to use for convenience charges
@@ -113,7 +108,7 @@ int main(int argc, char **argv)
     */
     if (node->feeAmount() != 0 && !node->feeAddress().empty()) {
       std::stringstream feemsg;
-      
+
       feemsg << std::endl << "You have connected to a node that charges " <<
              "a fee to send transactions." << std::endl << std::endl
              << "The fee for sending transactions is: " << 
@@ -123,7 +118,7 @@ int main(int argc, char **argv)
              "relaunch " << WalletConfig::walletName <<
              " and specify a different node or run your own." <<
              std::endl;
-             
+
       std::cout << WarningMsg(feemsg.str()) << std::endl;
     }
 
@@ -138,20 +133,18 @@ int main(int argc, char **argv)
 void run(CryptoNote::WalletGreen &wallet, CryptoNote::INode &node,
          Config &config)
 {
-    std::cout << InformationMsg(getVersion()) << std::endl;
-
-    std::shared_ptr<WalletInfo> walletInfo;
-
-    bool quit;
-
-    std::tie(quit, walletInfo) = selectionScreen(config, wallet, node);
+    auto [quit, walletInfo] = selectionScreen(config, wallet, node);
 
     bool alreadyShuttingDown = false;
 
     if (!quit)
     {
         /* Call shutdown on ctrl+c */
-        Tools::SignalHandler::install([&]
+        /* walletInfo = walletInfo - workaround for
+           https://stackoverflow.com/a/46115028/8737306 - standard &
+           capture works in newer compilers. */
+        Tools::SignalHandler::install([&walletInfo = walletInfo, &node,
+                                       &alreadyShuttingDown]
         {
             /* If we're already shutting down let control flow continue
                as normal */
@@ -163,6 +156,6 @@ void run(CryptoNote::WalletGreen &wallet, CryptoNote::INode &node,
 
         mainLoop(walletInfo, node);
     }
-    
+
     shutdown(walletInfo, node, alreadyShuttingDown);
 }

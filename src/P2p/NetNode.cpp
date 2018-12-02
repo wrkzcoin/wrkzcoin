@@ -99,17 +99,6 @@ bool parse_peer_from_string(NetworkAddress& pe, const std::string& node_addr) {
 namespace CryptoNote {
 namespace {
 
-const command_line::arg_descriptor<std::string> arg_p2p_bind_ip        = {"p2p-bind-ip", "Interface for p2p network protocol", "0.0.0.0"};
-const command_line::arg_descriptor<std::string> arg_p2p_bind_port      = {"p2p-bind-port", "Port for p2p network protocol", std::to_string(CryptoNote::P2P_DEFAULT_PORT)};
-const command_line::arg_descriptor<uint32_t>    arg_p2p_external_port  = {"p2p-external-port", "External port for p2p network protocol (if port forwarding used with NAT)", 0};
-const command_line::arg_descriptor<bool>        arg_p2p_allow_local_ip = {"allow-local-ip", "Allow local ip add to peer list, mostly in debug purposes"};
-const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_peer   = {"add-peer", "Manually add peer to local peerlist"};
-const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_priority_node   = {"add-priority-node", "Specify list of peers to connect to and attempt to keep the connection open"};
-const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_add_exclusive_node   = {"add-exclusive-node", "Specify list of peers to connect to only."
-                                                                                              " If this option is given the options add-priority-node and seed-node are ignored"};
-const command_line::arg_descriptor<std::vector<std::string> > arg_p2p_seed_node   = {"seed-node", "Connect to a node to retrieve peer addresses, and disconnect"};
-const command_line::arg_descriptor<bool> arg_p2p_hide_my_port   =    {"hide-my-port", "Do not announce yourself as peerlist candidate", false, true};
-
 std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
   time_t now_time = 0;
   time(&now_time);
@@ -219,7 +208,9 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
     s(m_config.m_peer_id, "peer_id");
   }
 
-#define INVOKE_HANDLER(CMD, Handler) case CMD::ID: { ret = invokeAdaptor<CMD>(cmd.buf, out, ctx,  boost::bind(Handler, this, _1, _2, _3, _4)); break; }
+  using namespace std::placeholders;
+
+  #define INVOKE_HANDLER(CMD, Handler) case CMD::ID: { ret = invokeAdaptor<CMD>(cmd.buf, out, ctx,  std::bind(Handler, this, _1, _2, _3, _4)); break; }
 
   int NodeServer::handleCommand(const LevinProtocol::Command& cmd, BinaryArray& out, P2pConnectionContext& ctx, bool& handled) {
     int ret = 0;
@@ -252,22 +243,6 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
   }
 
 #undef INVOKE_HANDLER
-
-  //-----------------------------------------------------------------------------------
-
-  void NodeServer::init_options(boost::program_options::options_description& desc)
-  {
-    command_line::add_arg(desc, arg_p2p_bind_ip);
-    command_line::add_arg(desc, arg_p2p_bind_port);
-    command_line::add_arg(desc, arg_p2p_external_port);
-    command_line::add_arg(desc, arg_p2p_allow_local_ip);
-    command_line::add_arg(desc, arg_p2p_add_peer);
-    command_line::add_arg(desc, arg_p2p_add_priority_node);
-    command_line::add_arg(desc, arg_p2p_add_exclusive_node);
-    command_line::add_arg(desc, arg_p2p_seed_node);
-    command_line::add_arg(desc, arg_p2p_hide_my_port);
-  }
-  //-----------------------------------------------------------------------------------
 
   bool NodeServer::init_config() {
     try {
@@ -310,7 +285,7 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
   }
 
   //-----------------------------------------------------------------------------------
-  void NodeServer::for_each_connection(std::function<void(CryptoNoteConnectionContext&, PeerIdType)> f)
+  void NodeServer::for_each_connection(std::function<void(CryptoNoteConnectionContext&, uint64_t)> f)
   {
     for (auto& ctx : m_connections) {
       f(ctx.second, ctx.second.peerId);
@@ -318,7 +293,7 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
   }
 
   //-----------------------------------------------------------------------------------
-  void NodeServer::externalRelayNotifyToAll(int command, const BinaryArray& data_buff, const net_connection_id* excludeConnection) {
+  void NodeServer::externalRelayNotifyToAll(int command, const BinaryArray& data_buff, const boost::uuids::uuid* excludeConnection) {
     m_dispatcher.remoteSpawn([this, command, data_buff, excludeConnection] {
       relay_notify_to_all(command, data_buff, excludeConnection);
     });
@@ -333,46 +308,6 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
   }
 
   //-----------------------------------------------------------------------------------
-
-  bool NodeServer::handle_command_line(const boost::program_options::variables_map& vm)
-  {
-    m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
-    m_port = command_line::get_arg(vm, arg_p2p_bind_port);
-    m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
-    m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
-
-    if (command_line::has_arg(vm, arg_p2p_add_peer))
-    {
-      std::vector<std::string> perrs = command_line::get_arg(vm, arg_p2p_add_peer);
-      for(const std::string& pr_str: perrs)
-      {
-        PeerlistEntry pe = boost::value_initialized<PeerlistEntry>();
-        pe.id = Crypto::rand<uint64_t>();
-        bool r = parse_peer_from_string(pe.adr, pr_str);
-        if (!(r)) { logger(ERROR, BRIGHT_RED) << "Failed to parse address from string: " << pr_str; return false; }
-        m_command_line_peers.push_back(pe);
-      }
-    }
-
-    if (command_line::has_arg(vm,arg_p2p_add_exclusive_node)) {
-      if (!parse_peers_and_add_to_container(vm, arg_p2p_add_exclusive_node, m_exclusive_peers))
-        return false;
-    }
-    if (command_line::has_arg(vm, arg_p2p_add_priority_node)) {
-      if (!parse_peers_and_add_to_container(vm, arg_p2p_add_priority_node, m_priority_peers))
-        return false;
-    }
-    if (command_line::has_arg(vm, arg_p2p_seed_node)) {
-      if (!parse_peers_and_add_to_container(vm, arg_p2p_seed_node, m_seed_nodes))
-        return false;
-    }
-
-    if (command_line::has_arg(vm, arg_p2p_hide_my_port)) {
-      m_hide_my_port = true;
-    }
-
-    return true;
-  }
 
   bool NodeServer::handleConfig(const NetNodeConfig& config) {
     m_bind_ip = config.getBindIp();
@@ -1051,8 +986,8 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
 
   //-----------------------------------------------------------------------------------
 
-  void NodeServer::relay_notify_to_all(int command, const BinaryArray& data_buff, const net_connection_id* excludeConnection) {
-    net_connection_id excludeId = excludeConnection ? *excludeConnection : boost::value_initialized<net_connection_id>();
+  void NodeServer::relay_notify_to_all(int command, const BinaryArray& data_buff, const boost::uuids::uuid* excludeConnection) {
+    boost::uuids::uuid excludeId = excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
 
     forEachConnection([&](P2pConnectionContext& conn) {
       if (conn.peerId && conn.m_connection_id != excludeId &&
@@ -1178,7 +1113,7 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
     context.peerId = arg.node_data.peer_id;
 
     if(arg.node_data.peer_id != m_config.m_peer_id && arg.node_data.my_port) {
-      PeerIdType peer_id_l = arg.node_data.peer_id;
+      uint64_t peer_id_l = arg.node_data.peer_id;
       uint32_t port_l = arg.node_data.my_port;
 
       if (try_ping(arg.node_data, context)) {
@@ -1270,23 +1205,6 @@ std::string print_peerlist_to_string(const std::list<PeerlistEntry>& pl) {
       if (!is_addr_connected(na)) {
         try_to_connect_and_handshake_with_new_peer(na);
       }
-    }
-
-    return true;
-  }
-
-  bool NodeServer::parse_peers_and_add_to_container(const boost::program_options::variables_map& vm,
-    const command_line::arg_descriptor<std::vector<std::string> > & arg, std::vector<NetworkAddress>& container)
-  {
-    std::vector<std::string> perrs = command_line::get_arg(vm, arg);
-
-    for(const std::string& pr_str: perrs) {
-      NetworkAddress na;
-      if (!parse_peer_from_string(na, pr_str)) {
-        logger(ERROR, BRIGHT_RED) << "Failed to parse address from string: " << pr_str;
-        return false;
-      }
-      container.push_back(na);
     }
 
     return true;

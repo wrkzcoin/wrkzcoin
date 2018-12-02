@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <limits>
 #include <initializer_list>
 #include <boost/uuid/uuid.hpp>
@@ -40,8 +41,7 @@ const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX                 = 100000; // Update
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V2              = LWMA_2_DIFFICULTY_BLOCK_INDEX;
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V3              = 128800;
 
-const uint64_t DIFFICULTY_WINDOW_V3                          = 60;
-const uint64_t DIFFICULTY_BLOCKS_COUNT_V3                    = DIFFICULTY_WINDOW_V3 + 1;
+const uint64_t LWMA_3_DIFFICULTY_BLOCK_INDEX                 = 600000;
 
 const unsigned EMISSION_SPEED_FACTOR                         = 22;
 const uint64_t GENESIS_BLOCK_REWARD                          = UINT64_C(MONEY_SUPPLY * 3 / 100);
@@ -58,7 +58,9 @@ const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V2  = 20000;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_V1  = 10000;
 const size_t   CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE_CURRENT = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE;
 const size_t   CRYPTONOTE_COINBASE_BLOB_RESERVED_SIZE        = 600;
+
 const size_t   CRYPTONOTE_DISPLAY_DECIMAL_POINT              = 2;
+
 const uint64_t MINIMUM_FEE                                   = UINT64_C(5);
 
 const uint64_t MINIMUM_MIXIN_V1                              = 0;
@@ -72,7 +74,7 @@ const uint64_t MAXIMUM_MIXIN_V3                              = 3;
 /* The heights to activate the mixin limits at */
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
 const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
-const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 600000;
+const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 750000;
 
 
 /* The mixin to use by default with zedwallet and wrkz-service */
@@ -89,9 +91,13 @@ const uint32_t DUST_THRESHOLD_V2_HEIGHT                      = MIXIN_LIMITS_V2_H
 const uint32_t FUSION_DUST_THRESHOLD_HEIGHT_V2               = 400000;
 
 const uint64_t EXPECTED_NUMBER_OF_BLOCKS_PER_DAY             = 24 * 60 * 60 / DIFFICULTY_TARGET;
+
 const size_t   DIFFICULTY_WINDOW                             = 17;
 const size_t   DIFFICULTY_WINDOW_V1                          = 2880;
 const size_t   DIFFICULTY_WINDOW_V2                          = 2880;
+const uint64_t DIFFICULTY_WINDOW_V3                          = 60;
+const uint64_t DIFFICULTY_BLOCKS_COUNT_V3                    = DIFFICULTY_WINDOW_V3 + 1;
+
 const size_t   DIFFICULTY_CUT                                = 0;  // timestamps to cut after sorting
 const size_t   DIFFICULTY_CUT_V1                             = 60;
 const size_t   DIFFICULTY_CUT_V2                             = 60;
@@ -117,6 +123,7 @@ const size_t   FUSION_TX_MIN_INPUT_COUNT                     = 12;
 const size_t   FUSION_TX_MIN_IN_OUT_COUNT_RATIO              = 4;
 
 const uint32_t KEY_IMAGE_CHECKING_BLOCK_INDEX                = 0;
+
 const uint32_t UPGRADE_HEIGHT_V2                             = 1;
 const uint32_t UPGRADE_HEIGHT_V3                             = 2;
 const uint32_t UPGRADE_HEIGHT_V4                             = 3; // Upgrade height for CN-Lite Variant 1 switch.
@@ -129,10 +136,11 @@ static_assert(UPGRADE_VOTING_WINDOW > 1, "Bad UPGRADE_VOTING_WINDOW");
 
 /* Block heights we are going to have hard forks at */
 const uint64_t FORK_HEIGHTS[] = {
-    1, // 0
-    40000, // 1
-    100000, // 2
-    250000 //3
+    1,        // 0
+    40000,    // 1
+    100000,   // 2
+    302400,   // 3
+    750000    // 4
 };
 
 /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
@@ -164,10 +172,12 @@ const char     CRYPTONOTE_NAME[]                             = "WRKZCoin";
 const uint8_t  TRANSACTION_VERSION_1                         =  1;
 const uint8_t  TRANSACTION_VERSION_2                         =  2;
 const uint8_t  CURRENT_TRANSACTION_VERSION                   =  TRANSACTION_VERSION_1;
+
 const uint8_t  BLOCK_MAJOR_VERSION_1                         =  1;
 const uint8_t  BLOCK_MAJOR_VERSION_2                         =  2;
 const uint8_t  BLOCK_MAJOR_VERSION_3                         =  3;
 const uint8_t  BLOCK_MAJOR_VERSION_4                         =  4;
+
 const uint8_t  BLOCK_MINOR_VERSION_0                         =  0;
 const uint8_t  BLOCK_MINOR_VERSION_1                         =  1;
 
@@ -202,7 +212,13 @@ const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT                    = 60 * 2 * 1000; //
 const size_t   P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT          = 5000;          // 5 seconds
 const char     P2P_STAT_TRUSTED_PUB_KEY[]                    = "";
 
+const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE         = 256;
+const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE          = 10;
+const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES               = 100;
+const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT     = 2;
+
 const char     LATEST_VERSION_URL[]                          = "https://latest.wrkz.work";
+const std::string LICENSE_URL                                = "https://github.com/wrkzdev/wrkzcoin/blob/master/LICENSE";
 const static   boost::uuids::uuid CRYPTONOTE_NETWORK         =
 {
     {  0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9  } 
@@ -211,6 +227,7 @@ const static   boost::uuids::uuid CRYPTONOTE_NETWORK         =
 const char* const SEED_NODES[] = {
        "node-sg1.wrkz.work:17855",
        "node-pr1.wrkz.work:17855",
+       "node-pr2.wrkz.work:17855",
        "node-us1.wrkz.work:17855"
 };
 } // CryptoNote

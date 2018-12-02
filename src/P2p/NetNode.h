@@ -8,6 +8,7 @@
 #include <functional>
 #include <unordered_map>
 
+#include <boost/uuid/uuid.hpp>
 #include <boost/functional/hash.hpp>
 
 #include <System/Context.h>
@@ -20,7 +21,6 @@
 
 #include "CryptoNoteCore/OnceInInterval.h"
 #include "CryptoNoteProtocol/CryptoNoteProtocolHandler.h"
-#include "Common/CommandLine.h"
 #include "Logging/LoggerRef.h"
 
 #include "ConnectionContext.h"
@@ -70,7 +70,7 @@ namespace CryptoNote
     using TimePoint = Clock::time_point;
 
     System::Context<void>* context;
-    PeerIdType peerId;
+    uint64_t peerId;
     System::TcpConnection connection;
 
     P2pConnectionContext(System::Dispatcher& dispatcher, Logging::ILogger& log, System::TcpConnection&& conn) :
@@ -110,9 +110,6 @@ namespace CryptoNote
   class NodeServer :  public IP2pEndpoint
   {
   public:
-
-    static void init_options(boost::program_options::options_description& desc);
-
     NodeServer(System::Dispatcher& dispatcher, CryptoNote::CryptoNoteProtocolHandler& payload_handler, Logging::ILogger& log);
 
     bool run();
@@ -130,7 +127,7 @@ namespace CryptoNote
     virtual uint64_t get_connections_count() override;
     size_t get_outgoing_connections_count();
 
-    CryptoNote::PeerlistManager& getPeerlistManager() { return m_peerlist; }
+    PeerlistManager& getPeerlistManager() { return m_peerlist; }
 
   private:
 
@@ -161,13 +158,12 @@ namespace CryptoNote
     void on_connection_close(P2pConnectionContext& context);
 
     //----------------- i_p2p_endpoint -------------------------------------------------------------
-    virtual void relay_notify_to_all(int command, const BinaryArray& data_buff, const net_connection_id* excludeConnection) override;
+    virtual void relay_notify_to_all(int command, const BinaryArray& data_buff, const boost::uuids::uuid* excludeConnection) override;
     virtual bool invoke_notify_to_peer(int command, const BinaryArray& req_buff, const CryptoNoteConnectionContext& context) override;
-    virtual void for_each_connection(std::function<void(CryptoNote::CryptoNoteConnectionContext&, PeerIdType)> f) override;
-    virtual void externalRelayNotifyToAll(int command, const BinaryArray& data_buff, const net_connection_id* excludeConnection) override;
+    virtual void for_each_connection(std::function<void(CryptoNote::CryptoNoteConnectionContext&, uint64_t)> f) override;
+    virtual void externalRelayNotifyToAll(int command, const BinaryArray& data_buff, const boost::uuids::uuid* excludeConnection) override;
 
     //-----------------------------------------------------------------------------------------------
-    bool handle_command_line(const boost::program_options::variables_map& vm);
     bool handleConfig(const NetNodeConfig& config);
     bool append_net_address(std::vector<NetworkAddress>& nodes, const std::string& addr);
     bool idle_worker();
@@ -187,9 +183,6 @@ namespace CryptoNote
     bool is_priority_node(const NetworkAddress& na);
 
     bool connect_to_peerlist(const std::vector<NetworkAddress>& peers);
-
-    bool parse_peers_and_add_to_container(const boost::program_options::variables_map& vm, 
-    const command_line::arg_descriptor<std::vector<std::string> > & arg, std::vector<NetworkAddress>& container);
 
     //debug functions
     std::string print_connections_container();
