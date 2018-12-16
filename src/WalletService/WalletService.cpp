@@ -40,7 +40,7 @@
 #include "Wallet/WalletUtils.h"
 #include "WalletServiceErrorCategory.h"
 
-#include "Mnemonics/electrum-words.h"
+#include "Mnemonics/Mnemonics.h"
 
 namespace PaymentService {
 
@@ -360,7 +360,7 @@ std::vector<CryptoNote::WalletOrder> convertWalletRpcOrdersToWalletOrders(const 
 
 }
 
-void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, Logging::ILogger& logger, System::Dispatcher& dispatcher) {
+void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfiguration& conf, std::shared_ptr<Logging::ILogger> logger, System::Dispatcher& dispatcher) {
   Logging::LoggerRef log(logger, "generateNewWallet");
 
   CryptoNote::INode* nodeStub = NodeFactory::createNodeStub();
@@ -389,15 +389,15 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
   {
     log(Logging::INFO, Logging::BRIGHT_WHITE) << "Attempting to import wallet from mnemonic seed";
 
-    Crypto::SecretKey private_spend_key;
-    Crypto::SecretKey private_view_key;
+    auto [error, private_spend_key] = Mnemonics::MnemonicToPrivateKey(conf.mnemonicSeed);
 
-    auto x = log(Logging::ERROR, Logging::BRIGHT_RED);
-
-    if (!crypto::ElectrumWords::is_valid_mnemonic(conf.mnemonicSeed, private_spend_key, x))
+    if (error)
     {
-      return;
+        log(Logging::ERROR, Logging::BRIGHT_RED) << error;
+        return;
     }
+
+    Crypto::SecretKey private_view_key;
 
     CryptoNote::AccountBase::generateViewFromSpend(private_spend_key, private_view_key);
 
@@ -442,7 +442,7 @@ void generateNewWallet(const CryptoNote::Currency& currency, const WalletConfigu
 }
 
 WalletService::WalletService(const CryptoNote::Currency& currency, System::Dispatcher& sys, CryptoNote::INode& node,
-  CryptoNote::IWallet& wallet, CryptoNote::IFusionManager& fusionManager, const WalletConfiguration& conf, Logging::ILogger& logger) :
+  CryptoNote::IWallet& wallet, CryptoNote::IFusionManager& fusionManager, const WalletConfiguration& conf, std::shared_ptr<Logging::ILogger> logger) :
     currency(currency),
     wallet(wallet),
     fusionManager(fusionManager),
@@ -803,7 +803,7 @@ std::error_code WalletService::getMnemonicSeed(const std::string& address, std::
     bool deterministic_private_keys = deterministic_private_view_key == viewKey.secretKey;
 
     if (deterministic_private_keys) {
-      crypto::ElectrumWords::bytes_to_words(key.secretKey, mnemonicSeed, "English");
+      mnemonicSeed = Mnemonics::PrivateKeyToMnemonic(key.secretKey);
     } else {
       /* Have to be able to derive view key from spend key to create a mnemonic
          seed, due to being able to generate multiple addresses we can't do

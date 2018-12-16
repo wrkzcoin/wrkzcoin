@@ -111,7 +111,7 @@ bool serializePod(T& v, Common::StringView name, CryptoNote::ISerializer& serial
 
 bool serializeVarintVector(std::vector<uint32_t>& vector, CryptoNote::ISerializer& serializer, Common::StringView name) {
   uint64_t size = vector.size();
-  
+
   if (!serializer.beginArray(size, name)) {
     vector.clear();
     return false;

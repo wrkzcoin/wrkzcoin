@@ -10,6 +10,7 @@
 #include <unordered_set>
 
 #include "Core.h"
+#include "Common/FormatTools.h"
 #include "Common/ShuffleGenerator.h"
 #include "Common/Math.h"
 #include "Common/MemoryInputStream.h"
@@ -183,7 +184,7 @@ const std::chrono::seconds OUTDATED_TRANSACTION_POLLING_INTERVAL = std::chrono::
 
 }
 
-Core::Core(const Currency& currency, Logging::ILogger& logger, Checkpoints&& checkpoints, System::Dispatcher& dispatcher,
+Core::Core(const Currency& currency, std::shared_ptr<Logging::ILogger> logger, Checkpoints&& checkpoints, System::Dispatcher& dispatcher,
            std::unique_ptr<IBlockchainCacheFactory>&& blockchainCacheFactory, std::unique_ptr<IMainChainStorage>&& mainchainStorage)
     : currency(currency), dispatcher(dispatcher), contextGroup(dispatcher), logger(logger, "Core"), checkpoints(std::move(checkpoints)),
       upgradeManager(new UpgradeManager()), blockchainCacheFactory(std::move(blockchainCacheFactory)),
@@ -192,6 +193,7 @@ Core::Core(const Currency& currency, Logging::ILogger& logger, Checkpoints&& che
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_2, currency.upgradeHeight(BLOCK_MAJOR_VERSION_2));
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_3, currency.upgradeHeight(BLOCK_MAJOR_VERSION_3));
   upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_4, currency.upgradeHeight(BLOCK_MAJOR_VERSION_4));
+  upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_5, currency.upgradeHeight(BLOCK_MAJOR_VERSION_5));
 
   transactionPool = std::unique_ptr<ITransactionPoolCleanWrapper>(new TransactionPoolCleanWrapper(
     std::unique_ptr<ITransactionPool>(new TransactionPool(logger)),
@@ -1298,6 +1300,11 @@ bool Core::getRandomOutputs(uint64_t amount, uint16_t count, std::vector<uint32_
 
   globalIndexes = chainsLeaves[0]->getRandomOutsByAmount(amount, count, getTopBlockIndex());
   if (globalIndexes.empty()) {
+    logger(Logging::ERROR) << "Failed to get any matching outputs for amount "
+                           << amount << " (" << Common::formatAmount(amount)
+                           << "). \n"
+                           << "Note: If you are a public node operator, you can safely ignore this message. "
+                           << "It is only relevant to the user sending the transaction.";
     return false;
   }
 
@@ -1346,7 +1353,7 @@ bool Core::getGlobalIndexesForRange(
                 getBinaryArrayHash(toBinaryArray(block.baseTransaction))
             );
         }
-
+        
         indexes = mainChain->getGlobalIndexes(transactionHashes);
 
         return true;
@@ -1670,29 +1677,6 @@ size_t Core::getAlternativeBlockCount() const {
   return std::accumulate(chainsStorage.begin(), chainsStorage.end(), size_t(0), [&](size_t sum, const Ptr& ptr) {
     return mainChainSet.count(ptr.get()) == 0 ? sum + ptr->getBlockCount() : sum;
   });
-}
-
-uint64_t Core::getTotalGeneratedAmount() const {
-  assert(!chainsLeaves.empty());
-  throwIfNotInitialized();
-
-  return chainsLeaves[0]->getAlreadyGeneratedCoins();
-}
-
-std::vector<BlockTemplate> Core::getAlternativeBlocks() const {
-  throwIfNotInitialized();
-
-  std::vector<BlockTemplate> alternativeBlocks;
-  for (auto& cache : chainsStorage) {
-    if (mainChainSet.count(cache.get()))
-      continue;
-    for (auto index = cache->getStartBlockIndex(); index <= cache->getTopBlockIndex(); ++index) {
-      // TODO: optimize
-      alternativeBlocks.push_back(fromBinaryArray<BlockTemplate>(cache->getBlockByIndex(index).block));
-    }
-  }
-
-  return alternativeBlocks;
 }
 
 std::vector<Transaction> Core::getPoolTransactions() const {
@@ -2710,29 +2694,6 @@ TransactionDetails Core::getTransactionDetails(const Crypto::Hash& transactionHa
   }
 
   return transactionDetails;
-}
-
-std::vector<Crypto::Hash> Core::getAlternativeBlockHashesByIndex(uint32_t blockIndex) const {
-  throwIfNotInitialized();
-
-  std::vector<Crypto::Hash> alternativeBlockHashes;
-  for (size_t chain = 1; chain < chainsLeaves.size(); ++chain) {
-    IBlockchainCache* segment = chainsLeaves[chain];
-    if (segment->getTopBlockIndex() < blockIndex) {
-      continue;
-    }
-
-    do {
-      if (segment->getTopBlockIndex() - segment->getBlockCount() + 1 <= blockIndex) {
-        alternativeBlockHashes.push_back(segment->getBlockHash(blockIndex));
-        break;
-      } else if (segment->getTopBlockIndex() - segment->getBlockCount() - 1 > blockIndex) {
-        segment = segment->getParent();
-        assert(segment != nullptr);
-      }
-    } while (mainChainSet.count(segment) == 0);
-  }
-  return alternativeBlockHashes;
 }
 
 std::vector<Crypto::Hash> Core::getBlockHashesByTimestamps(uint64_t timestampBegin, size_t secondsCount) const {

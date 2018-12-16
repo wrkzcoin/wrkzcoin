@@ -106,7 +106,7 @@ void doWithTimeoutAndThrow(System::Dispatcher& dispatcher, std::chrono::nanoseco
 
 }
 
-P2pNode::P2pNode(const P2pNodeConfig& cfg, Dispatcher& dispatcher, Logging::ILogger& log, const Crypto::Hash& genesisHash, uint64_t peerId) :
+P2pNode::P2pNode(const P2pNodeConfig& cfg, Dispatcher& dispatcher, std::shared_ptr<Logging::ILogger> log, const Crypto::Hash& genesisHash, uint64_t peerId) :
   logger(log, "P2pNode:" + std::to_string(cfg.getBindPort())),
   m_stopRequested(false),
   m_cfg(cfg),
@@ -126,21 +126,6 @@ P2pNode::P2pNode(const P2pNodeConfig& cfg, Dispatcher& dispatcher, Logging::ILog
 P2pNode::~P2pNode() {
   assert(m_contexts.empty());
   assert(m_connectionQueue.empty());
-}
-
-std::unique_ptr<IP2pConnection> P2pNode::receiveConnection() {
-  while (m_connectionQueue.empty()) {
-    m_queueEvent.wait();
-    m_queueEvent.clear();
-    if (m_stopRequested) {
-      throw InterruptedException();
-    }
-  }
-
-  auto connection = std::move(m_connectionQueue.front());
-  m_connectionQueue.pop_front();
-
-  return connection;
 }
 
 void P2pNode::start() {

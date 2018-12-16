@@ -4,22 +4,33 @@
 //
 // Please see the included LICENSE file for more information.
 
-#include "RpcServer.h"
-#include <future>
-#include <unordered_map>
-#include "math.h"
+//////////////////////////
+#include <Rpc/RpcServer.h>
+//////////////////////////
 
-// CryptoNote
-#include "Common/StringTools.h"
-#include "CryptoNoteCore/CryptoNoteTools.h"
-#include "CryptoNoteCore/Core.h"
-#include "CryptoNoteCore/TransactionExtra.h"
-#include "CryptoNoteConfig.h"
-#include "CryptoNoteProtocol/CryptoNoteProtocolHandlerCommon.h"
-#include "P2p/NetNode.h"
-#include "CoreRpcServerErrorCodes.h"
-#include "JsonRpc.h"
+#include <cmath>
+
+#include <Common/FormatTools.h>
+#include <Common/StringTools.h>
+
+#include <CryptoNoteConfig.h>
+
+#include <CryptoNoteCore/Core.h>
+#include <CryptoNoteCore/CryptoNoteTools.h>
+#include <CryptoNoteCore/TransactionExtra.h>
+
+#include <CryptoNoteProtocol/CryptoNoteProtocolHandlerCommon.h>
+
+#include <future>
+
+#include <P2p/NetNode.h>
+
+#include <Rpc/CoreRpcServerErrorCodes.h>
+#include <Rpc/JsonRpc.h>
+
 #include "version.h"
+
+#include <unordered_map>
 
 #undef ERROR
 
@@ -55,35 +66,35 @@ void serialize(BlockShortInfo& blockShortInfo, ISerializer& s) {
 
 void serialize(WalletTypes::WalletBlockInfo &walletBlockInfo, ISerializer &s)
 {
-    KV_MEMBER(walletBlockInfo.coinbaseTransaction);
-    KV_MEMBER(walletBlockInfo.transactions);
-    KV_MEMBER(walletBlockInfo.blockHeight);
-    KV_MEMBER(walletBlockInfo.blockHash);
-    KV_MEMBER(walletBlockInfo.blockTimestamp);
+    s(walletBlockInfo.coinbaseTransaction, "coinbaseTX");
+    s(walletBlockInfo.transactions, "transactions");
+    s(walletBlockInfo.blockHeight, "blockHeight");
+    s(walletBlockInfo.blockHash, "blockHash");
+    s(walletBlockInfo.blockTimestamp, "blockTimestamp");
 }
 
 void serialize(WalletTypes::RawTransaction &rawTransaction, ISerializer &s)
 {
-    KV_MEMBER(rawTransaction.keyInputs);
-    KV_MEMBER(rawTransaction.paymentID);
-    KV_MEMBER(rawTransaction.keyOutputs);
-    KV_MEMBER(rawTransaction.hash);
-    KV_MEMBER(rawTransaction.transactionPublicKey);
-    KV_MEMBER(rawTransaction.unlockTime);
+    s(rawTransaction.keyInputs, "inputs");
+    s(rawTransaction.paymentID, "paymentID");
+    s(rawTransaction.keyOutputs, "outputs");
+    s(rawTransaction.hash, "hash");
+    s(rawTransaction.transactionPublicKey, "txPublicKey");
+    s(rawTransaction.unlockTime, "unlockTime");
 }
 
 void serialize(WalletTypes::RawCoinbaseTransaction &rawCoinbaseTransaction, ISerializer &s)
 {
-    KV_MEMBER(rawCoinbaseTransaction.keyOutputs);
-    KV_MEMBER(rawCoinbaseTransaction.hash);
-    KV_MEMBER(rawCoinbaseTransaction.transactionPublicKey);
-    KV_MEMBER(rawCoinbaseTransaction.unlockTime);
+    s(rawCoinbaseTransaction.keyOutputs, "outputs");
+    s(rawCoinbaseTransaction.hash, "hash");
+    s(rawCoinbaseTransaction.transactionPublicKey, "txPublicKey");
+    s(rawCoinbaseTransaction.unlockTime, "unlockTime");
 }
 
 void serialize(WalletTypes::KeyOutput &keyOutput, ISerializer &s)
 {
-    KV_MEMBER(keyOutput.key);
-    KV_MEMBER(keyOutput.amount);
+    s(keyOutput.key, "key");
+    s(keyOutput.amount, "amount");
 }
 
 namespace {
@@ -150,7 +161,7 @@ std::unordered_map<std::string, RpcServer::RpcHandler<RpcServer::HandlerFunction
   { "/json_rpc", { std::bind(&RpcServer::processJsonRpcRequest, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3), true } }
 };
 
-RpcServer::RpcServer(System::Dispatcher& dispatcher, Logging::ILogger& log, Core& c, NodeServer& p2p, ICryptoNoteProtocolHandler& protocol) :
+RpcServer::RpcServer(System::Dispatcher& dispatcher, std::shared_ptr<Logging::ILogger> log, Core& c, NodeServer& p2p, ICryptoNoteProtocolHandler& protocol) :
   HttpServer(dispatcher, log), logger(log, "RpcServer"), m_core(c), m_p2p(p2p), m_protocol(protocol) {
 }
 
@@ -398,6 +409,17 @@ bool RpcServer::on_get_random_outs(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOU
     std::vector<Crypto::PublicKey> publicKeys;
     if (!m_core.getRandomOutputs(amount, static_cast<uint16_t>(req.outs_count), globalIndexes, publicKeys)) {
       return true;
+    }
+
+    if (globalIndexes.size() != req.outs_count)
+    {
+        logger(ERROR) << "Failed to get enough matching outputs for amount "
+                      << amount << " (" << Common::formatAmount(amount)
+                      << "). Requested outputs: " << req.outs_count
+                      << ", found outputs: " << globalIndexes.size()
+                      << std::endl
+                      << "Note: If you are a public node operator, you can safely ignore this message. "
+                      << "It is only relevant to the user sending the transaction.";
     }
 
     assert(globalIndexes.size() == publicKeys.size());
@@ -877,6 +899,7 @@ bool RpcServer::f_on_transaction_json(const F_COMMAND_RPC_GET_TRANSACTION_DETAIL
 
     f_block_short_response block_short;
 
+    block_short.difficulty = blkDetails.difficulty;
     block_short.cumul_size = blkDetails.blockSize;
     block_short.timestamp = blk.timestamp;
     block_short.height = blockHeight;

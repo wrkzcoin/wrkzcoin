@@ -32,7 +32,7 @@ namespace {
   const std::string TESTNET_DB_NAME = "testnet_DB";
 }
 
-RocksDBWrapper::RocksDBWrapper(Logging::ILogger& logger) : logger(logger, "RocksDBWrapper"), state(NOT_INITIALIZED){
+RocksDBWrapper::RocksDBWrapper(std::shared_ptr<Logging::ILogger> logger) : logger(logger, "RocksDBWrapper"), state(NOT_INITIALIZED){
 
 }
 
@@ -113,14 +113,6 @@ std::error_code RocksDBWrapper::write(IWriteBatch& batch) {
   }
 
   return write(batch, false);
-}
-
-std::error_code RocksDBWrapper::writeSync(IWriteBatch& batch) {
-  if (state.load() != INITIALIZED) {
-    throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
-  }
-
-  return write(batch, true);
 }
 
 std::error_code RocksDBWrapper::write(IWriteBatch& batch, bool sync) {

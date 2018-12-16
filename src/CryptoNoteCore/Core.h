@@ -24,7 +24,6 @@
 #include <Logging/LoggerMessage.h>
 #include "MessageQueue.h"
 #include "TransactionValidatiorState.h"
-#include "SwappedVector.h"
 
 #include <System/ContextGroup.h>
 
@@ -34,7 +33,7 @@ namespace CryptoNote {
 
 class Core : public ICore, public ICoreInformation {
 public:
-  Core(const Currency& currency, Logging::ILogger& logger, Checkpoints&& checkpoints, System::Dispatcher& dispatcher,
+  Core(const Currency& currency, std::shared_ptr<Logging::ILogger> logger, Checkpoints&& checkpoints, System::Dispatcher& dispatcher,
        std::unique_ptr<IBlockchainCacheFactory>&& blockchainCacheFactory, std::unique_ptr<IMainChainStorage>&& mainChainStorage);
   virtual ~Core();
 
@@ -112,8 +111,6 @@ public:
   virtual size_t getPoolTransactionCount() const override;
   virtual size_t getBlockchainTransactionCount() const override;
   virtual size_t getAlternativeBlockCount() const override;
-  virtual uint64_t getTotalGeneratedAmount() const override;
-  virtual std::vector<BlockTemplate> getAlternativeBlocks() const override;
   virtual std::vector<Transaction> getPoolTransactions() const override;
 
   const Currency& getCurrency() const;
@@ -124,7 +121,6 @@ public:
   virtual BlockDetails getBlockDetails(const Crypto::Hash& blockHash) const override;
   BlockDetails getBlockDetails(const uint32_t blockHeight) const;
   virtual TransactionDetails getTransactionDetails(const Crypto::Hash& transactionHash) const override;
-  virtual std::vector<Crypto::Hash> getAlternativeBlockHashesByIndex(uint32_t blockIndex) const override;
   virtual std::vector<Crypto::Hash> getBlockHashesByTimestamps(uint64_t timestampBegin, size_t secondsCount) const override;
   virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash& paymentId) const override;
 

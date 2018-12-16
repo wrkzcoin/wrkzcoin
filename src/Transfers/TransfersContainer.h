@@ -50,8 +50,6 @@ public:
 
   void assign(const Crypto::KeyImage* keyImage);
 
-  bool isValid() const;
-
   bool operator==(const SpentOutputDescriptor& other) const;
   size_t hash() const;
 
@@ -147,7 +145,7 @@ struct KeyOutputInfo {
 
 class TransfersContainer : public ITransfersContainer {
 public:
-  TransfersContainer(const CryptoNote::Currency& currency, Logging::ILogger& logger, size_t transactionSpendableAge);
+  TransfersContainer(const CryptoNote::Currency& currency, std::shared_ptr<Logging::ILogger> logger, size_t transactionSpendableAge);
 
   bool addTransaction(const TransactionBlockInfo& block, const ITransactionReader& tx, const std::vector<TransactionOutputInformationIn>& transfers);
   bool deleteUnconfirmedTransaction(const Crypto::Hash& transactionHash);
@@ -157,7 +155,6 @@ public:
   bool advanceHeight(uint32_t height);
 
   // ITransfersContainer
-  virtual size_t transfersCount() const override;
   virtual size_t transactionsCount() const override;
   virtual uint64_t balance(uint32_t flags) const override;
   virtual void getOutputs(std::vector<TransactionOutputInformation>& transfers, uint32_t flags) const override;
@@ -167,7 +164,6 @@ public:
   //only type flags are feasible for this function
   virtual std::vector<TransactionOutputInformation> getTransactionInputs(const Crypto::Hash& transactionHash, uint32_t flags) const override;
   virtual void getUnconfirmedTransactions(std::vector<Crypto::Hash>& transactions) const override;
-  virtual std::vector<TransactionSpentOutputInformation> getSpentOutputs() const override;
 
   // IStreamSerializable
   virtual void save(std::ostream& os) override;
@@ -268,7 +264,6 @@ private:
   void updateTransfersVisibility(const Crypto::KeyImage& keyImage);
 
   void copyToSpent(const TransactionBlockInfo& block, const ITransactionReader& tx, size_t inputIndex, const TransactionOutputInformationEx& output);
-  void repair();
 
 private:
   TransactionMultiIndex m_transactions;

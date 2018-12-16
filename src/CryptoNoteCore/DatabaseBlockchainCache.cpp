@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #include <CryptoNoteCore/DatabaseBlockchainCache.h>
@@ -425,7 +425,7 @@ struct DatabaseBlockchainCache::ExtendedPushedBlockInfo {
 };
 
 
-DatabaseBlockchainCache::DatabaseBlockchainCache(const Currency& curr, IDataBase& dataBase, IBlockchainCacheFactory& blockchainCacheFactory, Logging::ILogger& _logger)
+DatabaseBlockchainCache::DatabaseBlockchainCache(const Currency& curr, IDataBase& dataBase, IBlockchainCacheFactory& blockchainCacheFactory, std::shared_ptr<Logging::ILogger> _logger)
     : currency(curr), database(dataBase), blockchainCacheFactory(blockchainCacheFactory), logger(_logger, "DatabaseBlockchainCache") {
   DatabaseVersionReadBatch readBatch;
   auto ec = database.read(readBatch);
@@ -452,7 +452,7 @@ DatabaseBlockchainCache::DatabaseBlockchainCache(const Currency& curr, IDataBase
   }
 }
 
-bool DatabaseBlockchainCache::checkDBSchemeVersion(IDataBase& database, Logging::ILogger& _logger) {
+bool DatabaseBlockchainCache::checkDBSchemeVersion(IDataBase& database, std::shared_ptr<Logging::ILogger> _logger) {
   Logging::LoggerRef logger(_logger, "DatabaseBlockchainCache");
 
   DatabaseVersionReadBatch readBatch;
@@ -1041,6 +1041,8 @@ uint8_t DatabaseBlockchainCache::getBlockMajorVersionForHeight(uint32_t height) 
   UpgradeManager upgradeManager;
   upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_2, currency.upgradeHeight(BLOCK_MAJOR_VERSION_2));
   upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_3, currency.upgradeHeight(BLOCK_MAJOR_VERSION_3));
+  upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_4, currency.upgradeHeight(BLOCK_MAJOR_VERSION_4));
+  upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_5, currency.upgradeHeight(BLOCK_MAJOR_VERSION_5));
   return upgradeManager.getBlockMajorVersion(height);
 }
 
@@ -1631,13 +1633,13 @@ std::vector<Crypto::Hash> DatabaseBlockchainCache::getBlockHashesByTimestamps(ui
 }
 
 std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
-    const uint64_t startHeight, const uint64_t endHeight) const
+    const uint64_t startHeight, uint64_t endHeight) const
 {
     auto blockBatch = BlockchainReadBatch().requestRawBlocks(startHeight, endHeight);
 
     /* Get the info from the DB */
     auto rawBlocks = readDatabase(blockBatch).getRawBlocks();
-    
+
     std::vector<RawBlock> orderedBlocks;
 
     /* Order, and convert from map, to vector */
@@ -1649,7 +1651,7 @@ std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
     return orderedBlocks;
 }
 
-std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes( 
+std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes(
     const std::vector<Crypto::Hash> transactionHashes) const
 {
     auto txBatch = BlockchainReadBatch().requestCachedTransactions(transactionHashes);

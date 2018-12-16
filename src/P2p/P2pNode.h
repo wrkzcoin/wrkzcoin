@@ -52,14 +52,13 @@ public:
   P2pNode(
     const P2pNodeConfig& cfg,
     System::Dispatcher& dispatcher, 
-    Logging::ILogger& log, 
+    std::shared_ptr<Logging::ILogger> log, 
     const Crypto::Hash& genesisHash, 
     uint64_t peerId);
 
   ~P2pNode();
   
   // IP2pNode
-  virtual std::unique_ptr<IP2pConnection> receiveConnection() override;
   virtual void stop() override;
 
   // IStreamSerializable

@@ -1,7 +1,8 @@
 add_definitions(-DSTATICLIB)
 
 include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
-include_directories(${CMAKE_SOURCE_DIR}/external/linenoise)
+include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
+include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
@@ -16,17 +17,20 @@ file(GLOB_RECURSE Http HTTP/*)
 file(GLOB_RECURSE Logging Logging/*)
 file(GLOB_RECURSE miner Miner/*)
 file(GLOB_RECURSE Mnemonics Mnemonics/*)
+file(GLOB_RECURSE Nigel Nigel/*)
 file(GLOB_RECURSE NodeRpcProxy NodeRpcProxy/*)
 file(GLOB_RECURSE P2p P2p/*)
 file(GLOB_RECURSE Rpc Rpc/*)
 file(GLOB_RECURSE Serialization Serialization/*)
 file(GLOB_RECURSE Transfers Transfers/*)
 file(GLOB_RECURSE Wallet Wallet/*)
+file(GLOB_RECURSE WalletApi WalletApi/*)
 file(GLOB_RECURSE WalletBackend WalletBackend/*)
 file(GLOB_RECURSE JsonRpcServer JsonRpcServer/*)
 file(GLOB_RECURSE service WalletService/*)
 file(GLOB_RECURSE zedwallet zedwallet/*)
 file(GLOB_RECURSE CryptoTest CryptoTest/*)
+file(GLOB_RECURSE zedwallet++ zedwallet++/*)
 
 if(MSVC)
 file(GLOB_RECURSE System System/* Platform/Windows/System/*)
@@ -39,25 +43,26 @@ endif()
 # This appears to be an IDE thing, to group files together.
 # https://cmake.org/cmake/help/v3.0/command/source_group.html
 # Probably not what you need to be looking at if something isn't building
-source_group("" FILES $${Common} ${ConnectivityTool} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${miner} ${Mnemonics} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletBackend} ${zedwallet} ${CryptoTest})
+source_group("" FILES $${Common} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${zedwallet} ${zedwallet++} ${CryptoTest})
 
-add_library(BlockchainExplorer ${BlockchainExplorer})
-add_library(Common ${Common})
-add_library(Crypto ${Crypto})
-add_library(CryptoNoteCore ${CryptoNoteCore})
-add_library(Http ${Http})
-add_library(Logging ${Logging})
-add_library(Mnemonics ${Mnemonics})
-add_library(NodeRpcProxy ${NodeRpcProxy})
-add_library(Rpc ${Rpc})
-add_library(P2P ${CryptoNoteProtocol} ${P2p})
-add_library(Serialization ${Serialization})
-add_library(System ${System})
-add_library(Transfers ${Transfers})
-add_library(Wallet ${Wallet})
-add_library(WalletBackend ${WalletBackend})
-add_library(JsonRpcServer ${JsonRpcServer})
-add_library(WalletService ${service})
+add_library(BlockchainExplorer STATIC ${BlockchainExplorer})
+add_library(Common STATIC ${Common})
+add_library(Crypto STATIC ${Crypto})
+add_library(CryptoNoteCore STATIC ${CryptoNoteCore})
+add_library(Http STATIC ${Http})
+add_library(Logging STATIC ${Logging})
+add_library(Mnemonics STATIC ${Mnemonics})
+add_library(Nigel STATIC ${Nigel})
+add_library(NodeRpcProxy STATIC ${NodeRpcProxy})
+add_library(Rpc STATIC ${Rpc})
+add_library(P2P STATIC ${CryptoNoteProtocol} ${P2p})
+add_library(Serialization STATIC ${Serialization})
+add_library(System STATIC ${System})
+add_library(Transfers STATIC ${Transfers})
+add_library(Wallet STATIC ${Wallet})
+add_library(WalletBackend STATIC ${WalletBackend})
+add_library(JsonRpcServer STATIC ${JsonRpcServer})
+add_library(WalletService STATIC ${service})
 
 if(MSVC)
   set(DAEMON_SOURCES_OS
@@ -75,13 +80,18 @@ if(MSVC)
   set(CT_SOURCES_OS
     BinaryInfo/cryptotest.rc
   )
+  set(WALLET_API_SOURCES_OS
+    BinaryInfo/walletapi.rc
+  )
 endif()
 
 add_executable(Wrkzd ${Wrkzd} ${DAEMON_SOURCES_OS})
 add_executable(zedwallet ${zedwallet} ${ZED_WALLET_SOURCES_OS})
+add_executable(zedwallet++ ${zedwallet++} ${ZED_WALLET_SOURCES_OS})
 add_executable(service ${service} ${PG_SOURCES_OS})
 add_executable(miner ${miner} ${MINER_SOURCES_OS})
 add_executable(cryptotest ${CryptoTest} ${CT_SOURCES_OS})
+add_executable(WalletApi ${WalletApi} ${WALLET_API_SOURCES_OS})
 
 if(MSVC)
   target_link_libraries(System ws2_32)
@@ -89,7 +99,19 @@ if(MSVC)
   target_link_libraries(service Rpcrt4)
 endif ()
 
+# A bit of hackery so we don't have to do the if/else/ for every target that
+# wants to use filesystem
+add_library(__filesystem INTERFACE)
+
+# Windows works out of the box
+if (APPLE)
+    target_link_libraries(__filesystem INTERFACE /usr/local/opt/llvm/lib/libc++fs.a)
+elseif (UNIX)
+    target_link_libraries(__filesystem INTERFACE stdc++fs)
+endif()
+
 # Add the dependencies we need
+target_link_libraries(Common __filesystem)
 target_link_libraries(CryptoNoteCore Common Logging Crypto P2P Rpc Http Serialization System ${Boost_LIBRARIES})
 target_link_libraries(CryptoNoteCore Common Crypto Logging Serialization)
 target_link_libraries(P2P CryptoNoteCore Logging ${Boost_LIBRARIES} upnpc-static)
@@ -107,14 +129,11 @@ target_link_libraries(service WalletService JsonRpcServer Wallet NodeRpcProxy Tr
 target_link_libraries(Wallet NodeRpcProxy Transfers Rpc P2P upnpc-static Http Serialization CryptoNoteCore System Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(miner CryptoNoteCore Rpc Serialization System Http Logging Common Crypto ${Boost_LIBRARIES})
 target_link_libraries(cryptotest Crypto Common)
+target_link_libraries(Nigel WalletBackend)
 
-if (MSVC)
-    target_link_libraries(WalletBackend Mnemonics Wallet NodeRpcProxy Transfers Rpc Http CryptoNoteCore System Logging Common ${Boost_LIBRARIES} cryptopp-static)
-elseif (APPLE)
-    target_link_libraries(WalletBackend Mnemonics Wallet NodeRpcProxy Transfers Rpc Http CryptoNoteCore System Logging Common ${Boost_LIBRARIES} cryptopp-static /usr/local/opt/llvm/lib/libc++fs.a) 
-else()
-    target_link_libraries(WalletBackend Mnemonics Wallet NodeRpcProxy Transfers Rpc Http CryptoNoteCore System Logging Common ${Boost_LIBRARIES} cryptopp-static stdc++fs)
-endif()
+target_link_libraries(WalletBackend Mnemonics CryptoNoteCore Nigel cryptopp-static __filesystem)
+target_link_libraries(zedwallet++ WalletBackend)
+target_link_libraries(WalletApi WalletBackend)
 
 # Add dependencies means we have to build the latter before we build the former
 # In this case it's because we need to have the current version name rather
@@ -128,13 +147,16 @@ add_dependencies(zedwallet version)
 add_dependencies(service version)
 add_dependencies(P2P version)
 add_dependencies(cryptotest version)
+add_dependencies(WalletApi version)
 
 # Finally build the binaries
 set_property(TARGET Wrkzd PROPERTY OUTPUT_NAME "Wrkzd")
 set_property(TARGET zedwallet PROPERTY OUTPUT_NAME "zedwallet")
+set_property(TARGET zedwallet++ PROPERTY OUTPUT_NAME "zedwallet-beta")
 set_property(TARGET service PROPERTY OUTPUT_NAME "wrkz-service")
 set_property(TARGET miner PROPERTY OUTPUT_NAME "miner")
 set_property(TARGET cryptotest PROPERTY OUTPUT_NAME "cryptotest")
+set_property(TARGET WalletApi PROPERTY OUTPUT_NAME "wallet-api")
 
 # Additional make targets
 add_custom_target(pool DEPENDS Wrkzd service)

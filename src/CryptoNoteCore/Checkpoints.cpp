@@ -23,7 +23,7 @@ using namespace Logging;
 
 namespace CryptoNote {
 //---------------------------------------------------------------------------
-Checkpoints::Checkpoints(Logging::ILogger &log) : logger(log, "checkpoints") {}
+Checkpoints::Checkpoints(std::shared_ptr<Logging::ILogger> log) : logger(log, "checkpoints") {}
 //---------------------------------------------------------------------------
 bool Checkpoints::addCheckpoint(uint32_t index, const std::string &hash_str) {
   Crypto::Hash h = NULL_HASH;
@@ -130,33 +130,6 @@ bool Checkpoints::checkBlock(uint32_t index, const Crypto::Hash &h,
 bool Checkpoints::checkBlock(uint32_t index, const Crypto::Hash &h) const {
   bool ignored;
   return checkBlock(index, h, ignored);
-}
-//---------------------------------------------------------------------------
-bool Checkpoints::isAlternativeBlockAllowed(uint32_t  blockchainSize,
-                                            uint32_t  blockIndex) const {
-  if (blockchainSize == 0) {
-    return false;
-  }
-
-  auto it = points.upper_bound(blockchainSize);
-  // Is blockchainSize before the first checkpoint?
-  if (it == points.begin()) {
-    return true;
-  }
-
-  --it;
-  uint32_t checkpointIndex = it->first;
-  return checkpointIndex < blockIndex;
-}
-
-std::vector<uint32_t> Checkpoints::getCheckpointHeights() const {
-  std::vector<uint32_t> checkpointHeights;
-  checkpointHeights.reserve(points.size());
-  for (const auto& it : points) {
-    checkpointHeights.push_back(it.first);
-  }
-
-  return checkpointHeights;
 }
 
 }

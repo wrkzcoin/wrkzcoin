@@ -9,7 +9,7 @@
 #include <CryptoNoteCore/Account.h>
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 
-#include <Mnemonics/electrum-words.h>
+#include <Mnemonics/Mnemonics.h>
 
 #include <Wallet/WalletErrors.h>
 
@@ -91,25 +91,36 @@ std::shared_ptr<WalletInfo> importWallet(CryptoNote::WalletGreen &wallet)
 std::shared_ptr<WalletInfo> mnemonicImportWallet(CryptoNote::WalletGreen
                                                  &wallet)
 {
-    std::string mnemonicPhrase;
-
-    Crypto::SecretKey privateSpendKey;
-    Crypto::SecretKey privateViewKey;
-
-    do
+    while (true)
     {
-        std::cout << "Mnemonic Phrase (25 words): ";
+        std::cout << InformationMsg("Enter your mnemonic phrase (25 words): ");
+
+        std::string mnemonicPhrase;
+
         std::getline(std::cin, mnemonicPhrase);
-        boost::algorithm::trim(mnemonicPhrase);
+
+        trim(mnemonicPhrase);
+        
+        auto [error, privateSpendKey]
+            = Mnemonics::MnemonicToPrivateKey(mnemonicPhrase);
+
+        if (error)
+        {
+            std::cout << std::endl
+                      << WarningMsg(error.getErrorMessage())
+                      << std::endl << std::endl;
+        }
+        else
+        {
+            Crypto::SecretKey privateViewKey;
+
+            CryptoNote::AccountBase::generateViewFromSpend(
+                privateSpendKey, privateViewKey
+            );
+
+            return importFromKeys(wallet, privateSpendKey, privateViewKey);
+        }
     }
-    while (!crypto::ElectrumWords::is_valid_mnemonic(mnemonicPhrase,
-                                                     privateSpendKey,
-                                                     std::cout));
-
-    CryptoNote::AccountBase::generateViewFromSpend(privateSpendKey, 
-                                                   privateViewKey);
-
-    return importFromKeys(wallet, privateSpendKey, privateViewKey);
 }
 
 std::shared_ptr<WalletInfo> importFromKeys(CryptoNote::WalletGreen &wallet,
