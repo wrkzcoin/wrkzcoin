@@ -14,14 +14,39 @@
 
 ##### Building
 
-- `git clone https://github.com/wrkzdev/wrkzcoin`
+- `git clone https://github.com/wrkzcoin/wrkzcoin`
 - `cd wrkzcoin`
-- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
-- `chmod +x ./external/rocksdb/build_tools/version.sh`
 - `mkdir build && cd $_`
 - `cmake ..`
 - Or `cmake -DBOOST_ROOT=/opt/boost ..` for CentOS 7
 - `make`
+
+#### Ubuntu with Clang
+
+##### Prerequisites
+- `sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y`
+- `wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -`
+  - llvm-toolchain For Ubuntu 14.04 (Trusty):
+  
+    `sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty 6.0 main"`
+  - llvm-toolchain For Ubuntu 16.04 (Xenial):
+  
+    `sudo add-apt-repository "deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial 6.0 main"`
+  - llvm-toolchain For Ubuntu 18.04 (Bionic):
+  
+    `sudo add-apt-repository "deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic 6.0 main"`
+- `sudo apt-get update && sudo apt-get install aptitude -y`
+- `sudo aptitude install -y -o Aptitude::ProblemResolver::SolutionCost='100*canceled-actions,200*removals' build-essential clang-6.0 libstdc++-7-dev git libboost-all-dev python-pip`
+- `sudo pip install cmake`
+
+
+##### Building
+- `export CC=clang-6.0`
+- `export CXX=clang++-6.0`
+- `git clone https://github.com/wrkzcoin/wrkzcoin`
+- `cd wrkzcoin`
+- `mkdir build && cd $_`
+- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
 
 #### Apple
 
@@ -38,10 +63,8 @@
 - `brew install --force cmake boost llvm`
 - `export CC=/usr/local/opt/llvm/bin/clang`
 - `export CXX=/usr/local/opt/llvm/bin/clang++`
-- `git clone https://github.com/wrkzdev/wrkzcoin`
+- `git clone https://github.com/wrkzcoin/wrkzcoin`
 - `cd wrkzcoin`
-- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
-- `chmod +x ./external/rocksdb/build_tools/version.sh`
 - `mkdir build && cd $_`
 - `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
   from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
@@ -53,7 +76,7 @@
 - `brew install --force cmake boost llvm gcc@8`
 - `export CC=gcc-8`
 - `export CXX=g++-8`
-- `git clone https://github.com/wrkzdev/wrkzcoin`
+- `git clone https://github.com/wrkzcoin/wrkzcoin`
 - `cd wrkzcoin`
 - `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
 - `chmod +x ./external/rocksdb/build_tools/version.sh`
@@ -86,7 +109,7 @@ Run `./src/Wrkzd` to connect to the network and let it sync (it may take a while
 - Additionally, a `.sln` file will have been created in the `build` directory. If you wish to open the project in Visual Studio with this, you can.
 
 #### Sync
-For faster sync, please use checkpoints: https://github.com/wrkzdev/wrkzcoin-checkpoints
+For faster sync, please use checkpoints: https://github.com/wrkzcoin/checkpoints
 
 #### Thanks
 Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Project
