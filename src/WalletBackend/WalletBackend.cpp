@@ -9,7 +9,7 @@
 #include <Common/Base58.h>
 #include <Common/FileSystemShim.h>
 
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 
 #include <CryptoNoteCore/Account.h>
 #include <CryptoNoteCore/CryptoNoteTools.h>

@@ -11,6 +11,7 @@
 
 #include "Core.h"
 #include "Common/FormatTools.h"
+#include "Common/LicenseCanary.h"
 #include "Common/ShuffleGenerator.h"
 #include "Common/Math.h"
 #include "Common/MemoryInputStream.h"
@@ -611,20 +612,17 @@ bool Core::getWalletSyncData(
            to a block */
         uint64_t firstBlockHeight = startHeight == 0 ? timestampBlockHeight : startHeight;
 
+        /* The height of the last block we know about */
+        uint64_t lastKnownBlockHashHeight = static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes));
+
         /* Start returning either from the start height, or the height of the
            last block we know about, whichever is higher */
         uint64_t startIndex = std::max(
-            /* Plus one so we return the next block */
-            static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes)) + 1,
+            /* Plus one so we return the next block - default to zero if it's zero,
+               otherwise genesis block will be skipped. */
+            lastKnownBlockHashHeight == 0 ? 0 : lastKnownBlockHashHeight + 1,
             firstBlockHeight
         );
-
-        /* If we're fully synced, then the start index will be greater than our
-           current block. */
-        if (currentIndex < startIndex)
-        {
-            return true;
-        }
 
         /* Difference between the start and end */
         uint64_t blockDifference = currentIndex - startIndex;
@@ -635,6 +633,13 @@ bool Core::getWalletSyncData(
             static_cast<uint64_t>(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT),
             blockDifference + 1
         ) + startIndex;
+
+        /* If we're fully synced, then the start index will be greater than our
+           current block. */
+        if (currentIndex < startIndex)
+        {
+            return true;
+        }
 
         std::vector<RawBlock> rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
 
@@ -1442,6 +1447,15 @@ std::vector<Crypto::Hash> Core::getPoolTransactionHashes() const {
   throwIfNotInitialized();
 
   return transactionPool->getTransactionHashes();
+}
+
+std::tuple<bool, CryptoNote::BinaryArray> Core::getPoolTransaction(const Crypto::Hash& transactionHash) const {
+  if (transactionPool->checkIfTransactionPresent(transactionHash)) {
+    return {true, transactionPool->getTransaction(transactionHash).getTransactionBinaryArray()};
+  }
+  else {
+    return {false, BinaryArray()};
+  }
 }
 
 bool Core::getPoolChanges(const Crypto::Hash& lastBlockHash, const std::vector<Crypto::Hash>& knownHashes,

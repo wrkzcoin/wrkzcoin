@@ -6,7 +6,7 @@
 #include <WalletBackend/SubWallets.h>
 /////////////////////////////////////
 
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 
 #include <CryptoNoteCore/Currency.h>
 
@@ -116,6 +116,8 @@ std::tuple<WalletError, std::string> SubWallets::addSubWallet()
         Utilities::getCurrentTimestampAdjusted(), isPrimaryAddress
     );
 
+    m_publicSpendKeys.push_back(spendKey.publicKey);
+
     return {SUCCESS, address};
 }
 
@@ -221,6 +223,13 @@ WalletError SubWallets::deleteSubWallet(const std::string address)
     deleteAddressTransactions(m_transactions, spendKey);
     deleteAddressTransactions(m_lockedTransactions, spendKey);
 
+    const auto it2 = std::remove(m_publicSpendKeys.begin(), m_publicSpendKeys.end(), spendKey);
+
+    if (it2 != m_publicSpendKeys.end())
+    {
+        m_publicSpendKeys.erase(it2, m_publicSpendKeys.end());
+    }
+
     return SUCCESS;
 }
 
@@ -253,7 +262,7 @@ void SubWallets::deleteAddressTransactions(
 
     if (it != txs.end())
     {
-        txs.erase(it);
+        txs.erase(it, txs.end());
     }
 }
 
@@ -313,6 +322,21 @@ void SubWallets::addUnconfirmedTransaction(const WalletTypes::Transaction tx)
 {
     std::scoped_lock lock(m_mutex);
 
+    const auto it2 = std::find_if(m_lockedTransactions.begin(), m_lockedTransactions.end(),
+    [tx](const auto transaction)
+    {
+        return tx.hash == transaction.hash;
+    });
+
+    if (it2 != m_lockedTransactions.end())
+    {
+        std::stringstream stream;
+
+        stream << "Unconfirmed transaction " << tx.hash << " was added to the wallet twice! Terminating.";
+
+        throw std::runtime_error(stream.str());
+    }
+
     m_lockedTransactions.push_back(tx);
 }
 
@@ -333,7 +357,22 @@ void SubWallets::addTransaction(const WalletTypes::Transaction tx)
     if (it != m_lockedTransactions.end())
     {
         /* Remove from the locked container */
-        m_lockedTransactions.erase(it);
+        m_lockedTransactions.erase(it, m_lockedTransactions.end());
+    }
+
+    const auto it2 = std::find_if(m_transactions.begin(), m_transactions.end(),
+    [tx](const auto transaction)
+    {
+        return tx.hash == transaction.hash;
+    });
+
+    if (it2 != m_transactions.end())
+    {
+        std::stringstream stream;
+
+        stream << "Transaction " << tx.hash << " was added to the wallet twice! Terminating.";
+
+        throw std::runtime_error(stream.str());
     }
 
     m_transactions.push_back(tx);
@@ -679,7 +718,7 @@ void SubWallets::removeForkedTransactions(uint64_t forkHeight)
 
     if (it != m_transactions.end())
     {
-        m_transactions.erase(it);
+        m_transactions.erase(it, m_transactions.end());
     }
 
     /* Loop through each subwallet */
@@ -707,7 +746,7 @@ void SubWallets::removeCancelledTransactions(
     if (it != m_lockedTransactions.end())
     {
         /* Remove the cancelled transactions */
-        m_lockedTransactions.erase(it);
+        m_lockedTransactions.erase(it, m_lockedTransactions.end());
     }
 
     for (auto &[pubKey, subWallet] : m_subWallets)
@@ -784,7 +823,7 @@ void SubWallets::reset(const uint64_t scanHeight)
 
     if (it != m_transactions.end())
     {
-        m_transactions.erase(it);
+        m_transactions.erase(it, m_transactions.end());
     }
 
     for (auto &[pubKey, subWallet] : m_subWallets)

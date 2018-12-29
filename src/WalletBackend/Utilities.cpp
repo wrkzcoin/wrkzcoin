@@ -10,7 +10,7 @@
 
 #include <Common/Base58.h>
 
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 
 #include <CryptoNoteCore/CryptoNoteBasicImpl.h>
 #include <CryptoNoteCore/CryptoNoteTools.h>
