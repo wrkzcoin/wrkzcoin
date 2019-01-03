@@ -10,7 +10,7 @@
 
 #include <cmath>
 
-#include <Common/FormatTools.h>
+#include <Utilities/FormatTools.h>
 #include <Common/StringTools.h>
 
 #include <CryptoNoteConfig.h>
@@ -414,9 +414,10 @@ bool RpcServer::on_get_random_outs(const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOU
     if (globalIndexes.size() != req.outs_count)
     {
         logger(ERROR) << "Failed to get enough matching outputs for amount "
-                      << amount << " (" << Common::formatAmount(amount)
+                      << amount << " (" << Utilities::formatAmount(amount)
                       << "). Requested outputs: " << req.outs_count
                       << ", found outputs: " << globalIndexes.size()
+                      << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
                       << std::endl
                       << "Note: If you are a public node operator, you can safely ignore this message. "
                       << "It is only relevant to the user sending the transaction.";

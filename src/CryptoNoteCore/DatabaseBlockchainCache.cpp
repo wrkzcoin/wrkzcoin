@@ -1639,7 +1639,7 @@ std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
 
     /* Get the info from the DB */
     auto rawBlocks = readDatabase(blockBatch).getRawBlocks();
-
+    
     std::vector<RawBlock> orderedBlocks;
 
     /* Order, and convert from map, to vector */
@@ -1651,7 +1651,7 @@ std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
     return orderedBlocks;
 }
 
-std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes(
+std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes( 
     const std::vector<Crypto::Hash> transactionHashes) const
 {
     auto txBatch = BlockchainReadBatch().requestCachedTransactions(transactionHashes);

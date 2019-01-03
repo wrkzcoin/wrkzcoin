@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018, The TurtleCoin Developers
-//
+// 
 // Please see the included LICENSE file for more information.
 
 #include "BlockchainCache.h"
@@ -606,13 +606,13 @@ std::vector<RawBlock> BlockchainCache::getBlocksByHeight(
 
     if (startHeight < startIndex)
     {
-        blocks = parent->getBlocksByHeight(startHeight, startIndex - 1);
+        blocks = parent->getBlocksByHeight(startHeight, startIndex);
     }
 
     uint64_t startOffset = std::max(startHeight, static_cast<uint64_t>(startIndex));
 
     uint64_t blockCount = storage->getBlockCount();
-
+    
     /* Make sure we don't overflow the storage (for example, the block might
        not exist yet) */
     if (endHeight > startIndex + blockCount)
@@ -624,6 +624,18 @@ std::vector<RawBlock> BlockchainCache::getBlocksByHeight(
     {
         blocks.push_back(storage->getBlockByIndex(i - startIndex));
     }
+
+    logger(Logging::DEBUGGING)
+            << "\n\n"
+            << "\n============================================="
+            << "\n======= GetBlockByHeight (in memory) ========"
+            << "\n* Start height: " << startHeight
+            << "\n* End height: " << endHeight
+            << "\n* Start index: " << startIndex 
+            << "\n* Start offset: " << startIndex 
+            << "\n* Block count: " << startIndex 
+            << "\n============================================="
+            << "\n\n\n";
 
     return blocks;
 }
@@ -827,7 +839,7 @@ std::vector<uint32_t> BlockchainCache::getRandomOutsByAmount(Amount amount, size
         }
     }
 
-    const std::vector<PackedOutIndex> outs = it->second.outputs;
+    const std::vector<PackedOutIndex> &outs = it->second.outputs;
 
     /* Starting from the end of the outputs vector, return the first output
        that is unlocked */
@@ -939,9 +951,9 @@ ExtractOutputKeysResult BlockchainCache::extractKeyOutputs(
                                  << " because global index is greater than the last available: " << (startGlobalIndex + outputs.size());
       return ExtractOutputKeysResult::INVALID_GLOBAL_INDEX;
     }
-
+    
     auto outputIndex = outputs[globalIndex - startGlobalIndex];
-
+    
     assert(outputIndex.blockIndex >= startIndex);
     assert(outputIndex.blockIndex <= blockIndex);
 
