@@ -41,6 +41,9 @@ int main(int argc, char **argv)
         /* Launch the API */
         apiThread = std::thread(&ApiDispatcher::start, api.get());
 
+        std::cout << "Want documentation on how to use the wallet-api?\n"
+                     "See https://www.futuregadget.xyz/api-docs/\n\n";
+
         std::string address = "http://" + config.rpcBindIp + ":" + std::to_string(config.port);
 
         std::cout << "The api has been launched on " << address
@@ -64,13 +67,6 @@ int main(int argc, char **argv)
     catch (const std::exception &e)
     {
         std::cout << "Unexpected error: " << e.what()
-                  << "\nPlease report this error, and what you were doing to "
-                     "cause it.\n";
-    }
-    catch (const boost::exception &e)
-    {
-        std::cout << "Unexpected error: "
-                  << dynamic_cast<std::exception const&>(e).what()
                   << "\nPlease report this error, and what you were doing to "
                      "cause it.\n";
     }
