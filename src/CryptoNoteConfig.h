@@ -237,6 +237,7 @@ const char* const SEED_NODES[] = {
        "node-sg1.wrkz.work:17855",
        "node-pr1.wrkz.work:17855",
        "node-pr2.wrkz.work:17855",
-       "node-us1.wrkz.work:17855"
+       "node-us1.wrkz.work:17855",
+       "wrkz.stx.nl:17855"                // sniperviperman
 };
 } // CryptoNote
