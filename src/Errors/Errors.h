@@ -199,6 +199,11 @@ enum ErrorCode
 
     /* Hash not hex */
     HASH_INVALID = 49,
+
+    /* Number is a float, not an integer
+       NOTE: Not used in WalletBackend, only here to maintain API compatibility
+       with turtlecoin-wallet-backend-js */
+    NON_INTEGER_GIVEN = 50,
 };
 
 class Error

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 
 struct Config
 {

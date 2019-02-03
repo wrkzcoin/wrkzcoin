@@ -9,7 +9,7 @@
 #include <cxxopts.hpp>
 
 #include <config/CliHeader.h>
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 #include <config/WalletConfig.h>
 
 #include <zedwallet++/Utilities.h>

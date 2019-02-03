@@ -59,8 +59,7 @@ SubWallet::SubWallet(
 Crypto::KeyImage SubWallet::getTxInputKeyImage(
     const Crypto::KeyDerivation derivation,
     const size_t outputIndex,
-    WalletTypes::TransactionInput input,
-    const bool isViewWallet)
+    const bool isViewWallet) const
 {
     /* Can't create a key image with a view wallet - but we still store the
        input so we can calculate the balance */
@@ -408,4 +407,104 @@ void SubWallet::convertSyncTimestampToHeight(
         m_syncStartTimestamp = timestamp;
         m_syncStartHeight = height;
     }
+}
+
+void SubWallet::fromJSON(const JSONValue &j)
+{
+    m_publicSpendKey.fromString(getStringFromJSON(j, "publicSpendKey"));
+
+    m_privateSpendKey.fromString(getStringFromJSON(j, "privateSpendKey"));
+
+    m_address = getStringFromJSON(j, "address");
+
+    m_syncStartTimestamp = getUint64FromJSON(j, "syncStartTimestamp");
+
+    for (const auto &x : getArrayFromJSON(j, "unspentInputs"))
+    {
+        WalletTypes::TransactionInput input;
+        input.fromJSON(x);
+        m_unspentInputs.push_back(input);
+    }
+
+    for (const auto &x : getArrayFromJSON(j, "lockedInputs"))
+    {
+        WalletTypes::TransactionInput input;
+        input.fromJSON(x);
+        m_lockedInputs.push_back(input);
+    }
+
+    for (const auto &x : getArrayFromJSON(j, "spentInputs"))
+    {
+        WalletTypes::TransactionInput input;
+        input.fromJSON(x);
+        m_spentInputs.push_back(input);
+    }
+
+    m_syncStartHeight = getUint64FromJSON(j, "syncStartHeight");
+
+    m_isPrimaryAddress = getBoolFromJSON(j, "isPrimaryAddress");
+
+    for (const auto &x : getArrayFromJSON(j, "unconfirmedIncomingAmounts"))
+    {
+        WalletTypes::UnconfirmedInput amount;
+        amount.fromJSON(x);
+        m_unconfirmedIncomingAmounts.push_back(amount);
+    }
+}
+
+void SubWallet::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+{
+    writer.StartObject();
+
+    writer.Key("publicSpendKey");
+    m_publicSpendKey.toJSON(writer);
+
+    writer.Key("privateSpendKey");
+    m_privateSpendKey.toJSON(writer);
+
+    writer.Key("address");
+    writer.String(m_address);
+
+    writer.Key("syncStartTimestamp");
+    writer.Uint64(m_syncStartTimestamp);
+
+    writer.Key("unspentInputs");
+    writer.StartArray();
+    for (const auto &input : m_unspentInputs)
+    {
+        input.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("lockedInputs");
+    writer.StartArray();
+    for (const auto &input : m_lockedInputs)
+    {
+        input.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("spentInputs");
+    writer.StartArray();
+    for (const auto &input : m_spentInputs)
+    {
+        input.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("syncStartHeight");
+    writer.Uint64(m_syncStartHeight);
+
+    writer.Key("isPrimaryAddress");
+    writer.Bool(m_isPrimaryAddress);
+
+    writer.Key("unconfirmedIncomingAmounts");
+    writer.StartArray();
+    for (const auto &amount : m_unconfirmedIncomingAmounts)
+    {
+        amount.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.EndObject();
 }

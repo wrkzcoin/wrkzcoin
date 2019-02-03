@@ -8,7 +8,7 @@
 
 #include <Errors/Errors.h>
 
-#include "json.hpp"
+#include "rapidjson/document.h"
 
 #include <string>
 
@@ -21,8 +21,7 @@
 #include <SubWallets/SubWallets.h>
 
 #include <WalletBackend/WalletSynchronizer.h>
-
-using nlohmann::json;
+#include <WalletBackend/WalletSynchronizerRAIIWrapper.h>
 
 class WalletBackend
 {
@@ -114,16 +113,16 @@ class WalletBackend
         /* Save the wallet to disk */
         Error save() const;
 
-        /* Converts the class to a json object */
-        json toJson() const;
+        /* Converts the class to a json string */
+        std::string toJSON() const;
 
         /* Initializes the class from a json string */
-        Error fromJson(const json &j);
+        Error fromJSON(const rapidjson::Document &j);
 
         /* Initializes the class from a json string, and inits the stuff we
            can't init from the json */
-        Error fromJson(
-            const json &j,
+        Error fromJSON(
+            const rapidjson::Document &j,
             const std::string filename,
             const std::string password,
             const std::string daemonHost,
@@ -142,7 +141,8 @@ class WalletBackend
             const uint64_t fee,
             const std::string paymentID,
             const std::vector<std::string> subWalletsToTakeFrom,
-            const std::string changeAddress);
+            const std::string changeAddress,
+            const uint64_t unlockTime);
 
         /* Send a fusion using default mixin, default destination, and
            taking from all subwallets */
@@ -164,7 +164,7 @@ class WalletBackend
         uint64_t getTotalUnlockedBalance() const;
 
         /* Make a new sub wallet (gens a privateSpendKey) */
-        std::tuple<Error, std::string> addSubWallet();
+        std::tuple<Error, std::string, Crypto::SecretKey> addSubWallet();
 
         /* Import a sub wallet with the given privateSpendKey */
         std::tuple<Error, std::string> importSubWallet(
@@ -192,6 +192,8 @@ class WalletBackend
 
         /* Get a list of all addresses in the wallet */
         std::vector<std::string> getAddresses() const;
+
+        uint64_t getWalletCount() const;
 
         /* wallet sync height, local blockchain sync height,
            remote blockchain sync height */
@@ -251,6 +253,8 @@ class WalletBackend
 
         std::tuple<Error, Crypto::SecretKey> getTxPrivateKey(
             const Crypto::Hash txHash) const;
+
+        std::vector<std::tuple<std::string, uint64_t, uint64_t>> getBalances() const;
         
         /////////////////////////////
         /* Public member variables */
@@ -327,4 +331,6 @@ class WalletBackend
            
            PS: I want to die */
         std::shared_ptr<WalletSynchronizer> m_walletSynchronizer;
+
+        std::shared_ptr<WalletSynchronizerRAIIWrapper> m_syncRAIIWrapper;
 };

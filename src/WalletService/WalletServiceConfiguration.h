@@ -6,7 +6,7 @@
 
 #include <json.hpp>
 #include <string>
-#include <CryptoNoteConfig.h>
+#include "CryptoNoteConfig.h"
 #include <Logging/ILogger.h>
 
 using nlohmann::json;

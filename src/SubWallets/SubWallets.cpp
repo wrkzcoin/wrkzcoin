@@ -89,12 +89,12 @@ SubWallets::SubWallets(const SubWallets &other) :
 /* CLASS FUNCTIONS */
 /////////////////////
 
-std::tuple<Error, std::string> SubWallets::addSubWallet()
+std::tuple<Error, std::string, Crypto::SecretKey> SubWallets::addSubWallet()
 {
     /* This generates a private spend key - incompatible with view wallets */
     if (m_isViewWallet)
     {
-        return {ILLEGAL_VIEW_WALLET_OPERATION, std::string()};
+        return {ILLEGAL_VIEW_WALLET_OPERATION, std::string(), Crypto::SecretKey()};
     }
 
     std::scoped_lock lock(m_mutex);
@@ -119,7 +119,7 @@ std::tuple<Error, std::string> SubWallets::addSubWallet()
 
     m_publicSpendKeys.push_back(spendKey.publicKey);
 
-    return {SUCCESS, address};
+    return {SUCCESS, address, spendKey.secretKey};
 }
 
 std::tuple<Error, std::string> SubWallets::importSubWallet(
@@ -382,8 +382,7 @@ void SubWallets::addTransaction(const WalletTypes::Transaction tx)
 Crypto::KeyImage SubWallets::getTxInputKeyImage(
     const Crypto::PublicKey publicSpendKey,
     const Crypto::KeyDerivation derivation,
-    const size_t outputIndex,
-    const WalletTypes::TransactionInput input)
+    const size_t outputIndex) const
 {
     std::scoped_lock lock(m_mutex);
 
@@ -394,7 +393,7 @@ Crypto::KeyImage SubWallets::getTxInputKeyImage(
     {
         /* If we have a view wallet, don't attempt to derive the key image */
         return it->second.getTxInputKeyImage(
-            derivation, outputIndex, input, m_isViewWallet
+            derivation, outputIndex, m_isViewWallet
         );
     }
 
@@ -663,6 +662,11 @@ std::vector<std::string> SubWallets::getAddresses() const
     }
 
     return addresses;
+}
+
+uint64_t SubWallets::getWalletCount() const
+{
+    return m_subWallets.size();
 }
 
 /* Will throw if the public keys given don't exist */
@@ -941,3 +945,126 @@ void SubWallets::convertSyncTimestampToHeight(
         subWallet.convertSyncTimestampToHeight(timestamp, height);
     }
 }
+
+std::vector<std::tuple<std::string, uint64_t, uint64_t>> SubWallets::getBalances(
+    const uint64_t currentHeight) const
+{
+    std::vector<std::tuple<std::string, uint64_t, uint64_t>> balances;
+
+    for (auto [pubKey, subWallet] : m_subWallets)
+    {
+        const auto [unlocked, locked] = m_subWallets.at(pubKey).getBalance(currentHeight);
+
+        balances.emplace_back(subWallet.address(), unlocked, locked);
+    }
+
+    return balances;
+}
+
+void SubWallets::fromJSON(const JSONObject &j)
+{
+    for (const auto &x : getArrayFromJSON(j, "publicSpendKeys"))
+    {
+        Crypto::PublicKey key;
+        key.fromString(getStringFromJSONString(x));
+        m_publicSpendKeys.push_back(key);
+    }
+
+    for (const auto &x : getArrayFromJSON(j, "subWallet"))
+    {
+        SubWallet s;
+        s.fromJSON(x);
+        m_subWallets[s.publicSpendKey()] = s;
+    }
+
+    for (const auto &x : getArrayFromJSON(j, "transactions"))
+    {
+        WalletTypes::Transaction tx;
+        tx.fromJSON(x);
+        m_transactions.push_back(tx);
+    }
+
+    for (const auto &x : getArrayFromJSON(j, "lockedTransactions"))
+    {
+        WalletTypes::Transaction tx;
+        tx.fromJSON(x);
+        m_transactions.push_back(tx);
+    }
+
+    m_privateViewKey.fromString(getStringFromJSON(j, "privateViewKey"));
+
+    m_isViewWallet = getBoolFromJSON(j, "isViewWallet");
+
+    for (const auto &txKey : getArrayFromJSON(j, "txPrivateKeys"))
+    {
+        Crypto::Hash txHash;
+        txHash.fromString(getStringFromJSON(txKey, "transactionHash"));
+
+        Crypto::SecretKey privateKey;
+        privateKey.fromString(getStringFromJSON(txKey, "txPrivateKey"));
+
+        m_transactionPrivateKeys[txHash] = privateKey;
+    }
+}
+
+void SubWallets::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+{
+    writer.StartObject();
+
+    writer.Key("publicSpendKeys");
+    writer.StartArray();
+    for (const auto &key : m_publicSpendKeys)
+    {
+        key.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("subWallet");
+    writer.StartArray();
+    for (const auto &[publicKey, subWallet] : m_subWallets)
+    {
+        subWallet.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("transactions");
+    writer.StartArray();
+    for (const auto &tx : m_transactions)
+    {
+        tx.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("lockedTransactions");
+    writer.StartArray();
+    for (const auto &tx : m_lockedTransactions)
+    {
+        tx.toJSON(writer);
+    }
+    writer.EndArray();
+
+    writer.Key("privateViewKey");
+    m_privateViewKey.toJSON(writer);
+
+    writer.Key("isViewWallet");
+    writer.Bool(m_isViewWallet);
+
+    writer.Key("txPrivateKeys");
+    writer.StartArray();
+    for (const auto [txHash, txPrivateKey] : m_transactionPrivateKeys)
+    {
+        writer.StartObject();
+
+        writer.Key("transactionHash");
+        txHash.toJSON(writer);
+
+        writer.Key("txPrivateKey");
+        txPrivateKey.toJSON(writer);
+
+        writer.EndObject();
+    }
+    writer.EndArray();
+
+    writer.EndObject();
+}
+

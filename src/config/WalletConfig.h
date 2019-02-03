@@ -71,5 +71,5 @@ namespace WalletConfig
        fork height, or 0, if never allowed. This is ignored if a mixin of
        zero is allowed */
     const uint64_t mixinZeroDisabledHeight
-        = CryptoNote::parameters::MIXIN_LIMITS_V2_HEIGHT;
+        = CryptoNote::parameters::MIXIN_LIMITS_V3_HEIGHT;
 }
