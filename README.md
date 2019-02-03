@@ -112,4 +112,4 @@ Run `./src/Wrkzd` to connect to the network and let it sync (it may take a while
 For faster sync, please use checkpoints: https://github.com/wrkzcoin/checkpoints
 
 #### Thanks
-Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Project
+Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Project, DeroGold Association 
