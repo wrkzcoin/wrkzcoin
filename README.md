@@ -5,21 +5,34 @@
 
 - You will need the following packages: boost (1.55 or higher), cmake (3.8 or higher), git, gcc/g++ (7.0 or higher) or Clang (6.0 or higher), make, and python. Most of these should already be installed on your system.
 - For Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
-- For CentOS 7 (x64): `yum install git-svn make cmake gcc gcc-c++ libstdc++-static -y`
-  - Note for CentOS 7: to install later version of boost devel:
+- For CentOS 6/7 (x64): `yum install git-svn make libstdc++-static -y`
+  - Install later version of boost devel:
   - `wget https://phoenixnap.dl.sourceforge.net/project/boost/boost/1.58.0/boost_1_58_0.tar.gz`
   - `tar -xzf boost_1_58_0.tar.gz`
+  - `cd boost_1_58_0`
   - `./bootstrap.sh --prefix=/opt/boost`
   - `./b2 install --prefix=/opt/boost --with=all`
+  - Install devtoolset-7:
+  - `yum install centos-release-scl epel-release`
+  - `yum install devtoolset-7-gcc* make`
+  - Install cmake 3 latest from https://cmake.org/download/
+  - `wget https://github.com/Kitware/CMake/releases/download/v3.13.4/cmake-3.13.4-Linux-x86_64.sh`
+  - `chmod +x cmake-3.13.4-Linux-x86_64.sh`
+  - `./cmake-3.13.4-Linux-x86_64.sh --prefix=/usr/`
 
 ##### Building
 
 - `git clone https://github.com/wrkzcoin/wrkzcoin`
 - `cd wrkzcoin`
 - `mkdir build && cd $_`
+- For Ubuntu:
 - `cmake ..`
-- Or `cmake -DBOOST_ROOT=/opt/boost ..` for CentOS 7
 - `make`
+- For CentOS 6/7, use devtoolset-7:
+- `scl enable devtoolset-7 bash`
+- `cmake -DBOOST_ROOT=/opt/boost ..`
+- `make`
+
 
 #### Ubuntu with Clang
 
@@ -47,6 +60,7 @@
 - `cd wrkzcoin`
 - `mkdir build && cd $_`
 - `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
+- `make`
 
 #### Apple
 
