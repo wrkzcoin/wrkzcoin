@@ -72,13 +72,17 @@ const uint64_t MAXIMUM_MIXIN_V1                              = 30;
 const uint64_t MINIMUM_MIXIN_V2                              = 3;
 const uint64_t MAXIMUM_MIXIN_V2                              = 7;
 
-const uint64_t MINIMUM_MIXIN_V3                              = 3;
-const uint64_t MAXIMUM_MIXIN_V3                              = 3;
+const uint64_t MINIMUM_MIXIN_V3                              = 0;
+const uint64_t MAXIMUM_MIXIN_V3                              = 7;
+
+const uint64_t MINIMUM_MIXIN_V4                              = 1;
+const uint64_t MAXIMUM_MIXIN_V4                              = 3;
+
 /* The heights to activate the mixin limits at */
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
 const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
-const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 750000;
-
+const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 430000;
+const uint32_t MIXIN_LIMITS_V4_HEIGHT                        = 850000;
 
 /* The mixin to use by default with zedwallet and wrkz-service */
 /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -86,6 +90,7 @@ const uint64_t DEFAULT_MIXIN_V0                              = 3;
 const uint64_t DEFAULT_MIXIN_V1                              = MINIMUM_MIXIN_V2;
 const uint64_t DEFAULT_MIXIN_V2                              = MINIMUM_MIXIN_V2;
 const uint64_t DEFAULT_MIXIN_V3                              = MINIMUM_MIXIN_V3;
+const uint64_t DEFAULT_MIXIN_V4                              = MAXIMUM_MIXIN_V4;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(10);
 const uint64_t DEFAULT_DUST_THRESHOLD_V2                     = UINT64_C(0);
@@ -143,8 +148,9 @@ const uint64_t FORK_HEIGHTS[] = {
     40000,    // 1
     100000,   // 2
     302400,   // 3
-    750000,   // 4
-    1000000   // 5
+    430000,   // 4
+    850000,   // 5
+    1000000   // 6
 };
 
 /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */

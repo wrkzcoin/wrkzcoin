@@ -71,7 +71,7 @@ namespace WalletConfig
        fork height, or 0, if never allowed. This is ignored if a mixin of
        zero is allowed */
     const uint64_t mixinZeroDisabledHeight
-        = CryptoNote::parameters::MIXIN_LIMITS_V3_HEIGHT;
+        = CryptoNote::parameters::MIXIN_LIMITS_V4_HEIGHT;
 
     /* Should we process coinbase transactions? We can skip them to speed up
        syncing, as most people don't have solo mined transactions */
