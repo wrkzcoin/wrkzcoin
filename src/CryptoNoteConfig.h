@@ -82,7 +82,7 @@ const uint64_t MAXIMUM_MIXIN_V4                              = 3;
 const uint32_t MIXIN_LIMITS_V1_HEIGHT                        = 10000;
 const uint32_t MIXIN_LIMITS_V2_HEIGHT                        = 302400;
 const uint32_t MIXIN_LIMITS_V3_HEIGHT                        = 430000;
-const uint32_t MIXIN_LIMITS_V4_HEIGHT                        = 850000;
+const uint32_t MIXIN_LIMITS_V4_HEIGHT                        = 700000;
 
 /* The mixin to use by default with zedwallet and wrkz-service */
 /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -149,7 +149,7 @@ const uint64_t FORK_HEIGHTS[] = {
     100000,   // 2
     302400,   // 3
     430000,   // 4
-    850000,   // 5
+    700000,   // 5
     1000000   // 6
 };
 
