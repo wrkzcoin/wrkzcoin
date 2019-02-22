@@ -89,7 +89,7 @@ const uint32_t MIXIN_LIMITS_V4_HEIGHT                        = 850000;
 const uint64_t DEFAULT_MIXIN_V0                              = 3;
 const uint64_t DEFAULT_MIXIN_V1                              = MINIMUM_MIXIN_V2;
 const uint64_t DEFAULT_MIXIN_V2                              = MINIMUM_MIXIN_V2;
-const uint64_t DEFAULT_MIXIN_V3                              = MINIMUM_MIXIN_V3;
+const uint64_t DEFAULT_MIXIN_V3                              = MINIMUM_MIXIN_V2;
 const uint64_t DEFAULT_MIXIN_V4                              = MAXIMUM_MIXIN_V4;
 
 const uint64_t DEFAULT_DUST_THRESHOLD                        = UINT64_C(10);
