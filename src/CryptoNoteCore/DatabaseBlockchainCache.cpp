@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
-// Copyright (c) 2018, The TurtleCoin Developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -1512,7 +1512,7 @@ std::vector<uint32_t> DatabaseBlockchainCache::getRandomOutsByAmount(uint64_t am
   std::vector<uint32_t> resultOuts;
   resultOuts.reserve(outputsToPick);
 
-  ShuffleGenerator<uint32_t, Crypto::random_engine<uint32_t>> generator(outputsCount[amount]);
+  ShuffleGenerator<uint32_t> generator(outputsCount[amount]);
 
   while (outputsToPick) {
     std::vector<uint32_t> globalIndexes;
@@ -1639,7 +1639,7 @@ std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
 
     /* Get the info from the DB */
     auto rawBlocks = readDatabase(blockBatch).getRawBlocks();
-    
+
     std::vector<RawBlock> orderedBlocks;
 
     /* Order, and convert from map, to vector */
@@ -1651,7 +1651,7 @@ std::vector<RawBlock> DatabaseBlockchainCache::getBlocksByHeight(
     return orderedBlocks;
 }
 
-std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes( 
+std::unordered_map<Crypto::Hash, std::vector<uint64_t>> DatabaseBlockchainCache::getGlobalIndexes(
     const std::vector<Crypto::Hash> transactionHashes) const
 {
     auto txBatch = BlockchainReadBatch().requestCachedTransactions(transactionHashes);
