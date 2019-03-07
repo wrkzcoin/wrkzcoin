@@ -3,11 +3,11 @@
 
 #define PROJECT_NAME "WrkzCoin"
 #define PROJECT_SITE "http://www.wrkz.work"
-#define PROJECT_COPYRIGHT "Copyright 2018, The WrkzCoin Developers"
+#define PROJECT_COPYRIGHT "Copyright 2018-2019, The WrkzCoin Developers"
 #define APP_VER_MAJOR 0
 #define APP_VER_MINOR 2
-#define APP_VER_REV 8
-#define APP_VER_BUILD 37
+#define APP_VER_REV 9
+#define APP_VER_BUILD 40
 
 #define BUILD_COMMIT_ID "@VERSION@"
 #define PROJECT_VERSION STR(APP_VER_MAJOR) "." STR(APP_VER_MINOR) "." STR(APP_VER_REV)
