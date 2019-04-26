@@ -12,6 +12,8 @@
 
 #include <Errors/ValidateParameters.h>
 
+#include <Logger/Logger.h>
+
 #include <Utilities/Utilities.h>
 
 using json = nlohmann::json;
@@ -71,6 +73,12 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSync
     uint64_t startHeight,
     uint64_t startTimestamp) const
 {
+    Logger::logger.log(
+        "Fetching blocks from the daemon",
+        Logger::DEBUG,
+        {Logger::SYNC, Logger::DAEMON}
+    );
+
     json j = {
         {"blockHashCheckpoints", blockHashCheckpoints},
         {"startHeight", startHeight},
@@ -96,8 +104,13 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSync
 
             return {true, items};
         }
-        catch (const json::exception &)
+        catch (const json::exception &e)
         {
+            Logger::logger.log(
+                std::string("Failed to fetch blocks from daemon: ") + e.what(),
+                Logger::INFO,
+                {Logger::SYNC, Logger::DAEMON}
+            );
         }
     }
 
@@ -131,6 +144,12 @@ void Nigel::init()
 
 bool Nigel::getDaemonInfo()
 {
+    Logger::logger.log(
+        "Updating daemon info",
+        Logger::DEBUG,
+        {Logger::SYNC, Logger::DAEMON}
+    );
+
     const auto res = m_httpClient->Get("/info");
 
     if (res && res->status == 200)
@@ -165,8 +184,13 @@ bool Nigel::getDaemonInfo()
 
             return true;
         }
-        catch (const json::exception &)
+        catch (const json::exception &e)
         {
+            Logger::logger.log(
+                std::string("Failed to update daemon info: ") + e.what(),
+                Logger::INFO,
+                {Logger::SYNC, Logger::DAEMON}
+            );
         }
     }
 
@@ -175,6 +199,12 @@ bool Nigel::getDaemonInfo()
 
 bool Nigel::getFeeInfo()
 {
+    Logger::logger.log(
+        "Fetching fee info",
+        Logger::DEBUG,
+        {Logger::DAEMON}
+    );
+
     const auto res = m_httpClient->Get("/fee");
 
     if (res && res->status == 200)
@@ -199,8 +229,13 @@ bool Nigel::getFeeInfo()
 
             return true;
         }
-        catch (const json::exception &)
+        catch (const json::exception &e)
         {
+            Logger::logger.log(
+                std::string("Failed to update fee info: ") + e.what(),
+                Logger::INFO,
+                {Logger::SYNC, Logger::DAEMON}
+            );
         }
     }
 

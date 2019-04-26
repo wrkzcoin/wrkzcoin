@@ -5,6 +5,7 @@
 #pragma once
 
 #include <CryptoNoteConfig.h>
+#include <Logger/Logger.h>
 
 struct Config
 {
@@ -19,6 +20,9 @@ struct Config
 
     /* The value to use with the 'Access-Control-Allow-Origin' header */
     std::string corsHeader;
+
+    /* Controls what level of messages to log */
+    Logger::LogLevel logLevel = Logger::DISABLED;
 };
 
 Config parseArguments(int argc, char **argv);

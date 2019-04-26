@@ -1,8 +1,10 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #include <atomic>
+
+#include <chrono>
 
 #include <Common/SignalHandler.h>
 
@@ -10,8 +12,9 @@
 
 #include <iostream>
 
+#include <Logger/Logger.h>
+
 #include <thread>
-#include <chrono>
 
 #include <WalletApi/ApiDispatcher.h>
 #include <WalletApi/ParseArguments.h>
@@ -19,6 +22,8 @@
 int main(int argc, char **argv)
 {
     Config config = parseArguments(argc, argv);
+
+    Logger::logger.setLogLevel(config.logLevel);
 
     std::cout << CryptoNote::getProjectCLIHeader() << std::endl;
 

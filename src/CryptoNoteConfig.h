@@ -41,7 +41,7 @@ const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX                 = 100000; // Update
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V2              = LWMA_2_DIFFICULTY_BLOCK_INDEX;
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V3              = 128800;
 
-const uint64_t LWMA_3_DIFFICULTY_BLOCK_INDEX                 = 600000;
+const uint64_t LWMA_3_DIFFICULTY_BLOCK_INDEX                 = 1000000;
 
 const unsigned EMISSION_SPEED_FACTOR                         = 22;
 static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
@@ -119,11 +119,11 @@ const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR       = 365 * 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t MAX_EXTRA_SIZE                                = 140000;
 const uint64_t MAX_EXTRA_SIZE_V2                             = 1024;
-const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 494800;
+const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 500000;
 
 /* For new projects forked from this code base, this value should be
    changed to 0 to prevent a possible transaction bloat exploit */
-const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 494800;
+const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 500000;
 
 const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS     = 1;
 const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS    = DIFFICULTY_TARGET * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS;
@@ -155,7 +155,7 @@ const uint64_t FORK_HEIGHTS[] = {
     100000,   // 2
     302400,   // 3
     430000,   // 4
-    494800,   // 5
+    500000,   // 5
     700000,   // 6
     1000000   // 7
 };
