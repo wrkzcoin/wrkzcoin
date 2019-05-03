@@ -119,12 +119,18 @@ const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR       = 365 * 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t MAX_EXTRA_SIZE                                = 140000;
 const uint64_t MAX_EXTRA_SIZE_V2                             = 1024;
-const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 500000;
+const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 518000;
 
-/* For new projects forked from this code base, this value should be
-   changed to 0 to prevent a possible transaction bloat exploit */
-const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 500000;
+/* For new projects forked from this code base, the values immediately below
+   should be changed to 0 to prevent issues with transaction processing 
+   and other possible unexpected behavior */
+const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 518000;
+const uint64_t BLOCK_BLOB_SHUFFLE_CHECK_HEIGHT               = 600000;
+const uint64_t TRANSACTION_INPUT_BLOCKTIME_VALIDATION_HEIGHT = 600000;
 
+/* This describes how many blocks of "wiggle" room transactions have regarding
+   when the outputs can be spent based on a reasonable belief that the outputs
+   would unlock in the current block period */
 const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS     = 1;
 const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS    = DIFFICULTY_TARGET * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS;
 
@@ -140,7 +146,13 @@ const uint32_t UPGRADE_HEIGHT_V2                             = 1;
 const uint32_t UPGRADE_HEIGHT_V3                             = 2;
 const uint32_t UPGRADE_HEIGHT_V4                             = 3; // Upgrade height for CN-Lite Variant 1 switch.
 const uint32_t UPGRADE_HEIGHT_V5                             = 302400; // Upgrade height for CN-Turtle Variant 2 switch.
-const uint32_t UPGRADE_HEIGHT_CURRENT                        = UPGRADE_HEIGHT_V5;
+const uint32_t UPGRADE_HEIGHT_V6                             = 600000; // Upgrade height for Chukwa switch.
+const uint32_t UPGRADE_HEIGHT_CURRENT                        = UPGRADE_HEIGHT_V6;
+/* This value is here to handle the difficult reset needed for the PoW upgrade
+   at block major version V6 */
+const uint64_t DIFFICULTY_RESET_HEIGHT_V1                    = UPGRADE_HEIGHT_V6;
+const float    DIFFICULTY_RESET_MULTIPLIER_V1                = 0.1;
+const uint64_t DIFFICULTY_RESET_WINDOW_V1                    = DIFFICULTY_BLOCKS_COUNT_V3;
 
 const unsigned UPGRADE_VOTING_THRESHOLD                      = 90;               // percent
 const uint32_t UPGRADE_VOTING_WINDOW                         = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;  // blocks
@@ -155,13 +167,14 @@ const uint64_t FORK_HEIGHTS[] = {
     100000,   // 2
     302400,   // 3
     430000,   // 4
-    500000,   // 5
-    700000,   // 6
-    1000000   // 7
+    518000,   // 5
+    600000,   // 6
+    700000,   // 7
+    1000000   // 8
 };
 
 /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX                 = 5;
+const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX                 = 6;
 
 const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -195,6 +208,7 @@ const uint8_t  BLOCK_MAJOR_VERSION_2                         =  2;
 const uint8_t  BLOCK_MAJOR_VERSION_3                         =  3;
 const uint8_t  BLOCK_MAJOR_VERSION_4                         =  4;
 const uint8_t  BLOCK_MAJOR_VERSION_5                         =  5;
+const uint8_t  BLOCK_MAJOR_VERSION_6                         =  6;
 
 const uint8_t  BLOCK_MINOR_VERSION_0                         =  0;
 const uint8_t  BLOCK_MINOR_VERSION_1                         =  1;

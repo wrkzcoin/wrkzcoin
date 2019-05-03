@@ -50,6 +50,7 @@ const std::string CN_TURTLE_LITE_SLOW_HASH_V0 = "5e1891a15d5d85c09baf4a3bbe33675
 const std::string CN_TURTLE_LITE_SLOW_HASH_V1 = "ae7f864a7a2f2b07dcef253581e60a014972b9655a152341cb989164761c180a";
 const std::string CN_TURTLE_LITE_SLOW_HASH_V2 = "b2172ec9466e1aee70ec8572a14c233ee354582bcb93f869d429744de5726a26";
 
+const std::string CHUKWA = "c0dad0eeb9c52e92a1c3aa5b76a3cb90bd7376c28dce191ceeb1096e3a390d2e";
 
 const std::string CN_SOFT_SHELL_V0[] = {
   "5e1891a15d5d85c09baf4a3bbe33675cfa3f77229c8ad66c01779e590528d6d3",
@@ -125,7 +126,7 @@ static inline bool CompareHashes(const Hash leftHash, const std::string right)
 /* Hacky as fuck lmao */
 bool need43BytesOfData(std::string hashFunctionName)
 {
-    return (hashFunctionName.find("v1") != std::string::npos 
+    return (hashFunctionName.find("v1") != std::string::npos
         || hashFunctionName.find("v2") != std::string::npos);
 }
 
@@ -317,7 +318,7 @@ int main(int argc, char** argv)
         TEST_HASH_FUNCTION(cn_slow_hash_v0, CN_SLOW_HASH_V0);
         TEST_HASH_FUNCTION(cn_slow_hash_v1, CN_SLOW_HASH_V1);
         TEST_HASH_FUNCTION(cn_slow_hash_v2, CN_SLOW_HASH_V2);
-        
+
         std::cout << std::endl;
 
         TEST_HASH_FUNCTION(cn_lite_slow_hash_v0, CN_LITE_SLOW_HASH_V0);
@@ -335,7 +336,7 @@ int main(int argc, char** argv)
         TEST_HASH_FUNCTION(cn_dark_lite_slow_hash_v0, CN_DARK_LITE_SLOW_HASH_V0);
         TEST_HASH_FUNCTION(cn_dark_lite_slow_hash_v1, CN_DARK_LITE_SLOW_HASH_V1);
         TEST_HASH_FUNCTION(cn_dark_lite_slow_hash_v2, CN_DARK_LITE_SLOW_HASH_V2);
-        
+
         std::cout << std::endl;
 
         TEST_HASH_FUNCTION(cn_turtle_slow_hash_v0, CN_TURTLE_SLOW_HASH_V0);
@@ -347,6 +348,10 @@ int main(int argc, char** argv)
         TEST_HASH_FUNCTION(cn_turtle_lite_slow_hash_v0, CN_TURTLE_LITE_SLOW_HASH_V0);
         TEST_HASH_FUNCTION(cn_turtle_lite_slow_hash_v1, CN_TURTLE_LITE_SLOW_HASH_V1);
         TEST_HASH_FUNCTION(cn_turtle_lite_slow_hash_v2, CN_TURTLE_LITE_SLOW_HASH_V2);
+
+        std::cout << std::endl;
+
+        TEST_HASH_FUNCTION(chukwa_slow_hash, CHUKWA);
 
         std::cout << std::endl;
 
@@ -399,6 +404,8 @@ int main(int argc, char** argv)
             BENCHMARK(cn_turtle_lite_slow_hash_v0, o_iterations_long);
             BENCHMARK(cn_turtle_lite_slow_hash_v1, o_iterations_long);
             BENCHMARK(cn_turtle_lite_slow_hash_v2, o_iterations_long);
+
+            BENCHMARK(chukwa_slow_hash, o_iterations_long);
         }
     }
     catch (std::exception& e)

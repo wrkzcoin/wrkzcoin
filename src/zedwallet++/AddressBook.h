@@ -2,15 +2,10 @@
 // 
 // Please see the included LICENSE file for more information.
 
-#include "json.hpp"
-
 #include <string>
-
 #include <vector>
-
 #include <WalletBackend/WalletBackend.h>
 
-using nlohmann::json;
 
 struct AddressBookEntry
 {
@@ -41,6 +36,30 @@ struct AddressBookEntry
     {
         return rhs.friendlyName == friendlyName;
     }
+
+    template <typename Writer>
+    void toJSON(Writer &writer) const
+    {
+        writer.StartObject();
+
+        writer.Key("friendlyName");
+        writer.String(friendlyName);
+
+        writer.Key("address");
+        writer.String(address);
+
+        writer.Key("paymentID");
+        writer.String(paymentID);
+
+        writer.EndObject();
+    }
+
+    void fromJSON(const JSONValue &j)
+    {
+        friendlyName = getStringFromJSON(j, "friendlyName");
+        address = getStringFromJSON(j, "address");
+        paymentID = getStringFromJSON(j, "paymentID");
+    }
 };
 
 void addToAddressBook();
@@ -61,7 +80,3 @@ std::vector<AddressBookEntry> getAddressBook();
 bool saveAddressBook(const std::vector<AddressBookEntry> addressBook);
 
 bool isAddressBookEmpty(const std::vector<AddressBookEntry> addressBook);
-
-void to_json(json &j, const AddressBookEntry &a);
-
-void from_json(const json &j, AddressBookEntry &a);

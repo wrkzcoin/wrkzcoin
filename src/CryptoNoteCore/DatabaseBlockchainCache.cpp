@@ -959,11 +959,22 @@ bool DatabaseBlockchainCache::isTransactionSpendTimeUnlocked(uint64_t unlockTime
   return isTransactionSpendTimeUnlocked(unlockTime, getTopBlockIndex());
 }
 
-// TODO: pass time
 bool DatabaseBlockchainCache::isTransactionSpendTimeUnlocked(uint64_t unlockTime, uint32_t blockIndex) const {
   if (unlockTime < currency.maxBlockHeight()) {
     // interpret as block index
     return blockIndex + currency.lockedTxAllowedDeltaBlocks() >= unlockTime;
+  }
+
+  if (blockIndex >= CryptoNote::parameters::TRANSACTION_INPUT_BLOCKTIME_VALIDATION_HEIGHT)
+  {
+    /* Get the last block timestamp from an existing method call */
+    const std::vector<uint64_t> lastBlockTimestamps = getLastTimestamps(1);
+
+    /* Pop the last timestamp off the vector */
+    const uint64_t lastBlockTimestamp = lastBlockTimestamps.at(0);
+
+    /* Compare our delta seconds plus our last time stamp against the unlock time */
+    return lastBlockTimestamp + currency.lockedTxAllowedDeltaSeconds() >= unlockTime;
   }
 
   // interpret as time
@@ -1043,6 +1054,7 @@ uint8_t DatabaseBlockchainCache::getBlockMajorVersionForHeight(uint32_t height) 
   upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_3, currency.upgradeHeight(BLOCK_MAJOR_VERSION_3));
   upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_4, currency.upgradeHeight(BLOCK_MAJOR_VERSION_4));
   upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_5, currency.upgradeHeight(BLOCK_MAJOR_VERSION_5));
+  upgradeManager.addMajorBlockVersion(BLOCK_MAJOR_VERSION_6, currency.upgradeHeight(BLOCK_MAJOR_VERSION_6));
   return upgradeManager.getBlockMajorVersion(height);
 }
 

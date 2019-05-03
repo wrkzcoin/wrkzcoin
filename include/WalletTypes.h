@@ -13,6 +13,7 @@
 
 #include <unordered_map>
 #include <optional>
+#include <string>
 
 namespace WalletTypes
 {
@@ -495,7 +496,19 @@ namespace WalletTypes
         r.keyOutputs = j.at("outputs").get<std::vector<KeyOutput>>();
         r.hash = j.at("hash").get<Crypto::Hash>();
         r.transactionPublicKey = j.at("txPublicKey").get<Crypto::PublicKey>();
-        r.unlockTime = j.at("unlockTime").get<uint64_t>();
+
+        /* We need to try to get the unlockTime from an integer in the json
+           however, if that fails because we're talking to a blockchain
+           cache API that encodes unlockTime as a string (due to json
+           integer encoding limits), we need to attempt this as a string */
+        try
+        {
+            r.unlockTime = j.at("unlockTime").get<uint64_t>();
+        }
+        catch (const nlohmann::json::exception &e)
+        {
+            r.unlockTime = std::stoull(j.at("unlockTime").get<std::string>());
+        }
     }
 
     inline void to_json(nlohmann::json &j, const RawTransaction &r)
@@ -515,7 +528,19 @@ namespace WalletTypes
         r.keyOutputs = j.at("outputs").get<std::vector<KeyOutput>>();
         r.hash = j.at("hash").get<Crypto::Hash>();
         r.transactionPublicKey = j.at("txPublicKey").get<Crypto::PublicKey>();
-        r.unlockTime = j.at("unlockTime").get<uint64_t>();
+
+        /* We need to try to get the unlockTime from an integer in the json
+           however, if that fails because we're talking to a blockchain
+           cache API that encodes unlockTime as a string (due to json
+           integer encoding limits), we need to attempt this as a string */
+        try
+        {
+            r.unlockTime = j.at("unlockTime").get<uint64_t>();
+        }
+        catch (const nlohmann::json::exception &e)
+        {
+            r.unlockTime = std::stoull(j.at("unlockTime").get<std::string>());
+        }
         r.paymentID = j.at("paymentID").get<std::string>();
         r.keyInputs = j.at("inputs").get<std::vector<CryptoNote::KeyInput>>();
     }
@@ -532,6 +557,15 @@ namespace WalletTypes
     {
         k.key = j.at("key").get<Crypto::PublicKey>();
         k.amount = j.at("amount").get<uint64_t>();
+
+        /* If we're talking to a daemon or blockchain cache
+           that returns the globalIndex as part of the structure
+           of a key output, then we need to load that into the
+           data structure. */
+        if (j.find("globalIndex") != j.end())
+        {
+            k.globalOutputIndex = j.at("globalIndex").get<uint64_t>();
+        }
     }
 
     inline void to_json(nlohmann::json &j, const UnconfirmedInput &u)
