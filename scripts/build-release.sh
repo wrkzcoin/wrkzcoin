@@ -8,7 +8,7 @@ BUILD_DIRECTORY=$2
 function usage()
 {
     echo "This script builds the dynamically and statically linked version"
-    echo "and generates the checksum files of the WkrzCoin tag provided."
+    echo "and generates the checksum files of the TurtleCoin tag provided."
     echo
     echo "USAGE: $0 <tag> <build-directory>"
     echo
@@ -71,7 +71,7 @@ function generate_tarball()
     tar --transform "s,^,$RELEASE_NAME/," -c -f $TARBALL -z -C "$CLONE_DIR/build/release/src" \
         miner \
         zedwallet \
-        Wrkzd \
+        TurtleCoind \
         walletd
 
     generate_checksums $TARBALL

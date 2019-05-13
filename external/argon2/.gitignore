@@ -1,23 +1,70 @@
+# Compiled Object files
+*.slo
+*.lo
 *.o
-*.a
-*.so*
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
 *.dylib
+*.dll
+
+# Fortran module files
+*.mod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
 *.exe
-*.elf
+*.out
+*.app
 
-*.pyc
+# Autotools + Libtool
+/aclocal.m4
+/config.status
+/config
+/install-sh
+**/Makefile
+**/Makefile.in
+/autom4te.cache/
+/compile
+/config.guess
+/config.log
+/config.sub
+/configure
+/depcomp
+/libtool
+/ltmain.sh
+/m4/libtool.m4
+/m4/lt*.m4
+/missing
+/test-driver
+**/.deps/
+**/.dirstamp
+**/.libs/
 
-*.gcda
-*.gcno
-*.gcov
+# Qt Creator
+**/*.user
+**/*.user.*
+**/build-*/
 
-*.zip
-*.tar.gz
+# KDE
+**/.directory
 
-.DS_Store
-.idea
-vs2015/build
-Argon2.sdf
-Argon2.VC.opendb
-tags
-build-dir/
+# Vim
+*.swp
+
+# CMake
+CMakeFiles/
+*.cmake
+CMakeCache.txt
+Makefile
+

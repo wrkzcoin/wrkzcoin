@@ -41,8 +41,6 @@ const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX                 = 100000; // Update
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V2              = LWMA_2_DIFFICULTY_BLOCK_INDEX;
 const uint64_t LWMA_2_DIFFICULTY_BLOCK_INDEX_V3              = 128800;
 
-const uint64_t LWMA_3_DIFFICULTY_BLOCK_INDEX                 = 1000000;
-
 const unsigned EMISSION_SPEED_FACTOR                         = 22;
 static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 

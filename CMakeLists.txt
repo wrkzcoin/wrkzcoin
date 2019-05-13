@@ -46,6 +46,7 @@ set(CMAKE_SKIP_INSTALL_RULES OFF FORCE)
 set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON FORCE)
 set(CMAKE_SUPPRESS_REGENERATION ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+set(ARCH default CACHE STRING "CPU to build for: -march value or default")
 
 # Enable c++17
 set(CMAKE_CXX_STANDARD 17)
@@ -158,7 +159,6 @@ if(NOT MSVC)
   endif()
 
   ## This is here to support building for multiple architecture types... but we all know how well that usually goes...
-  set(ARCH default CACHE STRING "CPU to build for: -march value or default")
   if("${ARCH}" STREQUAL "default")
     set(ARCH_FLAG "")
   else()
@@ -176,7 +176,7 @@ if(NOT MSVC)
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(WARNINGS "${WARNINGS} -Wno-error=odr")
   endif()
-  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes")
+  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
   set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
 
   if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64")

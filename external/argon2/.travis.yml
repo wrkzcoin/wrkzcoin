@@ -1,25 +1,23 @@
 language: c
 
+dist: trusty
+sudo: false
+
 compiler:
-  - clang
-  - gcc
+    - clang
+    - gcc
 
-os:
-  - linux
-  - osx
+env:
+    - BUILD=cmake BUILD_TYPE=Debug
+    - BUILD=cmake BUILD_TYPE=Release
+    - BUILD=autotools
 
-# Clang on Linux needs to run in a VM to use ASAN.
-# See: https://github.com/travis-ci/travis-ci/issues/9033
-matrix:
-  exclude:
-    - compiler: clang
-      os: linux
-  include:
-    - compiler: clang
-      os: linux
-      sudo: true
-
-script: make && make testgenkat && make testci
-
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
+script: |
+    case $BUILD in
+    cmake)
+        cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE . && make && make test
+        ;;
+    autotools)
+        autoreconf -i && ./configure && make && make check
+        ;;
+    esac

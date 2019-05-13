@@ -8,7 +8,7 @@
 
 #include <CryptoNoteConfig.h>
 
-#include <CryptoNoteCore/CryptoNoteTools.h>
+#include <Common/CryptoNoteTools.h>
 
 #include <Errors/ValidateParameters.h>
 
@@ -82,6 +82,8 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     m_peerCount = 0;
     m_lastKnownHashrate = 0;
     m_isBlockchainCache = false;
+    m_nodeFeeAddress = "";
+    m_nodeFeeAmount = 0;
 
     m_daemonHost = daemonHost;
     m_daemonPort = daemonPort;

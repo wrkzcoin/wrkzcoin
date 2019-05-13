@@ -20,8 +20,8 @@
 #include "TransactionUtils.h"
 
 #include "Account.h"
-#include "CryptoNoteCore/CryptoNoteTools.h"
-#include "CryptoNoteConfig.h"
+#include "Common/CryptoNoteTools.h"
+#include <CryptoNoteConfig.h>
 
 #include <boost/optional.hpp>
 #include <numeric>
@@ -185,7 +185,7 @@ namespace CryptoNote {
   }
 
   PublicKey TransactionImpl::getTransactionPublicKey() const {
-    PublicKey pk(NULL_PUBLIC_KEY);
+    PublicKey pk(Constants::NULL_PUBLIC_KEY);
     extra.getPublicKey(pk);
     return pk;
   }
