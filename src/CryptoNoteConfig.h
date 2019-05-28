@@ -117,12 +117,12 @@ const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR         = 100 * 1024;
 const uint64_t MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR       = 365 * 24 * 60 * 60 / DIFFICULTY_TARGET;
 const uint64_t MAX_EXTRA_SIZE                                = 140000;
 const uint64_t MAX_EXTRA_SIZE_V2                             = 1024;
-const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 518000;
+const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT                      = 543000;
 
 /* For new projects forked from this code base, the values immediately below
    should be changed to 0 to prevent issues with transaction processing 
    and other possible unexpected behavior */
-const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 518000;
+const uint64_t TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT = 543000;
 const uint64_t BLOCK_BLOB_SHUFFLE_CHECK_HEIGHT               = 600000;
 const uint64_t TRANSACTION_INPUT_BLOCKTIME_VALIDATION_HEIGHT = 600000;
 
@@ -144,7 +144,7 @@ const uint32_t UPGRADE_HEIGHT_V2                             = 1;
 const uint32_t UPGRADE_HEIGHT_V3                             = 2;
 const uint32_t UPGRADE_HEIGHT_V4                             = 3; // Upgrade height for CN-Lite Variant 1 switch.
 const uint32_t UPGRADE_HEIGHT_V5                             = 302400; // Upgrade height for CN-Turtle Variant 2 switch.
-const uint32_t UPGRADE_HEIGHT_V6                             = 600000; // Upgrade height for Chukwa switch.
+const uint32_t UPGRADE_HEIGHT_V6                             = 600000; // Upgrade height for Chukwa-lite switch.
 const uint32_t UPGRADE_HEIGHT_CURRENT                        = UPGRADE_HEIGHT_V6;
 /* This value is here to handle the difficult reset needed for the PoW upgrade
    at block major version V6 */
@@ -165,7 +165,7 @@ const uint64_t FORK_HEIGHTS[] = {
     100000,   // 2
     302400,   // 3
     430000,   // 4
-    518000,   // 5
+    543000,   // 5
     600000,   // 6
     700000,   // 7
     1000000   // 8

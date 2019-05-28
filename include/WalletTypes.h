@@ -1,5 +1,5 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #pragma once
@@ -28,8 +28,8 @@ namespace WalletTypes
     };
 
     /* A coinbase transaction (i.e., a miner reward, there is one of these in
-       every block). Coinbase transactions have no inputs. 
-       
+       every block). Coinbase transactions have no inputs.
+
        We call this a raw transaction, because it is simply key images and
        amounts */
     struct RawCoinbaseTransaction
@@ -49,6 +49,14 @@ namespace WalletTypes
            CRYPTONOTE_MAX_BLOCK_NUMBER (In cryptonoteconfig) it is treated
            as a unix timestamp, else it is treated as a block height. */
         uint64_t unlockTime;
+
+        size_t memoryUsage() const
+        {
+            return keyOutputs.size() * sizeof(KeyOutput) + sizeof(keyOutputs) +
+                   sizeof(hash) +
+                   sizeof(transactionPublicKey) +
+                   sizeof(unlockTime);
+        }
     };
 
     /* A raw transaction, simply key images and amounts */
@@ -60,6 +68,13 @@ namespace WalletTypes
         /* The inputs used for a transaction, can be used to track outgoing
            transactions */
         std::vector<CryptoNote::KeyInput> keyInputs;
+
+        size_t memoryUsage() const
+        {
+            return paymentID.size() * sizeof(char) + sizeof(paymentID) +
+                   keyInputs.size() * sizeof(CryptoNote::KeyInput) + sizeof(keyInputs) +
+                   RawCoinbaseTransaction::memoryUsage();
+        }
     };
 
     /* A 'block' with the very basics needed to sync the transactions */
@@ -79,6 +94,24 @@ namespace WalletTypes
 
         /* The timestamp of the block */
         uint64_t blockTimestamp;
+
+        size_t memoryUsage() const
+        {
+            const size_t txUsage = std::accumulate(
+                transactions.begin(),
+                transactions.end(),
+                sizeof(transactions),
+                [](const auto acc, const auto item) {
+
+                return acc + item.memoryUsage();
+            });
+            
+            return coinbaseTransaction.memoryUsage() +
+                   txUsage +
+                   sizeof(blockHeight) +
+                   sizeof(blockHash) +
+                   sizeof(blockTimestamp);
+        }
     };
 
     struct TransactionInput
@@ -106,7 +139,7 @@ namespace WalletTypes
 
         /* The transaction key we took from the key outputs */
         Crypto::PublicKey key;
-        
+
         /* If spent, what height did we spend it at. Used to remove spent
            transaction inputs once they are sure to not be removed from a
            forked chain. */
@@ -310,8 +343,8 @@ namespace WalletTypes
             /* A map of public keys to amounts, since one transaction can go to
                multiple addresses. These can be positive or negative, for example
                one address might have sent 10,000 TRTL (-10000) to two recipients
-               (+5000), (+5000) 
-               
+               (+5000), (+5000)
+
                All the public keys in this map, are ones that the wallet container
                owns, it won't store amounts belonging to random people */
             std::unordered_map<Crypto::PublicKey, int64_t> transfers;

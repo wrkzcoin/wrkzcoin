@@ -10,8 +10,8 @@
 
 #include <SubWallets/SubWallets.h>
 
+#include <WalletBackend/BlockDownloader.h>
 #include <WalletBackend/EventHandler.h>
-#include <WalletBackend/ThreadSafeQueue.h>
 #include <WalletBackend/SynchronizationStatus.h>
 
 #include <WalletTypes.h>
@@ -91,13 +91,8 @@ class WalletSynchronizer
 
         void setSyncStart(const uint64_t startTimestamp, const uint64_t startHeight);
 
-        /////////////////////////////
-        /* Public member variables */
-        /////////////////////////////
-
-        /* The sub wallets (shared with the main class) */
-        std::shared_ptr<SubWallets> m_subWallets;
-
+        void setSubWallets(const std::shared_ptr<SubWallets> subWallets);
+        
     private:
 
         //////////////////////////////
@@ -105,8 +100,6 @@ class WalletSynchronizer
         //////////////////////////////
 
         void mainLoop();
-
-        std::vector<WalletTypes::WalletBlockInfo> downloadBlocks();
 
         std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> processBlockOutputs(
             const WalletTypes::WalletBlockInfo &block) const;
@@ -147,8 +140,6 @@ class WalletSynchronizer
         /* An atomic bool to signal if we should stop the sync thread */
         std::atomic<bool> m_shouldStop;
 
-        SynchronizationStatus m_syncStatus;
-
         /* The timestamp to start scanning downloading block data from */
         uint64_t m_startTimestamp;
 
@@ -163,4 +154,9 @@ class WalletSynchronizer
 
         /* The daemon connection */
         std::shared_ptr<Nigel> m_daemon;
+
+        BlockDownloader m_blockDownloader;
+
+        /* The sub wallets (shared with the main class) */
+        std::shared_ptr<SubWallets> m_subWallets;
 };

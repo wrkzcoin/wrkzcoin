@@ -1,9 +1,7 @@
 #include "argon2-sse2.h"
 
 #ifdef HAVE_SSE2
-#include <x86intrin.h>
-
-#include "cpu-flags.h"
+#include <immintrin.h>
 
 #define ror64_16(x) \
     _mm_shufflehi_epi16( \
@@ -106,7 +104,7 @@ void fill_segment_sse2(const argon2_instance_t *instance,
 
 int check_sse2(void)
 {
-    return cpu_flags_have_sse2();
+    return 1;
 }
 
 #else

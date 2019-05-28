@@ -18,6 +18,8 @@
 
 #include <Logger/Logger.h>
 
+#include <Utilities/ThreadSafeQueue.h>
+#include <Utilities/ThreadSafeDeque.h>
 #include <Utilities/Utilities.h>
 
 #include <WalletBackend/Constants.h>
@@ -47,7 +49,8 @@ WalletSynchronizer::WalletSynchronizer(
     m_startHeight(startHeight),
     m_startTimestamp(startTimestamp),
     m_privateViewKey(privateViewKey),
-    m_eventHandler(eventHandler)
+    m_eventHandler(eventHandler),
+    m_blockDownloader(daemon, nullptr, startHeight, startTimestamp)
 {
 }
 
@@ -66,8 +69,6 @@ WalletSynchronizer & WalletSynchronizer::operator=(WalletSynchronizer && old)
 
     m_syncThread = std::move(old.m_syncThread);
 
-    m_syncStatus = std::move(old.m_syncStatus);
-
     m_startTimestamp = std::move(old.m_startTimestamp);
     m_startHeight = std::move(old.m_startHeight);
 
@@ -76,6 +77,8 @@ WalletSynchronizer & WalletSynchronizer::operator=(WalletSynchronizer && old)
     m_eventHandler = std::move(old.m_eventHandler);
 
     m_daemon = std::move(old.m_daemon);
+
+    m_blockDownloader = std::move(old.m_blockDownloader);
 
     return *this;
 }
@@ -92,11 +95,13 @@ WalletSynchronizer::~WalletSynchronizer()
 
 void WalletSynchronizer::mainLoop()
 {
+    auto lastCheckedLockedTransactions = std::chrono::system_clock::now();
+
     while (!m_shouldStop)
     {
-        const auto blocks = downloadBlocks();
+        const auto blocks = m_blockDownloader.fetchBlocks(Constants::BLOCK_PROCESSING_CHUNK);
 
-        for (const auto block : blocks)
+        for (const auto &block : blocks)
         {
             if (m_shouldStop)
             {
@@ -106,139 +111,22 @@ void WalletSynchronizer::mainLoop()
             processBlock(block);
         }
 
-        if (blocks.empty() && !m_shouldStop)
+        /* If we're synced, check any transactions that may be in the pool */
+        if (getCurrentScanHeight() >= m_daemon->localDaemonBlockCount() && !m_shouldStop)
         {
-            /* If we're synced, check any transactions that may be in the pool */
-            if (getCurrentScanHeight() >= m_daemon->localDaemonBlockCount() &&
-                !m_subWallets->isViewWallet())
+            const auto now = std::chrono::system_clock::now();
+            const auto timeDiff = now - lastCheckedLockedTransactions;
+
+            /* Not a viewwallet and haven't checked transactions in last 15 secs */
+            if (!m_subWallets->isViewWallet() && timeDiff > std::chrono::seconds(15))
             {
                 checkLockedTransactions();
+                lastCheckedLockedTransactions = now;
             }
 
             std::this_thread::sleep_for(std::chrono::seconds(5));
-
-            continue;
         }
     }
-}
-
-std::vector<WalletTypes::WalletBlockInfo> WalletSynchronizer::downloadBlocks()
-{
-    const uint64_t localDaemonBlockCount = m_daemon->localDaemonBlockCount();
-
-    const uint64_t walletBlockCount = getCurrentScanHeight();
-
-    /* Local daemon has less blocks than the wallet:
-
-    With the get wallet sync data call, we give a height or a timestamp to
-    start at, and an array of block hashes of the last known blocks we
-    know about.
-
-    If the daemon can find the hashes, it returns the next one it knows
-    about, so if we give a start height of 200,000, and a hash of
-    block 300,000, it will return block 300,001 and above.
-
-    This works well, since if the chain forks at 300,000, it won't have the
-    hash of 300,000, so it will return the next hash we gave it,
-    in this case probably 299,999.
-
-    On the wallet side, we'll detect a block lower than our last known
-    block, and handle the fork.
-
-    However, if we're syncing our wallet with an unsynced daemon,
-    lets say our wallet is at height 600,000, and the daemon is at 300,000.
-    If our start height was at 200,000, then since it won't have any block
-    hashes around 600,000, it will start returning blocks from
-    200,000 and up, discarding our current progress.
-
-    Therefore, we should wait until the local daemon has more blocks than
-    us to prevent discarding sync data. */
-    if (localDaemonBlockCount < walletBlockCount)
-    {
-        Logger::logger.log(
-            "Wallet already synced, not fetching blocks",
-            Logger::DEBUG,
-            {Logger::SYNC}
-        );
-
-        return {};
-    }
-
-    /* The block hashes to try begin syncing from */
-    const auto blockCheckpoints = m_syncStatus.getBlockHashCheckpoints();
-
-    /* Blocks the thread for up to 10 secs */
-    const auto [success, blocks] = m_daemon->getWalletSyncData(
-        blockCheckpoints, m_startHeight, m_startTimestamp
-    );
-
-    /* If we get no blocks, we are fully synced.
-       (Or timed out/failed to get blocks)
-       Sleep a bit so we don't spam the daemon. */
-    if (!success || blocks.empty())
-    {
-        /* We may have also failed because we requested
-           more data than could be returned in a reasonable
-           amount of time, so we'll back off a little bit */
-        m_daemon->decreaseRequestedBlockCount();
-
-        Logger::logger.log(
-            "Zero blocks received from daemon, possibly fully synced",
-            Logger::DEBUG,
-            {Logger::SYNC}
-        );
-
-        return {};
-    }
-
-    /* If we received data back, we'll make sure we're back
-       to running at full speed in case we backed off a little
-       bit before */
-    m_daemon->resetRequestedBlockCount();
-
-    /* Timestamp is transient and can change - block height is constant. */
-    if (m_startTimestamp != 0)
-    {
-        m_startTimestamp = 0;
-        m_startHeight = blocks.front().blockHeight;
-
-        m_subWallets->convertSyncTimestampToHeight(m_startTimestamp, m_startHeight);
-    }
-
-    /* If checkpoints are empty, this is the first sync request. */
-    if (blockCheckpoints.empty())
-    {
-        /* Only check if a timestamp isn't given */
-        if (m_startTimestamp == 0)
-        {
-            /* Loop through the blocks we got back and make sure that
-               we were given data for the start block we were looking for */
-            const auto it = std::find_if(blocks.begin(), blocks.end(), [this](const auto &block) {
-                return block.blockHeight == m_startHeight;
-            });
-
-            /* If we weren't given a block with the startHeight we were
-               looking for then we don't need to store this data */
-            if (it == blocks.end())
-            {
-                std::stringstream stream;
-
-                stream << "Received unexpected block height from daemon. "
-                       << "Expected " << m_startHeight << ", but did not "
-                       "receive that block. Not returning any blocks.";
-
-                Logger::logger.log(
-                    stream.str(),
-                    Logger::WARNING,
-                    {Logger::SYNC, Logger::DAEMON}
-                );
-
-                return {};
-            }
-        }
-    }
-
-    return blocks;
 }
 
 std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> WalletSynchronizer::processBlockOutputs(
@@ -274,7 +162,7 @@ void WalletSynchronizer::processBlock(const WalletTypes::WalletBlockInfo &block)
     );
 
     /* Chain forked, invalidate previous transactions */
-    if (m_syncStatus.getHeight() >= block.blockHeight)
+    if (m_blockDownloader.getHeight() >= block.blockHeight)
     {
         Logger::logger.log(
             "Blockchain forked, resolving...",
@@ -384,7 +272,7 @@ void WalletSynchronizer::processBlock(const WalletTypes::WalletBlockInfo &block)
     /* Make sure to do this at the end, once the transactions are fully
        processed! Otherwise, we could miss a transaction depending upon
        when we save */
-    m_syncStatus.storeBlockHash(block.blockHash, block.blockHeight);
+    m_blockDownloader.dropBlock(block.blockHeight, block.blockHash);
 
     if (block.blockHeight >= m_daemon->networkBlockCount())
     {
@@ -683,6 +571,8 @@ void WalletSynchronizer::start()
         throw std::runtime_error("Daemon has not been initialized!");
     }
 
+    m_blockDownloader.start();
+
     m_syncThread = std::thread(&WalletSynchronizer::mainLoop, this);
 }
 
@@ -697,6 +587,9 @@ void WalletSynchronizer::stop()
     /* Tell the threads to stop */
     m_shouldStop = true;
 
+    /* Tell the block downloader to stop and wait for it */
+    m_blockDownloader.stop();
+
     /* Wait for the block downloader thread to finish (if applicable) */
     if (m_syncThread.joinable())
     {
@@ -710,8 +603,8 @@ void WalletSynchronizer::reset(uint64_t startHeight)
     m_startHeight = startHeight;
     m_startTimestamp = 0;
 
-    /* Discard sync progress */
-    m_syncStatus = SynchronizationStatus();
+    /* Discard downloaded blocks and sync status */
+    m_blockDownloader = BlockDownloader(m_daemon, m_subWallets, m_startHeight, m_startTimestamp);
 
     /* Need to call start in your calling code - We don't call it here so
        you can schedule the start correctly */
@@ -730,11 +623,12 @@ void WalletSynchronizer::initializeAfterLoad(
 {
     m_daemon = daemon;
     m_eventHandler = eventHandler;
+    m_blockDownloader.initializeAfterLoad(m_daemon);
 }
 
 uint64_t WalletSynchronizer::getCurrentScanHeight() const
 {
-    return m_syncStatus.getHeight();
+    return m_blockDownloader.getHeight();
 }
 
 void WalletSynchronizer::swapNode(const std::shared_ptr<Nigel> daemon)
@@ -744,10 +638,15 @@ void WalletSynchronizer::swapNode(const std::shared_ptr<Nigel> daemon)
 
 void WalletSynchronizer::fromJSON(const JSONObject &j)
 {
-    m_syncStatus.fromJSON(getObjectFromJSON(j, "transactionSynchronizerStatus"));
     m_startTimestamp = getUint64FromJSON(j, "startTimestamp");
     m_startHeight = getUint64FromJSON(j, "startHeight");
     m_privateViewKey.fromString(getStringFromJSON(j, "privateViewKey"));
+
+    m_blockDownloader.fromJSON(
+        getObjectFromJSON(j, "transactionSynchronizerStatus"),
+        m_startHeight,
+        m_startTimestamp
+    );
 }
 
 void WalletSynchronizer::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
@@ -755,7 +654,7 @@ void WalletSynchronizer::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writ
     writer.StartObject();
 
     writer.Key("transactionSynchronizerStatus");
-    m_syncStatus.toJSON(writer);
+    m_blockDownloader.toJSON(writer);
 
     writer.Key("startTimestamp");
     writer.Uint64(m_startTimestamp);
@@ -767,4 +666,10 @@ void WalletSynchronizer::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writ
     m_privateViewKey.toJSON(writer);
 
     writer.EndObject();
+}
+
+void WalletSynchronizer::setSubWallets(const std::shared_ptr<SubWallets> subWallets)
+{
+    m_subWallets = subWallets;
+    m_blockDownloader.setSubWallets(m_subWallets);
 }

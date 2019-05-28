@@ -58,6 +58,8 @@ namespace Crypto {
 #include "hash-ops.h"
   }
 
+  static bool argon_optimization_selected = false;
+
   /*
     Cryptonight hash functions
   */
@@ -199,6 +201,18 @@ namespace Crypto {
   inline void chukwa_slow_hash(const void *data, size_t length, Hash &hash) {
     uint8_t salt[CHUKWA_SALTLEN];
     memcpy(salt, data, sizeof(salt));
+
+    /* If this is the first time we've called this hash function then
+       we need to have the Argon2 library check to see if any of the
+       available CPU instruction sets are going to help us out */
+    if (!argon_optimization_selected)
+    {
+      /* Call the library quick benchmark test to set which CPU
+         instruction sets will be used */
+      argon2_select_impl(NULL, NULL);
+
+      argon_optimization_selected = true;
+    }
 
     argon2id_hash_raw(CHUKWA_ITERS, CHUKWA_MEMORY, CHUKWA_THREADS, data, length, salt, CHUKWA_SALTLEN, hash.data, CHUKWA_HASHLEN);
   }

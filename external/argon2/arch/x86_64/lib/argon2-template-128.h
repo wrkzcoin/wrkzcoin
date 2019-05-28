@@ -1,6 +1,6 @@
 #include <string.h>
 
-#include <x86intrin.h>
+#include <immintrin.h>
 
 #include "core.h"
 

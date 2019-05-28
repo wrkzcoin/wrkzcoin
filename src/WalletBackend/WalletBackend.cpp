@@ -540,7 +540,7 @@ void WalletBackend::init()
         m_walletSynchronizer->initializeAfterLoad(m_daemon, m_eventHandler);
     }
 
-    m_walletSynchronizer->m_subWallets = m_subWallets;
+    m_walletSynchronizer->setSubWallets(m_subWallets);
 
     /* Launch the wallet sync process in a background thread */
     m_walletSynchronizer->start();

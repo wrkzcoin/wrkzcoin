@@ -4,9 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <x86intrin.h>
-
-#include "cpu-flags.h"
+#include <immintrin.h>
 
 #define ror64(x, n) _mm512_ror_epi64((x), (n))
 
@@ -310,7 +308,7 @@ void fill_segment_avx512f(const argon2_instance_t *instance,
 
 int check_avx512f(void)
 {
-    return cpu_flags_have_avx512f();
+    return 1;
 }
 
 #else
