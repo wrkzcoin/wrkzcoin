@@ -41,18 +41,6 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
     *a ^= b;
 }
 
-  #pragma pack(push, 1)
-union cn_slow_hash_state
-{
-    union hash_state hs;
-    struct
-    {
-        uint8_t k[64];
-        uint8_t init[INIT_SIZE_BYTE];
-    };
-};
-  #pragma pack(pop)
-
   #if defined(__aarch64__) && defined(__ARM_FEATURE_CRYPTO)
 
 /* ARMv8-A optimized with NEON and AES instructions.

@@ -110,18 +110,6 @@
     #define THREADV __thread
   #endif
 
-  #pragma pack(push, 1)
-union cn_slow_hash_state
-{
-    union hash_state hs;
-    struct
-    {
-        uint8_t k[64];
-        uint8_t init[INIT_SIZE_BYTE];
-    };
-};
-  #pragma pack(pop)
-
 THREADV uint8_t *hp_state = NULL;
 THREADV int hp_allocated = 0;
 
