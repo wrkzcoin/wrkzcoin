@@ -168,30 +168,6 @@ bool confirm(const std::string &msg, const bool defaultReturn)
     }
 }
 
-std::string getPaymentIDFromExtra(const std::string &extra)
-{
-    std::string paymentID;
-
-    if (extra.length() > 0)
-    {
-        std::vector<uint8_t> vecExtra;
-
-        for (const auto it : extra)
-        {
-            vecExtra.push_back(static_cast<uint8_t>(it));
-        }
-
-        Crypto::Hash paymentIdHash;
-
-        if (CryptoNote::getPaymentIdFromTxExtra(vecExtra, paymentIdHash))
-        {
-            return Common::podToHex(paymentIdHash);
-        }
-    }
-
-    return paymentID;
-}
-
 std::string unixTimeToDate(const uint64_t timestamp)
 {
     const std::time_t time = timestamp;

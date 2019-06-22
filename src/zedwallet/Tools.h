@@ -41,8 +41,6 @@ std::string formatAmount(const uint64_t amount);
 std::string formatDollars(const uint64_t amount);
 std::string formatCents(const uint64_t amount);
 
-std::string getPaymentIDFromExtra(const std::string &extra);
-
 std::string unixTimeToDate(const uint64_t timestamp);
 
 std::string createIntegratedAddress(const std::string &address,

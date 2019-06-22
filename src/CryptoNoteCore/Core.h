@@ -233,10 +233,6 @@ private:
 
   static WalletTypes::RawTransaction getRawTransaction(
     const std::vector<uint8_t> &rawTX);
-
-  static Crypto::PublicKey getPubKeyFromExtra(const std::vector<uint8_t> &extra);
-
-  static std::string getPaymentIDFromExtra(const std::vector<uint8_t> &extra);
 };
 
 }

@@ -37,9 +37,10 @@
 
 #include <System/Timer.h>
 
+#include <Utilities/Container.h>
 #include <Utilities/FormatTools.h>
 #include <Utilities/LicenseCanary.h>
-#include <Utilities/Container.h>
+#include <Utilities/ParseExtra.h>
 
 #include <unordered_set>
 
@@ -710,7 +711,7 @@ WalletTypes::RawCoinbaseTransaction Core::getRawCoinbaseTransaction(
 
     transaction.hash = getBinaryArrayHash(toBinaryArray(t));
 
-    transaction.transactionPublicKey = getPubKeyFromExtra(t.extra);
+    transaction.transactionPublicKey = Utilities::getTransactionPublicKeyFromExtra(t.extra);
 
     transaction.unlockTime = t.unlockTime;
 
@@ -741,12 +742,14 @@ WalletTypes::RawTransaction Core::getRawTransaction(
     /* Get the transaction hash from the binary array */
     transaction.hash = getBinaryArrayHash(rawTX);
 
+    Utilities::ParsedExtra parsedExtra = Utilities::parseExtra(t.extra);
+
     /* Transaction public key, used for decrypting transactions along with
        private view key */
-    transaction.transactionPublicKey = getPubKeyFromExtra(t.extra);
+    transaction.transactionPublicKey = parsedExtra.transactionPublicKey;
 
     /* Get the payment ID if it exists (Empty string if it doesn't) */
-    transaction.paymentID = getPaymentIDFromExtra(t.extra);
+    transaction.paymentID = parsedExtra.paymentID;
 
     transaction.unlockTime = t.unlockTime;
 
@@ -768,103 +771,6 @@ WalletTypes::RawTransaction Core::getRawTransaction(
     }
 
     return transaction;
-}
-
-/* Public key looks like this
-
-   [...data...] 0x01 [public key] [...data...]
-
-*/
-Crypto::PublicKey Core::getPubKeyFromExtra(const std::vector<uint8_t> &extra)
-{
-    Crypto::PublicKey publicKey;
-
-    const int pubKeySize = 32;
-
-    for (size_t i = 0; i < extra.size(); i++)
-    {
-        /* If the following data is the transaction public key, this is
-           indicated by the preceding value being 0x01. */
-        if (extra[i] == Constants::TX_EXTRA_PUBKEY_IDENTIFIER)
-        {
-            /* The amount of data remaining in the vector (minus one because
-               we start reading the public key from the next character) */
-            size_t dataRemaining = extra.size() - i - 1;
-
-            /* We need to check that there is enough space following the tag,
-               as someone could just pop a random 0x01 in there and make our
-               code mess up */
-            if (dataRemaining < pubKeySize)
-            {
-                return publicKey;
-            }
-
-            const auto dataBegin = extra.begin() + i + 1;
-            const auto dataEnd = dataBegin + pubKeySize;
-
-            /* Copy the data from the vector to the array */
-            std::copy(dataBegin, dataEnd, std::begin(publicKey.data));
-
-            return publicKey;
-        }
-    }
-
-    /* Couldn't find the tag */
-    return publicKey;
-}
-
-/* Payment ID looks like this (payment ID is stored in extra nonce)
-
-   [...data...] 0x02 [size of extra nonce] 0x00 [payment ID] [...data...]
-
-*/
-std::string Core::getPaymentIDFromExtra(const std::vector<uint8_t> &extra)
-{
-    const int paymentIDSize = 32;
-
-    for (size_t i = 0; i < extra.size(); i++)
-    {
-        /* Extra nonce tag found */
-        if (extra[i] == Constants::TX_EXTRA_NONCE_IDENTIFIER)
-        {
-            /* Skip the extra nonce tag */
-            size_t dataRemaining = extra.size() - i - 1;
-
-            /* Not found, not enough space. We need a +1, since payment ID
-               is stored inside extra nonce, with a special tag for it,
-               and there is a size parameter right after the extra nonce
-               tag */
-            if (dataRemaining < paymentIDSize + 1 + 1)
-            {
-                return std::string();
-            }
-
-            /* Payment ID in extra nonce */
-            if (extra[i+2] == Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER)
-            {
-                /* Plus three to skip the two 0x02 0x00 tags and the size value */
-                const auto dataBegin = extra.begin() + i + 3;
-                const auto dataEnd = dataBegin + paymentIDSize;
-
-                Crypto::Hash paymentIDHash;
-
-                /* Copy the payment ID into the hash */
-                std::copy(dataBegin, dataEnd, std::begin(paymentIDHash.data));
-
-                /* Convert to a string */
-                std::string paymentID = Common::podToHex(paymentIDHash);
-
-                /* Convert it to lower case */
-                std::transform(paymentID.begin(), paymentID.end(),
-                               paymentID.begin(), ::tolower);
-
-                return paymentID;
-            }
-        }
-    }
-
-    /* Not found */
-    return std::string();
 }
 
 std::optional<BinaryArray> Core::getTransaction(const Crypto::Hash& hash) const {

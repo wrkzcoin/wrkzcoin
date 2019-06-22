@@ -30,6 +30,7 @@
 #include <Wallet/WalletUtils.h>
 
 #include <Utilities/Addresses.h>
+#include <Utilities/ParseExtra.h>
 
 bool parseAmount(std::string strAmount, uint64_t &amount)
 {
@@ -105,7 +106,7 @@ bool confirmTransaction(CryptoNote::TransactionParameters t,
               << "," << std::endl
               << "and a node fee of " << SuccessMsg(formatAmount(nodeFee));
 
-    const std::string paymentID = getPaymentIDFromExtra(t.extra);
+    const std::string paymentID = Utilities::getPaymentIDFromExtra(Common::fromHex(t.extra));
 
     /* Lets not split the integrated address out into its address and
        payment ID combo. It'll confused users. */
