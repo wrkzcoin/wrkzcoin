@@ -21,7 +21,7 @@
 
 int main(int argc, char **argv)
 {
-    Config config = parseArguments(argc, argv);
+    ApiConfig config = parseArguments(argc, argv);
 
     Logger::logger.setLogLevel(config.logLevel);
 
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
         /* Init the API */
         api = std::make_shared<ApiDispatcher>(
             config.port, config.rpcBindIp, config.rpcPassword,
-            config.corsHeader
+            config.corsHeader, config.threads
         );
 
         /* Launch the API */

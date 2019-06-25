@@ -7,7 +7,7 @@
 #include <CryptoNoteConfig.h>
 #include <Logger/Logger.h>
 
-struct Config
+struct ApiConfig
 {
     /* The IP to listen for requests on */
     std::string rpcBindIp;
@@ -23,6 +23,8 @@ struct Config
 
     /* Controls what level of messages to log */
     Logger::LogLevel logLevel = Logger::DISABLED;
+
+    unsigned int threads;
 };
 
-Config parseArguments(int argc, char **argv);
+ApiConfig parseArguments(int argc, char **argv);

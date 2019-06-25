@@ -65,5 +65,5 @@ namespace Constants
        then split into threads and process. Too large will result in large
        jumps in the sync height, but should offer better performance from a
        decrease in locking of data structures. */
-    const uint64_t BLOCK_PROCESSING_CHUNK = 200;
+    const uint64_t BLOCK_PROCESSING_CHUNK = 500;
 }

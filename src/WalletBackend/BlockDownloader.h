@@ -46,7 +46,7 @@ class BlockDownloader
         /* Retrieve blockCount blocks from the internal store. does not remove
            them. Returns as many as possible if the amount requested is not
            available. May be empty (this is the norm when synced.) */
-        std::vector<WalletTypes::WalletBlockInfo> fetchBlocks(const size_t blockCount);
+        std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> fetchBlocks(const size_t blockCount);
 
         /* Drops the oldest block from the internal queue */
         void dropBlock(const uint64_t blockHeight, const Crypto::Hash blockHash);
@@ -97,7 +97,7 @@ class BlockDownloader
         //////////////////////////////
 
         /* Cached blocks */
-        ThreadSafeDeque<WalletTypes::WalletBlockInfo> m_storedBlocks;
+        ThreadSafeDeque<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> m_storedBlocks;
 
         /* The daemon connection */
         std::shared_ptr<Nigel> m_daemon;
@@ -127,4 +127,6 @@ class BlockDownloader
 
         /* Thread that performs the actual downloading of blocks */
         std::thread m_downloadThread;
+
+        uint32_t m_arrivalIndex = 0;
 };

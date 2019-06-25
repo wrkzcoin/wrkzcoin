@@ -21,29 +21,19 @@ void SynchronizationStatus::storeBlockHash(
     const Crypto::Hash hash,
     const uint64_t height)
 {
-    /* If it's not a fork and not the very first block */
-    if (height > m_lastKnownBlockHeight && m_lastKnownBlockHeight != 0)
-    {
-        /* Height should be one more than previous height */
-        if (height != m_lastKnownBlockHeight + 1)
-        {
-            std::stringstream stream;
-
-            stream << "Blocks were missed in syncing process! Expected: "
-                   << m_lastKnownBlockHeight + 1 << ", Received: "
-                   << height << ".\nPossibly malicious daemon. Terminating.";
-
-            /* TODO: Convert to log message */
-            throw std::runtime_error(stream.str());
-        }
-    }
-
     m_lastKnownBlockHeight = height;
+
+    /* Already added this hash */
+    if (!m_lastKnownBlockHashes.empty() && m_lastKnownBlockHashes.back() == hash)
+    {
+        return;
+    }
 
     /* If we're at a checkpoint height, add the hash to the infrequent
        checkpoints (at the beginning of the queue) */
-    if (height % Constants::BLOCK_HASH_CHECKPOINTS_INTERVAL == 0)
+    if (m_lastSavedCheckpointAt + Constants::BLOCK_HASH_CHECKPOINTS_INTERVAL < height)
     {
+        m_lastSavedCheckpointAt = height;
         m_blockHashCheckpoints.push_front(hash);
     }
 

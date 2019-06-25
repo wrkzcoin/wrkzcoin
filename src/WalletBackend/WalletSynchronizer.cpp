@@ -8,6 +8,7 @@
 
 #include <Common/StringTools.h>
 
+#include <config/Config.h>
 #include <config/WalletConfig.h>
 
 #include <crypto/crypto.h>
@@ -34,6 +35,16 @@ WalletSynchronizer::WalletSynchronizer() :
     m_startTimestamp(0),
     m_startHeight(0)
 {
+    unsigned int threads = std::thread::hardware_concurrency();
+
+    /* Number of concurrent threads supported.
+       If the value is not well defined or not computable, returns 0. */
+    if (threads == 0)
+    {
+        threads = 1;
+    }
+
+    m_threadCount = threads;
 }
 
 /* Parameterized constructor */
@@ -42,7 +53,8 @@ WalletSynchronizer::WalletSynchronizer(
     const uint64_t startHeight,
     const uint64_t startTimestamp,
     const Crypto::SecretKey privateViewKey,
-    const std::shared_ptr<EventHandler> eventHandler) :
+    const std::shared_ptr<EventHandler> eventHandler,
+    unsigned int threadCount) :
 
     m_daemon(daemon),
     m_shouldStop(false),
@@ -52,6 +64,12 @@ WalletSynchronizer::WalletSynchronizer(
     m_eventHandler(eventHandler),
     m_blockDownloader(daemon, nullptr, startHeight, startTimestamp)
 {
+    if (threadCount == 0)
+    {
+        threadCount = 1;
+    }
+
+    m_threadCount = threadCount;
 }
 
 /* Move constructor */
@@ -80,6 +98,14 @@ WalletSynchronizer & WalletSynchronizer::operator=(WalletSynchronizer && old)
 
     m_blockDownloader = std::move(old.m_blockDownloader);
 
+    m_subWallets = std::move(old.m_subWallets);
+
+    m_blockProcessingQueue = std::move(old.m_blockProcessingQueue);
+
+    m_processedBlocks = std::move(old.m_processedBlocks);
+
+    m_threadCount = std::move(old.m_threadCount);
+
     return *this;
 }
 
@@ -101,14 +127,49 @@ void WalletSynchronizer::mainLoop()
     {
         const auto blocks = m_blockDownloader.fetchBlocks(Constants::BLOCK_PROCESSING_CHUNK);
 
-        for (const auto &block : blocks)
+        if (!blocks.empty())
         {
-            if (m_shouldStop)
+            m_blockProcessingQueue.push_back_n(blocks.begin(), blocks.end());
+
+            /* Tell the child threads to wake up */
+            m_haveBlocksToProcess.notify_all();
+
+            const size_t chunkSize = blocks.size();
+
             {
-                return;
+                /* *possibly* should use another mutex here for the different
+                    condition variable? I think it's fine since we're only
+                    stopping the child threads from aquiring the mutex for
+                    a very short time (since the check will fail when not all
+                    blocks are available) */
+                std::unique_lock<std::mutex> lock(m_mutex);
+
+                m_haveProcessedBlocksToHandle.wait(lock, [&]
+                {
+                    if (m_shouldStop)
+                    {
+                        return true;
+                    }
+                    
+                    /* Wait until all the blocks have been added to the queue */
+                    return m_processedBlocks.size() == chunkSize;
+                });
+
+                if (m_shouldStop)
+                {
+                    return;
+                }
             }
 
-            processBlock(block);
+            /* Nothing else should be pushing to the queue here, since the
+               child threads are waiting for a new chunk, so don't need to
+               use mutex to access */
+            while (!m_processedBlocks.empty_unsafe() && !m_shouldStop)
+            {
+                const auto [block, ourInputs, arrivalIndex] = m_processedBlocks.top_unsafe();
+                completeBlockProcessing(block, ourInputs);
+                m_processedBlocks.pop_unsafe();
+            }
         }
 
         /* If we're synced, check any transactions that may be in the pool */
@@ -124,8 +185,125 @@ void WalletSynchronizer::mainLoop()
                 lastCheckedLockedTransactions = now;
             }
 
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            Utilities::sleepUnlessStopping(std::chrono::seconds(5), m_shouldStop);
         }
+    }
+}
+
+void WalletSynchronizer::blockProcessingThread()
+{
+    /* Take the max chunk size, split by the threads, divided by 2. So in
+       theory, each thread processes 2 chunks. This is to decrease locking,
+       while also trying to stop slower threads from delaying the system. */
+    size_t chunkSize = Constants::BLOCK_PROCESSING_CHUNK / m_threadCount / 2;
+
+    if (chunkSize == 0)
+    {
+        chunkSize = 1;
+    }
+
+    /* No point splitting into chunks if we're only using 1 thread */
+    if (m_threadCount == 1)
+    {
+        chunkSize = Constants::BLOCK_PROCESSING_CHUNK;
+    }
+
+    std::vector<SemiProcessedBlock> processedBlocks;
+
+    while (!m_shouldStop)
+    {
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+
+            /* Wait for blocks to be available */
+            m_haveBlocksToProcess.wait(lock, [&]
+            {
+                if (m_shouldStop)
+                {
+                    return true;
+                }
+
+                return m_blockProcessingQueue.size() > 0;
+            });
+
+            if (m_shouldStop)
+            {
+                return;
+            }
+        }
+
+        auto chunk = m_blockProcessingQueue.front_n_and_remove(chunkSize);
+
+        /* Process blocks while we've got more to process */
+        while (!chunk.empty() && !m_shouldStop)
+        {
+            for (const auto &[block, arrivalIndex] : chunk)
+            {
+                Logger::logger.log(
+                    "Processing block " + std::to_string(block.blockHeight),
+                    Logger::DEBUG,
+                    {Logger::SYNC}
+                );
+
+                auto ourInputs = processBlockOutputs(block);
+
+                std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
+
+                for (auto &[publicKey, input] : ourInputs)
+                {
+                    if (!m_subWallets->isViewWallet() && !input.globalOutputIndex)
+                    {
+                        if (globalIndexes.empty())
+                        {
+                            globalIndexes = getGlobalIndexes(block.blockHeight);
+                        }
+
+                        const auto it = globalIndexes.find(input.parentTransactionHash);
+
+                        /* Daemon returns indexes for hashes in a range. If we don't
+                           find our hash, either the chain has forked, or the daemon
+                           is faulty. Print a warning message, then return so we
+                           can fetch new blocks, in the likely case the daemon has
+                           forked.
+
+                           Also need to check there are enough indexes for the one we want */
+                        if (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
+                        {
+                            Logger::logger.log(
+                                "Warning: Failed to get correct global indexes from daemon."
+                                "\nIf you see this error message repeatedly, the daemon "
+                                "may be faulty. More likely, the chain just forked.",
+                                Logger::WARNING,
+                                {Logger::SYNC, Logger::DAEMON}
+                            );
+
+                            return;
+                        }
+
+                        input.globalOutputIndex = it->second[input.transactionIndex];
+                    }
+                }
+
+                processedBlocks.push_back({ block, ourInputs, arrivalIndex });
+            }
+
+            chunk = m_blockProcessingQueue.front_n_and_remove(chunkSize);
+        }
+
+        /* Push our processed blocks */
+        if (!processedBlocks.empty())
+        {
+            /* Store this chunks worth of blocks */
+            m_processedBlocks.push_n(processedBlocks.begin(), processedBlocks.end());
+
+            /* Notify the parent thread we've pushed data to the queue */
+            m_haveProcessedBlocksToHandle.notify_all();
+
+            /* Empty the processed blocks */
+            processedBlocks.clear();
+        }
+
+        /* Then go back to waiting for more data */
     }
 }
 
@@ -134,10 +312,10 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
 {
     std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> inputs;
 
-    if (WalletConfig::processCoinbaseTransactions)
+    if (!Config::config.wallet.skipCoinbaseTransactions && block.coinbaseTransaction)
     {
         const auto newInputs = processTransactionOutputs(
-            block.coinbaseTransaction, block.blockHeight
+            *(block.coinbaseTransaction), block.blockHeight
         );
 
         inputs.insert(inputs.end(), newInputs.begin(), newInputs.end());
@@ -153,19 +331,17 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
     return inputs;
 }
 
-void WalletSynchronizer::processBlock(const WalletTypes::WalletBlockInfo &block)
+void WalletSynchronizer::completeBlockProcessing(
+    const WalletTypes::WalletBlockInfo &block,
+    const std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> &ourInputs)
 {
-    Logger::logger.log(
-        "Processing block " + std::to_string(block.blockHeight),
-        Logger::DEBUG,
-        {Logger::SYNC}
-    );
+    const uint64_t walletHeight = m_blockDownloader.getHeight();
 
     /* Chain forked, invalidate previous transactions */
-    if (m_blockDownloader.getHeight() >= block.blockHeight)
+    if (walletHeight >= block.blockHeight && block.blockHeight != 0)
     {
         Logger::logger.log(
-            "Blockchain forked, resolving...",
+            "Blockchain forked, resolving... (Old height: " + std::to_string(walletHeight) + ", new height: " + std::to_string(block.blockHeight) + ")",
             Logger::INFO,
             {Logger::SYNC}
         );
@@ -178,45 +354,6 @@ void WalletSynchronizer::processBlock(const WalletTypes::WalletBlockInfo &block)
      && block.blockHeight > Constants::PRUNE_SPENT_INPUTS_INTERVAL)
     {
         m_subWallets->pruneSpentInputs(block.blockHeight - Constants::PRUNE_SPENT_INPUTS_INTERVAL);
-    }
-
-    auto ourInputs = processBlockOutputs(block);
-
-    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
-
-    for (auto &[publicKey, input] : ourInputs)
-    {
-        if (!m_subWallets->isViewWallet() && !input.globalOutputIndex)
-        {
-            if (globalIndexes.empty())
-            {
-                globalIndexes = getGlobalIndexes(block.blockHeight);
-            }
-
-            const auto it = globalIndexes.find(input.parentTransactionHash);
-
-            /* Daemon returns indexes for hashes in a range. If we don't
-               find our hash, either the chain has forked, or the daemon
-               is faulty. Print a warning message, then return so we
-               can fetch new blocks, in the likely case the daemon has
-               forked.
-
-               Also need to check there are enough indexes for the one we want */
-            if (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
-            {
-                Logger::logger.log(
-                    "Warning: Failed to get correct global indexes from daemon."
-                    "\nIf you see this error message repeatedly, the daemon "
-                    "may be faulty. More likely, the chain just forked.",
-                    Logger::WARNING,
-                    {Logger::SYNC, Logger::DAEMON}
-                );
-
-                return;
-            }
-
-            input.globalOutputIndex = it->second[input.transactionIndex];
-        }
     }
 
     BlockScanTmpInfo blockScanInfo = processBlockTransactions(block, ourInputs);
@@ -280,7 +417,7 @@ void WalletSynchronizer::processBlock(const WalletTypes::WalletBlockInfo &block)
     }
 
     Logger::logger.log(
-        "Finshed processing block " + std::to_string(block.blockHeight),
+        "Finished processing block " + std::to_string(block.blockHeight),
         Logger::DEBUG,
         {Logger::SYNC}
     );
@@ -292,7 +429,7 @@ BlockScanTmpInfo WalletSynchronizer::processBlockTransactions(
 {
     BlockScanTmpInfo txData;
 
-    if (WalletConfig::processCoinbaseTransactions)
+    if (!Config::config.wallet.skipCoinbaseTransactions)
     {
         const auto tx = processCoinbaseTransaction(block, inputs);
 
@@ -329,7 +466,7 @@ std::optional<WalletTypes::Transaction> WalletSynchronizer::processCoinbaseTrans
     const WalletTypes::WalletBlockInfo &block,
     const std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> &inputs) const
 {
-    const auto tx = block.coinbaseTransaction;
+    const auto tx = *(block.coinbaseTransaction);
 
     std::unordered_map<Crypto::PublicKey, int64_t> transfers;
 
@@ -572,8 +709,17 @@ void WalletSynchronizer::start()
     }
 
     m_blockDownloader.start();
+    m_blockProcessingQueue.start();
+    m_processedBlocks.start();
 
     m_syncThread = std::thread(&WalletSynchronizer::mainLoop, this);
+
+    m_syncThreads.clear();
+
+    for (unsigned int i = 0; i < m_threadCount; i++)
+    {
+        m_syncThreads.push_back(std::thread(&WalletSynchronizer::blockProcessingThread, this));
+    }
 }
 
 void WalletSynchronizer::stop()
@@ -589,11 +735,28 @@ void WalletSynchronizer::stop()
 
     /* Tell the block downloader to stop and wait for it */
     m_blockDownloader.stop();
+    m_blockProcessingQueue.stop();
+    m_processedBlocks.stop();
+
+    m_haveBlocksToProcess.notify_all();
+    m_haveProcessedBlocksToHandle.notify_all();
+
+    m_blockProcessingQueue.clear();
+    m_processedBlocks.clear();
 
     /* Wait for the block downloader thread to finish (if applicable) */
     if (m_syncThread.joinable())
     {
         m_syncThread.join();
+    }
+
+    /* Wait for each child thread to finish */
+    for (auto &thread : m_syncThreads)
+    {
+        if (thread.joinable())
+        {
+            thread.join();
+        }
     }
 }
 
@@ -619,11 +782,19 @@ void WalletSynchronizer::removeForkedTransactions(const uint64_t forkHeight)
 
 void WalletSynchronizer::initializeAfterLoad(
     const std::shared_ptr<Nigel> daemon,
-    const std::shared_ptr<EventHandler> eventHandler)
+    const std::shared_ptr<EventHandler> eventHandler,
+    unsigned int threadCount)
 {
     m_daemon = daemon;
     m_eventHandler = eventHandler;
     m_blockDownloader.initializeAfterLoad(m_daemon);
+
+    if (threadCount == 0)
+    {
+        threadCount = 1;
+    }
+
+    m_threadCount = threadCount;
 }
 
 uint64_t WalletSynchronizer::getCurrentScanHeight() const

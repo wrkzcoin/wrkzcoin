@@ -810,30 +810,48 @@ struct COMMAND_RPC_QUERY_BLOCKS_DETAILED {
 };
 
 struct COMMAND_RPC_GET_WALLET_SYNC_DATA {
-  struct request {
-    std::vector<Crypto::Hash> blockIds;
+    struct request
+    {
+        std::vector<Crypto::Hash> blockIds;
 
-    uint64_t startHeight;
-    uint64_t startTimestamp;
-    uint64_t blockCount;
+        uint64_t startHeight;
+        uint64_t startTimestamp;
+        uint64_t blockCount;
 
-    void serialize(ISerializer &s) {
-      s(blockIds, "blockHashCheckpoints");
-      KV_MEMBER(startHeight);
-      KV_MEMBER(startTimestamp);
-      KV_MEMBER(blockCount);
-    }
-  };
+        bool skipCoinbaseTransactions;
 
-  struct response {
-    std::string status;
-    std::vector<WalletTypes::WalletBlockInfo> items;
+        void serialize(ISerializer &s)
+        {
+            s(blockIds, "blockHashCheckpoints");
 
-    void serialize(ISerializer &s) {
-      KV_MEMBER(status)
-      KV_MEMBER(items);
-    }
-  };
+            KV_MEMBER(startHeight);
+            KV_MEMBER(startTimestamp);
+            KV_MEMBER(blockCount);
+            KV_MEMBER(skipCoinbaseTransactions);
+        }
+    };
+
+    struct response
+    {
+        std::string status;
+        std::vector<WalletTypes::WalletBlockInfo> items;
+        bool synced;
+
+        /* If synced, these are present */
+        std::optional<WalletTypes::TopBlock> topBlock;
+
+        void serialize(ISerializer &s)
+        {
+            KV_MEMBER(status)
+            KV_MEMBER(items);
+            KV_MEMBER(synced);
+
+            if (topBlock)
+            {
+                s(*topBlock, "topBlock");
+            }
+        }
+    };
 };
 
 struct COMMAND_RPC_GET_TRANSACTIONS_STATUS

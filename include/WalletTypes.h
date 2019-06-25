@@ -80,8 +80,9 @@ namespace WalletTypes
     /* A 'block' with the very basics needed to sync the transactions */
     struct WalletBlockInfo
     {
-        /* The coinbase transaction */
-        RawCoinbaseTransaction coinbaseTransaction;
+        /* The coinbase transaction. Optional, since we can skip fetching
+           coinbase transactions from daemon. */
+        std::optional<RawCoinbaseTransaction> coinbaseTransaction;
 
         /* The transactions in the block */
         std::vector<RawTransaction> transactions;
@@ -106,7 +107,9 @@ namespace WalletTypes
                 return acc + item.memoryUsage();
             });
             
-            return coinbaseTransaction.memoryUsage() +
+            return coinbaseTransaction 
+                        ? coinbaseTransaction->memoryUsage() 
+                        : sizeof(coinbaseTransaction) +
                    txUsage +
                    sizeof(blockHeight) +
                    sizeof(blockHash) +
@@ -494,20 +497,48 @@ namespace WalletTypes
         }
     };
 
+    struct TopBlock
+    {
+        Crypto::Hash hash;
+        uint64_t height;
+    };
+
+    inline void to_json(nlohmann::json &j, const TopBlock &t)
+    {
+        j = {
+            {"hash", t.hash},
+            {"height", t.height}
+        };
+    }
+
+    inline void from_json(const nlohmann::json &j, TopBlock &t)
+    {
+        t.hash = j.at("hash").get<Crypto::Hash>();
+        t.height = j.at("height").get<uint64_t>();
+    }
+
     inline void to_json(nlohmann::json &j, const WalletBlockInfo &w)
     {
         j = {
-            {"coinbaseTX", w.coinbaseTransaction},
             {"transactions", w.transactions},
             {"blockHeight", w.blockHeight},
             {"blockHash", w.blockHash},
             {"blockTimestamp", w.blockTimestamp}
         };
+
+        if (w.coinbaseTransaction)
+        {
+            j["coinbaseTX"] = *(w.coinbaseTransaction);
+        }
     }
 
     inline void from_json(const nlohmann::json &j, WalletBlockInfo &w)
     {
-        w.coinbaseTransaction = j.at("coinbaseTX").get<RawCoinbaseTransaction>();
+        if (j.find("coinbaseTX") != j.end())
+        {
+            w.coinbaseTransaction = j.at("coinbaseTX").get<RawCoinbaseTransaction>();
+        }
+
         w.transactions = j.at("transactions").get<std::vector<RawTransaction>>();
         w.blockHeight = j.at("blockHeight").get<uint64_t>();
         w.blockHash = j.at("blockHash").get<Crypto::Hash>();

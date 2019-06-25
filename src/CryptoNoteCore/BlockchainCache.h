@@ -194,6 +194,10 @@ public:
     const uint64_t startHeight,
     const uint64_t endHeight) const override;
 
+  virtual std::vector<RawBlock> getNonEmptyBlocks(
+    const uint64_t startHeight,
+    const size_t blockCount) const override;
+
 private:
 
   struct BlockIndexTag {};

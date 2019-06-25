@@ -107,10 +107,16 @@ void Nigel::resetRequestedBlockCount()
     m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
 }
 
-std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSyncData(
+std::tuple<
+    bool,
+    std::vector<WalletTypes::WalletBlockInfo>,
+    std::optional<WalletTypes::TopBlock>
+> Nigel::getWalletSyncData(
+
     const std::vector<Crypto::Hash> blockHashCheckpoints,
-    uint64_t startHeight,
-    uint64_t startTimestamp) const
+    const uint64_t startHeight,
+    const uint64_t startTimestamp,
+    const bool skipCoinbaseTransactions) const
 {
     Logger::logger.log(
         "Fetching blocks from the daemon",
@@ -122,7 +128,8 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSync
         {"blockHashCheckpoints", blockHashCheckpoints},
         {"startHeight", startHeight},
         {"startTimestamp", startTimestamp},
-        {"blockCount", m_blockCount.load()}
+        {"blockCount", m_blockCount.load()},
+        {"skipCoinbaseTransactions", skipCoinbaseTransactions}
     };
 
     auto res = m_nodeClient->Post(
@@ -137,12 +144,23 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSync
 
             if (j.at("status").get<std::string>() != "OK")
             {
-                return {false, {}};
+                return {false, {}, std::nullopt};
             }
 
             const auto items = j.at("items").get<std::vector<WalletTypes::WalletBlockInfo>>();
 
-            return {true, items};
+            if (j.find("synced") != j.end() 
+             && j.find("topBlock") != j.end()
+             && j.at("synced").get<bool>())
+            {
+                return {
+                    true,
+                    items,
+                    j.at("topBlock").get<WalletTypes::TopBlock>()
+                };
+            }
+
+            return {true, items, std::nullopt};
         }
         catch (const json::exception &e)
         {
@@ -154,7 +172,7 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>> Nigel::getWalletSync
         }
     }
 
-    return {false, {}};
+    return {false, {}, std::nullopt};
 }
 
 void Nigel::stop()

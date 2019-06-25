@@ -120,14 +120,9 @@ class SubWallets
             const bool takeFromAll,
             const uint64_t currentHeight) const;
 
-        /* Removes a spent key image from the store */
-        void removeSpentKeyImage(
-            const Crypto::KeyImage keyImage,
-            const Crypto::PublicKey publicKey);
-
         /* Remove any transactions at this height or above, they were on a 
            forked chain */
-        void removeForkedTransactions(uint64_t forkHeight);
+        void removeForkedTransactions(const uint64_t forkHeight);
 
         Crypto::SecretKey getPrivateViewKey() const;
 

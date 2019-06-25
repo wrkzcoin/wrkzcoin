@@ -170,7 +170,7 @@ if(NOT MSVC)
   if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
     set(WARNINGS "${WARNINGS} -Wno-error=odr")
   endif()
-  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
+  set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes")
   set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
 
   if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64")

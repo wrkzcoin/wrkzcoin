@@ -14,7 +14,7 @@
 #include <zedwallet++/Commands.h>
 #include <zedwallet++/GetInput.h>
 
-std::tuple<bool, bool, std::shared_ptr<WalletBackend>> selectionScreen(const Config &config)
+std::tuple<bool, bool, std::shared_ptr<WalletBackend>> selectionScreen(const ZedConfig &config)
 {
     while (true)
     {
@@ -163,7 +163,7 @@ bool checkNodeStatus(const std::shared_ptr<WalletBackend> walletBackend)
     return true;
 }
 
-std::string getAction(const Config &config)
+std::string getAction(const ZedConfig &config)
 {
     if (config.walletGiven || config.passGiven)
     {

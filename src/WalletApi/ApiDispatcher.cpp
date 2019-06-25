@@ -36,12 +36,20 @@ ApiDispatcher::ApiDispatcher(
     const uint16_t bindPort,
     const std::string rpcBindIp,
     const std::string rpcPassword,
-    const std::string corsHeader) :
+    const std::string corsHeader,
+    unsigned int walletSyncThreads) :
     m_port(bindPort),
     m_host(rpcBindIp),
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
+    if (walletSyncThreads == 0)
+    {
+        walletSyncThreads = 1;
+    }
+
+    m_walletSyncThreads = walletSyncThreads;
+
     /* Generate the salt used for pbkdf2 api authentication */
     Random::randomBytes(16, m_salt);
 
@@ -378,7 +386,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::openWallet(
     Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::openWallet(
-        filename, password, daemonHost, daemonPort, daemonSSL
+        filename, password, daemonHost, daemonPort, daemonSSL, m_walletSyncThreads
     );
 
     return {error, 200};
@@ -407,7 +415,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::keyImportWallet(
 
     std::tie(error, m_walletBackend) = WalletBackend::importWalletFromKeys(
         privateSpendKey, privateViewKey, filename, password, scanHeight,
-        daemonHost, daemonPort, daemonSSL
+        daemonHost, daemonPort, daemonSSL, m_walletSyncThreads
     );
 
     return {error, 200};
@@ -434,7 +442,8 @@ std::tuple<Error, uint16_t> ApiDispatcher::seedImportWallet(
     Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::importWalletFromSeed(
-        mnemonicSeed, filename, password, scanHeight, daemonHost, daemonPort, daemonSSL
+        mnemonicSeed, filename, password, scanHeight, daemonHost, daemonPort,
+        daemonSSL, m_walletSyncThreads
     );
 
     return {error, 200};
@@ -463,7 +472,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::importViewWallet(
 
     std::tie(error, m_walletBackend) = WalletBackend::importViewWallet(
         privateViewKey, address, filename, password, scanHeight,
-        daemonHost, daemonPort, daemonSSL
+        daemonHost, daemonPort, daemonSSL, m_walletSyncThreads
     );
 
     return {error, 200};
@@ -481,7 +490,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::createWallet(
     Error error;
 
     std::tie(error, m_walletBackend) = WalletBackend::createWallet(
-        filename, password, daemonHost, daemonPort, daemonSSL
+        filename, password, daemonHost, daemonPort, daemonSSL, m_walletSyncThreads
     );
 
     return {error, 200};

@@ -584,7 +584,9 @@ bool Core::getWalletSyncData(
     const uint64_t startHeight,
     const uint64_t startTimestamp,
     const uint64_t blockCount,
-    std::vector<WalletTypes::WalletBlockInfo> &walletBlocks) const
+    const bool skipCoinbaseTransactions,
+    std::vector<WalletTypes::WalletBlockInfo> &walletBlocks,
+    std::optional<WalletTypes::TopBlock> &topBlockInfo) const
 {
     throwIfNotInitialized();
 
@@ -594,6 +596,7 @@ bool Core::getWalletSyncData(
 
         /* Current height */
         uint64_t currentIndex = mainChain->getTopBlockIndex();
+        Crypto::Hash currentHash = mainChain->getTopBlockHash();
 
         uint64_t actualBlockCount = std::min(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, blockCount);
 
@@ -616,6 +619,7 @@ bool Core::getWalletSyncData(
            synced. */
         if (startTimestamp != 0 && !success)
         {
+            topBlockInfo = WalletTypes::TopBlock({ currentHash, currentIndex });
             return true;
         }
 
@@ -664,10 +668,20 @@ bool Core::getWalletSyncData(
            current block. */
         if (currentIndex < startIndex)
         {
+            topBlockInfo = WalletTypes::TopBlock({ currentHash, currentIndex });
             return true;
         }
 
-        std::vector<RawBlock> rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
+        std::vector<RawBlock> rawBlocks;
+
+        if (skipCoinbaseTransactions)
+        {
+            rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+        }
+        else
+        {
+            rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
+        }
 
         for (const auto rawBlock : rawBlocks)
         {
@@ -677,13 +691,18 @@ bool Core::getWalletSyncData(
 
             WalletTypes::WalletBlockInfo walletBlock;
 
-            walletBlock.blockHeight = startIndex++;
-            walletBlock.blockHash = CachedBlock(block).getBlockHash();
+            CachedBlock cachedBlock(block);
+
+            walletBlock.blockHeight = cachedBlock.getBlockIndex();
+            walletBlock.blockHash = cachedBlock.getBlockHash();
             walletBlock.blockTimestamp = block.timestamp;
 
-            walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(
-                block.baseTransaction
-            );
+            if (!skipCoinbaseTransactions)
+            {
+                walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(
+                    block.baseTransaction
+                );
+            }
 
             for (const auto &transaction : rawBlock.transactions)
             {
@@ -693,6 +712,11 @@ bool Core::getWalletSyncData(
             }
 
             walletBlocks.push_back(walletBlock);
+        }
+
+        if (walletBlocks.empty())
+        {
+            topBlockInfo = WalletTypes::TopBlock({ currentHash, currentIndex });
         }
 
         return true;

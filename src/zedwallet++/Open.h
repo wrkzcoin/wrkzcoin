@@ -8,21 +8,21 @@
 
 #include <zedwallet++/ParseArguments.h>
 
-std::shared_ptr<WalletBackend> openWallet(const Config &config);
+std::shared_ptr<WalletBackend> openWallet(const ZedConfig &config);
 
-std::shared_ptr<WalletBackend> importViewWallet(const Config &config);
+std::shared_ptr<WalletBackend> importViewWallet(const ZedConfig &config);
 
-std::shared_ptr<WalletBackend> importWalletFromKeys(const Config &config);
+std::shared_ptr<WalletBackend> importWalletFromKeys(const ZedConfig &config);
 
-std::shared_ptr<WalletBackend> importWalletFromSeed(const Config &config);
+std::shared_ptr<WalletBackend> importWalletFromSeed(const ZedConfig &config);
 
-std::shared_ptr<WalletBackend> createWallet(const Config &config);
+std::shared_ptr<WalletBackend> createWallet(const ZedConfig &config);
 
 Crypto::SecretKey getPrivateKey(const std::string outputMsg);
 
 std::string getNewWalletFileName();
 
-std::string getExistingWalletFileName(const Config &config);
+std::string getExistingWalletFileName(const ZedConfig &config);
 
 std::string getWalletPassword(const bool verifyPwd, const std::string msg);
 

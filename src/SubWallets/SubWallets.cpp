@@ -726,7 +726,7 @@ void SubWallets::markInputAsLocked(
 }
 
 /* Remove transactions and key images that occured on a forked chain */
-void SubWallets::removeForkedTransactions(uint64_t forkHeight)
+void SubWallets::removeForkedTransactions(const uint64_t forkHeight)
 {
     std::scoped_lock lock(m_mutex);
 
@@ -742,10 +742,18 @@ void SubWallets::removeForkedTransactions(uint64_t forkHeight)
         m_transactions.erase(it, m_transactions.end());
     }
 
+    std::vector<Crypto::KeyImage> keyImagesToRemove;
+
     /* Loop through each subwallet */
     for (auto & [publicKey, subWallet] : m_subWallets)
     {
-        subWallet.removeForkedInputs(forkHeight);
+        const auto toRemove = subWallet.removeForkedInputs(forkHeight, m_isViewWallet);
+        keyImagesToRemove.insert(keyImagesToRemove.end(), toRemove.begin(), toRemove.end());
+    }
+
+    for (const auto keyImage : keyImagesToRemove)
+    {
+        m_keyImageOwners.erase(keyImage);
     }
 }
 

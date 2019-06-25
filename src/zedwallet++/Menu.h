@@ -11,11 +11,11 @@
 #include <Utilities/ColouredMsg.h>
 #include <zedwallet++/ParseArguments.h>
 
-std::tuple<bool, bool, std::shared_ptr<WalletBackend>> selectionScreen(const Config &config);
+std::tuple<bool, bool, std::shared_ptr<WalletBackend>> selectionScreen(const ZedConfig &config);
 
 bool checkNodeStatus(const std::shared_ptr<WalletBackend> walletBackend);
 
-std::string getAction(const Config &config);
+std::string getAction(const ZedConfig &config);
 
 void mainLoop(
     const std::shared_ptr<WalletBackend> walletBackend,
