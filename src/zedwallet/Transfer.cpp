@@ -106,7 +106,7 @@ bool confirmTransaction(CryptoNote::TransactionParameters t,
               << "," << std::endl
               << "and a node fee of " << SuccessMsg(formatAmount(nodeFee));
 
-    const std::string paymentID = Utilities::getPaymentIDFromExtra(Common::fromHex(t.extra));
+    const std::string paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(t.extra));
 
     /* Lets not split the integrated address out into its address and
        payment ID combo. It'll confused users. */
