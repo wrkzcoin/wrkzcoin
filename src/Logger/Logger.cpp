@@ -6,6 +6,8 @@
 #include <Logger/Logger.h>
 //////////////////////////
 
+#include <algorithm>
+
 #include <ctime>
 
 #include <iomanip>
