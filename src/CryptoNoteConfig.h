@@ -260,7 +260,7 @@ const static   boost::uuids::uuid CRYPTONOTE_NETWORK         =
 
 const char* const SEED_NODES[] = {
        "139.99.46.111:17855",        // node-sg1.wrkz.work
-       "163.172.133.69:17855",       // node-pr1.wrkz.work
+       "95.216.164.177:17855",       // myexplorer.wrkz.work
        "51.15.131.220:17855",        // node-pr2.wrkz.work
        "142.44.243.123:17855",       // node-us1.wrkz.work
        "5.172.219.174:17855"         // wrkz.stx.nl sniperviperman
