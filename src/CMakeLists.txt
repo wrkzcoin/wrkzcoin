@@ -12,6 +12,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/sqlite3)
 include_directories(${CMAKE_SOURCE_DIR}/external/lz4)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
+include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
@@ -131,9 +132,9 @@ elseif (UNIX)
 endif()
 
 if(MSVC)
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb lz4 sqlite3 Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb lz4 zstd sqlite3 Errors ${Boost_LIBRARIES})
 else()
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib lz4 sqlite3 Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib lz4 zstd sqlite3 Errors ${Boost_LIBRARIES})
 endif()
 
 # Add the dependencies we need
