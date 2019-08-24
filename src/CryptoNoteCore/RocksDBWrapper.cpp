@@ -52,6 +52,12 @@ void RocksDBWrapper::init(const DataBaseConfig& config) {
   rocksdb::DB* dbPtr;
 
   rocksdb::Options dbOptions = getDBOptions(config);
+  if (config.getCompressionEnabled()) {
+      dbOptions.compression_opts.strategy = 9; // level 9
+      dbOptions.compression_opts.max_dict_bytes = 1 << 16;        // 64KB
+      dbOptions.compression_opts.zstd_max_train_bytes = 1 << 20;  // 1024KB
+      dbOptions.compression_opts.enabled = true;
+  }
   rocksdb::Status status = rocksdb::DB::Open(dbOptions, dataDir, &dbPtr);
   if (status.ok()) {
     logger(INFO) << "DB opened in " << dataDir;
