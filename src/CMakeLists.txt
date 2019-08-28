@@ -133,9 +133,9 @@ elseif (UNIX)
 endif ()
 
 if (MSVC)
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb lz4 sqlite3 Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb lz4 zstd sqlite3 Errors ${Boost_LIBRARIES})
 else ()
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib lz4 sqlite3 Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib lz4 zstd sqlite3 Errors ${Boost_LIBRARIES})
 endif ()
 
 # Add the dependencies we need
