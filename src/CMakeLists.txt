@@ -12,6 +12,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/sqlite3)
 include_directories(${CMAKE_SOURCE_DIR}/external/lz4)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
+include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
