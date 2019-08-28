@@ -21,6 +21,7 @@ namespace CryptoNote
             const int backgroundThreads,
             const int maxOpenFiles,
             const int writeBufferSizeMB,
+            const int MaxByteLevelSizeMB, 
             const int readCacheSizeMB,
             const bool enableDbCompression);
 
@@ -33,6 +34,7 @@ namespace CryptoNote
         uint32_t getMaxOpenFiles() const;
 
         uint64_t getWriteBufferSize() const; // Bytes
+        uint64_t getMaxByteLevelSize() const; // Bytes
         uint64_t getReadCacheSize() const; // Bytes
         bool getCompressionEnabled() const;
 
@@ -46,6 +48,8 @@ namespace CryptoNote
         uint32_t maxOpenFiles;
 
         uint64_t writeBufferSize;
+
+        uint64_t MaxByteLevelSize;
 
         uint64_t readCacheSize;
 

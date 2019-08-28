@@ -249,6 +249,7 @@ int main(int argc, char *argv[])
             config.dbMaxOpenFiles,
             config.dbWriteBufferSizeMB,
             config.dbReadCacheSizeMB,
+            config.dbReadCacheSizeMB,
             config.enableDbCompression);
 
         /* If we were told to rewind the blockchain to a certain height

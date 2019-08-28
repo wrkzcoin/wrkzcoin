@@ -32,16 +32,20 @@ namespace CryptoNote
         dbOpts.max_open_files = -1;
         dbOpts.keep_log_file_num = 3;
         dbOpts.recycle_log_file_num = 2;
+        // For spinning disk
+        dbOpts.skip_stats_update_on_db_open = true;
+        dbOpts.compaction_readahead_size  = 2 * 1024 * 1024;
+        dbOpts.new_table_reader_for_compaction_inputs = true;
 
         /* setup column family options */
         rocksdb::ColumnFamilyOptions cfOpts;
         cfOpts.target_file_size_base = 32 * 1024 * 1024;
-        cfOpts.max_bytes_for_level_base = config.getWriteBufferSize();
+        cfOpts.max_bytes_for_level_base = config.getMaxByteLevelSize();
         cfOpts.target_file_size_multiplier = 2;
         cfOpts.level0_file_num_compaction_trigger = 20;
         cfOpts.level0_slowdown_writes_trigger = 30;
         cfOpts.level0_stop_writes_trigger = 40;
-        cfOpts.write_buffer_size = 256 * 1024 * 1024;
+        cfOpts.write_buffer_size = config.getWriteBufferSize();
         cfOpts.min_write_buffer_number_to_merge = 2;
         cfOpts.max_write_buffer_number = 6;
         cfOpts.num_levels = 10;

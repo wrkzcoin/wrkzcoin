@@ -34,6 +34,7 @@ bool DataBaseConfig::init(
     const int backgroundThreads,
     const int openFiles,
     const int writeBufferMB,
+    const int MaxByteLevelSizeMB, 
     const int readCacheMB,
     const bool enableDbCompression)
 {
@@ -75,6 +76,11 @@ uint32_t DataBaseConfig::getMaxOpenFiles() const
 uint64_t DataBaseConfig::getWriteBufferSize() const
 {
     return writeBufferSize;
+}
+
+uint64_t DataBaseConfig::getMaxByteLevelSize() const
+{
+    return MaxByteLevelSize;
 }
 
 uint64_t DataBaseConfig::getReadCacheSize() const

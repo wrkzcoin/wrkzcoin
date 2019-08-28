@@ -194,6 +194,10 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     dbOptions.IncreaseParallelism(config.getBackgroundThreadsCount());
     dbOptions.info_log_level = rocksdb::InfoLogLevel::WARN_LEVEL;
     dbOptions.max_open_files = config.getMaxOpenFiles();
+    // For spinning disk
+    dbOptions.skip_stats_update_on_db_open = true;
+    dbOptions.compaction_readahead_size  = 2 * 1024 * 1024;
+    dbOptions.new_table_reader_for_compaction_inputs = true;
 
     rocksdb::ColumnFamilyOptions fOptions;
     fOptions.write_buffer_size = static_cast<size_t>(config.getWriteBufferSize());
@@ -210,10 +214,10 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     fOptions.level0_slowdown_writes_trigger = 30;
     fOptions.level0_stop_writes_trigger = 40;
 
-    // doesn't really matter much, but we don't want to create too many files
-    fOptions.target_file_size_base = config.getWriteBufferSize() / 10;
     // make Level1 size equal to Level0 size, so that L0->L1 compactions are fast
-    fOptions.max_bytes_for_level_base = config.getWriteBufferSize();
+    fOptions.max_bytes_for_level_base = config.getMaxByteLevelSize();
+    // doesn't really matter much, but we don't want to create too many files
+    fOptions.target_file_size_base = config.getMaxByteLevelSize() / 10;
     fOptions.num_levels = 10;
     fOptions.target_file_size_multiplier = 2;
     // level style compaction
