@@ -1,13 +1,11 @@
-// Copyright (c) 2018, The TurtleCoin Developers
-// 
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
 #include <functional>
-
 #include <string>
-
 #include <vector>
 
 namespace Logger
@@ -20,7 +18,6 @@ namespace Logger
         FATAL = 1,
         DISABLED = 0,
     };
-
     enum LogCategory
     {
         SYNC,
@@ -30,36 +27,39 @@ namespace Logger
         DAEMON,
     };
 
+    std::string logLevelToString(const LogLevel level);
+
+    LogLevel stringToLogLevel(std::string level);
+
+    std::string logCategoryToString(const LogCategory category);
+
     class Logger
     {
-        public:
-            Logger() {};
+      public:
+        Logger() {};
 
-            void log(
-                const std::string message,
-                const LogLevel level,
-                const std::vector<LogCategory> categories) const;
+        void log(const std::string message, const LogLevel level, const std::vector<LogCategory> categories) const;
 
-            void setLogLevel(const LogLevel level);
+        void setLogLevel(const LogLevel level);
 
-            void setLogCallback(
-                std::function<void(
-                    const std::string prettyMessage,
-                    const std::string message,
-                    const LogLevel level,
-                    const std::vector<LogCategory> categories)> callback);
+        void setLogCallback(std::function<void(
+                                const std::string prettyMessage,
+                                const std::string message,
+                                const LogLevel level,
+                                const std::vector<LogCategory> categories)> callback);
 
-        private:
-            /* Logging disabled by default */
-            LogLevel m_logLevel = DISABLED;
+      private:
+        /* Logging disabled by default */
+        LogLevel m_logLevel = DISABLED;
 
-            std::function<void(
-                const std::string prettyMessage,
-                const std::string message,
-                const LogLevel level,
-                const std::vector<LogCategory> categories)> m_callback;
+        std::function<void(
+            const std::string prettyMessage,
+            const std::string message,
+            const LogLevel level,
+            const std::vector<LogCategory> categories)>
+            m_callback;
     };
 
     /* Global logger instance */
     extern Logger logger;
-}
+} // namespace Logger

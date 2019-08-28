@@ -3,46 +3,37 @@
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////////
-#include <WalletBackend/WalletBackend.h>
+#include <walletbackend/WalletBackend.h>
 ////////////////////////////////////////
 
-#include <Common/Base58.h>
-#include <Common/FileSystemShim.h>
+#include "JsonHelper.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
-#include <CryptoNoteConfig.h>
-
+#include <common/Base58.h>
+#include <common/FileSystemShim.h>
+#include <config/CryptoNoteConfig.h>
 #include <crypto/crypto.h>
 #include <crypto/random.h>
-
+#include <cryptonotecore/Currency.h>
 #include <cryptopp/aes.h>
 #include <cryptopp/algparam.h>
 #include <cryptopp/filters.h>
 #include <cryptopp/modes.h>
-#include <cryptopp/sha.h>
 #include <cryptopp/pwdbased.h>
-
-#include <Errors/ValidateParameters.h>
-
+#include <cryptopp/sha.h>
+#include <errors/ValidateParameters.h>
 #include <fstream>
-
 #include <future>
-
 #include <iomanip>
-
-#include "JsonHelper.h"
-
-#include <Logger/Logger.h>
-
-#include <Mnemonics/Mnemonics.h>
-
-#include "rapidjson/writer.h"
-#include "rapidjson/stringbuffer.h"
-
-#include <Utilities/Addresses.h>
-#include <Utilities/Utilities.h>
-
-#include <WalletBackend/Constants.h>
-#include <WalletBackend/Transfer.h>
+#include <logger/Logger.h>
+#include <logging/LoggerManager.h>
+#include <mnemonics/Mnemonics.h>
+#include <noderpcproxy/NodeRpcProxy.h>
+#include <utilities/Addresses.h>
+#include <utilities/Utilities.h>
+#include <walletbackend/Constants.h>
+#include <walletbackend/Transfer.h>
 
 using namespace rapidjson;
 
@@ -51,54 +42,54 @@ using namespace rapidjson;
 //////////////////////////
 
 /* Anonymous namespace so it doesn't clash with anything else */
-namespace {
-
-/* Check data has the magic indicator from first : last, and remove it if
-   it does. Else, return an error depending on where we failed */
-template <class Buffer, class Identifier>
-Error hasMagicIdentifier(
-    Buffer &data,
-    const Identifier &identifier,
-    const Error tooSmallError,
-    const Error wrongIdentifierError)
+namespace
 {
-    /* Check we've got space for the identifier */
-    if (data.size() < identifier.size())
+    /* Check data has the magic indicator from first : last, and remove it if
+       it does. Else, return an error depending on where we failed */
+    template<class Buffer, class Identifier>
+    Error hasMagicIdentifier(
+        Buffer &data,
+        const Identifier &identifier,
+        const Error tooSmallError,
+        const Error wrongIdentifierError)
     {
-        return tooSmallError;
+        /* Check we've got space for the identifier */
+        if (data.size() < identifier.size())
+        {
+            return tooSmallError;
+        }
+
+        if (!std::equal(identifier.begin(), identifier.end(), data.begin()))
+        {
+            return wrongIdentifierError;
+        }
+
+        /* Remove the identifier from the string */
+        data.erase(data.begin(), data.begin() + identifier.size());
+
+        return SUCCESS;
     }
 
-    if (!std::equal(identifier.begin(), identifier.end(), data.begin()))
+    /* Check the wallet filename for the new wallet to be created is valid */
+    Error checkNewWalletFilename(std::string filename)
     {
-        return wrongIdentifierError;
+        /* Check the file doesn't exist */
+        if (std::ifstream(filename))
+        {
+            return WALLET_FILE_ALREADY_EXISTS;
+        }
+
+        /* Check we can open the file */
+        if (!std::ofstream(filename))
+        {
+            return INVALID_WALLET_FILENAME;
+        }
+
+        /* Don't leave random files around if we fail later down the road */
+        fs::remove(filename);
+
+        return SUCCESS;
     }
-
-    /* Remove the identifier from the string */
-    data.erase(data.begin(), data.begin() + identifier.size());
-
-    return SUCCESS;
-}
-
-/* Check the wallet filename for the new wallet to be created is valid */
-Error checkNewWalletFilename(std::string filename)
-{
-    /* Check the file doesn't exist */
-    if (std::ifstream(filename))
-    {
-        return WALLET_FILE_ALREADY_EXISTS;
-    }
-
-    /* Check we can open the file */
-    if (!std::ofstream(filename))
-    {
-        return INVALID_WALLET_FILENAME;
-    }
-
-    /* Don't leave random files around if we fail later down the road */
-    fs::remove(filename);
-
-    return SUCCESS;
-}
 
 } // namespace
 
@@ -138,7 +129,7 @@ WalletBackend::WalletBackend(
     const std::string daemonHost,
     const uint16_t daemonPort,
     const bool daemonSSL,
-    const unsigned int syncThreadCount) :
+    const unsigned int syncThreadCount):
 
     m_filename(filename),
     m_password(password),
@@ -146,15 +137,11 @@ WalletBackend::WalletBackend(
     m_syncThreadCount(syncThreadCount)
 {
     /* Generate the address from the two private keys */
-    std::string address = Utilities::privateKeysToAddress(
-        privateSpendKey, privateViewKey
-    );
+    std::string address = Utilities::privateKeysToAddress(privateSpendKey, privateViewKey);
 
     m_eventHandler = std::make_shared<EventHandler>();
 
-    m_subWallets = std::make_shared<SubWallets>(
-        privateSpendKey, privateViewKey, address, scanHeight, newWallet
-    );
+    m_subWallets = std::make_shared<SubWallets>(privateSpendKey, privateViewKey, address, scanHeight, newWallet);
 }
 
 /* View Wallet Constructor */
@@ -167,7 +154,7 @@ WalletBackend::WalletBackend(
     const std::string daemonHost,
     const uint16_t daemonPort,
     const bool daemonSSL,
-    const unsigned int syncThreadCount) :
+    const unsigned int syncThreadCount):
 
     m_filename(filename),
     m_password(password),
@@ -178,9 +165,7 @@ WalletBackend::WalletBackend(
 
     m_eventHandler = std::make_shared<EventHandler>();
 
-    m_subWallets = std::make_shared<SubWallets>(
-        privateViewKey, address, scanHeight, newWallet
-    );
+    m_subWallets = std::make_shared<SubWallets>(privateViewKey, address, scanHeight, newWallet);
 }
 
 //////////////////////
@@ -216,9 +201,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importWalletFro
     Crypto::SecretKey privateViewKey;
 
     /* Derive the private view key from the private spend key */
-    Crypto::crypto_ops::generateViewFromSpend(
-        privateSpendKey, privateViewKey
-    );
+    Crypto::crypto_ops::generateViewFromSpend(privateSpendKey, privateViewKey);
 
     if (Error error = validatePrivateKey(privateViewKey); error != SUCCESS)
     {
@@ -230,9 +213,16 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importWalletFro
     bool newWallet = false;
 
     const std::shared_ptr<WalletBackend> wallet(new WalletBackend(
-        filename, password, privateSpendKey, privateViewKey,
-        scanHeight, newWallet, daemonHost, daemonPort, daemonSSL, syncThreadCount
-    ));
+        filename,
+        password,
+        privateSpendKey,
+        privateViewKey,
+        scanHeight,
+        newWallet,
+        daemonHost,
+        daemonPort,
+        daemonSSL,
+        syncThreadCount));
 
     wallet->init();
 
@@ -276,9 +266,16 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importWalletFro
     bool newWallet = false;
 
     const std::shared_ptr<WalletBackend> wallet(new WalletBackend(
-        filename, password, privateSpendKey, privateViewKey, scanHeight,
-        newWallet, daemonHost, daemonPort, daemonSSL, syncThreadCount
-    ));
+        filename,
+        password,
+        privateSpendKey,
+        privateViewKey,
+        scanHeight,
+        newWallet,
+        daemonHost,
+        daemonPort,
+        daemonSSL,
+        syncThreadCount));
 
     wallet->init();
 
@@ -320,9 +317,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importViewWalle
     }
 
     const std::shared_ptr<WalletBackend> wallet(new WalletBackend(
-        filename, password, privateViewKey, address, scanHeight, daemonHost,
-        daemonPort, daemonSSL, syncThreadCount
-    ));
+        filename, password, privateViewKey, address, scanHeight, daemonHost, daemonPort, daemonSSL, syncThreadCount));
 
     wallet->init();
 
@@ -355,9 +350,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::createWallet(
     Crypto::generate_keys(spendKey.publicKey, spendKey.secretKey);
 
     /* Derive the view key from the spend key */
-    Crypto::crypto_ops::generateViewFromSpend(
-        spendKey.secretKey, privateViewKey, publicViewKey
-    );
+    Crypto::crypto_ops::generateViewFromSpend(spendKey.secretKey, privateViewKey, publicViewKey);
 
     /* Just defining here so it's more obvious what we're doing in the
        constructor */
@@ -365,9 +358,16 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::createWallet(
     uint64_t scanHeight = 0;
 
     const std::shared_ptr<WalletBackend> wallet(new WalletBackend(
-        filename, password, spendKey.secretKey, privateViewKey,
-        scanHeight, newWallet, daemonHost, daemonPort, daemonSSL, syncThreadCount
-    ));
+        filename,
+        password,
+        spendKey.secretKey,
+        privateViewKey,
+        scanHeight,
+        newWallet,
+        daemonHost,
+        daemonPort,
+        daemonSSL,
+        syncThreadCount));
 
     wallet->init();
 
@@ -375,6 +375,52 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::createWallet(
     Error error = wallet->save();
 
     return {error, wallet};
+}
+
+bool WalletBackend::tryUpgradeWalletFormat(
+    const std::string filename,
+    const std::string password,
+    const std::string daemonHost,
+    const uint16_t daemonPort)
+{
+    try
+    {
+        const auto logManager = std::make_shared<Logging::LoggerManager>();
+
+        /* Currency contains our coin parameters, such as decimal places, supply */
+        const CryptoNote::Currency currency = CryptoNote::CurrencyBuilder(logManager).currency();
+
+        System::Dispatcher localDispatcher;
+        System::Dispatcher *dispatcher = &localDispatcher;
+
+        /* Our connection to turtlecoind */
+        std::unique_ptr<CryptoNote::INode> node(new CryptoNote::NodeRpcProxy(daemonHost, daemonPort, 10, logManager));
+
+        CryptoNote::WalletGreen wallet(*dispatcher, currency, *node, logManager);
+
+        wallet.load(filename, password);
+
+        /* Cool, it worked. Upgrade to the new format. */
+        const std::string json = wallet.toNewFormatJSON();
+
+        /* Save old wallet to backup file */
+        wallet.exportWallet("old-version-backup-" + filename);
+
+        /* Save to disk with the new format. */
+        Error error = saveWalletJSONToDisk(json, filename, password);
+
+        if (error)
+        {
+            return false;
+        }
+
+        return true;
+    }
+    /* Not a WalletGreen format. */
+    catch (const std::system_error &)
+    {
+        return false;
+    }
 }
 
 /* Opens a wallet already on disk with the given filename + password */
@@ -396,19 +442,27 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     }
 
     /* Read file into a buffer */
-    std::vector<char> buffer((std::istreambuf_iterator<char>(file)),
-                             (std::istreambuf_iterator<char>()));
+    std::vector<char> buffer((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
 
     /* Check that the decrypted data has the 'isAWallet' identifier,
        and remove it it does. If it doesn't, return an error. */
-    Error error = hasMagicIdentifier(
-        buffer, Constants::IS_A_WALLET_IDENTIFIER,
-        NOT_A_WALLET_FILE, NOT_A_WALLET_FILE
-    );
+    Error error = hasMagicIdentifier(buffer, Constants::IS_A_WALLET_IDENTIFIER, NOT_A_WALLET_FILE, NOT_A_WALLET_FILE);
 
+    /* Not a WalletBackend wallet */
     if (error)
     {
-        return {error, nullptr};
+        /* See if it's a WalletGreen wallet, and upgrade if it is */
+        const bool isWalletGreenFile = tryUpgradeWalletFormat(filename, password, daemonHost, daemonPort);
+
+        if (isWalletGreenFile)
+        {
+            /* Then try and open again */
+            return openWallet(filename, password, daemonHost, daemonPort, daemonSSL, syncThreadCount);
+        }
+        else
+        {
+            return {error, nullptr};
+        }
     }
 
     using namespace CryptoPP;
@@ -436,9 +490,14 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
 
     /* Generate the AES Key using pbkdf2 */
     pbkdf2.DeriveKey(
-        key, sizeof(key), 0, (byte *)password.c_str(),
-        password.size(), salt, sizeof(salt), Constants::PBKDF2_ITERATIONS
-    );
+        key,
+        sizeof(key),
+        0,
+        (byte *)password.c_str(),
+        password.size(),
+        salt,
+        sizeof(salt),
+        Constants::PBKDF2_ITERATIONS);
 
     CBC_Mode<AES>::Decryption cbcDecryption;
 
@@ -451,9 +510,11 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     try
     {
         /* Decrypt, handling padding */
-        StringSource((byte *)buffer.data(), buffer.size(), true, new StreamTransformationFilter(
-            cbcDecryption, new StringSink(decryptedData))
-        );
+        StringSource(
+            (byte *)buffer.data(),
+            buffer.size(),
+            true,
+            new StreamTransformationFilter(cbcDecryption, new StringSink(decryptedData)));
     }
     /* do NOT report an alternate error for invalid padding. It allows them
        to do a padding oracle attack, I believe. Just report the wrong password
@@ -466,9 +527,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     /* Check that the decrypted data has the 'isCorrectPassword' identifier,
        and remove it it does. If it doesn't, return an error. */
     error = hasMagicIdentifier(
-        decryptedData, Constants::IS_CORRECT_PASSWORD_IDENTIFIER,
-        WALLET_FILE_CORRUPTED, WRONG_PASSWORD
-    );
+        decryptedData, Constants::IS_CORRECT_PASSWORD_IDENTIFIER, WALLET_FILE_CORRUPTED, WRONG_PASSWORD);
 
     if (error)
     {
@@ -498,23 +557,94 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
 
         /* Initialize it from the json (We could do this in less steps, but it
            requires a move/copy constructor) */
-        error = wallet->fromJSON(
-            walletJson, filename, password, daemonHost, daemonPort, daemonSSL,
-            syncThreadCount
-        );
+        error = wallet->fromJSON(walletJson, filename, password, daemonHost, daemonPort, daemonSSL, syncThreadCount);
 
         return {error, wallet};
     }
     catch (const std::invalid_argument &e)
     {
         Logger::logger.log(
-            std::string("Failed to open wallet file: ") + e.what(),
-            Logger::FATAL,
-            {Logger::FILESYSTEM, Logger::SAVE}
-        );
+            std::string("Failed to open wallet file: ") + e.what(), Logger::FATAL, {Logger::FILESYSTEM, Logger::SAVE});
 
         return {WALLET_FILE_CORRUPTED, nullptr};
     }
+}
+
+Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string filename, std::string password)
+{
+    /* Add an identifier to the start of the string so we can verify the wallet
+       has been correctly decrypted */
+    std::string identiferAsString(
+        Constants::IS_CORRECT_PASSWORD_IDENTIFIER.begin(), Constants::IS_CORRECT_PASSWORD_IDENTIFIER.end());
+
+    /* Add magic identifier, and get wallet as a JSON string */
+    std::string walletData = identiferAsString + walletJSON;
+
+    using namespace CryptoPP;
+
+    /* The key we use for AES encryption, generated with PBKDF2 */
+    byte key[16];
+
+    /* The salt we use for both PBKDF2, and AES Encryption */
+    byte salt[16];
+
+    /* Generate 16 random bytes for the salt */
+    Random::randomBytes(16, salt);
+
+    /* Using SHA256 as the algorithm */
+    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+
+    /* Generate the AES Key using pbkdf2 */
+    pbkdf2.DeriveKey(
+        key,
+        sizeof(key),
+        0,
+        (byte *)password.c_str(),
+        password.size(),
+        salt,
+        sizeof(salt),
+        Constants::PBKDF2_ITERATIONS);
+
+    CBC_Mode<AES>::Encryption cbcEncryption;
+
+    /* Initialize our encryptor with the key and salt/iv */
+    cbcEncryption.SetKeyWithIV(key, sizeof(key), salt);
+
+    /* This will store the encrypted data */
+    std::string encryptedData;
+
+    /* Encrypt, and pad */
+    StringSource(walletData, true, new StreamTransformationFilter(cbcEncryption, new StringSink(encryptedData)));
+
+    std::ofstream file(filename, std::ios_base::binary);
+
+    if (!file)
+    {
+        Logger::logger.log(
+            std::string("Wallet filename: ") + filename + " is invalid",
+            Logger::FATAL,
+            {Logger::FILESYSTEM, Logger::SAVE});
+
+        return INVALID_WALLET_FILENAME;
+    }
+
+    std::string saltString = std::string(salt, salt + sizeof(salt));
+
+    /* Write the isAWalletIdentifier to the file, so when we open it we can
+       verify that it is a wallet file */
+    std::copy(
+        Constants::IS_A_WALLET_IDENTIFIER.begin(),
+        Constants::IS_A_WALLET_IDENTIFIER.end(),
+        std::ostreambuf_iterator<char>(file));
+
+    /* Write the salt to the file, so we can use it to unencrypt the file
+       later. Note that the salt is unencrypted. */
+    std::copy(std::begin(salt), std::end(salt), std::ostreambuf_iterator<char>(file));
+
+    /* Write the encrypted wallet data to the file */
+    std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
+
+    return SUCCESS;
 }
 
 /////////////////////
@@ -542,8 +672,7 @@ void WalletBackend::init()
             startTimestamp,
             m_subWallets->getPrivateViewKey(),
             m_eventHandler,
-            m_syncThreadCount
-        );
+            m_syncThreadCount);
     }
     /* If it has, just initialize the stuff we can't from file */
     else
@@ -556,101 +685,23 @@ void WalletBackend::init()
     /* Launch the wallet sync process in a background thread */
     m_walletSynchronizer->start();
 
-    m_syncRAIIWrapper = std::make_shared<WalletSynchronizerRAIIWrapper>(
-        m_walletSynchronizer
-    );
+    m_syncRAIIWrapper = std::make_shared<WalletSynchronizerRAIIWrapper>(m_walletSynchronizer);
 }
 
 Error WalletBackend::save() const
 {
-    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this](){
-        return unsafeSave();
-    });
+    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this]() { return unsafeSave(); });
 }
 
 /* Unsafe because it doesn't lock any data structures - need to stop the
    blockchain synchronizer first (Call save()) */
 Error WalletBackend::unsafeSave() const
 {
-    /* Add an identifier to the start of the string so we can verify the wallet
-       has been correctly decrypted */
-    std::string identiferAsString(
-        Constants::IS_CORRECT_PASSWORD_IDENTIFIER.begin(),
-        Constants::IS_CORRECT_PASSWORD_IDENTIFIER.end()
-    );
-
-    /* Add magic identifier, and get wallet as a JSON string */
-    std::string walletData = identiferAsString + this->toJSON();
-
-    using namespace CryptoPP;
-
-    /* The key we use for AES encryption, generated with PBKDF2 */
-    byte key[16];
-
-    /* The salt we use for both PBKDF2, and AES Encryption */
-    byte salt[16];
-
-    /* Generate 16 random bytes for the salt */
-    Random::randomBytes(16, salt);
-
-    /* Using SHA256 as the algorithm */
-    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
-
-    /* Generate the AES Key using pbkdf2 */
-    pbkdf2.DeriveKey(
-        key, sizeof(key), 0, (byte *)m_password.c_str(),
-        m_password.size(), salt, sizeof(salt), Constants::PBKDF2_ITERATIONS
-    );
-
-    CBC_Mode<AES>::Encryption cbcEncryption;
-
-    /* Initialize our encryptor with the key and salt/iv */
-    cbcEncryption.SetKeyWithIV(key, sizeof(key), salt);
-
-    /* This will store the encrypted data */
-    std::string encryptedData;
-
-    /* Encrypt, and pad */
-    StringSource(walletData, true, new StreamTransformationFilter(
-        cbcEncryption, new StringSink(encryptedData))
-    );
-
-    std::ofstream file(m_filename, std::ios_base::binary);
-
-    if (!file)
-    {
-        Logger::logger.log(
-            std::string("Wallet filename: ") + m_filename + " is invalid",
-            Logger::FATAL,
-            {Logger::FILESYSTEM, Logger::SAVE}
-        );
-
-        return INVALID_WALLET_FILENAME;
-    }
-
-    std::string saltString = std::string(salt, salt + sizeof(salt));
-
-    /* Write the isAWalletIdentifier to the file, so when we open it we can
-       verify that it is a wallet file */
-    std::copy(Constants::IS_A_WALLET_IDENTIFIER.begin(),
-              Constants::IS_A_WALLET_IDENTIFIER.end(),
-              std::ostreambuf_iterator<char>(file));
-
-    /* Write the salt to the file, so we can use it to unencrypt the file
-       later. Note that the salt is unencrypted. */
-    std::copy(std::begin(salt), std::end(salt),
-              std::ostreambuf_iterator<char>(file));
-
-    /* Write the encrypted wallet data to the file */
-    std::copy(encryptedData.begin(), encryptedData.end(),
-              std::ostreambuf_iterator<char>(file));
-
-    return SUCCESS;
+    return WalletBackend::saveWalletJSONToDisk(toJSON(), m_filename, m_password);
 }
 
 /* Get the balance for one subwallet (error, unlocked, locked) */
-std::tuple<Error, uint64_t, uint64_t> WalletBackend::getBalance(
-    const std::string address) const
+std::tuple<Error, uint64_t, uint64_t> WalletBackend::getBalance(const std::string address) const
 {
     /* Verify the address is good, and one of our subwallets */
     if (Error error = validateOurAddresses({address}, m_subWallets); error != SUCCESS)
@@ -661,9 +712,7 @@ std::tuple<Error, uint64_t, uint64_t> WalletBackend::getBalance(
     const bool takeFromAll = false;
 
     const auto [unlockedBalance, lockedBalance] = m_subWallets->getBalance(
-        Utilities::addressesToSpendKeys({address}), takeFromAll,
-        m_daemon->networkBlockCount()
-    );
+        Utilities::addressesToSpendKeys({address}), takeFromAll, m_daemon->networkBlockCount());
 
     return {SUCCESS, unlockedBalance, lockedBalance};
 }
@@ -674,9 +723,7 @@ std::tuple<uint64_t, uint64_t> WalletBackend::getTotalBalance() const
     const bool takeFromAll = true;
 
     /* Get combined balance from every container */
-    return m_subWallets->getBalance(
-        {}, takeFromAll, m_daemon->networkBlockCount()
-    );
+    return m_subWallets->getBalance({}, takeFromAll, m_daemon->networkBlockCount());
 }
 
 uint64_t WalletBackend::getTotalUnlockedBalance() const
@@ -693,9 +740,7 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionBasic(
     const uint64_t amount,
     const std::string paymentID)
 {
-    return SendTransaction::sendTransactionBasic(
-        destination, amount, paymentID, m_daemon, m_subWallets
-    );
+    return SendTransaction::sendTransactionBasic(destination, amount, paymentID, m_daemon, m_subWallets);
 }
 
 std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionAdvanced(
@@ -708,9 +753,7 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionAdvanced(
     const uint64_t unlockTime)
 {
     return SendTransaction::sendTransactionAdvanced(
-        destinations, mixin, fee, paymentID, subWalletsToTakeFrom,
-        changeAddress, m_daemon, m_subWallets, unlockTime
-    );
+        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, m_daemon, m_subWallets, unlockTime);
 }
 
 std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
@@ -724,14 +767,12 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
     const std::string destination)
 {
     return SendTransaction::sendFusionTransactionAdvanced(
-        mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets
-    );
+        mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets);
 }
 
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)
 {
-    m_syncRAIIWrapper->pauseSynchronizerToRunFunction(
-    [this, scanHeight, timestamp]() mutable {
+    m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this, scanHeight, timestamp]() mutable {
         /* Though the wallet synchronizer can support both a timestamp and a
            scanheight, we need a fixed scan height to cut transactions from.
            Since a transaction in block 10 could have a timestamp before a
@@ -764,9 +805,8 @@ std::tuple<Error, std::string, Crypto::SecretKey> WalletBackend::addSubWallet()
     });
 }
 
-std::tuple<Error, std::string> WalletBackend::importSubWallet(
-    const Crypto::SecretKey privateSpendKey,
-    const uint64_t scanHeight)
+std::tuple<Error, std::string>
+    WalletBackend::importSubWallet(const Crypto::SecretKey privateSpendKey, const uint64_t scanHeight)
 {
     if (Error error = validatePrivateKey(privateSpendKey); error != SUCCESS)
     {
@@ -775,9 +815,7 @@ std::tuple<Error, std::string> WalletBackend::importSubWallet(
 
     return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([&, this]() {
         /* Add the sub wallet */
-        const auto [error, address] = m_subWallets->importSubWallet(
-            privateSpendKey, scanHeight
-        );
+        const auto [error, address] = m_subWallets->importSubWallet(privateSpendKey, scanHeight);
 
         if (!error)
         {
@@ -800,9 +838,8 @@ std::tuple<Error, std::string> WalletBackend::importSubWallet(
     });
 }
 
-std::tuple<Error, std::string> WalletBackend::importViewSubWallet(
-    const Crypto::PublicKey publicSpendKey,
-    const uint64_t scanHeight)
+std::tuple<Error, std::string>
+    WalletBackend::importViewSubWallet(const Crypto::PublicKey publicSpendKey, const uint64_t scanHeight)
 {
     if (Error error = validatePublicKey(publicSpendKey); error != SUCCESS)
     {
@@ -811,9 +848,7 @@ std::tuple<Error, std::string> WalletBackend::importViewSubWallet(
 
     return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([&, this]() {
         /* Add the sub wallet */
-        const auto [error, address] = m_subWallets->importViewSubWallet(
-            publicSpendKey, scanHeight
-        );
+        const auto [error, address] = m_subWallets->importViewSubWallet(publicSpendKey, scanHeight);
 
         if (!error)
         {
@@ -845,9 +880,8 @@ Error WalletBackend::deleteSubWallet(const std::string address)
         return error;
     }
 
-    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([&, this]() {
-        return m_subWallets->deleteSubWallet(address);
-    });
+    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction(
+        [&, this]() { return m_subWallets->deleteSubWallet(address); });
 }
 
 bool WalletBackend::isViewWallet() const
@@ -908,8 +942,7 @@ Error WalletBackend::changePassword(const std::string newPassword)
     return save();
 }
 
-std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey>
-    WalletBackend::getSpendKeys(const std::string &address) const
+std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey> WalletBackend::getSpendKeys(const std::string &address) const
 {
     const bool allowIntegratedAddresses = false;
 
@@ -941,14 +974,13 @@ std::tuple<Error, std::string> WalletBackend::getMnemonicSeed() const
     return getMnemonicSeedForAddress(getPrimaryAddress());
 }
 
-std::tuple<Error, std::string> WalletBackend::getMnemonicSeedForAddress(
-    const std::string &address) const
+std::tuple<Error, std::string> WalletBackend::getMnemonicSeedForAddress(const std::string &address) const
 {
     const bool allowIntegratedAddresses = false;
 
     if (Error error = validateAddresses({address}, allowIntegratedAddresses); error != SUCCESS)
     {
-        return {error, std::string()}; 
+        return {error, std::string()};
     }
 
     const auto privateViewKey = getPrivateViewKey();
@@ -963,10 +995,7 @@ std::tuple<Error, std::string> WalletBackend::getMnemonicSeedForAddress(
 
     /* Derive the view key from the spend key, and check if it matches the
        actual view key */
-    Crypto::crypto_ops::generateViewFromSpend(
-        privateSpendKey,
-        derivedPrivateViewKey
-    );
+    Crypto::crypto_ops::generateViewFromSpend(privateSpendKey, derivedPrivateViewKey);
 
     if (derivedPrivateViewKey != privateViewKey)
     {
@@ -988,8 +1017,7 @@ std::vector<WalletTypes::Transaction> WalletBackend::getUnconfirmedTransactions(
 
 WalletTypes::WalletStatus WalletBackend::getStatus() const
 {
-    const auto [walletBlockCount, localDaemonBlockCount, networkBlockCount]
-        = getSyncStatus();
+    const auto [walletBlockCount, localDaemonBlockCount, networkBlockCount] = getSyncStatus();
 
     WalletTypes::WalletStatus status;
 
@@ -1005,18 +1033,20 @@ WalletTypes::WalletStatus WalletBackend::getStatus() const
 
 /* Returns transactions in the range [startHeight, endHeight - 1] - so if
    we give 1, 100, it will return transactions from block 1 to block 99 */
-std::vector<WalletTypes::Transaction> WalletBackend::getTransactionsRange(
-    const uint64_t startHeight, const uint64_t endHeight) const
+std::vector<WalletTypes::Transaction>
+    WalletBackend::getTransactionsRange(const uint64_t startHeight, const uint64_t endHeight) const
 {
     std::vector<WalletTypes::Transaction> result;
 
     const auto transactions = getTransactions();
 
-    std::copy_if(transactions.begin(), transactions.end(), std::back_inserter(result),
-    [&startHeight, &endHeight](const auto tx)
-    {
-        return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
-    });
+    std::copy_if(
+        transactions.begin(),
+        transactions.end(),
+        std::back_inserter(result),
+        [&startHeight, &endHeight](const auto tx) {
+            return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
+        });
 
     return result;
 }
@@ -1049,8 +1079,7 @@ bool WalletBackend::daemonOnline() const
     return m_daemon->isOnline();
 }
 
-std::tuple<Error, std::string> WalletBackend::getAddress(
-    const Crypto::PublicKey spendKey) const
+std::tuple<Error, std::string> WalletBackend::getAddress(const Crypto::PublicKey spendKey) const
 {
     if (Error error = validatePublicKey(spendKey); error != SUCCESS)
     {
@@ -1060,8 +1089,7 @@ std::tuple<Error, std::string> WalletBackend::getAddress(
     return m_subWallets->getAddress(spendKey);
 }
 
-std::tuple<Error, Crypto::SecretKey> WalletBackend::getTxPrivateKey(
-    const Crypto::Hash txHash) const
+std::tuple<Error, Crypto::SecretKey> WalletBackend::getTxPrivateKey(const Crypto::Hash txHash) const
 {
     const auto [success, key] = m_subWallets->getTxPrivateKey(txHash);
 

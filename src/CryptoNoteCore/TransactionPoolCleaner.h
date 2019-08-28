@@ -1,68 +1,81 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
+#include "ITransactionPool.h"
 #include "ITransactionPoolCleaner.h"
+#include "crypto/crypto.h"
+#include "cryptonotecore/ITimeProvider.h"
+#include "logging/ILogger.h"
+#include "logging/LoggerRef.h"
 
 #include <chrono>
+#include <system/ContextGroup.h>
 #include <unordered_map>
 
-#include "crypto/crypto.h"
+namespace CryptoNote
+{
+    class TransactionPoolCleanWrapper : public ITransactionPoolCleanWrapper
+    {
+      public:
+        TransactionPoolCleanWrapper(
+            std::unique_ptr<ITransactionPool> &&transactionPool,
+            std::unique_ptr<ITimeProvider> &&timeProvider,
+            std::shared_ptr<Logging::ILogger> logger,
+            uint64_t timeout);
 
-#include "CryptoNoteCore/ITimeProvider.h"
-#include "ITransactionPool.h"
-#include "Logging/ILogger.h"
-#include "Logging/LoggerRef.h"
+        TransactionPoolCleanWrapper(const TransactionPoolCleanWrapper &) = delete;
 
-#include <System/ContextGroup.h>
+        TransactionPoolCleanWrapper(TransactionPoolCleanWrapper &&other) = delete;
 
-namespace CryptoNote {
+        TransactionPoolCleanWrapper &operator=(const TransactionPoolCleanWrapper &) = delete;
 
-class TransactionPoolCleanWrapper: public ITransactionPoolCleanWrapper {
-public:
-  TransactionPoolCleanWrapper(
-    std::unique_ptr<ITransactionPool>&& transactionPool,
-    std::unique_ptr<ITimeProvider>&& timeProvider,
-    std::shared_ptr<Logging::ILogger> logger,
-    uint64_t timeout);
+        TransactionPoolCleanWrapper &operator=(TransactionPoolCleanWrapper &&) = delete;
 
-  TransactionPoolCleanWrapper(const TransactionPoolCleanWrapper&) = delete;
-  TransactionPoolCleanWrapper(TransactionPoolCleanWrapper&& other) = delete;
+        virtual ~TransactionPoolCleanWrapper();
 
-  TransactionPoolCleanWrapper& operator=(const TransactionPoolCleanWrapper&) = delete;
-  TransactionPoolCleanWrapper& operator=(TransactionPoolCleanWrapper&&) = delete;
+        virtual bool pushTransaction(CachedTransaction &&tx, TransactionValidatorState &&transactionState) override;
 
-  virtual ~TransactionPoolCleanWrapper();
+        virtual const CachedTransaction &getTransaction(const Crypto::Hash &hash) const override;
 
-  virtual bool pushTransaction(CachedTransaction&& tx, TransactionValidatorState&& transactionState) override;
-  virtual const CachedTransaction& getTransaction(const Crypto::Hash& hash) const override;
-  virtual bool removeTransaction(const Crypto::Hash& hash) override;
+        virtual bool removeTransaction(const Crypto::Hash &hash) override;
 
-  virtual size_t getTransactionCount() const override;
-  virtual std::vector<Crypto::Hash> getTransactionHashes() const override;
-  virtual bool checkIfTransactionPresent(const Crypto::Hash& hash) const override;
+        virtual size_t getTransactionCount() const override;
 
-  virtual const TransactionValidatorState& getPoolTransactionValidationState() const override;
-  virtual std::vector<CachedTransaction> getPoolTransactions() const override;
-  virtual std::tuple<std::vector<CachedTransaction>, std::vector<CachedTransaction>> getPoolTransactionsForBlockTemplate() const override;
+        virtual std::vector<Crypto::Hash> getTransactionHashes() const override;
 
-  virtual uint64_t getTransactionReceiveTime(const Crypto::Hash& hash) const override;
-  virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash& paymentId) const override;
+        virtual bool checkIfTransactionPresent(const Crypto::Hash &hash) const override;
 
-  virtual std::vector<Crypto::Hash> clean(const uint32_t height) override;
+        virtual const TransactionValidatorState &getPoolTransactionValidationState() const override;
 
-private:
-  std::unique_ptr<ITransactionPool> transactionPool;
-  std::unique_ptr<ITimeProvider> timeProvider;
-  Logging::LoggerRef logger;
-  std::unordered_map<Crypto::Hash, uint64_t> recentlyDeletedTransactions;
-  uint64_t timeout;
+        virtual std::vector<CachedTransaction> getPoolTransactions() const override;
 
-  bool isTransactionRecentlyDeleted(const Crypto::Hash& hash) const;
-  void cleanRecentlyDeletedTransactions(uint64_t currentTime);
-};
+        virtual std::tuple<std::vector<CachedTransaction>, std::vector<CachedTransaction>>
+            getPoolTransactionsForBlockTemplate() const override;
 
-} //namespace CryptoNote
+        virtual uint64_t getTransactionReceiveTime(const Crypto::Hash &hash) const override;
+
+        virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const override;
+
+        virtual std::vector<Crypto::Hash> clean(const uint32_t height) override;
+
+      private:
+        std::unique_ptr<ITransactionPool> transactionPool;
+
+        std::unique_ptr<ITimeProvider> timeProvider;
+
+        Logging::LoggerRef logger;
+
+        std::unordered_map<Crypto::Hash, uint64_t> recentlyDeletedTransactions;
+
+        uint64_t timeout;
+
+        bool isTransactionRecentlyDeleted(const Crypto::Hash &hash) const;
+
+        void cleanRecentlyDeletedTransactions(uint64_t currentTime);
+    };
+
+} // namespace CryptoNote

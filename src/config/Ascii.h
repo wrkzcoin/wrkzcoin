@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <string>
+
 const std::string windowsAsciiArt =
       "\n _    _______ _   __ ______\n"
       "| |  | | ___ \\ | / /|___  /\n"

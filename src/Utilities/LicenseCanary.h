@@ -1,5 +1,5 @@
 // Copyright (c) 2018, The TurtleCoin Developers
-// 
+//
 // Please see the included LICENSE file for more information.
 
 #include <string>
@@ -12,7 +12,8 @@ constexpr std::string_view canaryObfusticated = "\u0054\u0075\u0072\u0074\u006c\
    by find and replace. If find and replace occured, the canary will no longer
    match. Then we can warn them that they have probably replaced license headers,
    and halt compilation till it's fixed. */
-static_assert(canary == canaryObfusticated, 
+static_assert(
+    canary == canaryObfusticated,
     "\n\n\u0057\u0061\u0069\u0074\u0020\u0061\u0020\u006d\u0069\u006e\u0075\u0074"
     "\u0065\u002c\u0020\u0068\u006f\u006c\u0064\u0020\u0075\u0070\u002c\u0020\u006c"
     "\u0065\u0074\u0027\u0073\u0020\u0062\u0061\u0063\u006b\u0020\u0075\u0070\u0020"
@@ -52,4 +53,3 @@ static_assert(canary == canaryObfusticated,
     "\u0063\u006f\u0069\u006e\u002e\u006c\u006f\u006c\u0020\u0061\u006e\u0064\u0020"
     "\u0077\u0065\u0027\u006c\u006c\u0020\u0062\u0065\u0020\u0068\u0061\u0070\u0070"
     "\u0079\u0020\u0074\u006f\u0020\u0068\u0065\u006c\u0070\u002e\n\n\n");
-

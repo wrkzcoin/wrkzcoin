@@ -1,66 +1,63 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
 //
-// This file is part of Bytecoin.
-//
-// Bytecoin is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// Bytecoin is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with Bytecoin.  If not, see <http://www.gnu.org/licenses/>.
+// Please see the included LICENSE file for more information.
 
 #pragma once
 
+#include "DataBaseConfig.h"
+#include "IDataBase.h"
+#include "rocksdb/db.h"
+
 #include <atomic>
+#include <logging/LoggerRef.h>
 #include <memory>
 #include <string>
 
-#include "rocksdb/db.h"
+namespace CryptoNote
+{
+    class RocksDBWrapper : public IDataBase
+    {
+      public:
+        RocksDBWrapper(std::shared_ptr<Logging::ILogger> logger);
 
-#include "IDataBase.h"
-#include "DataBaseConfig.h"
+        virtual ~RocksDBWrapper();
 
-#include <Logging/LoggerRef.h>
+        RocksDBWrapper(const RocksDBWrapper &) = delete;
 
-namespace CryptoNote {
+        RocksDBWrapper(RocksDBWrapper &&) = delete;
 
-class RocksDBWrapper : public IDataBase {
-public:
-  RocksDBWrapper(std::shared_ptr<Logging::ILogger> logger);
-  virtual ~RocksDBWrapper();
+        RocksDBWrapper &operator=(const RocksDBWrapper &) = delete;
 
-  RocksDBWrapper(const RocksDBWrapper&) = delete;
-  RocksDBWrapper(RocksDBWrapper&&) = delete;
+        RocksDBWrapper &operator=(RocksDBWrapper &&) = delete;
 
-  RocksDBWrapper& operator=(const RocksDBWrapper&) = delete;
-  RocksDBWrapper& operator=(RocksDBWrapper&&) = delete;
+        void init(const DataBaseConfig &config);
 
-  void init(const DataBaseConfig& config);
-  void shutdown();
-  void destroy(const DataBaseConfig& config); //Be careful with this method!
+        void shutdown();
 
-  std::error_code write(IWriteBatch& batch) override;
-  std::error_code read(IReadBatch& batch) override;
+        void destroy(const DataBaseConfig &config); // Be careful with this method!
 
-private:
-  std::error_code write(IWriteBatch& batch, bool sync);
+        std::error_code write(IWriteBatch &batch) override;
 
-  rocksdb::Options getDBOptions(const DataBaseConfig& config);
-  std::string getDataDir(const DataBaseConfig& config);
+        std::error_code read(IReadBatch &batch) override;
 
-  enum State {
-    NOT_INITIALIZED,
-    INITIALIZED
-  };
+      private:
+        std::error_code write(IWriteBatch &batch, bool sync);
 
-  Logging::LoggerRef logger;
-  std::unique_ptr<rocksdb::DB> db;
-  std::atomic<State> state;
-};
-}
+        rocksdb::Options getDBOptions(const DataBaseConfig &config);
+
+        std::string getDataDir(const DataBaseConfig &config);
+
+        enum State
+        {
+            NOT_INITIALIZED,
+            INITIALIZED
+        };
+
+        Logging::LoggerRef logger;
+
+        std::unique_ptr<rocksdb::DB> db;
+
+        std::atomic<State> state;
+    };
+} // namespace CryptoNote

@@ -1,11 +1,11 @@
-// Copyright (c) 2018, The TurtleCoin Developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
-#include <CryptoNoteConfig.h>
-#include <Logger/Logger.h>
+#include <config/CryptoNoteConfig.h>
+#include <logger/Logger.h>
 
 struct ApiConfig
 {
@@ -23,6 +23,9 @@ struct ApiConfig
 
     /* Controls what level of messages to log */
     Logger::LogLevel logLevel = Logger::DISABLED;
+
+    /* Controls whether an interactive console is provided */
+    bool noConsole = false;
 
     unsigned int threads;
 };

@@ -1,6 +1,9 @@
 #include "argon2-sse2.h"
 
-#ifdef HAVE_SSE2
+#include "sse_shim.h"
+
+#ifdef __SSE2__
+#pragma message ("info: ACTIVATING SSE2 in argon2-sse2.c")
 #include <immintrin.h>
 
 #define ror64_16(x) \

@@ -1,81 +1,111 @@
-// Copyright (c) 2018, The TurtleCoin Developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
+#include <config/CryptoNoteConfig.h>
+#include <logging/ILogger.h>
 #include <rapidjson/document.h>
 #include <string>
-#include <CryptoNoteConfig.h>
-#include <Logging/ILogger.h>
 
 using namespace rapidjson;
 
-namespace PaymentService {
-  struct WalletServiceConfiguration
-  {
-    WalletServiceConfiguration()
+namespace PaymentService
+{
+    struct WalletServiceConfiguration
     {
-      daemonAddress  = "127.0.0.1";
-      bindAddress = "127.0.0.1";
-      logFile = "service.log";
-      daemonPort = CryptoNote::RPC_DEFAULT_PORT;
-      bindPort = CryptoNote::SERVICE_DEFAULT_PORT;
-      logLevel = Logging::INFO;
-      legacySecurity = false;
-      help = false;
-      version = false;
-      dumpConfig = false;
-      generateNewContainer = false;
-      daemonize = false;
-      registerService = false;
-      unregisterService = false;
-      printAddresses = false;
-      syncFromZero = false;
-      initTimeout = 10;
-    }
+        WalletServiceConfiguration() {};
 
-    std::string daemonAddress;
-    std::string bindAddress;
-    std::string rpcPassword;
-    std::string containerFile;
-    std::string containerPassword;
-    std::string serverRoot;
-    std::string corsHeader;
-    std::string logFile;
+        /* Address for the daemon RPC */
+        std::string daemonAddress = "127.0.0.1";
 
-    int daemonPort;
-    int bindPort;
-    int logLevel;
-    int initTimeout;
+        /* Address to run the API on (0.0.0.0 for all interfaces) */
+        std::string bindAddress = "127.0.0.1";
 
-    bool legacySecurity;
+        /* Password to access the API */
+        std::string rpcPassword;
 
-    // Runtime online options
-    bool help;
-    bool version;
-    bool dumpConfig;
-    std::string configFile;
-    std::string outputFile;
+        /* Location of wallet file on disk */
+        std::string containerFile;
 
-    std::string secretViewKey;
-    std::string secretSpendKey;
-    std::string mnemonicSeed;
+        /* Password for the wallet file */
+        std::string containerPassword;
 
-    bool generateNewContainer;
-    bool daemonize;
-    bool registerService;
-    bool unregisterService;
-    bool printAddresses;
-    bool syncFromZero;
+        std::string serverRoot;
 
-    uint64_t scanHeight;
-  };
+        /* Value to set for Access-Control-Allow-Origin (* for all) */
+        std::string corsHeader;
 
-  bool updateConfigFormat(const std::string configFile, WalletServiceConfiguration& config);
-  void handleSettings(int argc, char* argv[], WalletServiceConfiguration& config);
-  void handleSettings(const std::string configFile, WalletServiceConfiguration& config);
-  Document asJSON(const WalletServiceConfiguration& config);
-  std::string asString(const WalletServiceConfiguration& config);
-  void asFile(const WalletServiceConfiguration& config, const std::string& filename);
-}
+        /* File to log to */
+        std::string logFile = "service.log";
+
+        /* Port to use for the daemon RPC */
+        int daemonPort = CryptoNote::RPC_DEFAULT_PORT;
+
+        /* Port for the API to listen on */
+        int bindPort = CryptoNote::SERVICE_DEFAULT_PORT;
+
+        /* Default log level */
+        int logLevel = Logging::INFO;
+
+        /* Timeout for daemon connection in seconds */
+        int initTimeout = 10;
+
+        /* Should we disable RPC connection */
+        bool legacySecurity = false;
+
+        /* Should we display the help message */
+        bool help = false;
+
+        /* Should we display the version message */
+        bool version = false;
+
+        /* Should we dump the provided config */
+        bool dumpConfig = false;
+
+        /* File to load config from */
+        std::string configFile;
+
+        /* File to dump the provided config to */
+        std::string outputFile;
+
+        /* Private view key to import */
+        std::string secretViewKey;
+
+        /* Private spend key to import */
+        std::string secretSpendKey;
+
+        /* Mnemonic seed to import */
+        std::string mnemonicSeed;
+
+        /* Should we create a new wallet */
+        bool generateNewContainer = false;
+
+        bool daemonize = false;
+
+        bool registerService = false;
+
+        bool unregisterService = false;
+
+        /* Print all the addresses and exit (Why is this a thing?) */
+        bool printAddresses = false;
+
+        bool syncFromZero = false;
+
+        /* Height to begin scanning at (on initial import) */
+        uint64_t scanHeight;
+    };
+
+    bool updateConfigFormat(const std::string configFile, WalletServiceConfiguration &config);
+
+    void handleSettings(int argc, char *argv[], WalletServiceConfiguration &config);
+
+    void handleSettings(const std::string configFile, WalletServiceConfiguration &config);
+
+    Document asJSON(const WalletServiceConfiguration &config);
+
+    std::string asString(const WalletServiceConfiguration &config);
+
+    void asFile(const WalletServiceConfiguration &config, const std::string &filename);
+} // namespace PaymentService

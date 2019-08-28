@@ -3,7 +3,7 @@
 // Please see the included LICENSE file for more information.
 
 /////////////////////////////////
-#include <Utilities/ParseExtra.h>
+#include <utilities/ParseExtra.h>
 /////////////////////////////////
 
 #include <config/Constants.h>
@@ -30,11 +30,7 @@ namespace Utilities
 
     ParsedExtra parseExtra(const std::vector<uint8_t> &extra)
     {
-        ParsedExtra parsed {
-            Constants::NULL_PUBLIC_KEY,
-            std::string(),
-            { 0, Constants::NULL_HASH }
-        };
+        ParsedExtra parsed {Constants::NULL_PUBLIC_KEY, std::string(), {0, Constants::NULL_HASH}};
 
         bool seenPubKey = false;
         bool seenPaymentID = false;
@@ -81,10 +77,8 @@ namespace Utilities
                [...data...] 0x02 [size of extra nonce] 0x00 [payment ID] [...data...]
 
             */
-            if (c == Constants::TX_EXTRA_NONCE_IDENTIFIER 
-                && elementsRemaining > 1 + 1 + 32
-                && *(it + 2) == Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER
-                && !seenPaymentID)
+            if (c == Constants::TX_EXTRA_NONCE_IDENTIFIER && elementsRemaining > 1 + 1 + 32
+                && *(it + 2) == Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER && !seenPaymentID)
             {
                 const auto dataBegin = it + 3;
 
@@ -97,8 +91,7 @@ namespace Utilities
                 std::string paymentID = Common::podToHex(paymentIDHash);
 
                 /* Convert it to lower case */
-                std::transform(paymentID.begin(), paymentID.end(),
-                               paymentID.begin(), ::tolower);
+                std::transform(paymentID.begin(), paymentID.end(), paymentID.begin(), ::tolower);
 
                 parsed.paymentID = paymentID;
 
@@ -111,9 +104,7 @@ namespace Utilities
                 continue;
             }
 
-            if (c == Constants::TX_EXTRA_MERGE_MINING_IDENTIFIER 
-                && elementsRemaining > 1
-                && !seenMergedMiningTag)
+            if (c == Constants::TX_EXTRA_MERGE_MINING_IDENTIFIER && elementsRemaining > 1 && !seenMergedMiningTag)
             {
                 /* Get the length of the following data (Probably 33 bytes for depth+hash) */
                 const uint8_t dataSize = *(it + 1);
@@ -121,7 +112,7 @@ namespace Utilities
                 if (elementsRemaining > dataSize + 1 && dataSize >= 33)
                 {
                     const uint8_t depth = *(it + 2);
-                    
+
                     Crypto::Hash merkleRoot;
 
                     const auto dataBegin = it + 3;
@@ -144,4 +135,4 @@ namespace Utilities
 
         return parsed;
     }
-}
+} // namespace Utilities

@@ -1,5 +1,5 @@
-// Copyright (c) 2018, The TurtleCoin Developers
-// 
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
 // Please see the included LICENSE file for more information.
 
 #pragma once
@@ -11,7 +11,7 @@
    developing */
 enum ErrorCode
 {
-    /* No error, operation suceeded. */
+    /* No error, operation succeeded. */
     SUCCESS = 0,
 
     /* The wallet filename given does not exist or the program does not have
@@ -70,7 +70,7 @@ enum ErrorCode
     /* The address is invalid for some other reason (possibly checksum) */
     ADDRESS_NOT_VALID = 15,
 
-    /* The payment ID encoded in the integrated address is not valid */ 
+    /* The payment ID encoded in the integrated address is not valid */
     INTEGRATED_ADDRESS_PAYMENT_ID_INVALID = 16,
 
     /* The fee given is lower than the CryptoNote::parameters::MINIMUM_FEE */
@@ -186,12 +186,12 @@ enum ErrorCode
 
     /* Value given is negative, but must be >= 0
        NOTE: Not used in WalletBackend, only here to maintain API compatibility
-       with wrkzcoin-wallet-backend (typescript) */
+       with turtlecoin-wallet-backend-js */
     NEGATIVE_VALUE_GIVEN = 46,
 
-    /* Key is not 64 char hex 
+    /* Key is not 64 char hex
        NOTE: Not used in WalletBackend, only here to maintain API compatibility
-       with wrkzcoin-wallet-backend (typescript) */
+       with turtlecoin-wallet-backend-js */
     INVALID_KEY_FORMAT = 47,
 
     /* Hash not 64 chars */
@@ -214,49 +214,44 @@ enum ErrorCode
 
 class Error
 {
-    public:
-        /* Default constructor */
-        Error() : m_errorCode(SUCCESS) {};
+  public:
+    /* Default constructor */
+    Error(): m_errorCode(SUCCESS) {};
 
-        Error(const ErrorCode code) :
-            m_errorCode(code) {};
+    Error(const ErrorCode code): m_errorCode(code) {};
 
-        /* We can use a custom message instead of our standard message, for example,
-           if the message depends upon the parameters. E.g: "Mnemonic seed should
-           be 25 words, but it is 23 words" */
-        Error(
-            const ErrorCode code,
-            const std::string customMessage) :
-            m_errorCode(code),
-            m_customMessage(customMessage) {};
+    /* We can use a custom message instead of our standard message, for example,
+       if the message depends upon the parameters. E.g: "Mnemonic seed should
+       be 25 words, but it is 23 words" */
+    Error(const ErrorCode code, const std::string customMessage): m_errorCode(code), m_customMessage(customMessage) {};
 
-        std::string getErrorMessage() const;
+    std::string getErrorMessage() const;
 
-        ErrorCode getErrorCode() const;
+    ErrorCode getErrorCode() const;
 
-        bool operator==(const ErrorCode code) const
-        {
-            return code == m_errorCode;
-        }
+    bool operator==(const ErrorCode code) const
+    {
+        return code == m_errorCode;
+    }
 
-        bool operator!=(const ErrorCode code) const
-        {
-            return !(code == m_errorCode);
-        }
+    bool operator!=(const ErrorCode code) const
+    {
+        return !(code == m_errorCode);
+    }
 
-        /* Allows us to do stuff like:
-           if (error) {}
-           Returns true if the error code is not success. */
-        explicit operator bool() const
-        {
-            return m_errorCode != SUCCESS;
-        }
+    /* Allows us to do stuff like:
+       if (error) {}
+       Returns true if the error code is not success. */
+    explicit operator bool() const
+    {
+        return m_errorCode != SUCCESS;
+    }
 
-    private:
-        /* May be empty */
-        std::string m_customMessage;
+  private:
+    /* May be empty */
+    std::string m_customMessage;
 
-        ErrorCode m_errorCode;
+    ErrorCode m_errorCode;
 };
 
 /* Overloading the << operator */

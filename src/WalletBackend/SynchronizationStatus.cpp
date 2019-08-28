@@ -1,12 +1,12 @@
-// Copyright (c) 2018, The TurtleCoin Developers
-// 
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////////////////
-#include <WalletBackend/SynchronizationStatus.h>
+#include <walletbackend/SynchronizationStatus.h>
 ////////////////////////////////////////////////
 
-#include <WalletBackend/Constants.h>
+#include <walletbackend/Constants.h>
 
 /////////////////////
 /* CLASS FUNCTIONS */
@@ -17,9 +17,7 @@ uint64_t SynchronizationStatus::getHeight() const
     return m_lastKnownBlockHeight;
 }
 
-void SynchronizationStatus::storeBlockHash(
-    const Crypto::Hash hash,
-    const uint64_t height)
+void SynchronizationStatus::storeBlockHash(const Crypto::Hash hash, const uint64_t height)
 {
     m_lastKnownBlockHeight = height;
 

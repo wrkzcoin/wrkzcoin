@@ -1,26 +1,19 @@
-// Copyright (c) 2018, The TurtleCoin Developers
-// 
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
 // Please see the included LICENSE file for more information.
 
 #include <CryptoNote.h>
-
-#include <Errors/Errors.h>
-
-#include <Nigel/Nigel.h>
-
-#include <Serialization/SerializationTools.h>
-
-#include <SubWallets/SubWallets.h>
-
-#include <vector>
-
 #include <WalletTypes.h>
+#include <errors/Errors.h>
+#include <nigel/Nigel.h>
+#include <serialization/SerializationTools.h>
+#include <subwallets/SubWallets.h>
+#include <vector>
 
 namespace SendTransaction
 {
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionBasic(
-        const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets);
+    std::tuple<Error, Crypto::Hash>
+        sendFusionTransactionBasic(const std::shared_ptr<Nigel> daemon, const std::shared_ptr<SubWallets> subWallets);
 
     std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
         const uint64_t mixin,
@@ -61,8 +54,8 @@ namespace SendTransaction
         const std::vector<WalletTypes::ObscuredInput> inputsAndFakes,
         const Crypto::SecretKey privateViewKey);
 
-    std::tuple<std::vector<WalletTypes::KeyOutput>, CryptoNote::KeyPair> setupOutputs(
-        std::vector<WalletTypes::TransactionDestination> destinations);
+    std::tuple<std::vector<WalletTypes::KeyOutput>, CryptoNote::KeyPair>
+        setupOutputs(std::vector<WalletTypes::TransactionDestination> destinations);
 
     std::tuple<Error, CryptoNote::Transaction> generateRingSignatures(
         CryptoNote::Transaction tx,
@@ -71,11 +64,11 @@ namespace SendTransaction
 
     std::vector<uint64_t> splitAmountIntoDenominations(uint64_t amount);
 
-    std::vector<CryptoNote::TransactionInput> keyInputToTransactionInput(
-        const std::vector<CryptoNote::KeyInput> keyInputs);
+    std::vector<CryptoNote::TransactionInput>
+        keyInputToTransactionInput(const std::vector<CryptoNote::KeyInput> keyInputs);
 
-    std::vector<CryptoNote::TransactionOutput> keyOutputToTransactionOutput(
-        const std::vector<WalletTypes::KeyOutput> keyOutputs);
+    std::vector<CryptoNote::TransactionOutput>
+        keyOutputToTransactionOutput(const std::vector<WalletTypes::KeyOutput> keyOutputs);
 
     std::tuple<Error, std::vector<CryptoNote::RandomOuts>> getRingParticipants(
         const uint64_t mixin,
@@ -93,7 +86,7 @@ namespace SendTransaction
         /* The transaction outputs, before converted into boost uglyness, used
            for determining key inputs from the tx that belong to us */
         std::vector<WalletTypes::KeyOutput> outputs;
-        
+
         /* The random key pair we generated */
         CryptoNote::KeyPair txKeyPair;
     };
@@ -107,13 +100,11 @@ namespace SendTransaction
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime);
 
-    std::tuple<Error, Crypto::Hash> relayTransaction(
-        const CryptoNote::Transaction tx,
-        const std::shared_ptr<Nigel> daemon);
+    std::tuple<Error, Crypto::Hash>
+        relayTransaction(const CryptoNote::Transaction tx, const std::shared_ptr<Nigel> daemon);
 
-    std::tuple<CryptoNote::KeyPair, Crypto::KeyImage> genKeyImage(
-        const WalletTypes::ObscuredInput input,
-        const Crypto::SecretKey privateViewKey);
+    std::tuple<CryptoNote::KeyPair, Crypto::KeyImage>
+        genKeyImage(const WalletTypes::ObscuredInput input, const Crypto::SecretKey privateViewKey);
 
     void storeSentTransaction(
         const Crypto::Hash hash,
@@ -124,9 +115,7 @@ namespace SendTransaction
         const uint64_t changeRequired,
         const std::shared_ptr<SubWallets> subWallets);
 
-    Error isTransactionPayloadTooBig(
-        const CryptoNote::Transaction tx,
-        const uint64_t currentHeight);
+    Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight);
 
     void storeUnconfirmedIncomingInputs(
         const std::shared_ptr<SubWallets> subWallets,
@@ -144,10 +133,9 @@ namespace SendTransaction
     bool verifyTransactionFee(const uint64_t expectedFee, CryptoNote::Transaction tx);
 
     /* Template so we can do transaction, and transactionprefix */
-    template<typename T>
-    Crypto::Hash getTransactionHash(T tx)
+    template<typename T> Crypto::Hash getTransactionHash(T tx)
     {
         std::vector<uint8_t> data = toBinaryArray(tx);
         return Crypto::cn_fast_hash(data.data(), data.size());
     }
-}
+} // namespace SendTransaction

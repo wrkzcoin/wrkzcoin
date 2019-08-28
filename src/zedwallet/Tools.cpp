@@ -1,5 +1,5 @@
-// Copyright (c) 2018, The TurtleCoin Developers
-// 
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////
@@ -7,22 +7,17 @@
 ////////////////////////////
 
 #include <cmath>
-
-#include <Common/Base58.h>
-#include <Common/StringTools.h>
-
-#include <CryptoNoteCore/CryptoNoteBasicImpl.h>
-#include <Common/CryptoNoteTools.h>
-#include <Common/TransactionExtra.h>
-
-#include <fstream>
-
-#include <iostream>
-
-#include <Utilities/ColouredMsg.h>
-#include <Utilities/Addresses.h>
-#include <zedwallet/PasswordContainer.h>
+#include <common/Base58.h>
+#include <common/CryptoNoteTools.h>
+#include <common/StringTools.h>
+#include <common/TransactionExtra.h>
 #include <config/WalletConfig.h>
+#include <cryptonotecore/CryptoNoteBasicImpl.h>
+#include <fstream>
+#include <iostream>
+#include <utilities/Addresses.h>
+#include <utilities/ColouredMsg.h>
+#include <zedwallet/PasswordContainer.h>
 
 void confirmPassword(const std::string &walletPass, const std::string &msg)
 {
@@ -50,8 +45,7 @@ std::string formatAmount(const uint64_t amount)
     const uint64_t dollars = amount / divisor;
     const uint64_t cents = amount % divisor;
 
-    return formatDollars(dollars) + "." + formatCents(cents) + " "
-         + WalletConfig::ticker;
+    return formatDollars(dollars) + "." + formatCents(cents) + " " + WalletConfig::ticker;
 }
 
 std::string formatAmountBasic(const uint64_t amount)
@@ -68,7 +62,7 @@ std::string formatDollars(const uint64_t amount)
     /* We want to format our number with comma separators so it's easier to
        use. Now, we could use the nice print_money() function to do this.
        However, whilst this initially looks pretty handy, if we have a locale
-       such as ja_JP.utf8, 1 Wrkz will actually be formatted as 100 Wrkz, which
+       such as ja_JP.utf8, 1 TRTL will actually be formatted as 100 TRTL, which
        is terrible, and could really screw over users.
 
        So, easy solution right? Just use en_US.utf8! Sure, it's not very
@@ -80,7 +74,7 @@ std::string formatDollars(const uint64_t amount)
        using the locale method, without writing a pretty long boiler plate
        function. So, instead, we define our own locale, which just returns
        the values we want.
-       
+
        It's less internationally friendly than we would potentially like
        but that would require a ton of scrutinization which if not done could
        land us with quite a few issues and rightfully angry users.
@@ -116,8 +110,7 @@ std::string formatDollars(const uint64_t amount)
 std::string formatCents(const uint64_t amount)
 {
     std::stringstream stream;
-    stream << std::setfill('0') << std::setw(WalletConfig::numDecimalPlaces)
-           << amount;
+    stream << std::setfill('0') << std::setw(WalletConfig::numDecimalPlaces) << amount;
     return stream.str();
 }
 
@@ -151,7 +144,7 @@ bool confirm(const std::string &msg, const bool defaultReturn)
 
         const char c = ::tolower(answer[0]);
 
-        switch(c)
+        switch (c)
         {
             /* Lets people spam enter / choose default value */
             case '\0':
@@ -162,8 +155,7 @@ bool confirm(const std::string &msg, const bool defaultReturn)
                 return false;
         }
 
-        std::cout << WarningMsg("Bad input: ") << InformationMsg(answer)
-                  << WarningMsg(" - please enter either Y or N.")
+        std::cout << WarningMsg("Bad input: ") << InformationMsg(answer) << WarningMsg(" - please enter either Y or N.")
                   << std::endl;
     }
 }
@@ -176,8 +168,7 @@ std::string unixTimeToDate(const uint64_t timestamp)
     return std::string(buffer);
 }
 
-std::string createIntegratedAddress(const std::string &address,
-                                    const std::string &paymentID)
+std::string createIntegratedAddress(const std::string &address, const std::string &paymentID)
 {
     uint64_t prefix;
 
@@ -192,11 +183,8 @@ std::string createIntegratedAddress(const std::string &address,
     std::string keys = Common::asString(ba);
 
     /* Encode prefix + paymentID + keys as an address */
-    return Tools::Base58::encode_addr
-    (
-        CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX,
-        paymentID + keys
-    );
+    return Tools::Base58::encode_addr(
+        CryptoNote::parameters::CRYPTONOTE_PUBLIC_ADDRESS_BASE58_PREFIX, paymentID + keys);
 }
 
 uint64_t getScanHeight()
@@ -204,20 +192,16 @@ uint64_t getScanHeight()
     while (true)
     {
         std::cout << InformationMsg("What height would you like to begin ")
-                  << InformationMsg("scanning your wallet from?")
-                  << std::endl
+                  << InformationMsg("scanning your wallet from?") << std::endl
                   << std::endl
                   << "This can greatly speed up the initial wallet "
-                  << "scanning process."
-                  << std::endl
+                  << "scanning process." << std::endl
                   << std::endl
                   << "If you do not know the exact height, "
                   << "err on the side of caution so transactions do not "
-                  << "get missed."
+                  << "get missed." << std::endl
                   << std::endl
-                  << std::endl
-                  << InformationMsg("Hit enter for the sub-optimal default ")
-                  << InformationMsg("of zero: ");
+                  << InformationMsg("Hit enter for the sub-optimal default ") << InformationMsg("of zero: ");
 
         std::string stringHeight;
 
@@ -241,8 +225,8 @@ uint64_t getScanHeight()
         }
         catch (const std::invalid_argument &)
         {
-            std::cout << WarningMsg("Failed to parse height - input is not ")
-                      << WarningMsg("a number!") << std::endl << std::endl;
+            std::cout << WarningMsg("Failed to parse height - input is not ") << WarningMsg("a number!") << std::endl
+                      << std::endl;
         }
     }
 }
@@ -287,13 +271,11 @@ bool fileExists(const std::string &filename)
     return static_cast<bool>(std::ifstream(filename));
 }
 
-bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node,
-              bool &alreadyShuttingDown)
+bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node, bool &alreadyShuttingDown)
 {
     if (alreadyShuttingDown)
     {
-        std::cout << "Patience little turtle, we're already shutting down!" 
-                  << std::endl;
+        std::cout << "Patience little turtle, we're already shutting down!" << std::endl;
 
         return false;
     }
@@ -304,8 +286,7 @@ bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node,
 
     bool finishedShutdown = false;
 
-    std::thread timelyShutdown([&finishedShutdown]
-    {
+    std::thread timelyShutdown([&finishedShutdown] {
         const auto startTime = std::chrono::system_clock::now();
 
         /* Has shutdown finished? */
@@ -317,7 +298,8 @@ bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node,
             if ((currentTime - startTime) > std::chrono::seconds(20))
             {
                 std::cout << WarningMsg("Wallet took too long to save! "
-                                        "Force closing.") << std::endl
+                                        "Force closing.")
+                          << std::endl
                           << "Bye." << std::endl;
                 exit(0);
             }
@@ -332,14 +314,12 @@ bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node,
 
         walletInfo->wallet.save();
 
-        std::cout << InformationMsg("Shutting down wallet interface...")
-                  << std::endl;
+        std::cout << InformationMsg("Shutting down wallet interface...") << std::endl;
 
         walletInfo->wallet.shutdown();
     }
 
-    std::cout << InformationMsg("Shutting down node connection...")
-              << std::endl;
+    std::cout << InformationMsg("Shutting down node connection...") << std::endl;
 
     node.shutdown();
 
@@ -349,22 +329,23 @@ bool shutdown(std::shared_ptr<WalletInfo> walletInfo, CryptoNote::INode &node,
     timelyShutdown.join();
 
     std::cout << "Bye." << std::endl;
-    
+
     return true;
 }
 
-std::vector<std::string> split(const std::string& str, char delim = ' ')
+std::vector<std::string> split(const std::string &str, char delim = ' ')
 {
     std::vector<std::string> cont;
     std::stringstream ss(str);
     std::string token;
-    while (std::getline(ss, token, delim)) {
+    while (std::getline(ss, token, delim))
+    {
         cont.push_back(token);
     }
     return cont;
 }
 
-bool parseDaemonAddressFromString(std::string& host, int& port, const std::string& address)
+bool parseDaemonAddressFromString(std::string &host, int &port, const std::string &address)
 {
     std::vector<std::string> parts = split(address, ':');
 

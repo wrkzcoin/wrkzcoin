@@ -1,14 +1,12 @@
-// Copyright 2014-2018 The Monero Developers
-// Copyright 2018 The TurtleCoin Developers
+// Copyright 2014-2018, The Monero Developers
+// Copyright 2018-2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
 #include <algorithm>
-
-#include <Mnemonics/CRC32.h>
-#include <Mnemonics/Mnemonics.h>
-#include <Mnemonics/WordList.h>
-
+#include <mnemonics/CRC32.h>
+#include <mnemonics/Mnemonics.h>
+#include <mnemonics/WordList.h>
 #include <sstream>
 
 namespace Mnemonics
@@ -44,9 +42,8 @@ namespace Mnemonics
             Error error(
                 MNEMONIC_WRONG_LENGTH,
                 "The mnemonic seed given is the wrong length. It should be "
-                "25 words long, but it is " + std::to_string(len) + " " +
-                wordPlural + " long."
-            );
+                "25 words long, but it is "
+                    + std::to_string(len) + " " + wordPlural + " long.");
 
             return {error, Crypto::SecretKey()};
         }
@@ -57,14 +54,13 @@ namespace Mnemonics
             /* Convert to lower case */
             std::transform(word.begin(), word.end(), word.begin(), ::tolower);
 
-            if (std::find(WordList::English.begin(),
-                          WordList::English.end(), word) == WordList::English.end())
+            if (std::find(WordList::English.begin(), WordList::English.end(), word) == WordList::English.end())
             {
                 Error error(
                     MNEMONIC_INVALID_WORD,
                     "The mnemonic seed given has a word that is not present "
-                    "in the english word list (" + word + ")."
-                );
+                    "in the english word list ("
+                        + word + ").");
 
                 return {error, Crypto::SecretKey()};
             }
@@ -92,9 +88,7 @@ namespace Mnemonics
 
             /* no idea what this does lol */
             const uint32_t val = static_cast<uint32_t>(
-                w1 + wlLen * (((wlLen - w1) + w2) % wlLen) + wlLen 
-                           * wlLen * (((wlLen - w2) + w3) % wlLen)
-            );
+                w1 + wlLen * (((wlLen - w1) + w2) % wlLen) + wlLen * wlLen * (((wlLen - w2) + w3) % wlLen));
 
             /* Don't know what this is testing either */
             if (!(val % wlLen == w1))
@@ -129,7 +123,7 @@ namespace Mnemonics
             /* Read the array as a uint32_t array */
             auto ptr = (uint32_t *)&privateKey.data[i];
 
-            /* Take the first element of the array (since we have already 
+            /* Take the first element of the array (since we have already
                done the offset */
             const uint32_t val = ptr[0];
 
@@ -188,7 +182,7 @@ namespace Mnemonics
         /* Hash the data */
         uint64_t hash = CRC32::crc32(trimmed);
 
-        /* Modulus the hash by the word length to get the index of the 
+        /* Modulus the hash by the word length to get the index of the
            checksum word */
         return words[hash % words.size()];
     }
@@ -200,8 +194,7 @@ namespace Mnemonics
         for (const auto &word : words)
         {
             /* Find the iterator of our word in the wordlist */
-            const auto it = std::find(WordList::English.begin(),
-                                      WordList::English.end(), word);
+            const auto it = std::find(WordList::English.begin(), WordList::English.end(), word);
 
             /* Take it away from the beginning of the vector, giving us the
                index of the item in the vector */
@@ -210,4 +203,4 @@ namespace Mnemonics
 
         return result;
     }
-}
+} // namespace Mnemonics
