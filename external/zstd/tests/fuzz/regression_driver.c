@@ -16,7 +16,7 @@
 #include <stdlib.h>
 
 int main(int argc, char const **argv) {
-  size_t const kMaxFileSize = (size_t)1 << 20;
+  size_t const kMaxFileSize = (size_t)1 << 27;
   int const kFollowLinks = 1;
   char *fileNamesBuf = NULL;
   char const **files = argv + 1;
@@ -40,8 +40,13 @@ int main(int argc, char const **argv) {
     size_t readSize;
     FILE *file;
 
-    /* Check that it is a regular file, and that the fileSize is valid */
-    FUZZ_ASSERT_MSG(UTIL_isRegularFile(fileName), fileName);
+    /* Check that it is a regular file, and that the fileSize is valid.
+     * If it is not a regular file, then it may have been deleted since we
+     * constructed the list, so just skip it.
+     */
+    if (!UTIL_isRegularFile(fileName)) {
+      continue;
+    }
     FUZZ_ASSERT_MSG(fileSize <= kMaxFileSize, fileName);
     /* Ensure we have a large enough buffer allocated */
     if (fileSize > bufferSize) {

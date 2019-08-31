@@ -8,7 +8,7 @@
 
 #include "rocksdb/convenience.h"
 
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "util/cast_util.h"
 
 namespace rocksdb {
@@ -35,7 +35,13 @@ Status DeleteFilesInRanges(DB* db, ColumnFamilyHandle* column_family,
 Status VerifySstFileChecksum(const Options& options,
                              const EnvOptions& env_options,
                              const std::string& file_path) {
-  unique_ptr<RandomAccessFile> file;
+  return VerifySstFileChecksum(options, env_options, ReadOptions(), file_path);
+}
+Status VerifySstFileChecksum(const Options& options,
+                             const EnvOptions& env_options,
+                             const ReadOptions& read_options,
+                             const std::string& file_path) {
+  std::unique_ptr<RandomAccessFile> file;
   uint64_t file_size;
   InternalKeyComparator internal_comparator(options.comparator);
   ImmutableCFOptions ioptions(options);
@@ -46,7 +52,7 @@ Status VerifySstFileChecksum(const Options& options,
   } else {
     return s;
   }
-  unique_ptr<TableReader> table_reader;
+  std::unique_ptr<TableReader> table_reader;
   std::unique_ptr<RandomAccessFileReader> file_reader(
       new RandomAccessFileReader(std::move(file), file_path));
   const bool kImmortal = true;
@@ -59,7 +65,8 @@ Status VerifySstFileChecksum(const Options& options,
   if (!s.ok()) {
     return s;
   }
-  s = table_reader->VerifyChecksum();
+  s = table_reader->VerifyChecksum(read_options,
+                                   TableReaderCaller::kUserVerifyChecksum);
   return s;
 }
 

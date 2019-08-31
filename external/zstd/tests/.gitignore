@@ -1,6 +1,7 @@
 # local binary (Makefile)
 fullbench
 fullbench32
+fullbench-lib
 fuzzer
 fuzzer32
 fuzzer-dll
@@ -23,6 +24,10 @@ decodecorpus
 pool
 poolTests
 invalidDictionaries
+checkTag
+zcat
+zstdcat
+tm
 
 # Tmp test directory
 zstdtest
@@ -50,8 +55,10 @@ _*
 tmp*
 *.zst
 *.gz
+!gzip/hufts-segv.gz
 result
 out
+*.zstd
 
 # fuzzer
 afl

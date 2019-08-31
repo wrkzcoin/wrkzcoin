@@ -93,6 +93,34 @@ struct TransactionDBOptions {
   // logic in myrocks. This hack of simply not rolling back merge operands works
   // for the special way that myrocks uses this operands.
   bool rollback_merge_operands = false;
+
+  // If true, the TransactionDB implementation might skip concurrency control
+  // unless it is overridden by TransactionOptions or
+  // TransactionDBWriteOptimizations. This can be used in conjuction with
+  // DBOptions::unordered_write when the TransactionDB is used solely for write
+  // ordering rather than concurrency control.
+  bool skip_concurrency_control = false;
+
+  // This option is only valid for write unprepared. If a write batch exceeds
+  // this threshold, then the transaction will implicitly flush the currently
+  // pending writes into the database. A value of 0 or less means no limit.
+  int64_t default_write_batch_flush_threshold = 0;
+
+ private:
+  // 128 entries
+  size_t wp_snapshot_cache_bits = static_cast<size_t>(7);
+  // 8m entry, 64MB size
+  size_t wp_commit_cache_bits = static_cast<size_t>(23);
+
+  // For testing, whether transaction name should be auto-generated or not. This
+  // is useful for write unprepared which requires named transactions.
+  bool autogenerate_name = false;
+
+  friend class WritePreparedTxnDB;
+  friend class WriteUnpreparedTxn;
+  friend class WritePreparedTransactionTestBase;
+  friend class TransactionTestBase;
+  friend class MySQLStyleTransactionTest;
 };
 
 struct TransactionOptions {
@@ -117,7 +145,6 @@ struct TransactionOptions {
   // return 0 if
   // a.compare(b) returns 0.
 
-
   // If positive, specifies the wait timeout in milliseconds when
   // a transaction attempts to lock a key.
   //
@@ -137,6 +164,20 @@ struct TransactionOptions {
 
   // The maximum number of bytes used for the write batch. 0 means no limit.
   size_t max_write_batch_size = 0;
+
+  // Skip Concurrency Control. This could be as an optimization if the
+  // application knows that the transaction would not have any conflict with
+  // concurrent transactions. It could also be used during recovery if (i)
+  // application guarantees no conflict between prepared transactions in the WAL
+  // (ii) application guarantees that recovered transactions will be rolled
+  // back/commit before new transactions start.
+  // Default: false
+  bool skip_concurrency_control = false;
+
+  // See TransactionDBOptions::default_write_batch_flush_threshold for
+  // description. If a negative value is specified, then the default value from
+  // TransactionDBOptions is used.
+  int64_t write_batch_flush_threshold = -1;
 };
 
 // The per-write optimizations that do not involve transactions. TransactionDB
@@ -162,8 +203,8 @@ struct KeyLockInfo {
 struct DeadlockInfo {
   TransactionID m_txn_id;
   uint32_t m_cf_id;
-  std::string m_waiting_key;
   bool m_exclusive;
+  std::string m_waiting_key;
 };
 
 struct DeadlockPath {

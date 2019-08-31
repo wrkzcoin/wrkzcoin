@@ -42,7 +42,7 @@ PZSTD_LDFLAGS   =
 EXTRA_FLAGS     =
 ALL_CFLAGS      = $(EXTRA_FLAGS) $(CPPFLAGS) $(PZSTD_CPPFLAGS) $(CFLAGS)   $(PZSTD_CFLAGS)
 ALL_CXXFLAGS    = $(EXTRA_FLAGS) $(CPPFLAGS) $(PZSTD_CPPFLAGS) $(CXXFLAGS) $(PZSTD_CXXFLAGS)
-ALL_LDFLAGS     = $(EXTRA_FLAGS) $(LDFLAGS) $(PZSTD_LDFLAGS)
+ALL_LDFLAGS     = $(EXTRA_FLAGS) $(CXXFLAGS) $(LDFLAGS) $(PZSTD_LDFLAGS)
 
 
 # gtest libraries need to go before "-lpthread" because they depend on it.
@@ -50,7 +50,7 @@ GTEST_LIB  = -L googletest/build/googlemock/gtest
 LIBS       =
 
 # Compilation commands
-LD_COMMAND  = $(CXX) $^          $(ALL_LDFLAGS) $(LIBS) -lpthread -o $@
+LD_COMMAND  = $(CXX) $^          $(ALL_LDFLAGS) $(LIBS) -pthread -o $@
 CC_COMMAND  = $(CC)  $(DEPFLAGS) $(ALL_CFLAGS)   -c $<  -o $@
 CXX_COMMAND = $(CXX) $(DEPFLAGS) $(ALL_CXXFLAGS) -c $<  -o $@
 
@@ -171,7 +171,7 @@ roundtripcheck: roundtrip check
 	$(TESTPROG) ./test/RoundTripTest$(EXT) $(TESTFLAGS)
 
 # Build the main binary
-pzstd$(EXT): main.o Options.o Pzstd.o SkippableFrame.o $(ZSTDDIR)/libzstd.a
+pzstd$(EXT): main.o $(PROGDIR)/util.o Options.o Pzstd.o SkippableFrame.o $(ZSTDDIR)/libzstd.a
 	$(LD_COMMAND)
 
 # Target that depends on all the tests
@@ -190,13 +190,15 @@ $(ZSTDDIR)/libzstd.a: $(ZSTD_FILES)
 	CFLAGS="$(ALL_CFLAGS)" LDFLAGS="$(ALL_LDFLAGS)" $(MAKE) -C $(ZSTDDIR) libzstd.a
 
 # Rules to build the tests
-test/RoundTripTest$(EXT): test/RoundTripTest.o $(PROGDIR)/datagen.o Options.o \
+test/RoundTripTest$(EXT): test/RoundTripTest.o $(PROGDIR)/datagen.o \
+                          $(PROGDIR)/util.o Options.o \
                           Pzstd.o SkippableFrame.o $(ZSTDDIR)/libzstd.a
 	$(LD_COMMAND)
 
 test/%Test$(EXT): PZSTD_LDFLAGS += $(GTEST_LIB)
 test/%Test$(EXT): LIBS += -lgtest -lgtest_main
-test/%Test$(EXT): test/%Test.o $(PROGDIR)/datagen.o Options.o Pzstd.o  \
+test/%Test$(EXT): test/%Test.o $(PROGDIR)/datagen.o \
+                  $(PROGDIR)/util.o Options.o Pzstd.o \
                   SkippableFrame.o $(ZSTDDIR)/libzstd.a
 	$(LD_COMMAND)
 

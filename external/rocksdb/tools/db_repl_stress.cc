@@ -18,8 +18,8 @@ int main() {
 #include "db/write_batch_internal.h"
 #include "rocksdb/db.h"
 #include "rocksdb/types.h"
+#include "test_util/testutil.h"
 #include "util/gflags_compat.h"
-#include "util/testutil.h"
 
 // Run a thread to perform Put's.
 // Another thread uses GetUpdatesSince API to keep getting the updates.
@@ -67,7 +67,7 @@ struct ReplicationThread {
 static void ReplicationThreadBody(void* arg) {
   ReplicationThread* t = reinterpret_cast<ReplicationThread*>(arg);
   DB* db = t->db;
-  unique_ptr<TransactionLogIterator> iter;
+  std::unique_ptr<TransactionLogIterator> iter;
   SequenceNumber currentSeqNum = 1;
   while (!t->stop.load(std::memory_order_acquire)) {
     iter.reset();

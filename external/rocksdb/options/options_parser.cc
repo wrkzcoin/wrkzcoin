@@ -16,10 +16,10 @@
 #include "options/options_helper.h"
 #include "rocksdb/convenience.h"
 #include "rocksdb/db.h"
+#include "test_util/sync_point.h"
 #include "util/cast_util.h"
 #include "util/file_reader_writer.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
 
 #include "port/port.h"
 
@@ -48,8 +48,8 @@ Status PersistRocksDBOptions(const DBOptions& db_opt,
   if (!s.ok()) {
     return s;
   }
-  unique_ptr<WritableFileWriter> writable;
-  writable.reset(new WritableFileWriter(std::move(wf), EnvOptions(),
+  std::unique_ptr<WritableFileWriter> writable;
+  writable.reset(new WritableFileWriter(std::move(wf), file_name, EnvOptions(),
                                         nullptr /* statistics */));
 
   std::string options_file_content;
@@ -199,45 +199,6 @@ Status RocksDBOptionsParser::ParseStatement(std::string* name,
   }
   return Status::OK();
 }
-
-namespace {
-bool ReadOneLine(std::istringstream* iss, SequentialFile* seq_file,
-                 std::string* output, bool* has_data, Status* result) {
-  const int kBufferSize = 8192;
-  char buffer[kBufferSize + 1];
-  Slice input_slice;
-
-  std::string line;
-  bool has_complete_line = false;
-  while (!has_complete_line) {
-    if (std::getline(*iss, line)) {
-      has_complete_line = !iss->eof();
-    } else {
-      has_complete_line = false;
-    }
-    if (!has_complete_line) {
-      // if we're not sure whether we have a complete line,
-      // further read from the file.
-      if (*has_data) {
-        *result = seq_file->Read(kBufferSize, &input_slice, buffer);
-      }
-      if (input_slice.size() == 0) {
-        // meaning we have read all the data
-        *has_data = false;
-        break;
-      } else {
-        iss->str(line + input_slice.ToString());
-        // reset the internal state of iss so that we can keep reading it.
-        iss->clear();
-        *has_data = (input_slice.size() == kBufferSize);
-        continue;
-      }
-    }
-  }
-  *output = line;
-  return *has_data || has_complete_line;
-}
-}  // namespace
 
 Status RocksDBOptionsParser::Parse(const std::string& file_name, Env* env,
                                    bool ignore_unknown_options) {
@@ -539,6 +500,16 @@ bool AreEqualOptions(
     case OptionType::kInt:
       return (*reinterpret_cast<const int*>(offset1) ==
               *reinterpret_cast<const int*>(offset2));
+    case OptionType::kInt32T:
+      return (*reinterpret_cast<const int32_t*>(offset1) ==
+              *reinterpret_cast<const int32_t*>(offset2));
+    case OptionType::kInt64T:
+      {
+        int64_t v1, v2;
+        GetUnaligned(reinterpret_cast<const int64_t*>(offset1), &v1);
+        GetUnaligned(reinterpret_cast<const int64_t*>(offset2), &v2);
+        return (v1 == v2);
+      }
     case OptionType::kVectorInt:
       return (*reinterpret_cast<const std::vector<int>*>(offset1) ==
               *reinterpret_cast<const std::vector<int>*>(offset2));
@@ -592,6 +563,18 @@ bool AreEqualOptions(
           *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(
               offset1) ==
           *reinterpret_cast<const BlockBasedTableOptions::IndexType*>(offset2));
+    case OptionType::kBlockBasedTableDataBlockIndexType:
+      return (
+          *reinterpret_cast<const BlockBasedTableOptions::DataBlockIndexType*>(
+              offset1) ==
+          *reinterpret_cast<const BlockBasedTableOptions::DataBlockIndexType*>(
+              offset2));
+    case OptionType::kBlockBasedTableIndexShorteningMode:
+      return (
+          *reinterpret_cast<const BlockBasedTableOptions::IndexShorteningMode*>(
+              offset1) ==
+          *reinterpret_cast<const BlockBasedTableOptions::IndexShorteningMode*>(
+              offset2));
     case OptionType::kWALRecoveryMode:
       return (*reinterpret_cast<const WALRecoveryMode*>(offset1) ==
               *reinterpret_cast<const WALRecoveryMode*>(offset2));
@@ -607,7 +590,7 @@ bool AreEqualOptions(
       CompactionOptionsFIFO rhs =
           *reinterpret_cast<const CompactionOptionsFIFO*>(offset2);
       if (lhs.max_table_files_size == rhs.max_table_files_size &&
-          lhs.ttl == rhs.ttl && lhs.allow_compaction == rhs.allow_compaction) {
+          lhs.allow_compaction == rhs.allow_compaction) {
         return true;
       }
       return false;

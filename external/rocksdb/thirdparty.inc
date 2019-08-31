@@ -1,3 +1,4 @@
+# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
 # Edit definitions below to specify paths to include files and libraries of all 3rd party libraries
 
 # TODO: Make this work with find_package and/or get rid of it
@@ -90,41 +91,41 @@ endif ()
 #
 # Edit these 4 lines to define paths to LZ4
 #
-#set(LZ4_HOME $ENV{THIRDPARTY_HOME}/LZ4.Library)
-#set(LZ4_INCLUDE ${LZ4_HOME}/build/native/inc/inc)
-#set(LZ4_LIB_DEBUG ${LZ4_HOME}/lib/native/debug/amd64/lz4.lib)
-#set(LZ4_LIB_RELEASE ${LZ4_HOME}/lib/native/retail/amd64/lz4.lib)
+set(LZ4_HOME $ENV{THIRDPARTY_HOME}/LZ4.Library)
+set(LZ4_INCLUDE ${LZ4_HOME}/build/native/inc/inc)
+set(LZ4_LIB_DEBUG ${LZ4_HOME}/lib/native/debug/amd64/lz4.lib)
+set(LZ4_LIB_RELEASE ${LZ4_HOME}/lib/native/retail/amd64/lz4.lib)
 
 
 # For compatibility
-#if (LZ4)
-#  set(WITH_LZ4 ON)
-#endif ()
+if (LZ4)
+  set(WITH_LZ4 ON)
+endif ()
 
-#if (WITH_LZ4)
-#  message(STATUS "LZ4 library is enabled")
+if (WITH_LZ4)
+  message(STATUS "LZ4 library is enabled")
   
-#  if(DEFINED ENV{LZ4_INCLUDE})
-#    set(LZ4_INCLUDE $ENV{LZ4_INCLUDE})
-#  endif()
+  if(DEFINED ENV{LZ4_INCLUDE})
+    set(LZ4_INCLUDE $ENV{LZ4_INCLUDE})
+  endif()
   
-#  if(DEFINED ENV{LZ4_LIB_DEBUG})
-#    set(LZ4_LIB_DEBUG $ENV{LZ4_LIB_DEBUG})
-#  endif()
+  if(DEFINED ENV{LZ4_LIB_DEBUG})
+    set(LZ4_LIB_DEBUG $ENV{LZ4_LIB_DEBUG})
+  endif()
 
-#  if(DEFINED ENV{LZ4_LIB_RELEASE})
-#    set(LZ4_LIB_RELEASE $ENV{LZ4_LIB_RELEASE})
-#  endif()
+  if(DEFINED ENV{LZ4_LIB_RELEASE})
+    set(LZ4_LIB_RELEASE $ENV{LZ4_LIB_RELEASE})
+  endif()
   
-#  set(LZ4_CXX_FLAGS -DLZ4)
-#  set(LZ4_LIBS debug ${LZ4_LIB_DEBUG} optimized ${LZ4_LIB_RELEASE})
-#
-#  add_definitions(${LZ4_CXX_FLAGS})
-#  include_directories(${LZ4_INCLUDE})
-#  set (THIRDPARTY_LIBS ${THIRDPARTY_LIBS} ${LZ4_LIBS})
-#else ()
-#  message(STATUS "LZ4 library is disabled")
-#endif ()
+  set(LZ4_CXX_FLAGS -DLZ4)
+  set(LZ4_LIBS debug ${LZ4_LIB_DEBUG} optimized ${LZ4_LIB_RELEASE})
+
+  add_definitions(${LZ4_CXX_FLAGS})
+  include_directories(${LZ4_INCLUDE})
+  set (THIRDPARTY_LIBS ${THIRDPARTY_LIBS} ${LZ4_LIBS})
+else ()
+  message(STATUS "LZ4 library is disabled")
+endif ()
 
 # ================================================== ZLIB ==================================================
 #
@@ -240,7 +241,7 @@ endif()
 
 if (WITH_JEMALLOC)
   message(STATUS "JEMALLOC library is enabled")
-  set(JEMALLOC_CXX_FLAGS "-DROCKSDB_JEMALLOC -DJEMALLOC_EXPORT= ")
+  set(JEMALLOC_CXX_FLAGS "-DROCKSDB_JEMALLOC -DJEMALLOC_EXPORT= -DJEMALLOC_NO_RENAME")
   
   if(DEFINED ENV{JEMALLOC_INCLUDE})
     set(JEMALLOC_INCLUDE $ENV{JEMALLOC_INCLUDE})
