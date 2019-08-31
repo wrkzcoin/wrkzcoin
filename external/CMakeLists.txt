@@ -12,15 +12,14 @@ endif()
 add_subdirectory(miniupnpc)
 add_subdirectory(cryptopp)
 add_subdirectory(sqlite3)
-add_subdirectory(lz4)
 add_subdirectory(argon2)
 add_subdirectory(zstd)
 
 if (MSVC)
     add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
-    set_property(TARGET upnpc-static cryptopp-static rocksdb sqlite3 zstd lz4 argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static rocksdb sqlite3 zstd argon2 PROPERTY FOLDER "external")
 elseif (NOT MSVC)
-    set_property(TARGET upnpc-static cryptopp-static sqlite3 lz4 zstd argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static sqlite3 zstd argon2 PROPERTY FOLDER "external")
     add_custom_target(
             rocksdb
             COMMAND $(MAKE) rocksdb
