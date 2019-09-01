@@ -53,8 +53,6 @@ if(POLICY CMP0042)
   cmake_policy(SET CMP0042 NEW)
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/modules/")
-
 set(ARCH native CACHE STRING "CPU to build for: -march value or native")
 option(WITH_JEMALLOC "build with JeMalloc" OFF)
 option(WITH_SNAPPY "build with SNAPPY" OFF)
