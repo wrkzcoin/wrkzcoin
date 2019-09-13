@@ -24,6 +24,7 @@ DataBaseConfig::DataBaseConfig():
     maxOpenFiles(DATABASE_DEFAULT_MAX_OPEN_FILES),
     writeBufferSize(DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE * MEGABYTE),
     readCacheSize(DATABASE_READ_BUFFER_MB_DEFAULT_SIZE * MEGABYTE),
+	MaxByteLevelSize(DATABASE_MAX_BYTES_FOR_LEVEL_BASE * MEGABYTE),
     configFolderDefaulted(false),
     compressionEnabled(false)
 {
@@ -34,14 +35,15 @@ bool DataBaseConfig::init(
     const int backgroundThreads,
     const int openFiles,
     const int writeBufferMB,
-    const int MaxByteLevelSizeMB, 
     const int readCacheMB,
+    const int MaxByteLevelSizeMB, 
     const bool enableDbCompression)
 {
     dataDir = dataDirectory;
     backgroundThreadsCount = backgroundThreads;
     maxOpenFiles = openFiles;
     writeBufferSize = writeBufferMB * MEGABYTE;
+    MaxByteLevelSize = MaxByteLevelSizeMB * MEGABYTE;
     readCacheSize = readCacheMB * MEGABYTE;
     compressionEnabled = enableDbCompression;
 
