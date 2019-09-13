@@ -81,13 +81,7 @@ namespace DaemonConfig
             "no-console",
             "Disable daemon console commands",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
-            "rocksdb",
-            "Use Rocksdb for local cache files",
-            cxxopts::value<bool>(config.useRocksdbForLocalCaches)->default_value("false")->implicit_value("true"))(
-            "save-config", "Save the configuration to the specified <file>", cxxopts::value<std::string>(), "<file>")(
-            "sqlite",
-            "Use SQLite3 for local cache files",
-            cxxopts::value<bool>(config.useSqliteForLocalCaches)->default_value("false")->implicit_value("true"));
+            "save-config", "Save the configuration to the specified <file>", cxxopts::value<std::string>(), "<file>");
 
         options.add_options("RPC")(
             "enable-blockexplorer",
@@ -160,7 +154,7 @@ namespace DaemonConfig
 #ifdef ENABLE_ZSTD_COMPRESSION
             ("db-enable-compression",
              "Enable database compression",
-             cxxopts::value<bool>(config.enableDbCompression)->default_value("false")->implicit_value("true"))
+             cxxopts::value<bool>(config.enableDbCompression)->default_value("true"))
 #endif
                 ("db-max-open-files",
                  "Number of files that can be used by the database at one time",
@@ -257,16 +251,6 @@ namespace DaemonConfig
             if (cli.count("log-level") > 0)
             {
                 config.logLevel = cli["log-level"].as<int>();
-            }
-
-            if (cli.count("sqlite") > 0)
-            {
-                config.useSqliteForLocalCaches = cli["sqlite"].as<bool>();
-            }
-
-            if (cli.count("rocksdb") > 0)
-            {
-                config.useRocksdbForLocalCaches = cli["rocksdb"].as<bool>();
             }
 
 #ifdef ENABLE_ZSTD_COMPRESSION
@@ -476,16 +460,6 @@ namespace DaemonConfig
                     {
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
-                }
-                else if (cfgKey.compare("sqlite") == 0)
-                {
-                    config.useSqliteForLocalCaches = cfgValue.at(0) == '1';
-                    updated = true;
-                }
-                else if (cfgKey.compare("rocksdb") == 0)
-                {
-                    config.useRocksdbForLocalCaches = cfgValue.at(0) == '1';
-                    updated = true;
                 }
 #ifdef ENABLE_ZSTD_COMPRESSION
                 else if (cfgKey.compare("db-enable-compression") == 0)
@@ -739,16 +713,6 @@ namespace DaemonConfig
             config.logLevel = j["log-level"].GetInt();
         }
 
-        if (j.HasMember("sqlite"))
-        {
-            config.useSqliteForLocalCaches = j["sqlite"].GetBool();
-        }
-
-        if (j.HasMember("rocksdb"))
-        {
-            config.useRocksdbForLocalCaches = j["rocksdb"].GetBool();
-        }
-
 #ifdef ENABLE_ZSTD_COMPRESSION
         if (j.HasMember("db-enable-compression"))
         {
@@ -898,8 +862,6 @@ namespace DaemonConfig
         j.AddMember("log-file", config.logFile, alloc);
         j.AddMember("log-level", config.logLevel, alloc);
         j.AddMember("no-console", config.noConsole, alloc);
-        j.AddMember("rocksdb", config.useRocksdbForLocalCaches, alloc);
-        j.AddMember("sqlite", config.useSqliteForLocalCaches, alloc);
 #ifdef ENABLE_ZSTD_COMPRESSION
         j.AddMember("db-enable-compression", config.enableDbCompression, alloc);
 #endif
