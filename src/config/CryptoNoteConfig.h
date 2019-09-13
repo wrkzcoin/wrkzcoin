@@ -340,11 +340,11 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 512; // 512 MB
-    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 1024; // 1 GB
+    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 256; // 256 MB
+    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 512; // 512 MB
     const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = -1; // maximize files
     const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; // 8 DB IncreaseParallelism
-    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 512; // 512MB // Additional tweak testing
+    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 4096; // 4096MB // Additional tweak testing
 
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
