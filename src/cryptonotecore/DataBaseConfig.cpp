@@ -24,7 +24,7 @@ DataBaseConfig::DataBaseConfig():
     maxOpenFiles(DATABASE_DEFAULT_MAX_OPEN_FILES),
     writeBufferSize(DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE * MEGABYTE),
     readCacheSize(DATABASE_READ_BUFFER_MB_DEFAULT_SIZE * MEGABYTE),
-	MaxByteLevelSize(DATABASE_MAX_BYTES_FOR_LEVEL_BASE * MEGABYTE),
+    MaxByteLevelSize(DATABASE_MAX_BYTES_FOR_LEVEL_BASE * MEGABYTE),
     configFolderDefaulted(false),
     compressionEnabled(false)
 {
