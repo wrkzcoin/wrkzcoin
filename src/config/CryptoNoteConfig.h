@@ -215,12 +215,6 @@ namespace CryptoNote
 
         const uint32_t UPGRADE_HEIGHT_CURRENT = UPGRADE_HEIGHT_V6;
 
-        /* This value is here to handle the difficult reset needed for the PoW upgrade
-           at block major version V6 */
-        const uint64_t DIFFICULTY_RESET_HEIGHT_V1 = UPGRADE_HEIGHT_V6;
-        const float DIFFICULTY_RESET_MULTIPLIER_V1 = 1;
-        const uint64_t DIFFICULTY_RESET_WINDOW_V1 = DIFFICULTY_BLOCKS_COUNT_V3;
-
         const unsigned UPGRADE_VOTING_THRESHOLD = 90; // percent
         const uint32_t UPGRADE_VOTING_WINDOW = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY; // blocks
         const uint32_t UPGRADE_WINDOW = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY; // blocks

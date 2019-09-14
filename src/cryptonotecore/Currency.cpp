@@ -522,24 +522,20 @@ namespace CryptoNote
 
         if (blockIndex >= CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX_V3)
         {
-            nextDiff = nextDifficultyV5(timestamps, cumulativeDifficulties);
+            return nextDifficultyV5(timestamps, cumulativeDifficulties);
         }
         else if (blockIndex >= CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX_V2)
         {
-            nextDiff = nextDifficultyV4(timestamps, cumulativeDifficulties);
+            return nextDifficultyV4(timestamps, cumulativeDifficulties);
         }
         else if (blockIndex >= CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX)
         {
-            nextDiff = nextDifficultyV3(timestamps, cumulativeDifficulties);
+            return nextDifficultyV3(timestamps, cumulativeDifficulties);
         }
         else
         {
-            nextDiff = nextDifficulty(version, blockIndex, timestamps, cumulativeDifficulties);
+            return nextDifficulty(version, blockIndex, timestamps, cumulativeDifficulties);
         }
-
-        /* Executes the helper functions to determine if there is a difficulty reset
-           currently activated. Method comes from Difficulty.cpp */
-        return adjustForDifficultyReset(nextDiff, blockIndex);
     }
 
     uint64_t Currency::nextDifficulty(
