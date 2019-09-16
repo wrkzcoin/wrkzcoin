@@ -518,8 +518,6 @@ namespace CryptoNote
         std::vector<uint64_t> timestamps,
         std::vector<uint64_t> cumulativeDifficulties) const
     {
-        uint64_t nextDiff = 0;
-
         if (blockIndex >= CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX_V3)
         {
             return nextDifficultyV5(timestamps, cumulativeDifficulties);

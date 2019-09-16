@@ -253,9 +253,8 @@ int main(int argc, char *argv[])
         if (config.rewindToHeight > 0)
         {
             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
-            std::unique_ptr<IMainChainStorage> mainChainStorage;
 
-            mainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
+            std::unique_ptr<IMainChainStorage> mainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
 
             mainChainStorage->rewindTo(config.rewindToHeight);
 
@@ -323,8 +322,7 @@ int main(int argc, char *argv[])
         System::Dispatcher dispatcher;
         logger(INFO) << "Initializing core...";
 
-        std::unique_ptr<IMainChainStorage> tmainChainStorage;
-        tmainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
+        std::unique_ptr<IMainChainStorage> tmainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
 
         CryptoNote::Core ccore(
             currency,
