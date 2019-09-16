@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -98,7 +99,7 @@ struct ThreadPoolImpl::Impl {
 
 private:
 
-  static void* BGThreadWrapper(void* arg);
+  static void BGThreadWrapper(void* arg);
 
   bool low_io_priority_;
   bool low_cpu_priority_;
@@ -188,7 +189,7 @@ void ThreadPoolImpl::Impl::BGThread(size_t thread_id) {
   bool low_cpu_priority = false;
 
   while (true) {
-// Wait until there is an item that is ready to run
+    // Wait until there is an item that is ready to run
     std::unique_lock<std::mutex> lock(mu_);
     // Stop waiting if the thread needs to do work or needs to terminate.
     while (!exit_all_threads_ && !IsLastExcessiveThread(thread_id) &&
@@ -198,7 +199,7 @@ void ThreadPoolImpl::Impl::BGThread(size_t thread_id) {
 
     if (exit_all_threads_) {  // mechanism to let BG threads exit safely
 
-      if(!wait_for_jobs_to_complete_ ||
+      if (!wait_for_jobs_to_complete_ ||
           queue_.empty()) {
         break;
        }
@@ -274,7 +275,7 @@ struct BGThreadMetadata {
       : thread_pool_(thread_pool), thread_id_(thread_id) {}
 };
 
-void* ThreadPoolImpl::Impl::BGThreadWrapper(void* arg) {
+void ThreadPoolImpl::Impl::BGThreadWrapper(void* arg) {
   BGThreadMetadata* meta = reinterpret_cast<BGThreadMetadata*>(arg);
   size_t thread_id = meta->thread_id_;
   ThreadPoolImpl::Impl* tp = meta->thread_pool_;
@@ -292,9 +293,12 @@ void* ThreadPoolImpl::Impl::BGThreadWrapper(void* arg) {
     case Env::Priority::BOTTOM:
       thread_type = ThreadStatus::BOTTOM_PRIORITY;
       break;
+    case Env::Priority::USER:
+      thread_type = ThreadStatus::USER;
+      break;
     case Env::Priority::TOTAL:
       assert(false);
-      return nullptr;
+      return;
   }
   assert(thread_type != ThreadStatus::NUM_THREAD_TYPES);
   ThreadStatusUtil::RegisterThread(tp->GetHostEnv(), thread_type);
@@ -304,7 +308,7 @@ void* ThreadPoolImpl::Impl::BGThreadWrapper(void* arg) {
 #ifdef ROCKSDB_USING_THREAD_STATUS
   ThreadStatusUtil::UnregisterThread();
 #endif
-  return nullptr;
+  return;
 }
 
 void ThreadPoolImpl::Impl::SetBackgroundThreadsInternal(int num,
@@ -469,16 +473,12 @@ void ThreadPoolImpl::SubmitJob(std::function<void()>&& job) {
 
 void ThreadPoolImpl::Schedule(void(*function)(void* arg1), void* arg,
   void* tag, void(*unschedFunction)(void* arg)) {
-
-  std::function<void()> fn = [arg, function] { function(arg); };
-
-  std::function<void()> unfn;
-  if (unschedFunction != nullptr) {
-    auto uf = [arg, unschedFunction] { unschedFunction(arg); };
-    unfn = std::move(uf);
+  if (unschedFunction == nullptr) {
+    impl_->Submit(std::bind(function, arg), std::function<void()>(), tag);
+  } else {
+    impl_->Submit(std::bind(function, arg), std::bind(unschedFunction, arg),
+                  tag);
   }
-
-  impl_->Submit(std::move(fn), std::move(unfn), tag);
 }
 
 int ThreadPoolImpl::UnSchedule(void* arg) {

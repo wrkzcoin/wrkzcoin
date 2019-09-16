@@ -1,79 +1,81 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2014-2018, The Aeon Project
-// Copyright (c) 2018, The TurtleCoin Developers
+// Copyright (c) 2018-2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
 /* This file contains the x86 version of the CryptoNight slow-hash routines */
 
 #if !defined NO_AES && (defined(__x86_64__) || (defined(_MSC_VER) && defined(_WIN64)))
-  #pragma message ("info: Using slow-hash-x86.c")
+#pragma message("info: Using slow-hash-x86.c")
 
-  #include "slow-hash-common.h"
+#include "slow-hash-common.h"
 
 // Optimised code below, uses x86-specific intrinsics, SSE2, AES-NI
 // Fall back to more portable code is down at the bottom
 
-  #include <emmintrin.h>
+#include <emmintrin.h>
 
-  #if defined(_MSC_VER)
-    #include <intrin.h>
-    #include <windows.h>
-    #define STATIC
-    #define INLINE __inline
-    #if !defined(RDATA_ALIGN16)
-      #define RDATA_ALIGN16 __declspec(align(16))
-    #endif
-  #elif defined(__MINGW32__)
-    #include <intrin.h>
-    #include <windows.h>
-    #define STATIC static
-    #define INLINE inline
-    #if !defined(RDATA_ALIGN16)
-      #define RDATA_ALIGN16 __attribute__ ((aligned(16)))
-    #endif
-  #else
-    #include <wmmintrin.h>
-    #include <sys/mman.h>
-    #define STATIC static
-    #define INLINE inline
-    #if !defined(RDATA_ALIGN16)
-      #define RDATA_ALIGN16 __attribute__ ((aligned(16)))
-    #endif
-  #endif
+#if defined(_MSC_VER)
 
-  #if defined(__INTEL_COMPILER)
-    #define ASM __asm__
-  #elif !defined(_MSC_VER)
-    #define ASM __asm__
-  #else
-    #define ASM __asm
-  #endif
+#include <intrin.h>
+#include <windows.h>
 
-  #define U64(x) ((uint64_t *) (x))
-  #define R128(x) ((__m128i *) (x))
+#define STATIC
+#define INLINE __inline
+#if !defined(RDATA_ALIGN16)
+#define RDATA_ALIGN16 __declspec(align(16))
+#endif
+#elif defined(__MINGW32__)
+#include <intrin.h>
+#include <windows.h>
+#define STATIC static
+#define INLINE inline
+#if !defined(RDATA_ALIGN16)
+#define RDATA_ALIGN16 __attribute__((aligned(16)))
+#endif
+#else
+#include <sys/mman.h>
+#include <wmmintrin.h>
+#define STATIC static
+#define INLINE inline
+#if !defined(RDATA_ALIGN16)
+#define RDATA_ALIGN16 __attribute__((aligned(16)))
+#endif
+#endif
 
-  #define state_index(x,div) (((*((uint64_t *)x) >> 4) & (TOTALBLOCKS /(div) - 1)) << 4)
+#if defined(__INTEL_COMPILER)
+#define ASM __asm__
+#elif !defined(_MSC_VER)
+#define ASM __asm__
+#else
+#define ASM __asm
+#endif
 
-  #if defined(_MSC_VER)
-    #if !defined(_WIN64)
-      #define __mul() lo = mul128(c[0], b[0], &hi);
-    #else
-      #define __mul() lo = _umul128(c[0], b[0], &hi);
-    #endif
-  #else
-    #if defined(__x86_64__)
-      #define __mul() ASM("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "%a" (c[0]), "rm" (b[0]) : "cc");
-    #else
-      #define __mul() lo = mul128(c[0], b[0], &hi);
-    #endif
-  #endif
+#define U64(x) ((uint64_t *)(x))
+#define R128(x) ((__m128i *)(x))
 
-# define pre_aes() \
-  j = state_index(a,lightFlag); \
-  _c = _mm_load_si128(R128(&hp_state[j])); \
-  _a = _mm_load_si128(R128(a)); \
+#define state_index(x, div) (((*((uint64_t *)x) >> 4) & (TOTALBLOCKS / (div)-1)) << 4)
+
+#if defined(_MSC_VER)
+#if !defined(_WIN64)
+#define __mul() lo = mul128(c[0], b[0], &hi);
+#else
+#define __mul() lo = _umul128(c[0], b[0], &hi);
+#endif
+#else
+#if defined(__x86_64__)
+#define __mul() ASM("mulq %3\n\t" : "=d"(hi), "=a"(lo) : "%a"(c[0]), "rm"(b[0]) : "cc");
+#else
+#define __mul() lo = mul128(c[0], b[0], &hi);
+#endif
+#endif
+
+#define pre_aes()                            \
+    j = state_index(a, lightFlag);           \
+    _c = _mm_load_si128(R128(&hp_state[j])); \
+    _a = _mm_load_si128(R128(a));
 
 /*
  * An SSE-optimized implementation of the second half of CryptoNight step 3.
@@ -84,51 +86,50 @@
  * bit multiply.
  * This code is based upon an optimized implementation by dga.
  */
-  #define post_aes() \
-  VARIANT2_SHUFFLE_ADD_SSE2(hp_state, j); \
-  _mm_store_si128(R128(c), _c); \
-  _mm_store_si128(R128(&hp_state[j]), _mm_xor_si128(_b, _c)); \
-  VARIANT1_1(&hp_state[j]); \
-  j = state_index(c,lightFlag); \
-  p = U64(&hp_state[j]); \
-  b[0] = p[0]; b[1] = p[1]; \
-  VARIANT2_INTEGER_MATH_SSE2(b, c); \
-  __mul(); \
-  VARIANT2_2(); \
-  VARIANT2_SHUFFLE_ADD_SSE2(hp_state, j); \
-  a[0] += hi; a[1] += lo; \
-  p = U64(&hp_state[j]); \
-  p[0] = a[0];  p[1] = a[1]; \
-  a[0] ^= b[0]; a[1] ^= b[1]; \
-  VARIANT1_2(p + 1); \
-  _b1 = _b; \
-  _b = _c; \
+#define post_aes()                                              \
+    VARIANT2_SHUFFLE_ADD_SSE2(hp_state, j);                     \
+    _mm_store_si128(R128(c), _c);                               \
+    _mm_store_si128(R128(&hp_state[j]), _mm_xor_si128(_b, _c)); \
+    VARIANT1_1(&hp_state[j]);                                   \
+    j = state_index(c, lightFlag);                              \
+    p = U64(&hp_state[j]);                                      \
+    b[0] = p[0];                                                \
+    b[1] = p[1];                                                \
+    VARIANT2_INTEGER_MATH_SSE2(b, c);                           \
+    __mul();                                                    \
+    VARIANT2_2();                                               \
+    VARIANT2_SHUFFLE_ADD_SSE2(hp_state, j);                     \
+    a[0] += hi;                                                 \
+    a[1] += lo;                                                 \
+    p = U64(&hp_state[j]);                                      \
+    p[0] = a[0];                                                \
+    p[1] = a[1];                                                \
+    a[0] ^= b[0];                                               \
+    a[1] ^= b[1];                                               \
+    VARIANT1_2(p + 1);                                          \
+    _b1 = _b;                                                   \
+    _b = _c;
 
-  #if defined(_MSC_VER)
-    #define THREADV __declspec(thread)
-  #else
-    #define THREADV __thread
-  #endif
+#if defined(_MSC_VER)
+#define THREADV __declspec(thread)
+#else
+#define THREADV __thread
+#endif
 
 THREADV uint8_t *hp_state = NULL;
+
 THREADV int hp_allocated = 0;
 
-  #if defined(_MSC_VER)
-    #define cpuid(info,x)    __cpuidex(info,x,0)
-  #else
+#if defined(_MSC_VER)
+#define cpuid(info, x) __cpuidex(info, x, 0)
+#else
 void cpuid(int CPUInfo[4], int InfoType)
 {
-    ASM __volatile__
-    (
-      "cpuid":
-          "=a" (CPUInfo[0]),
-          "=b" (CPUInfo[1]),
-          "=c" (CPUInfo[2]),
-          "=d" (CPUInfo[3]) : "a" (InfoType),
-          "c" (0)
-    );
+    ASM __volatile__("cpuid"
+                     : "=a"(CPUInfo[0]), "=b"(CPUInfo[1]), "=c"(CPUInfo[2]), "=d"(CPUInfo[3])
+                     : "a"(InfoType), "c"(0));
 }
-  #endif
+#endif
 
 /**
  * @brief a = (a xor b), where a and b point to 128 bit values
@@ -181,17 +182,17 @@ STATIC INLINE int check_aes_hw(void)
     int cpuid_results[4];
     static int supported = -1;
 
-    if(supported >= 0)
+    if (supported >= 0)
     {
         return supported;
     }
 
-    cpuid(cpuid_results,1);
+    cpuid(cpuid_results, 1);
 
     return supported = cpuid_results[2] & (1 << 25);
 }
 
-STATIC INLINE void aes_256_assist1(__m128i* t1, __m128i * t2)
+STATIC INLINE void aes_256_assist1(__m128i *t1, __m128i *t2)
 {
     __m128i t4;
     *t2 = _mm_shuffle_epi32(*t2, 0xff);
@@ -204,7 +205,7 @@ STATIC INLINE void aes_256_assist1(__m128i* t1, __m128i * t2)
     *t1 = _mm_xor_si128(*t1, *t2);
 }
 
-STATIC INLINE void aes_256_assist2(__m128i* t1, __m128i * t3)
+STATIC INLINE void aes_256_assist2(__m128i *t1, __m128i *t3)
 {
     __m128i t2, t4;
     t4 = _mm_aeskeygenassist_si128(*t1, 0x00);
@@ -301,7 +302,7 @@ STATIC INLINE void aes_pseudo_round(const uint8_t *in, uint8_t *out, const uint8
     __m128i d;
     int i;
 
-    for(i = 0; i < nblocks; i++)
+    for (i = 0; i < nblocks; i++)
     {
         d = _mm_loadu_si128(R128(in + i * AES_BLOCK_SIZE));
         d = _mm_aesenc_si128(d, *R128(&k[0]));
@@ -332,14 +333,15 @@ STATIC INLINE void aes_pseudo_round(const uint8_t *in, uint8_t *out, const uint8
  * @param nblocks the number of 128 blocks of data to be encrypted
  */
 
-STATIC INLINE void aes_pseudo_round_xor(const uint8_t *in, uint8_t *out, const uint8_t *expandedKey, const uint8_t *xor, int nblocks)
+STATIC INLINE void
+    aes_pseudo_round_xor(const uint8_t *in, uint8_t *out, const uint8_t *expandedKey, const uint8_t * xor, int nblocks)
 {
     __m128i *k = R128(expandedKey);
     __m128i *x = R128(xor);
     __m128i d;
     int i;
 
-    for(i = 0; i < nblocks; i++)
+    for (i = 0; i < nblocks; i++)
     {
         d = _mm_loadu_si128(R128(in + i * AES_BLOCK_SIZE));
         d = _mm_xor_si128(d, *R128(x++));
@@ -357,7 +359,8 @@ STATIC INLINE void aes_pseudo_round_xor(const uint8_t *in, uint8_t *out, const u
     }
 }
 
-  #if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(_MSC_VER) || defined(__MINGW32__)
+
 BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
 {
     struct
@@ -368,7 +371,7 @@ BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
 
     HANDLE token;
 
-    if(!OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES, &token))
+    if (!OpenProcessToken(hProcess, TOKEN_ADJUST_PRIVILEGES, &token))
     {
         return FALSE;
     }
@@ -376,12 +379,12 @@ BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
     info.count = 1;
     info.privilege[0].Attributes = bEnable ? SE_PRIVILEGE_ENABLED : 0;
 
-    if(!LookupPrivilegeValue(NULL, SE_LOCK_MEMORY_NAME, &(info.privilege[0].Luid)))
+    if (!LookupPrivilegeValue(NULL, SE_LOCK_MEMORY_NAME, &(info.privilege[0].Luid)))
     {
         return FALSE;
     }
 
-    if(!AdjustTokenPrivileges(token, FALSE, (PTOKEN_PRIVILEGES) &info, 0, NULL, NULL))
+    if (!AdjustTokenPrivileges(token, FALSE, (PTOKEN_PRIVILEGES)&info, 0, NULL, NULL))
     {
         return FALSE;
     }
@@ -395,7 +398,8 @@ BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
 
     return TRUE;
 }
-  #endif
+
+#endif
 
 /**
  * @brief allocate the 2MB scratch buffer using OS support for huge pages, if available
@@ -411,33 +415,33 @@ BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
 
 void slow_hash_allocate_state(uint32_t page_size)
 {
-    if(hp_state != NULL)
+    if (hp_state != NULL)
     {
         return;
     }
 
-  #if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(_MSC_VER) || defined(__MINGW32__)
     SetLockPagesPrivilege(GetCurrentProcess(), TRUE);
-    hp_state = (uint8_t *) VirtualAlloc(hp_state, page_size, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-  #else
-    #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
+    hp_state = (uint8_t *)VirtualAlloc(hp_state, page_size, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+#else
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__NetBSD__)
     hp_state = mmap(0, page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, 0, 0);
-    #else
+#else
     hp_state = mmap(0, page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, 0, 0);
-    #endif
+#endif
 
-    if(hp_state == MAP_FAILED)
+    if (hp_state == MAP_FAILED)
     {
         hp_state = NULL;
     }
-  #endif
+#endif
 
     hp_allocated = 1;
 
-    if(hp_state == NULL)
+    if (hp_state == NULL)
     {
         hp_allocated = 0;
-        hp_state = (uint8_t *) malloc(page_size);
+        hp_state = (uint8_t *)malloc(page_size);
     }
 }
 
@@ -447,22 +451,22 @@ void slow_hash_allocate_state(uint32_t page_size)
 
 void slow_hash_free_state(uint32_t page_size)
 {
-    if(hp_state == NULL)
+    if (hp_state == NULL)
     {
         return;
     }
 
-    if(!hp_allocated)
+    if (!hp_allocated)
     {
         free(hp_state);
     }
     else
     {
-      #if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(_MSC_VER) || defined(__MINGW32__)
         VirtualFree(hp_state, 0, MEM_RELEASE);
-      #else
+#else
         munmap(hp_state, page_size);
-      #endif
+#endif
     }
 
     hp_state = NULL;
@@ -499,14 +503,23 @@ void slow_hash_free_state(uint32_t page_size)
  * @param length the length in bytes of the data
  * @param hash a pointer to a buffer in which the final 256 bit hash will be stored
  */
-void cn_slow_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t page_size, uint32_t scratchpad, uint32_t iterations)
+void cn_slow_hash(
+    const void *data,
+    size_t length,
+    char *hash,
+    int light,
+    int variant,
+    int prehashed,
+    uint32_t page_size,
+    uint32_t scratchpad,
+    uint32_t iterations)
 {
     uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
     uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
     uint32_t aes_rounds = (iterations / 2);
-    size_t lightFlag = (light ? 2: 1);
+    size_t lightFlag = (light ? 2 : 1);
 
-    RDATA_ALIGN16 uint8_t expandedKey[240];  /* These buffers are aligned to use later with SSE functions */
+    RDATA_ALIGN16 uint8_t expandedKey[240]; /* These buffers are aligned to use later with SSE functions */
 
     uint8_t text[INIT_SIZE_BYTE];
     RDATA_ALIGN16 uint64_t a[2];
@@ -521,10 +534,8 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
     oaes_ctx *aes_ctx = NULL;
     int useAes = !force_software_aes() && check_aes_hw();
 
-    static void (*const extra_hashes[4])(const void *, size_t, char *) =
-    {
-        hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein
-    };
+    static void (*const extra_hashes[4])(const void *, size_t, char *) = {
+        hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein};
 
     slow_hash_allocate_state(page_size);
 
@@ -546,11 +557,11 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
     /* CryptoNight Step 2:  Iteratively encrypt the results from Keccak to fill
      * the 2MB large random access buffer.
      */
-    if(useAes)
+    if (useAes)
     {
         aes_expand_key(state.hs.b, expandedKey);
 
-        for(i = 0; i < init_rounds; i++)
+        for (i = 0; i < init_rounds; i++)
         {
             aes_pseudo_round(text, text, expandedKey, INIT_SIZE_BLK);
             memcpy(&hp_state[i * INIT_SIZE_BYTE], text, INIT_SIZE_BYTE);
@@ -558,12 +569,12 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
     }
     else
     {
-        aes_ctx = (oaes_ctx *) oaes_alloc();
+        aes_ctx = (oaes_ctx *)oaes_alloc();
         oaes_key_import_data(aes_ctx, state.hs.b, AES_KEY_SIZE);
 
-        for(i = 0; i < init_rounds; i++)
+        for (i = 0; i < init_rounds; i++)
         {
-            for(j = 0; j < INIT_SIZE_BLK; j++)
+            for (j = 0; j < INIT_SIZE_BLK; j++)
             {
                 aesb_pseudo_round(&text[AES_BLOCK_SIZE * j], &text[AES_BLOCK_SIZE * j], aes_ctx->key->exp_data);
             }
@@ -587,9 +598,9 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
 
     // Two independent versions, one with AES, one without, to ensure that
     // the useAes test is only performed once, not every iteration.
-    if(useAes)
+    if (useAes)
     {
-        for(i = 0; i < aes_rounds; i++)
+        for (i = 0; i < aes_rounds; i++)
         {
             pre_aes();
             _c = _mm_aesenc_si128(_c, _a);
@@ -598,10 +609,10 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
     }
     else
     {
-        for(i = 0; i < aes_rounds; i++)
+        for (i = 0; i < aes_rounds; i++)
         {
             pre_aes();
-            aesb_single_round((uint8_t *) &_c, (uint8_t *) &_c, (uint8_t *) &_a);
+            aesb_single_round((uint8_t *)&_c, (uint8_t *)&_c, (uint8_t *)&_a);
             post_aes();
         }
     }
@@ -611,11 +622,11 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
      * was originally created with the output of Keccak1600. */
 
     memcpy(text, state.init, INIT_SIZE_BYTE);
-    if(useAes)
+    if (useAes)
     {
         aes_expand_key(&state.hs.b[32], expandedKey);
 
-        for(i = 0; i < init_rounds; i++)
+        for (i = 0; i < init_rounds; i++)
         {
             // add the xor to the pseudo round
             aes_pseudo_round_xor(text, text, expandedKey, &hp_state[i * INIT_SIZE_BYTE], INIT_SIZE_BLK);
@@ -624,16 +635,16 @@ void cn_slow_hash(const void *data, size_t length, char *hash, int light, int va
     else
     {
         oaes_key_import_data(aes_ctx, &state.hs.b[32], AES_KEY_SIZE);
-        for(i = 0; i < init_rounds; i++)
+        for (i = 0; i < init_rounds; i++)
         {
-            for(j = 0; j < INIT_SIZE_BLK; j++)
+            for (j = 0; j < INIT_SIZE_BLK; j++)
             {
                 xor_blocks(&text[j * AES_BLOCK_SIZE], &hp_state[i * INIT_SIZE_BYTE + j * AES_BLOCK_SIZE]);
                 aesb_pseudo_round(&text[AES_BLOCK_SIZE * j], &text[AES_BLOCK_SIZE * j], aes_ctx->key->exp_data);
             }
         }
 
-        oaes_free((OAES_CTX **) &aes_ctx);
+        oaes_free((OAES_CTX **)&aes_ctx);
     }
 
     /* CryptoNight Step 5:  Apply Keccak to the state again, and then

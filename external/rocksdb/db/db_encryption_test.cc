@@ -7,7 +7,7 @@
 #include "port/stack_trace.h"
 #include "rocksdb/perf_context.h"
 #if !defined(ROCKSDB_LITE)
-#include "util/sync_point.h"
+#include "test_util/sync_point.h"
 #endif
 #include <iostream>
 #include <string>
@@ -40,7 +40,7 @@ TEST_F(DBEncryptionTest, CheckEncrypted) {
       continue;
     }
     auto filePath = dbname_ + "/" + *it;
-    unique_ptr<SequentialFile> seqFile;
+    std::unique_ptr<SequentialFile> seqFile;
     auto envOptions = EnvOptions(CurrentOptions());
     status = defaultEnv->NewSequentialFile(filePath, &seqFile, envOptions);
     ASSERT_OK(status);

@@ -6,17 +6,14 @@
 #include <zedwallet++/ParseArguments.h>
 ///////////////////////////////////////
 
-#include <cxxopts.hpp>
+#include "version.h"
 
 #include <config/CliHeader.h>
 #include <config/Config.h>
-#include <CryptoNoteConfig.h>
+#include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
-
-#include <Utilities/Utilities.h>
-
-#include "version.h"
-
+#include <cxxopts.hpp>
+#include <utilities/Utilities.h>
 #include <zedwallet++/Utilities.h>
 
 ZedConfig parseArguments(int argc, char **argv)
@@ -35,38 +32,48 @@ ZedConfig parseArguments(int argc, char **argv)
 
     unsigned int threads;
 
-    options.add_options("Core")
-        ("h,help", "Display this help message",
-            cxxopts::value<bool>(help)->implicit_value("true"))
+    options.add_options("Core")(
+        "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
 
-        ("v,version", "Output software version information",
-            cxxopts::value<bool>(version)->default_value("false")->implicit_value("true"));
+        ("v,version",
+         "Output software version information",
+         cxxopts::value<bool>(version)->default_value("false")->implicit_value("true"));
 
-    options.add_options("Daemon")
-        ("r,remote-daemon", "The daemon <host:port> combination to use for node operations.",
-          cxxopts::value<std::string>(remoteDaemon)->default_value(defaultRemoteDaemon), "<host:port>")
+    options.add_options("Daemon")(
+        "r,remote-daemon",
+        "The daemon <host:port> combination to use for node operations.",
+        cxxopts::value<std::string>(remoteDaemon)->default_value(defaultRemoteDaemon),
+        "<host:port>")
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-        ("ssl", "Use SSL when connecting to the daemon.",
-          cxxopts::value<bool>(config.ssl)->default_value("false")->implicit_value("true"))
+        ("ssl",
+         "Use SSL when connecting to the daemon.",
+         cxxopts::value<bool>(config.ssl)->default_value("false")->implicit_value("true"))
 #endif
         ;
 
-    options.add_options("Wallet")
-        ("w,wallet-file", "Open the wallet <file>",
-            cxxopts::value<std::string>(config.walletFile), "<file>")
+    options.add_options("Wallet")(
+        "w,wallet-file", "Open the wallet <file>", cxxopts::value<std::string>(config.walletFile), "<file>")
 
-        ("p,password", "Use the password <pass> to open the wallet",
-            cxxopts::value<std::string>(config.walletPass), "<pass>")
+        ("p,password",
+         "Use the password <pass> to open the wallet",
+         cxxopts::value<std::string>(config.walletPass),
+         "<pass>")
 
-        ("log-level", "Specify log level",
-            cxxopts::value<int>(logLevel)->default_value(std::to_string(config.logLevel)), "#")
+            ("log-level",
+             "Specify log level",
+             cxxopts::value<int>(logLevel)->default_value(std::to_string(config.logLevel)),
+             "#")
 
-        ("threads", "Specify number of wallet sync threads",
-            cxxopts::value<unsigned int>(threads)->default_value(std::to_string(std::max(1u, std::thread::hardware_concurrency()))), "#")
+                ("threads",
+                 "Specify number of wallet sync threads",
+                 cxxopts::value<unsigned int>(threads)->default_value(
+                     std::to_string(std::max(1u, std::thread::hardware_concurrency()))),
+                 "#")
 
-        ("scan-coinbase-transactions", "Scan miner/coinbase transactions",
-            cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"));
+                    ("scan-coinbase-transactions",
+                     "Scan miner/coinbase transactions",
+                     cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"));
 
     try
     {
@@ -77,7 +84,7 @@ ZedConfig parseArguments(int argc, char **argv)
         /* We could check if the string is empty, but an empty password is valid */
         config.passGiven = result.count("password") != 0;
     }
-    catch (const cxxopts::OptionException& e)
+    catch (const cxxopts::OptionException &e)
     {
         std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl << std::endl;
         std::cout << options.help({}) << std::endl;

@@ -3,8 +3,7 @@
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
 
-#ifndef STORAGE_ROCKSDB_INCLUDE_TYPES_H_
-#define STORAGE_ROCKSDB_INCLUDE_TYPES_H_
+#pragma once
 
 #include <stdint.h>
 #include "rocksdb/slice.h"
@@ -16,6 +15,8 @@ namespace rocksdb {
 // Represents a sequence number in a WAL file.
 typedef uint64_t SequenceNumber;
 
+const SequenceNumber kMinUnCommittedSeq = 1;  // 0 is always committed
+
 // User-oriented representation of internal key types.
 enum EntryType {
   kEntryPut,
@@ -23,6 +24,7 @@ enum EntryType {
   kEntrySingleDelete,
   kEntryMerge,
   kEntryRangeDeletion,
+  kEntryBlobIndex,
   kEntryOther,
 };
 
@@ -32,11 +34,9 @@ struct FullKey {
   SequenceNumber sequence;
   EntryType type;
 
-  FullKey()
-      : sequence(0)
-  {}  // Intentionally left uninitialized (for speed)
+  FullKey() : sequence(0) {}  // Intentionally left uninitialized (for speed)
   FullKey(const Slice& u, const SequenceNumber& seq, EntryType t)
-      : user_key(u), sequence(seq), type(t) { }
+      : user_key(u), sequence(seq), type(t) {}
   std::string DebugString(bool hex = false) const;
 
   void clear() {
@@ -52,5 +52,3 @@ struct FullKey {
 bool ParseFullKey(const Slice& internal_key, FullKey* result);
 
 }  //  namespace rocksdb
-
-#endif //  STORAGE_ROCKSDB_INCLUDE_TYPES_H_

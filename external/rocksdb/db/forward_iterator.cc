@@ -11,16 +11,18 @@
 #include <utility>
 
 #include "db/column_family.h"
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/db_iter.h"
 #include "db/dbformat.h"
 #include "db/job_context.h"
+#include "db/range_del_aggregator.h"
+#include "db/range_tombstone_fragmenter.h"
 #include "rocksdb/env.h"
 #include "rocksdb/slice.h"
 #include "rocksdb/slice_transform.h"
 #include "table/merging_iterator.h"
+#include "test_util/sync_point.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
 
 namespace rocksdb {
 
@@ -44,7 +46,7 @@ class ForwardLevelIterator : public InternalIterator {
         pinned_iters_mgr_(nullptr),
         prefix_extractor_(prefix_extractor) {}
 
-  ~ForwardLevelIterator() {
+  ~ForwardLevelIterator() override {
     // Reset current pointer
     if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
       pinned_iters_mgr_->PinIterator(file_iter_);
@@ -71,13 +73,17 @@ class ForwardLevelIterator : public InternalIterator {
       delete file_iter_;
     }
 
-    RangeDelAggregator range_del_agg(
-        cfd_->internal_comparator(), {} /* snapshots */);
+    ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
+                                         kMaxSequenceNumber /* upper_bound */);
     file_iter_ = cfd_->table_cache()->NewIterator(
         read_options_, *(cfd_->soptions()), cfd_->internal_comparator(),
         *files_[file_index_],
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        prefix_extractor_, nullptr /* table_reader_ptr */, nullptr, false);
+        prefix_extractor_, /*table_reader_ptr=*/nullptr,
+        /*file_read_hist=*/nullptr, TableReaderCaller::kUserIterator,
+        /*arena=*/nullptr, /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr);
     file_iter_->SetPinnedItersMgr(pinned_iters_mgr_);
     valid_ = false;
     if (!range_del_agg.IsEmpty()) {
@@ -263,16 +269,18 @@ void ForwardIterator::SVCleanup() {
   if (sv_ == nullptr) {
     return;
   }
+  bool background_purge =
+      read_options_.background_purge_on_iterator_cleanup ||
+      db_->immutable_db_options().avoid_unnecessary_blocking_io;
   if (pinned_iters_mgr_ && pinned_iters_mgr_->PinningEnabled()) {
     // pinned_iters_mgr_ tells us to make sure that all visited key-value slices
     // are alive until pinned_iters_mgr_->ReleasePinnedData() is called.
     // The slices may point into some memtables owned by sv_, so we need to keep
     // sv_ referenced until pinned_iters_mgr_ unpins everything.
-    auto p = new SVCleanupParams{
-      db_, sv_, read_options_.background_purge_on_iterator_cleanup};
+    auto p = new SVCleanupParams{db_, sv_, background_purge};
     pinned_iters_mgr_->PinPtr(p, &ForwardIterator::DeferredSVCleanup);
   } else {
-    SVCleanup(db_, sv_, read_options_.background_purge_on_iterator_cleanup);
+    SVCleanup(db_, sv_, background_purge);
   }
 }
 
@@ -377,9 +385,9 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       }
     }
 
-    Slice user_key;
+    Slice target_user_key;
     if (!seek_to_first) {
-      user_key = ExtractUserKey(internal_key);
+      target_user_key = ExtractUserKey(internal_key);
     }
     const VersionStorageInfo* vstorage = sv_->current->storage_info();
     const std::vector<FileMetaData*>& l0 = vstorage->LevelFiles(0);
@@ -392,8 +400,8 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       } else {
         // If the target key passes over the larget key, we are sure Next()
         // won't go over this file.
-        if (user_comparator_->Compare(user_key,
-              l0[i]->largest.user_key()) > 0) {
+        if (user_comparator_->Compare(target_user_key,
+                                      l0[i]->largest.user_key()) > 0) {
           if (read_options_.iterate_upper_bound != nullptr) {
             has_iter_trimmed_for_upper_bound_ = true;
             DeleteIterator(l0_iters_[i]);
@@ -608,13 +616,14 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
     // New
     sv_ = cfd_->GetReferencedSuperVersion(&(db_->mutex_));
   }
-  RangeDelAggregator range_del_agg(
-      cfd_->internal_comparator(), {} /* snapshots */);
+  ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
+                                       kMaxSequenceNumber /* upper_bound */);
   mutable_iter_ = sv_->mem->NewIterator(read_options_, &arena_);
   sv_->imm->AddIterators(read_options_, &imm_iters_, &arena_);
   if (!read_options_.ignore_range_deletions) {
-    std::unique_ptr<InternalIterator> range_del_iter(
-        sv_->mem->NewRangeTombstoneIterator(read_options_));
+    std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
+        sv_->mem->NewRangeTombstoneIterator(
+            read_options_, sv_->current->version_set()->LastSequence()));
     range_del_agg.AddTombstones(std::move(range_del_iter));
     sv_->imm->AddRangeTombstoneIterators(read_options_, &arena_,
                                          &range_del_agg);
@@ -637,7 +646,12 @@ void ForwardIterator::RebuildIterators(bool refresh_sv) {
     l0_iters_.push_back(cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(), *l0,
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        sv_->mutable_cf_options.prefix_extractor.get()));
+        sv_->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr));
   }
   BuildLevelIterators(vstorage);
   current_ = nullptr;
@@ -666,11 +680,12 @@ void ForwardIterator::RenewIterators() {
 
   mutable_iter_ = svnew->mem->NewIterator(read_options_, &arena_);
   svnew->imm->AddIterators(read_options_, &imm_iters_, &arena_);
-  RangeDelAggregator range_del_agg(
-      cfd_->internal_comparator(), {} /* snapshots */);
+  ReadRangeDelAggregator range_del_agg(&cfd_->internal_comparator(),
+                                       kMaxSequenceNumber /* upper_bound */);
   if (!read_options_.ignore_range_deletions) {
-    std::unique_ptr<InternalIterator> range_del_iter(
-        svnew->mem->NewRangeTombstoneIterator(read_options_));
+    std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
+        svnew->mem->NewRangeTombstoneIterator(
+            read_options_, sv_->current->version_set()->LastSequence()));
     range_del_agg.AddTombstones(std::move(range_del_iter));
     svnew->imm->AddRangeTombstoneIterators(read_options_, &arena_,
                                            &range_del_agg);
@@ -708,7 +723,12 @@ void ForwardIterator::RenewIterators() {
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
         *l0_files_new[inew],
         read_options_.ignore_range_deletions ? nullptr : &range_del_agg,
-        svnew->mutable_cf_options.prefix_extractor.get()));
+        svnew->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr));
   }
 
   for (auto* f : l0_iters_) {
@@ -766,8 +786,13 @@ void ForwardIterator::ResetIncompleteIterators() {
     DeleteIterator(l0_iters_[i]);
     l0_iters_[i] = cfd_->table_cache()->NewIterator(
         read_options_, *cfd_->soptions(), cfd_->internal_comparator(),
-        *l0_files[i], nullptr /* range_del_agg */,
-        sv_->mutable_cf_options.prefix_extractor.get());
+        *l0_files[i], /*range_del_agg=*/nullptr,
+        sv_->mutable_cf_options.prefix_extractor.get(),
+        /*table_reader_ptr=*/nullptr, /*file_read_hist=*/nullptr,
+        TableReaderCaller::kUserIterator, /*arena=*/nullptr,
+        /*skip_filters=*/false, /*level=*/-1,
+        /*smallest_compaction_key=*/nullptr,
+        /*largest_compaction_key=*/nullptr);
     l0_iters_[i]->SetPinnedItersMgr(pinned_iters_mgr_);
   }
 
@@ -916,21 +941,13 @@ bool ForwardIterator::TEST_CheckDeletedIters(int* pdeleted_iters,
 uint32_t ForwardIterator::FindFileInRange(
     const std::vector<FileMetaData*>& files, const Slice& internal_key,
     uint32_t left, uint32_t right) {
-  while (left < right) {
-    uint32_t mid = (left + right) / 2;
-    const FileMetaData* f = files[mid];
-    if (cfd_->internal_comparator().InternalKeyComparator::Compare(
-          f->largest.Encode(), internal_key) < 0) {
-      // Key at "mid.largest" is < "target".  Therefore all
-      // files at or before "mid" are uninteresting.
-      left = mid + 1;
-    } else {
-      // Key at "mid.largest" is >= "target".  Therefore all files
-      // after "mid" are uninteresting.
-      right = mid;
-    }
-  }
-  return right;
+  auto cmp = [&](const FileMetaData* f, const Slice& key) -> bool {
+    return cfd_->internal_comparator().InternalKeyComparator::Compare(
+            f->largest.Encode(), key) < 0;
+  };
+  const auto &b = files.begin();
+  return static_cast<uint32_t>(std::lower_bound(b + left,
+                                 b + right, internal_key, cmp) - b);
 }
 
 void ForwardIterator::DeleteIterator(InternalIterator* iter, bool is_arena) {

@@ -11,11 +11,7 @@ int main() {
 }
 #else
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-#include <inttypes.h>
+#include <cinttypes>
 #include <algorithm>
 #include <atomic>
 #include <functional>
@@ -24,13 +20,13 @@ int main() {
 #include <vector>
 
 #include "dynamic_bloom.h"
+#include "logging/logging.h"
+#include "memory/arena.h"
 #include "port/port.h"
-#include "util/arena.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/gflags_compat.h"
-#include "util/logging.h"
 #include "util/stop_watch.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 using GFLAGS_NAMESPACE::ParseCommandLineFlags;
 
@@ -258,12 +254,12 @@ TEST_F(DynamicBloomTest, concurrent_with_perf) {
 
       timer.Start();
 
-      std::function<void(size_t)> adder = [&](size_t t) {
+      std::function<void(size_t)> adder([&](size_t t) {
         for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
           std_bloom.AddConcurrently(
               Slice(reinterpret_cast<const char*>(&i), 8));
         }
-      };
+      });
       for (size_t t = 0; t < num_threads; ++t) {
         threads.emplace_back(adder, t);
       }
@@ -279,13 +275,13 @@ TEST_F(DynamicBloomTest, concurrent_with_perf) {
 
       timer.Start();
 
-      std::function<void(size_t)> hitter = [&](size_t t) {
+      std::function<void(size_t)> hitter([&](size_t t) {
         for (uint64_t i = 1 + t; i <= num_keys; i += num_threads) {
           bool f =
               std_bloom.MayContain(Slice(reinterpret_cast<const char*>(&i), 8));
           ASSERT_TRUE(f);
         }
-      };
+      });
       for (size_t t = 0; t < num_threads; ++t) {
         threads.emplace_back(hitter, t);
       }
@@ -302,7 +298,7 @@ TEST_F(DynamicBloomTest, concurrent_with_perf) {
       timer.Start();
 
       std::atomic<uint32_t> false_positives(0);
-      std::function<void(size_t)> misser = [&](size_t t) {
+      std::function<void(size_t)> misser([&](size_t t) {
         for (uint64_t i = num_keys + 1 + t; i <= 2 * num_keys;
              i += num_threads) {
           bool f =
@@ -311,7 +307,7 @@ TEST_F(DynamicBloomTest, concurrent_with_perf) {
             ++false_positives;
           }
         }
-      };
+      });
       for (size_t t = 0; t < num_threads; ++t) {
         threads.emplace_back(misser, t);
       }

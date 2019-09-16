@@ -60,6 +60,7 @@ struct ImmutableDBOptions {
   std::vector<std::shared_ptr<EventListener>> listeners;
   bool enable_thread_tracking;
   bool enable_pipelined_write;
+  bool unordered_write;
   bool allow_concurrent_memtable_write;
   bool enable_write_thread_adaptive_yield;
   uint64_t write_thread_max_yield_usec;
@@ -78,6 +79,10 @@ struct ImmutableDBOptions {
   bool preserve_deletes;
   bool two_write_queues;
   bool manual_wal_flush;
+  bool atomic_flush;
+  bool avoid_unnecessary_blocking_io;
+  bool persist_stats_to_disk;
+  size_t log_readahead_size;
 };
 
 struct MutableDBOptions {
@@ -96,9 +101,12 @@ struct MutableDBOptions {
   uint64_t max_total_wal_size;
   uint64_t delete_obsolete_files_period_micros;
   unsigned int stats_dump_period_sec;
+  unsigned int stats_persist_period_sec;
+  size_t stats_history_buffer_size;
   int max_open_files;
   uint64_t bytes_per_sync;
   uint64_t wal_bytes_per_sync;
+  bool strict_bytes_per_sync;
   size_t compaction_readahead_size;
 };
 

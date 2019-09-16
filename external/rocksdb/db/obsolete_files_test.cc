@@ -13,17 +13,17 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/version_set.h"
 #include "db/write_batch_internal.h"
+#include "file/filename.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/transaction_log.h"
-#include "util/filename.h"
+#include "test_util/sync_point.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/string_util.h"
-#include "util/sync_point.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 using std::cerr;
 using std::cout;
@@ -158,9 +158,6 @@ class ObsoleteFilesTest : public testing::Test {
 };
 
 TEST_F(ObsoleteFilesTest, RaceForObsoleteFileDeletion) {
-  createLevel0Files(2, 50000);
-  CheckFileTypeCounts(options_.wal_dir, 1, 0, 0);
-
   SyncPoint::GetInstance()->LoadDependency({
       {"DBImpl::BackgroundCallCompaction:FoundObsoleteFiles",
        "ObsoleteFilesTest::RaceForObsoleteFileDeletion:1"},
@@ -170,7 +167,7 @@ TEST_F(ObsoleteFilesTest, RaceForObsoleteFileDeletion) {
   SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::DeleteObsoleteFileImpl:AfterDeletion", [&](void* arg) {
         Status* p_status = reinterpret_cast<Status*>(arg);
-        ASSERT_TRUE(p_status->ok());
+        ASSERT_OK(*p_status);
       });
   SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::CloseHelper:PendingPurgeFinished", [&](void* arg) {
@@ -179,6 +176,9 @@ TEST_F(ObsoleteFilesTest, RaceForObsoleteFileDeletion) {
         ASSERT_TRUE(files_grabbed_for_purge_ptr->empty());
       });
   SyncPoint::GetInstance()->EnableProcessing();
+
+  createLevel0Files(2, 50000);
+  CheckFileTypeCounts(options_.wal_dir, 1, 0, 0);
 
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
   port::Thread user_thread([&]() {
@@ -196,12 +196,10 @@ TEST_F(ObsoleteFilesTest, RaceForObsoleteFileDeletion) {
   user_thread.join();
 
   CloseDB();
+  SyncPoint::GetInstance()->DisableProcessing();
 }
 
 TEST_F(ObsoleteFilesTest, DeleteObsoleteOptionsFile) {
-  createLevel0Files(2, 50000);
-  CheckFileTypeCounts(options_.wal_dir, 1, 0, 0);
-
   std::vector<uint64_t> optsfiles_nums;
   std::vector<bool> optsfiles_keep;
   SyncPoint::GetInstance()->SetCallBack(
@@ -213,6 +211,9 @@ TEST_F(ObsoleteFilesTest, DeleteObsoleteOptionsFile) {
         optsfiles_keep.push_back(*reinterpret_cast<bool*>(arg));
       });
   SyncPoint::GetInstance()->EnableProcessing();
+
+  createLevel0Files(2, 50000);
+  CheckFileTypeCounts(options_.wal_dir, 1, 0, 0);
 
   DBImpl* dbi = static_cast<DBImpl*>(db_);
   ASSERT_OK(dbi->DisableFileDeletions());
@@ -227,16 +228,25 @@ TEST_F(ObsoleteFilesTest, DeleteObsoleteOptionsFile) {
   }
   ASSERT_OK(dbi->EnableFileDeletions(true /* force */));
   ASSERT_EQ(optsfiles_nums.size(), optsfiles_keep.size());
-  int size = static_cast<int>(optsfiles_nums.size());
-  int kept_opts_files_count = 0;
-  for (int i = 0; i != size; ++i) {
-    if (optsfiles_keep[i]) {
-      ++kept_opts_files_count;
-    }
-  }
-  ASSERT_EQ(2, kept_opts_files_count);
 
   CloseDB();
+
+  std::vector<std::string> files;
+  int opts_file_count = 0;
+  ASSERT_OK(env_->GetChildren(dbname_, &files));
+  for (const auto& file : files) {
+    uint64_t file_num;
+    Slice dummy_info_log_name_prefix;
+    FileType type;
+    WalFileType log_type;
+    if (ParseFileName(file, &file_num, dummy_info_log_name_prefix, &type,
+                      &log_type) &&
+        type == kOptionsFile) {
+      opts_file_count++;
+    }
+  }
+  ASSERT_EQ(2, opts_file_count);
+  SyncPoint::GetInstance()->DisableProcessing();
 }
 
 } //namespace rocksdb

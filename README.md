@@ -1,129 +1,176 @@
+### Installing
+
+We offer binary images of the latest releases here: https://latest.wrkz.work
+
+If you would like to compile yourself, read on.
+
 ### How To Compile
+
+#### Build Optimization
+
+The CMake build system will, by default, create optimized *native* builds for your particular system type when you build the software. Using this method, the binaries created provide a better experience and all together faster performance.
+
+However, if you wish to create *portable* binaries that can be shared between systems, specify `-DARCH=default` in your CMake arguments during the build process. Note that *portable* binaries will have a noticable difference in performance than *native* binaries. For this reason, it is always best to build for your particular system if possible.
+
 #### Linux
 
 ##### Prerequisites
 
-- You will need the following packages: boost (1.55 or higher), cmake (3.8 or higher), git, gcc/g++ (7.0 or higher) or Clang (6.0 or higher), make, and python. Most of these should already be installed on your system.
-- For Ubuntu: `sudo apt-get install -y build-essential python-dev gcc g++ git cmake libboost-all-dev`
-- For CentOS 6/7 (x64): `yum install git-svn make libstdc++-static -y`
-  - Install later version of boost devel:
-  - `wget https://phoenixnap.dl.sourceforge.net/project/boost/boost/1.58.0/boost_1_58_0.tar.gz`
-  - `tar -xzf boost_1_58_0.tar.gz`
-  - `cd boost_1_58_0`
-  - `./bootstrap.sh --prefix=/opt/boost`
-  - `./b2 install --prefix=/opt/boost --with=all`
-  - Install devtoolset-7:
-  - `yum install centos-release-scl epel-release`
-  - `yum install devtoolset-7-gcc* make`
-  - Install cmake 3 latest from https://cmake.org/download/
-  - `wget https://github.com/Kitware/CMake/releases/download/v3.13.4/cmake-3.13.4-Linux-x86_64.sh`
-  - `chmod +x cmake-3.13.4-Linux-x86_64.sh`
-  - `./cmake-3.13.4-Linux-x86_64.sh --prefix=/usr/`
+You will need the following packages: [Boost](https://www.boost.org/), [OpenSSL](https://www.openssl.org/), cmake (3.8 or higher), make, and git.
 
-##### Building
+You will also need either GCC/G++, or Clang.
 
-- `git clone https://github.com/wrkzcoin/wrkzcoin`
-- `cd wrkzcoin`
-- `mkdir build && cd $_`
-- For Ubuntu:
-- `cmake ..`
-- `make`
-- For CentOS 6/7, use devtoolset-7:
-- `scl enable devtoolset-7 bash`
-- `cmake -DBOOST_ROOT=/opt/boost ..`
-- `make`
+If you are using GCC, you will need GCC-7.0 or higher.
 
+If you are using Clang, you will need Clang 6.0 or higher. You will also need libstdc++\-6.0 or higher.
 
-#### Ubuntu with Clang
+##### Ubuntu, using GCC
 
-##### Prerequisites
 - `sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y`
-- `wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -`
-  - llvm-toolchain For Ubuntu 14.04 (Trusty):
-  
-    `sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty 6.0 main"`
-  - llvm-toolchain For Ubuntu 16.04 (Xenial):
-  
-    `sudo add-apt-repository "deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial 6.0 main"`
-  - llvm-toolchain For Ubuntu 18.04 (Bionic):
-  
-    `sudo add-apt-repository "deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic 6.0 main"`
-- `sudo apt-get update && sudo apt-get install aptitude -y`
-- `sudo aptitude install -y -o Aptitude::ProblemResolver::SolutionCost='100*canceled-actions,200*removals' build-essential clang-6.0 libstdc++-7-dev git libboost-all-dev python-pip`
+- `sudo apt-get update`
+- `sudo apt-get install aptitude -y`
+- `sudo aptitude install -y build-essential g++-8 gcc-8 git libboost-all-dev python-pip libssl-dev`
 - `sudo pip install cmake`
-
-
-##### Building
-- `export CC=clang-6.0`
-- `export CXX=clang++-6.0`
-- `git clone https://github.com/wrkzcoin/wrkzcoin`
-- `cd wrkzcoin`
-- `mkdir build && cd $_`
-- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
-- `make`
-
-#### Apple
-
-##### Prerequisites
-
-- Install Homebrew https://brew.sh/ (if you don't have it)
-- Install [cmake](https://cmake.org/). See [here](https://stackoverflow.com/questions/23849962/cmake-installer-for-mac-fails-to-create-usr-bin-symlinks) if you are unable call `cmake` from the terminal after installing.
-- Install the [boost](http://www.boost.org/) libraries. Either compile boost manually or run `brew install boost`.
-- Install XCode and Developer Tools.
-
-##### Building using Clang
-
-- `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
-- `brew install --force cmake boost llvm`
-- `export CC=/usr/local/opt/llvm/bin/clang`
-- `export CXX=/usr/local/opt/llvm/bin/clang++`
-- `git clone https://github.com/wrkzcoin/wrkzcoin`
-- `cd wrkzcoin`
-- `mkdir build && cd $_`
-- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
-  from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
-- `make`
-
-##### Building using GCC
-
-- `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
-- `brew install --force cmake boost llvm gcc@8`
 - `export CC=gcc-8`
 - `export CXX=g++-8`
-- `git clone https://github.com/wrkzcoin/wrkzcoin`
+- `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
 - `cd wrkzcoin`
-- `chmod +x ./external/rocksdb/build_tools/build_detect_platform`
-- `chmod +x ./external/rocksdb/build_tools/version.sh`
-- `mkdir build && cd $_`
-- `cmake ..` or `cmake -DBOOST_ROOT=<path_to_boost_install> ..` when building
-  from a specific boost install. If you used brew to install boost, your path is most likely `/usr/local/include/boost.`
+- `mkdir build`
+- `cd build`
+- `cmake ..`
 - `make`
 
-The binaries will be in `./src` after compilation is complete.
+The binaries will be in the `src` folder when you are complete.
 
-Run `./src/Wrkzd` to connect to the network and let it sync (it may take a while).
+- `cd src`
+- `./Wrkzd --version`
 
-#### Windows 10
+##### Ubuntu, using Clang
+
+- `sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y`
+- `wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -`
+
+You need to modify the below command for your version of ubuntu - see https://apt.llvm.org/
+
+* Ubuntu 14.04 (Trusty)
+- `sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty 6.0 main"`
+
+* Ubuntu 16.04 (Xenial)
+- `sudo add-apt-repository "deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial 6.0 main"`
+
+* Ubuntu 18.04 (Bionic)
+- `sudo add-apt-repository "deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic 6.0 main"`
+
+- `sudo apt-get update`
+- `sudo apt-get install aptitude -y`
+- `sudo aptitude install -y -o Aptitude::ProblemResolver::SolutionCost='100*canceled-actions,200*removals' build-essential clang-6.0 libstdc++-7-dev git libboost-all-dev python-pip libssl-dev`
+- `sudo pip install cmake`
+- `export CC=clang-6.0`
+- `export CXX=clang++-6.0`
+- `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
+- `cd wrkzcoin`
+- `mkdir build`
+- `cd build`
+- `cmake ..`
+- `make`
+
+The binaries will be in the `src` folder when you are complete.
+
+- `cd src`
+- `./Wrkzd --version`
+
+##### Generic Linux
+
+Ensure you have the dependencies listed above.
+
+If you want to use clang, ensure you set the environment variables `CC` and `CXX`.
+See the ubuntu instructions for an example.
+
+- `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
+- `cd wrkzcoin`
+- `mkdir build`
+- `cd build`
+- `cmake ..`
+- `make`
+
+The binaries will be in the `src` folder when you are complete.
+
+- `cd src`
+- `./Wrkzd --version`
+
+#### OSX/Apple, using Clang
 
 ##### Prerequisites
-- Install [Visual Studio 2017 Community Edition](https://www.visualstudio.com/thank-you-downloading-visual-studio/?sku=Community&rel=15&page=inlineinstall)
-- When installing Visual Studio, it is **required** that you install **Desktop development with C++** and the **VC++ v140 toolchain** when selecting features. The option to install the v140 toolchain can be found by expanding the "Desktop development with C++" node on the right. You will need this for the project to build correctly.
-- Install [Boost 1.59.0](https://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/), ensuring you download the installer for MSVC 14.
+
+- Install XCode and Developer Tools.
 
 ##### Building
 
-- From the start menu, open 'x64 Native Tools Command Prompt for vs2017'.
+- `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
+- `brew install --force cmake boost llvm openssl`
+- `export CC=/usr/local/opt/llvm/bin/clang`
+- `export CXX=/usr/local/opt/llvm/bin/clang++`
+- `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
+- `cd wrkzcoin`
+- `mkdir build`
+- `cd build`
+- `cmake ..`
+- `make`
+
+The binaries will be in the `src` folder when you are complete.
+
+- `cd src`
+- `./Wrkzd --version`
+
+#### Windows
+
+##### Prerequisites
+
+You can build for 32-bit or 64-bit Windows. **If you're not sure, pick 64-bit.**
+
+- Download the [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16) Installer
+- When it opens up select **C++ build tools**, it automatically selects the needed parts
+- Install Boost (1.69 works the latest is 1.70 and doesn't work). Select the appropriate version for your system:
+  - [Boost 64-bit](https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-64.exe)
+  - [Boost 32-bit](https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-32.exe)
+- Install the latest full LTS version of OpenSSL (currently OpenSSL 1.1.0L). Select the appropriate version for your system:
+  - [OpenSSL 64-bit](https://slproweb.com/download/Win64OpenSSL-1_1_0L.exe)
+  - [OpenSSL 32-bit](https://slproweb.com/download/Win32OpenSSL-1_1_0L.exe)
+
+##### Building
+
+For 64-bit:
+- From the start menu, open 'x64 Native Tools Command Prompt for VS 2019'.
 - `cd <your_wrkzcoin_directory>`
 - `mkdir build`
 - `cd build`
-- Set the PATH variable for cmake: ie. `set PATH="C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin";%PATH%`
-- `cmake -G "Visual Studio 14 Win64" .. -DBOOST_ROOT=C:/local/boost_1_59_0` (Or your boost installed dir.)
-- `MSBuild WrkzCoin.sln /p:Configuration=Release /m`
-- If all went well, it will complete successfully, and you will find all your binaries in the '..\build\src\Release' directory.
-- Additionally, a `.sln` file will have been created in the `build` directory. If you wish to open the project in Visual Studio with this, you can.
+- `cmake -G "Visual Studio 16 2019" -A x64 .. -DBOOST_ROOT=C:/local/boost_1_69_0`
+- `MSBuild WrkzCoin.sln /p:Configuration=Release /m` or `MSBuild src\cli.vcxproj /p:Configuration=Release /m`
 
-#### Sync
-For faster sync, please use checkpoints: https://github.com/wrkzcoin/checkpoints
+For 32-bit:
+- From the start menu, open 'x86 Native Tools Command Prompt for VS 2019'.
+- `cd <your_wrkzcoin_directory>`
+- `mkdir build`
+- `cd build`
+- `cmake -G "Visual Studio 16 2019" -A Win32 .. -DBOOST_ROOT=C:/local/boost_1_69_0`
+- `MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /m` 
+
+The binaries will be in the `src/Release` folder when you are complete.
+
+- `cd src`
+- `cd Release`
+- `Wrkzd.exe --version`
 
 #### Thanks
-Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Project, DeroGold Association 
+Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Community, DeroGold Association 
+### Copypasta for license when editing files (A note from upstream)
+
+Hi TurtleCoin contributor, thanks for forking and sending back Pull Requests. Extensive docs about contributing are in the works or elsewhere. For now this is the bit we need to get into all the files we touch. Please add it to the top of the files, see [src/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
+
+```
+// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
+// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2018-2019, The TurtleCoin Developers
+//
+// Please see the included LICENSE file for more information.
+```

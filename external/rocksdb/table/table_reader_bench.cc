@@ -11,21 +11,21 @@ int main() {
 }
 #else
 
-#include "db/db_impl.h"
+#include "db/db_impl/db_impl.h"
 #include "db/dbformat.h"
 #include "monitoring/histogram.h"
 #include "rocksdb/db.h"
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/table.h"
-#include "table/block_based_table_factory.h"
+#include "table/block_based/block_based_table_factory.h"
 #include "table/get_context.h"
 #include "table/internal_iterator.h"
-#include "table/plain_table_factory.h"
+#include "table/plain/plain_table_factory.h"
 #include "table/table_builder.h"
+#include "test_util/testharness.h"
+#include "test_util/testutil.h"
 #include "util/file_reader_writer.h"
 #include "util/gflags_compat.h"
-#include "util/testharness.h"
-#include "util/testutil.h"
 
 using GFLAGS_NAMESPACE::ParseCommandLineFlags;
 using GFLAGS_NAMESPACE::SetUsageMessage;
@@ -86,21 +86,22 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
   const ImmutableCFOptions ioptions(opts);
   const ColumnFamilyOptions cfo(opts);
   const MutableCFOptions moptions(cfo);
-  unique_ptr<WritableFileWriter> file_writer;
+  std::unique_ptr<WritableFileWriter> file_writer;
   if (!through_db) {
-    unique_ptr<WritableFile> file;
+    std::unique_ptr<WritableFile> file;
     env->NewWritableFile(file_name, &file, env_options);
 
     std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
         int_tbl_prop_collector_factories;
 
-    file_writer.reset(new WritableFileWriter(std::move(file), env_options));
+    file_writer.reset(
+        new WritableFileWriter(std::move(file), file_name, env_options));
     int unknown_level = -1;
     tb = opts.table_factory->NewTableBuilder(
         TableBuilderOptions(
             ioptions, moptions, ikc, &int_tbl_prop_collector_factories,
-            CompressionType::kNoCompression, CompressionOptions(),
-            nullptr /* compression_dict */, false /* skip_filters */,
+            CompressionType::kNoCompression, 0 /* sample_for_compression */,
+            CompressionOptions(), false /* skip_filters */,
             kDefaultColumnFamilyName, unknown_level),
         0 /* column_family_id */, file_writer.get());
   } else {
@@ -126,9 +127,9 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
     db->Flush(FlushOptions());
   }
 
-  unique_ptr<TableReader> table_reader;
+  std::unique_ptr<TableReader> table_reader;
   if (!through_db) {
-    unique_ptr<RandomAccessFile> raf;
+    std::unique_ptr<RandomAccessFile> raf;
     s = env->NewRandomAccessFile(file_name, &raf, env_options);
     if (!s.ok()) {
       fprintf(stderr, "Create File Error: %s\n", s.ToString().c_str());
@@ -136,7 +137,7 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
     }
     uint64_t file_size;
     env->GetFileSize(file_name, &file_size);
-    unique_ptr<RandomAccessFileReader> file_reader(
+    std::unique_ptr<RandomAccessFileReader> file_reader(
         new RandomAccessFileReader(std::move(raf), file_name));
     s = opts.table_factory->NewTableReader(
         TableReaderOptions(ioptions, moptions.prefix_extractor.get(),
@@ -169,12 +170,12 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
           if (!through_db) {
             PinnableSlice value;
             MergeContext merge_context;
-            RangeDelAggregator range_del_agg(ikc, {} /* snapshots */);
+            SequenceNumber max_covering_tombstone_seq = 0;
             GetContext get_context(ioptions.user_comparator,
                                    ioptions.merge_operator, ioptions.info_log,
                                    ioptions.statistics, GetContext::kNotFound,
                                    Slice(key), &value, nullptr, &merge_context,
-                                   &range_del_agg, env);
+                                   true, &max_covering_tombstone_seq, env);
             s = table_reader->Get(read_options, key, &get_context, nullptr);
           } else {
             s = db->Get(read_options, key, &result);
@@ -197,7 +198,9 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
           Iterator* iter = nullptr;
           InternalIterator* iiter = nullptr;
           if (!through_db) {
-            iiter = table_reader->NewIterator(read_options, nullptr);
+            iiter = table_reader->NewIterator(
+                read_options, /*prefix_extractor=*/nullptr, /*arena=*/nullptr,
+                /*skip_filters=*/false, TableReaderCaller::kUncategorized);
           } else {
             iter = db->NewIterator(read_options);
           }

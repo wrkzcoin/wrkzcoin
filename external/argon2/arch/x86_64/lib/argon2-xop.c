@@ -1,6 +1,7 @@
 #include "argon2-xop.h"
 
-#ifdef HAVE_XOP
+#ifdef __XOP__
+#pragma message ("info: ACTIVATING XOP in argon2-xop.c")
 #include <string.h>
 
 #include <immintrin.h>

@@ -64,7 +64,6 @@
 
 # CMake
 CMakeFiles/
-*.cmake
 CMakeCache.txt
 Makefile
 

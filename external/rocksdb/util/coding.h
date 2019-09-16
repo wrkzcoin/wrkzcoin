@@ -50,6 +50,8 @@ extern void PutVarint32Varint32Varint64(std::string* dst, uint32_t value1,
 extern void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
 extern void PutLengthPrefixedSliceParts(std::string* dst,
                                         const SliceParts& slice_parts);
+extern void PutLengthPrefixedSlicePartsWithPadding(
+    std::string* dst, const SliceParts& slice_parts, size_t pad_sz);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
@@ -58,11 +60,21 @@ extern bool GetFixed32(Slice* input, uint32_t* value);
 extern bool GetFixed16(Slice* input, uint16_t* value);
 extern bool GetVarint32(Slice* input, uint32_t* value);
 extern bool GetVarint64(Slice* input, uint64_t* value);
+extern bool GetVarsignedint64(Slice* input, int64_t* value);
 extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
 // This function assumes data is well-formed.
 extern Slice GetLengthPrefixedSlice(const char* data);
 
 extern Slice GetSliceUntil(Slice* slice, char delimiter);
+
+// Borrowed from
+// https://github.com/facebook/fbthrift/blob/449a5f77f9f9bae72c9eb5e78093247eef185c04/thrift/lib/cpp/util/VarintUtils-inl.h#L202-L208
+constexpr inline uint64_t i64ToZigzag(const int64_t l) {
+  return (static_cast<uint64_t>(l) << 1) ^ static_cast<uint64_t>(l >> 63);
+}
+inline int64_t zigzagToI64(uint64_t n) {
+  return (n >> 1) ^ -static_cast<int64_t>(n & 1);
+}
 
 // Pointer-based variants of GetVarint...  These either store a value
 // in *v and return a pointer just past the parsed value, or return
@@ -70,6 +82,13 @@ extern Slice GetSliceUntil(Slice* slice, char delimiter);
 // [p..limit-1]
 extern const char* GetVarint32Ptr(const char* p,const char* limit, uint32_t* v);
 extern const char* GetVarint64Ptr(const char* p,const char* limit, uint64_t* v);
+inline const char* GetVarsignedint64Ptr(const char* p, const char* limit,
+                                        int64_t* value) {
+  uint64_t u = 0;
+  const char* ret = GetVarint64Ptr(p, limit, &u);
+  *value = zigzagToI64(u);
+  return ret;
+}
 
 // Returns the length of the varint32 or varint64 encoding of "v"
 extern int VarintLength(uint64_t v);
@@ -249,8 +268,15 @@ inline char* EncodeVarint64(char* dst, uint64_t v) {
 }
 
 inline void PutVarint64(std::string* dst, uint64_t v) {
-  char buf[10];
+  char buf[kMaxVarint64Length];
   char* ptr = EncodeVarint64(buf, v);
+  dst->append(buf, static_cast<size_t>(ptr - buf));
+}
+
+inline void PutVarsignedint64(std::string* dst, int64_t v) {
+  char buf[kMaxVarint64Length];
+  // Using Zigzag format to convert signed to unsigned
+  char* ptr = EncodeVarint64(buf, i64ToZigzag(v));
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }
 
@@ -282,9 +308,8 @@ inline void PutLengthPrefixedSlice(std::string* dst, const Slice& value) {
   dst->append(value.data(), value.size());
 }
 
-inline void PutLengthPrefixedSliceParts(std::string* dst,
+inline void PutLengthPrefixedSliceParts(std::string* dst, size_t total_bytes,
                                         const SliceParts& slice_parts) {
-  size_t total_bytes = 0;
   for (int i = 0; i < slice_parts.num_parts; ++i) {
     total_bytes += slice_parts.parts[i].size();
   }
@@ -292,6 +317,17 @@ inline void PutLengthPrefixedSliceParts(std::string* dst,
   for (int i = 0; i < slice_parts.num_parts; ++i) {
     dst->append(slice_parts.parts[i].data(), slice_parts.parts[i].size());
   }
+}
+
+inline void PutLengthPrefixedSliceParts(std::string* dst,
+                                        const SliceParts& slice_parts) {
+  PutLengthPrefixedSliceParts(dst, /*total_bytes=*/0, slice_parts);
+}
+
+inline void PutLengthPrefixedSlicePartsWithPadding(
+    std::string* dst, const SliceParts& slice_parts, size_t pad_sz) {
+  PutLengthPrefixedSliceParts(dst, /*total_bytes=*/pad_sz, slice_parts);
+  dst->append(pad_sz, '\0');
 }
 
 inline int VarintLength(uint64_t v) {
@@ -346,6 +382,18 @@ inline bool GetVarint64(Slice* input, uint64_t* value) {
   const char* p = input->data();
   const char* limit = p + input->size();
   const char* q = GetVarint64Ptr(p, limit, value);
+  if (q == nullptr) {
+    return false;
+  } else {
+    *input = Slice(q, static_cast<size_t>(limit - q));
+    return true;
+  }
+}
+
+inline bool GetVarsignedint64(Slice* input, int64_t* value) {
+  const char* p = input->data();
+  const char* limit = p + input->size();
+  const char* q = GetVarsignedint64Ptr(p, limit, value);
   if (q == nullptr) {
     return false;
   } else {

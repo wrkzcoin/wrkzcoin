@@ -5,7 +5,7 @@
 #include "impl-select.h"
 
 #include "argon2-sse2.h"
-#include "argon2-ssse3.h"
+#include "argon2-sse3.h"
 #include "argon2-xop.h"
 #include "argon2-avx2.h"
 #include "argon2-avx512f.h"

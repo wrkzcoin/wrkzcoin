@@ -1,6 +1,7 @@
 #include "argon2-avx512f.h"
 
-#ifdef HAVE_AVX512F
+#ifdef __AVX512F__
+#pragma message ("info: ACTIVATING SSE512F in argon2-avx512f.c")
 #include <stdint.h>
 #include <string.h>
 
