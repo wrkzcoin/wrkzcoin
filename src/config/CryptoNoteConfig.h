@@ -117,7 +117,7 @@ namespace CryptoNote
 
         const uint32_t MIXIN_LIMITS_V3_HEIGHT = 430000;
 
-        const uint32_t MIXIN_LIMITS_V4_HEIGHT = 700000;
+        const uint32_t MIXIN_LIMITS_V4_HEIGHT = 658500;
 
         /* The mixin to use by default with zedwallet and turtle-service */
         /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -152,11 +152,13 @@ namespace CryptoNote
         const uint64_t DIFFICULTY_BLOCKS_COUNT_V3 = DIFFICULTY_WINDOW_V3 + 1;
 
         const size_t DIFFICULTY_CUT = 0; // timestamps to cut after sorting
+
         const size_t DIFFICULTY_CUT_V1 = 60;
 
         const size_t DIFFICULTY_CUT_V2 = 60;
 
         const size_t DIFFICULTY_LAG = 0; // !!!
+
         const size_t DIFFICULTY_LAG_V1 = 15;
 
         const size_t DIFFICULTY_LAG_V2 = 15;
