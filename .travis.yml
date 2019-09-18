@@ -127,6 +127,7 @@ before_deploy:
 - cp wrkzcoin-${TRAVIS_TAG}-${LABEL}.tar.gz builds
 - cd ..
 
+
 deploy:
   - provider: s3
     access_key_id:
