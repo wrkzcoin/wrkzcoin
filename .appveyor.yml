@@ -41,7 +41,8 @@ artifacts:
     name: WrkzCoinRelease
 
 deploy:
-  - provider: S3
+  - provider: Environment
+    name: wrkzcoin
     access_key_id:
       secure: ${AWS_ACCESS_KEY_ID}
     secret_access_key:
