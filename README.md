@@ -1,8 +1,10 @@
 #### Master Build Status
-[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=master)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/wrkzdev/wrkzcoin?branch=master&svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin)
+[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=master)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/1frq0rdw651lipac/branch/master?svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin/branch/master)
+
 
 #### Development Build Status
-[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=development)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/wrkzdev/wrkzcoin?branch=development&svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin)
+[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=dev)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/1frq0rdw651lipac/branch/dev?svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin/branch/dev)
+
 
 
 ### Installing
@@ -172,7 +174,7 @@ The binaries will be in the `src/Release` folder when you are complete.
 Cryptonote Developers, Bytecoin Developers, Monero Developers, Forknote Project, TurtleCoin Community, DeroGold Association 
 ### Copypasta for license when editing files (A note from upstream)
 
-Hi TurtleCoin contributor, thanks for forking and sending back Pull Requests. Extensive docs about contributing are in the works or elsewhere. For now this is the bit we need to get into all the files we touch. Please add it to the top of the files, see [src/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
+Hi TurtleCoin contributor, thanks for forking and sending back Pull Requests. Extensive docs about contributing are in the works or elsewhere. For now this is the bit we need to get into all the files we touch. Please add it to the top of the files, see [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
 
 ```
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
