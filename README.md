@@ -1,3 +1,10 @@
+#### Master Build Status
+[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=master)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/wrkzdev/wrkzcoin?branch=master&svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin)
+
+#### Development Build Status
+[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=development)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/github/wrkzdev/wrkzcoin?branch=development&svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin)
+
+
 ### Installing
 
 We offer binary images of the latest releases here: https://latest.wrkz.work
