@@ -351,7 +351,7 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "139.99.46.111:17855",        // node-sg1.wrkz.work
+        "139.99.47.188:17855",        // node-sg1.wrkz.work
         "95.216.164.177:17855",       // myexplorer.wrkz.work
         "51.15.131.220:17855",        // node-pr2.wrkz.work
         "142.44.243.123:17855",       // node-us1.wrkz.work
