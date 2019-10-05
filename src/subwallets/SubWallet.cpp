@@ -235,18 +235,12 @@ void SubWallet::markInputAsLocked(const Crypto::KeyImage keyImage)
 
 std::vector<Crypto::KeyImage> SubWallet::removeForkedInputs(const uint64_t forkHeight, const bool isViewWallet)
 {
-    std::vector<Crypto::KeyImage> keyImagesToRemove;
-
-    for (const auto input : m_lockedInputs)
-    {
-        keyImagesToRemove.push_back(input.keyImage);
-    }
-
-    /* Both of these will be resolved by the wallet in time */
-    m_lockedInputs.clear();
+    /* This will get resolved by the wallet in time */
     m_unconfirmedIncomingAmounts.clear();
 
-    auto isForked = [forkHeight, &keyImagesToRemove](const auto input)
+    std::vector<Crypto::KeyImage> keyImagesToRemove;
+
+    auto isForked = [forkHeight, &keyImagesToRemove](const auto &input)
     {
         if (input.blockHeight >= forkHeight)
         {
@@ -266,8 +260,9 @@ std::vector<Crypto::KeyImage> SubWallet::removeForkedInputs(const uint64_t forkH
         }
     };
 
-    /* Remove both spent and unspent inputs that were recieved after the fork
-       height */
+    /* Remove both spent and unspent and locked inputs that were recieved after
+     * the fork height */
+    removeForked(m_lockedInputs);
     removeForked(m_unspentInputs);
     removeForked(m_spentInputs);
 
