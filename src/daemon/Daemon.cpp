@@ -201,9 +201,9 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (config.p2pExternalPort <= 1024 || config.p2pExternalPort > 65535)
+    if (config.p2pExternalPort < 0 || config.p2pExternalPort > 65535)
     {
-        std::cout << "P2P External Port must be between 1024 and 65,535" << std::endl;
+        std::cout << "P2P External Port must be between 0 and 65,535" << std::endl;
         exit(1);
     }
 
