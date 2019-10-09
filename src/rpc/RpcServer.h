@@ -31,7 +31,8 @@ namespace CryptoNote
             std::shared_ptr<Logging::ILogger> log,
             Core &c,
             NodeServer &p2p,
-            ICryptoNoteProtocolHandler &protocol);
+            ICryptoNoteProtocolHandler &protocol,
+            const bool BlockExplorerDetailed);
 
         typedef std::function<bool(RpcServer *, const HttpRequest &request, HttpResponse &response)> HandlerFunction;
 
@@ -213,6 +214,8 @@ namespace CryptoNote
         std::string m_fee_address;
 
         uint32_t m_fee_amount;
+        
+        bool m_blockExplorerDetailed;
     };
 
 } // namespace CryptoNote
