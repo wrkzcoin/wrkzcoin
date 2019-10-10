@@ -245,7 +245,7 @@ namespace CryptoNote
             543000,   // 5
             600000,   // 6
             700000,   // 7
-            1000000,  // 8
+            999999,   // 8
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
