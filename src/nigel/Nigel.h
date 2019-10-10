@@ -101,6 +101,9 @@ class Nigel
        and making our functions non const) */
     std::shared_ptr<httplib::Client> m_nodeClient = nullptr;
 
+    /* Stores the HTTP headers included in all Nigel requests */
+    httplib::Headers m_requestHeaders;
+
     /* Runs a background refresh on height, hashrate, etc */
     std::thread m_backgroundThread;
 
