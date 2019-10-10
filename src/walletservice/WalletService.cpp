@@ -11,6 +11,7 @@
 #include "CryptoNote.h"
 #include "common/Base58.h"
 #include "common/CryptoNoteTools.h"
+#include "common/FileSystemShim.h"
 #include "common/TransactionExtra.h"
 #include "common/Util.h"
 #include "crypto/crypto.h"
@@ -676,8 +677,8 @@ namespace PaymentService
                 return make_error_code(CryptoNote::error::NOT_INITIALIZED);
             }
 
-            boost::filesystem::path walletPath(config.walletFile);
-            boost::filesystem::path exportPath = walletPath.parent_path() / fileName;
+            fs::path walletPath(config.walletFile);
+            fs::path exportPath = walletPath.parent_path() / fileName;
 
             logger(Logging::INFO, Logging::BRIGHT_WHITE) << "Exporting wallet to " << exportPath.string();
             wallet.exportWallet(exportPath.string());
