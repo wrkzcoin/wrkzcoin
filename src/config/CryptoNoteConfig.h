@@ -176,6 +176,17 @@ namespace CryptoNote
         const uint64_t MAX_EXTRA_SIZE_V2 = 1024;
 
         const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT = 543000;
+        /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
+        /* This is enforced on the daemon side. An output > 125 billion causes
+         * an invalid block. */
+        const uint64_t MAX_OUTPUT_SIZE_NODE   = 125'000'000'000'00;
+
+        /* 500 billion atomic, or 5 billion TRTL */
+        /* This is enforced on the client side. An output > 5 billion will not
+         * be created in a transaction */
+        const uint64_t MAX_OUTPUT_SIZE_CLIENT = 5'000'000'000'00;
+
+        const uint64_t MAX_OUTPUT_SIZE_HEIGHT = 700000;
 
         /* For new projects forked from this code base, the values immediately below
            should be changed to 0 to prevent issues with transaction processing

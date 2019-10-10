@@ -20,7 +20,6 @@
 #include "cryptonotecore/Mixins.h"
 
 #include <assert.h>
-#include <boost/filesystem/operations.hpp>
 #include <future>
 #include <mnemonics/Mnemonics.h>
 #include <sstream>
