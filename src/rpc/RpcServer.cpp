@@ -194,12 +194,14 @@ namespace CryptoNote
         std::shared_ptr<Logging::ILogger> log,
         Core &c,
         NodeServer &p2p,
-        ICryptoNoteProtocolHandler &protocol):
+        ICryptoNoteProtocolHandler &protocol,
+        const bool BlockExplorerDetailed):
         HttpServer(dispatcher, log),
         logger(log, "RpcServer"),
         m_core(c),
         m_p2p(p2p),
-        m_protocol(protocol)
+        m_protocol(protocol),
+        m_blockExplorerDetailed(BlockExplorerDetailed)
     {
     }
 
@@ -337,10 +339,20 @@ namespace CryptoNote
             return false;
         }
 
+        uint32_t blockCount = COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT;
+
+        /* Allow the requested block count to be specified in the
+           request if it's greater than 0 and less than the configured
+           maximum */
+        if (req.blockCount > 0 && req.blockCount < blockCount)
+        {
+            blockCount = req.blockCount;
+        }
+
         uint32_t totalBlockCount;
         uint32_t startBlockIndex;
         std::vector<Crypto::Hash> supplement = m_core.findBlockchainSupplement(
-            req.block_ids, COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT, totalBlockCount, startBlockIndex);
+            req.block_ids, blockCount, totalBlockCount, startBlockIndex);
 
         res.current_height = totalBlockCount;
         res.start_height = startBlockIndex;
@@ -399,6 +411,12 @@ namespace CryptoNote
         const COMMAND_RPC_QUERY_BLOCKS_DETAILED::request &req,
         COMMAND_RPC_QUERY_BLOCKS_DETAILED::response &res)
     {
+        /* Check if enable-blockexplorer-detailed is enabled */
+        if (!m_blockExplorerDetailed)
+        {
+            return false;
+        }
+
         uint64_t startIndex;
         uint64_t currentIndex;
         uint64_t fullOffset;

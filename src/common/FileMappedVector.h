@@ -8,10 +8,13 @@
 #include "common/ScopeExit.h"
 #include "system/MemoryMappedFile.h"
 
-#include <boost/filesystem.hpp>
 #include <cassert>
+#include <common/FileSystemShim.h>
+#include <crypto/random.h>
 #include <cstdint>
 #include <string>
+#include <sstream>
+#include <iostream>
 
 namespace Common
 {
@@ -446,21 +449,24 @@ namespace Common
 
         const uint64_t initialCapacity = 10;
 
-        boost::filesystem::path filePath = path;
-        boost::filesystem::path bakPath = path + ".bak";
+        fs::path filePath = path;
+
+        fs::path bakPath = path + ".bak";
+
         bool fileExists;
-        if (boost::filesystem::exists(filePath))
+
+        if (fs::exists(filePath))
         {
-            if (boost::filesystem::exists(bakPath))
+            if (fs::exists(bakPath))
             {
-                boost::filesystem::remove(bakPath);
+                fs::remove(bakPath);
             }
 
             fileExists = true;
         }
-        else if (boost::filesystem::exists(bakPath))
+        else if (fs::exists(bakPath))
         {
-            boost::filesystem::rename(bakPath, filePath);
+            fs::rename(bakPath, filePath);
             fileExists = true;
         }
         else
@@ -470,21 +476,21 @@ namespace Common
 
         if (mode == FileMappedVectorOpenMode::OPEN)
         {
-            open(path, prefixSize);
+            open(filePath.string(), prefixSize);
         }
         else if (mode == FileMappedVectorOpenMode::CREATE)
         {
-            create(path, initialCapacity, prefixSize, 0);
+            create(filePath.string(), initialCapacity, prefixSize, 0);
         }
         else if (mode == FileMappedVectorOpenMode::OPEN_OR_CREATE)
         {
             if (fileExists)
             {
-                open(path, prefixSize);
+                open(filePath.string(), prefixSize);
             }
             else
             {
-                create(path, initialCapacity, prefixSize, 0);
+                create(filePath.string(), initialCapacity, prefixSize, 0);
             }
         }
         else
@@ -940,17 +946,23 @@ namespace Common
             throw std::runtime_error("Vector is mapped to a .bak file due to earlier errors");
         }
 
-        boost::filesystem::path bakPath = m_path + ".bak";
-        boost::filesystem::path tmpPath = boost::filesystem::unique_path(m_path + ".tmp.%%%%-%%%%");
+        fs::path bakPath = m_path + ".bak";
 
-        if (boost::filesystem::exists(bakPath))
+        std::stringstream stream;
+
+        stream << std::hex << Random::randomValue<uint64_t>()
+                           << Random::randomValue<uint64_t>();
+
+        fs::path tmpPath = fs::path(m_path).parent_path() / stream.str();
+
+        if (fs::exists(bakPath))
         {
-            boost::filesystem::remove(bakPath);
+            fs::remove(bakPath);
         }
 
         Tools::ScopeExit tmpFileDeleter([&tmpPath] {
-            boost::system::error_code ignore;
-            boost::filesystem::remove(tmpPath, ignore);
+            std::error_code ignore;
+            fs::remove(tmpPath, ignore);
         });
 
         // Copy file. It is slow but atomic operation
@@ -977,8 +989,8 @@ namespace Common
 
         // Remove .bak file and ignore errors
         tmpVector.close(ignore);
-        boost::system::error_code boostError;
-        boost::filesystem::remove(bakPath, boostError);
+        std::error_code removeError;
+        fs::remove(bakPath, removeError);
     }
 
     template<class T> void FileMappedVector<T>::open(const std::string &path, uint64_t prefixSize)

@@ -396,15 +396,30 @@ bool WalletBackend::tryUpgradeWalletFormat(
         /* Our connection to turtlecoind */
         std::unique_ptr<CryptoNote::INode> node(new CryptoNote::NodeRpcProxy(daemonHost, daemonPort, 10, logManager));
 
+        /* Save the old wallet to the backup file via simple file copy operation */
+        std::error_code backupError;
+
+        fs::path filepath = filename;
+        fs::path backupFilepath = filepath.parent_path() / "old-version-backup-" += filepath.filename();
+
+        fs::copy(filename, backupFilepath, fs::copy_options::overwrite_existing, backupError);
+
+        /* If we could not backup the file then instantly fail for safety sake */
+        if (backupError)
+        {
+            return false;
+        }
+
         CryptoNote::WalletGreen wallet(*dispatcher, currency, *node, logManager);
 
+        /* Attempt to open the specified file as a wallet */
         wallet.load(filename, password);
 
         /* Cool, it worked. Upgrade to the new format. */
         const std::string json = wallet.toNewFormatJSON();
 
-        /* Save old wallet to backup file */
-        wallet.exportWallet("old-version-backup-" + filename);
+        /* We have to close the wallet before we can overwrite it */
+        wallet.shutdown();
 
         /* Save to disk with the new format. */
         Error error = saveWalletJSONToDisk(json, filename, password);

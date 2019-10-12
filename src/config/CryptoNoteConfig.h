@@ -93,6 +93,11 @@ namespace CryptoNote
 
         const uint64_t MINIMUM_FEE = UINT64_C(5);
 
+        /* Fee adjusting V1 */
+        const uint64_t MINIMUM_FEE_V1 = UINT64_C(50000);
+
+        const uint64_t MINIMUM_FEE_V1_HEIGHT = 678500;
+
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
 
@@ -176,6 +181,17 @@ namespace CryptoNote
         const uint64_t MAX_EXTRA_SIZE_V2 = 1024;
 
         const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT = 543000;
+        /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
+        /* This is enforced on the daemon side. An output > 125 billion causes
+         * an invalid block. */
+        const uint64_t MAX_OUTPUT_SIZE_NODE   = 125'000'000'000'00;
+
+        /* 500 billion atomic, or 5 billion TRTL */
+        /* This is enforced on the client side. An output > 5 billion will not
+         * be created in a transaction */
+        const uint64_t MAX_OUTPUT_SIZE_CLIENT = 5'000'000'000'00;
+
+        const uint64_t MAX_OUTPUT_SIZE_HEIGHT = 800000;
 
         /* For new projects forked from this code base, the values immediately below
            should be changed to 0 to prevent issues with transaction processing
@@ -233,12 +249,13 @@ namespace CryptoNote
             430000,   // 4
             543000,   // 5
             600000,   // 6
-            700000,   // 7
-            1000000,  // 8
+            678500,   // 7
+            800000,   // 8
+            1000000,  // 9
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 6;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 7;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -311,9 +328,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 5;
+    const uint8_t P2P_CURRENT_VERSION = 6;
 
-    const uint8_t P2P_MINIMUM_VERSION = 4;
+    const uint8_t P2P_MINIMUM_VERSION = 5;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;

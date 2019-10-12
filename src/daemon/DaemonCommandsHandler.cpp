@@ -17,6 +17,7 @@
 #include <serialization/SerializationTools.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
+#include <utilities/Utilities.h>
 
 namespace
 {
@@ -59,36 +60,36 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     m_logManager(log),
     m_prpc_server(prpc_server)
 {
-    m_consoleHandler.setHandler("exit", boost::bind(&DaemonCommandsHandler::exit, this, _1), "Shutdown the daemon");
-    m_consoleHandler.setHandler("help", boost::bind(&DaemonCommandsHandler::help, this, _1), "Show this help");
-    m_consoleHandler.setHandler("print_pl", boost::bind(&DaemonCommandsHandler::print_pl, this, _1), "Print peer list");
+    m_consoleHandler.setHandler("exit", std::bind(&DaemonCommandsHandler::exit, this, std::placeholders::_1), "Shutdown the daemon");
+    m_consoleHandler.setHandler("help", std::bind(&DaemonCommandsHandler::help, this, std::placeholders::_1), "Show this help");
+    m_consoleHandler.setHandler("print_pl", std::bind(&DaemonCommandsHandler::print_pl, this, std::placeholders::_1), "Print peer list");
     m_consoleHandler.setHandler(
-        "print_cn", boost::bind(&DaemonCommandsHandler::print_cn, this, _1), "Print connections");
+        "print_cn", std::bind(&DaemonCommandsHandler::print_cn, this, std::placeholders::_1), "Print connections");
     m_consoleHandler.setHandler(
         "print_bc",
-        boost::bind(&DaemonCommandsHandler::print_bc, this, _1),
+        std::bind(&DaemonCommandsHandler::print_bc, this, std::placeholders::_1),
         "Print blockchain info in a given blocks range, print_bc <begin_height> [<end_height>]");
     m_consoleHandler.setHandler(
         "print_block",
-        boost::bind(&DaemonCommandsHandler::print_block, this, _1),
+        std::bind(&DaemonCommandsHandler::print_block, this, std::placeholders::_1),
         "Print block, print_block <block_hash> | <block_height>");
     m_consoleHandler.setHandler(
         "print_tx",
-        boost::bind(&DaemonCommandsHandler::print_tx, this, _1),
+        std::bind(&DaemonCommandsHandler::print_tx, this, std::placeholders::_1),
         "Print transaction, print_tx <transaction_hash>");
     m_consoleHandler.setHandler(
         "print_pool",
-        boost::bind(&DaemonCommandsHandler::print_pool, this, _1),
+        std::bind(&DaemonCommandsHandler::print_pool, this, std::placeholders::_1),
         "Print transaction pool (long format)");
     m_consoleHandler.setHandler(
         "print_pool_sh",
-        boost::bind(&DaemonCommandsHandler::print_pool_sh, this, _1),
+        std::bind(&DaemonCommandsHandler::print_pool_sh, this, std::placeholders::_1),
         "Print transaction pool (short format)");
     m_consoleHandler.setHandler(
         "set_log",
-        boost::bind(&DaemonCommandsHandler::set_log, this, _1),
+        std::bind(&DaemonCommandsHandler::set_log, this, std::placeholders::_1),
         "set_log <level> - Change current log level, <level> is a number 0-4");
-    m_consoleHandler.setHandler("status", boost::bind(&DaemonCommandsHandler::status, this, _1), "Show daemon status");
+    m_consoleHandler.setHandler("status", std::bind(&DaemonCommandsHandler::status, this, std::placeholders::_1), "Show daemon status");
 }
 
 //--------------------------------------------------------------------------------
@@ -365,16 +366,44 @@ bool DaemonCommandsHandler::print_pool(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 {
-    std::cout << "Pool short state: \n";
-    auto pool = m_core.getPoolTransactions();
+    const auto pool = m_core.getPoolTransactions();
 
+    if (pool.size() == 0)
+    {
+        std::cout << InformationMsg("\nPool state: ") << SuccessMsg("Empty.") << std::endl;
+        return true;
+    }
+
+    std::cout << InformationMsg("\nPool state:\n");
+
+    uint64_t totalSize = 0;
+
+    const float maxTxSize = Utilities::getMaxTxSize(m_core.getTopBlockIndex());
+    
     for (const auto &tx : pool)
     {
         CryptoNote::CachedTransaction ctx(tx);
-        std::cout << printTransactionShortInfo(ctx) << "\n";
+
+        std::cout << InformationMsg("Hash: ") << SuccessMsg(ctx.getTransactionHash())
+                  << InformationMsg(", Fusion: ");
+
+        if (ctx.getTransactionFee() == 0)
+        {
+            std::cout << SuccessMsg("Yes") << std::endl;
+        }
+        else
+        {
+            std::cout << WarningMsg("No") << std::endl;
+        }
+
+        totalSize += ctx.getTransactionBinaryArray().size();
     }
 
-    std::cout << std::endl;
+    const float blocksRequiredToClear = std::ceil(totalSize / maxTxSize);
+
+    std::cout << InformationMsg("\nTotal transactions: ") << SuccessMsg(pool.size())
+              << InformationMsg("\nTotal size of transactions: ") << SuccessMsg(Utilities::prettyPrintBytes(totalSize))
+              << InformationMsg("\nEstimated full blocks to clear: ") << SuccessMsg(blocksRequiredToClear) << std::endl << std::endl;
 
     return true;
 }
@@ -387,11 +416,76 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 
     if (!m_prpc_server->on_get_info(ireq, iresp) || iresp.status != CORE_RPC_STATUS_OK)
     {
-        std::cout << "Problem retrieving information from RPC server." << std::endl;
+        std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
         return false;
     }
 
-    std::cout << Utilities::get_status_string(iresp) << std::endl;
+    const std::time_t uptime = std::time(nullptr) - iresp.start_time;
+
+    const uint64_t seconds = uptime;
+    const uint64_t minutes = seconds / 60;
+    const uint64_t hours = minutes / 60;
+    const uint64_t days = hours / 24;
+
+    const std::string uptimeStr = std::to_string(days) + "d "
+                                + std::to_string(hours % 24) + "h "
+                                + std::to_string(minutes % 60) + "m "
+                                + std::to_string(seconds % 60) + "s";
+
+    const auto forkStatus = Utilities::get_fork_status(iresp.network_height, iresp.upgrade_heights, iresp.supported_height);
+
+    std::vector<std::tuple<std::string, std::string>> statusTable;
+
+    statusTable.push_back({"Local Height", std::to_string(iresp.height)});
+    statusTable.push_back({"Network Height", std::to_string(iresp.network_height)});
+    statusTable.push_back({"Percentage Synced", Utilities::get_sync_percentage(iresp.height, iresp.network_height) + "%"});
+    statusTable.push_back({"Network Hashrate", Utilities::get_mining_speed(iresp.hashrate)});
+    statusTable.push_back({"Block Version", "v" + std::to_string(iresp.major_version)});
+    statusTable.push_back({"Incoming Connections", std::to_string(iresp.incoming_connections_count)});
+    statusTable.push_back({"Outgoing Connections", std::to_string(iresp.outgoing_connections_count)});
+    statusTable.push_back({"Uptime", uptimeStr});
+    statusTable.push_back({"Fork Status", Utilities::get_update_status(forkStatus)});
+    statusTable.push_back({"Next Fork", Utilities::get_fork_time(iresp.network_height, iresp.upgrade_heights)});
+    statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
+
+    size_t longestValue = 0;
+    size_t longestDescription = 0;
+
+    /* Figure out the dimensions of the table */
+    for (const auto [value, description] : statusTable)
+    {
+        if (value.length() > longestValue)
+        {
+            longestValue = value.length();
+        }
+
+        if (description.length() > longestDescription)
+        {
+            longestDescription = description.length();
+        }
+    }
+
+    /* Need 7 extra chars for all the padding and borders in addition to the
+     * values inside the table */
+    const size_t totalTableWidth = longestValue + longestDescription + 7;
+
+    /* Table border */
+    std::cout << std::string(totalTableWidth, '-') << std::endl;
+
+    /* Output the table itself */
+    for (const auto [value, description] : statusTable)
+    {
+        std::cout << "| " << InformationMsg(value, longestValue) << " ";
+        std::cout << "| " << SuccessMsg(description, longestDescription) << " |" << std::endl;
+    }
+
+    /* Table border */
+    std::cout << std::string(totalTableWidth, '-') << std::endl;
+
+    if (forkStatus == Utilities::OutOfDate)
+    {
+        std::cout << WarningMsg(Utilities::get_upgrade_info(iresp.supported_height, iresp.upgrade_heights)) << std::endl;
+    }
 
     return true;
 }

@@ -20,6 +20,7 @@ extern "C"
 #include <regex>
 #include <utilities/Addresses.h>
 #include <utilities/Mixins.h>
+#include <utilities/Fees.h>
 #include <utilities/Utilities.h>
 
 Error validateFusionTransaction(
@@ -233,8 +234,10 @@ Error validateAmount(
     const std::shared_ptr<SubWallets> subWallets,
     const uint64_t currentHeight)
 {
+    const uint64_t minFee = Utilities::getMinimumFee(currentHeight);
+
     /* Verify the fee is valid */
-    if (fee < CryptoNote::parameters::MINIMUM_FEE)
+    if (fee < minFee)
     {
         return FEE_TOO_SMALL;
     }
