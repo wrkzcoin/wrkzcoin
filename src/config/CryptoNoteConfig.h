@@ -93,6 +93,11 @@ namespace CryptoNote
 
         const uint64_t MINIMUM_FEE = UINT64_C(5);
 
+        /* Fee adjusting V1 */
+        const uint64_t MINIMUM_FEE_V1 = UINT64_C(50000);
+
+        const uint64_t MINIMUM_FEE_V1_HEIGHT = 678500;
+
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
 
@@ -186,7 +191,7 @@ namespace CryptoNote
          * be created in a transaction */
         const uint64_t MAX_OUTPUT_SIZE_CLIENT = 5'000'000'000'00;
 
-        const uint64_t MAX_OUTPUT_SIZE_HEIGHT = 700000;
+        const uint64_t MAX_OUTPUT_SIZE_HEIGHT = 800000;
 
         /* For new projects forked from this code base, the values immediately below
            should be changed to 0 to prevent issues with transaction processing
@@ -244,8 +249,9 @@ namespace CryptoNote
             430000,   // 4
             543000,   // 5
             600000,   // 6
-            700000,   // 7
-            999999,   // 8
+            678500,   // 7
+            800000,   // 8
+            1000000,  // 9
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
