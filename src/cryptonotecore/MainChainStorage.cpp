@@ -9,6 +9,7 @@
 #include "common/FileSystemShim.h"
 #include <sstream>
 
+
 namespace CryptoNote
 {
     const size_t STORAGE_CACHE_SIZE = 100;
