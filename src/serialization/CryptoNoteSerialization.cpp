@@ -566,25 +566,37 @@ namespace CryptoNote
             serializer(txCount, "tx_count");
             rawBlock.transactions.resize(static_cast<uint64_t>(txCount));
 
+            serializer.beginArray(txCount, "transactions");
+
             for (auto &txBlob : rawBlock.transactions)
             {
+                serializer.beginObject("transaction");
                 uint64_t txSize;
                 serializer(txSize, "tx_size");
                 txBlob.resize(txSize);
                 serializer.binary(txBlob.data(), txBlob.size(), "transaction");
+                serializer.endObject();
             }
+
+            serializer.endArray();
         }
         else
         {
             uint64_t txCount = rawBlock.transactions.size();
             serializer(txCount, "tx_count");
 
+            serializer.beginArray(txCount, "transactions");
+
             for (auto &txBlob : rawBlock.transactions)
             {
+                serializer.beginObject("transaction");
                 uint64_t txSize = txBlob.size();
                 serializer(txSize, "tx_size");
                 serializer.binary(txBlob.data(), txBlob.size(), "transaction");
+                serializer.endObject();
             }
+
+            serializer.endArray();
         }
     }
 
