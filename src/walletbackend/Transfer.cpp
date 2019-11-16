@@ -455,7 +455,7 @@ namespace SendTransaction
     std::tuple<Error, Crypto::Hash>
         relayTransaction(const CryptoNote::Transaction tx, const std::shared_ptr<Nigel> daemon)
     {
-        const auto [success, connectionError] = daemon->sendTransaction(tx);
+        const auto [success, connectionError, error] = daemon->sendTransaction(tx);
 
         if (connectionError)
         {
@@ -464,7 +464,7 @@ namespace SendTransaction
 
         if (!success)
         {
-            return {DAEMON_ERROR, Crypto::Hash()};
+            return {Error(DAEMON_ERROR, error), Crypto::Hash()};
         }
 
         return {SUCCESS, getTransactionHash(tx)};

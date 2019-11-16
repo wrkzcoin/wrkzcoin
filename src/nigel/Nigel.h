@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <config/CryptoNoteConfig.h>
+#include <logger/Logger.h>
 #include <rpc/CoreRpcServerCommandsDefinitions.h>
 #include <string>
 #include <thread>
@@ -74,8 +75,8 @@ class Nigel
     std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
         getRandomOutsByAmounts(const std::vector<uint64_t> amounts, const uint64_t requestedOuts) const;
 
-    /* {success, connectionError} */
-    std::tuple<bool, bool> sendTransaction(const CryptoNote::Transaction tx) const;
+    /* {success, connectionError, errorMessage} */
+    std::tuple<bool, bool, std::string> sendTransaction(const CryptoNote::Transaction tx) const;
 
     std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
         getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const;
@@ -92,6 +93,85 @@ class Nigel
     bool getDaemonInfo();
 
     bool getFeeInfo();
+
+    template<typename F>
+    auto tryParseJSONResponse(
+        const std::shared_ptr<httplib::Response> &res,
+        const std::string &failMessage,
+        const F parseFunc,
+        const bool verifyStatus = true) const -> std::optional<decltype(parseFunc(nlohmann::json()))>
+    {
+        if (res)
+        {
+            if (res->status == 200)
+            {
+                try
+                {
+                    nlohmann::json j = nlohmann::json::parse(res->body);
+
+                    Logger::logger.log(
+                        "Got response from daemon: " + j.dump(),
+                        Logger::TRACE,
+                        { Logger::SYNC, Logger::DAEMON }
+                    );
+
+                    const std::string status = j.at("status").get<std::string>();
+
+                    if (verifyStatus && status != "OK")
+                    {
+                        Logger::logger.log(
+                            failMessage + " - Expected status \"OK\", got " + status,
+                            Logger::INFO,
+                            { Logger::SYNC, Logger::DAEMON }
+                        );
+
+                        return std::nullopt;
+                    }
+
+                    return parseFunc(j);
+                }
+                catch (const nlohmann::json::exception &e)
+                {
+                    Logger::logger.log(
+                        failMessage + ": " + std::string(e.what()),
+                        Logger::INFO,
+                        { Logger::SYNC, Logger::DAEMON }
+                    );
+
+                    return std::nullopt;
+                }
+            }
+            else
+            {
+                std::stringstream stream;
+
+                stream << failMessage << " - got status code " << res->status;
+
+                if (res->body != "")
+                {
+                    stream << ", body: " << res->body;
+                }
+
+                Logger::logger.log(
+                    stream.str(),
+                    Logger::INFO,
+                    { Logger::SYNC, Logger::DAEMON }
+                );
+
+                return std::nullopt;
+            }
+        }
+        else
+        {
+            Logger::logger.log(
+                failMessage + " - failed to open socket or timed out.",
+                Logger::INFO,
+                { Logger::SYNC, Logger::DAEMON }
+            );
+
+            return std::nullopt;
+        }
+    }
 
     //////////////////////////////
     /* Private member variables */
