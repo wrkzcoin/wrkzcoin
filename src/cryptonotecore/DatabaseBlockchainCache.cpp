@@ -200,16 +200,6 @@ namespace CryptoNote
             return requestExtendedTransactionInfos(transactionHashes, database, result);
         }
 
-        uint64_t roundToMidnight(uint64_t timestamp)
-        {
-            if (timestamp > static_cast<uint64_t>(std::numeric_limits<time_t>::max()))
-            {
-                throw std::runtime_error("Timestamp is too big");
-            }
-
-            return static_cast<uint64_t>((timestamp / ONE_DAY_SECONDS) * ONE_DAY_SECONDS);
-        }
-
         std::pair<boost::optional<uint32_t>, bool>
             requestClosestBlockIndexByTimestamp(uint64_t timestamp, IDataBase &database)
         {
@@ -629,8 +619,7 @@ namespace CryptoNote
         auto blockResult = readDatabase(batch);
         auto timestamp = blockResult.getCachedBlocks().at(splitBlockIndex).timestamp;
 
-        auto midnight = roundToMidnight(timestamp);
-        auto timestampResult = requestClosestBlockIndexByTimestamp(midnight, database);
+        auto timestampResult = requestClosestBlockIndexByTimestamp(timestamp, database);
         if (!timestampResult.second)
         {
             logger(Logging::ERROR)
@@ -645,16 +634,16 @@ namespace CryptoNote
 
         if (splitBlockIndex != blockIndex)
         {
-            midnight += ONE_DAY_SECONDS;
+            timestamp += ONE_DAY_SECONDS;
         }
 
         BlockchainReadBatch midnightBatch;
-        while (readDatabase(midnightBatch.requestClosestTimestampBlockIndex(midnight))
+        while (readDatabase(midnightBatch.requestClosestTimestampBlockIndex(timestamp))
                    .getClosestTimestampBlockIndex()
-                   .count(midnight))
+                   .count(timestamp))
         {
-            writeBatch.removeClosestTimestampBlockIndex(midnight);
-            midnight += ONE_DAY_SECONDS;
+            writeBatch.removeClosestTimestampBlockIndex(timestamp);
+            timestamp += ONE_DAY_SECONDS;
         }
 
         logger(Logging::TRACE) << "deleted closest timestamp";
@@ -1146,7 +1135,7 @@ namespace CryptoNote
         }
 
         auto closestBlockIndexDb =
-            requestClosestBlockIndexByTimestamp(roundToMidnight(cachedBlock.getBlock().timestamp), database);
+            requestClosestBlockIndexByTimestamp(cachedBlock.getBlock().timestamp, database);
         if (!closestBlockIndexDb.second)
         {
             logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash()
@@ -1157,7 +1146,7 @@ namespace CryptoNote
         if (!closestBlockIndexDb.first)
         {
             batch.insertClosestTimestampBlockIndex(
-                roundToMidnight(cachedBlock.getBlock().timestamp), getTopBlockIndex() + 1);
+                cachedBlock.getBlock().timestamp, getTopBlockIndex() + 1);
         }
 
         insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
@@ -1707,9 +1696,7 @@ namespace CryptoNote
 
     std::tuple<bool, uint64_t> DatabaseBlockchainCache::getBlockHeightForTimestamp(uint64_t timestamp) const
     {
-        const auto midnight = roundToMidnight(timestamp);
-
-        const auto [blockHeight, success] = requestClosestBlockIndexByTimestamp(midnight, database);
+        const auto [blockHeight, success] = requestClosestBlockIndexByTimestamp(timestamp, database);
 
         /* Failed to read from DB */
         if (!success)
@@ -1729,11 +1716,9 @@ namespace CryptoNote
 
     uint32_t DatabaseBlockchainCache::getTimestampLowerBoundBlockIndex(uint64_t timestamp) const
     {
-        auto midnight = roundToMidnight(timestamp);
-
-        while (midnight > 0)
+        while (timestamp > 0)
         {
-            auto dbRes = requestClosestBlockIndexByTimestamp(midnight, database);
+            auto dbRes = requestClosestBlockIndexByTimestamp(timestamp, database);
             if (!dbRes.second)
             {
                 logger(Logging::DEBUGGING) << "getTimestampLowerBoundBlockIndex failed: failed to read database";
@@ -1742,7 +1727,7 @@ namespace CryptoNote
 
             if (!dbRes.first)
             {
-                midnight -= 60 * 60 * 24;
+                timestamp -= 60 * 60 * 24;
                 continue;
             }
 
@@ -2234,7 +2219,7 @@ namespace CryptoNote
 
         batch.insertCachedBlock(blockInfo, 0, {cachedBaseTransaction.getTransactionHash()});
         batch.insertRawBlock(0, {toBinaryArray(genesisBlock.getBlock()), {}});
-        batch.insertClosestTimestampBlockIndex(roundToMidnight(genesisBlock.getBlock().timestamp), 0);
+        batch.insertClosestTimestampBlockIndex(genesisBlock.getBlock().timestamp, 0);
 
         auto res = database.write(batch);
         if (res)
