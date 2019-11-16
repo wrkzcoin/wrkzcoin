@@ -619,11 +619,12 @@ void getTxPrivateKey(const std::shared_ptr<WalletBackend> walletBackend)
 void setLogLevel()
 {
     const std::vector<Command> logLevels = {
-        Command("Debug", "Display all logging messages"),
-        Command("Info", "Display informational logging messages"),
-        Command("Warning", "Display messages when something may be wrong"),
-        Command("Fatal", "Display messages when something fails"),
-        Command("Disabled", "Don't display any logging messages"),
+        Command("Trace",    "Display extremely detailed logging output"),
+        Command("Debug",    "Display highly detailed logging output"),
+        Command("Info",     "Display detailed logging output"),
+        Command("Warning",  "Display only warning and error logging output"),
+        Command("Fatal",    "Display only error logging output"),
+        Command("Disabled", "Don't display any logging output"),
     };
 
     printCommands(logLevels);
