@@ -1,0 +1,100 @@
+name: Build
+on: [push, pull_request]
+
+jobs:
+  # Common Build matrix for builds on Ubuntu VM
+  ubuntu_build:
+    name: ${{ matrix.build_name }}
+    runs-on: ubuntu-18.04
+    strategy:
+      matrix:
+        # Add more compilers here if you need them
+        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64']
+        include:
+          - build_name: 'Ubuntu GCC 7'
+            package_name: 'gcc-7 g++-7'
+            cc: gcc-7
+            cxx: g++-7
+          - build_name: 'Ubuntu GCC 8'
+            package_name: 'gcc-8 g++-8'
+            cc: gcc-8
+            cxx: g++-8
+          - build_name: 'Ubuntu Clang 6'
+            cc: clang-6.0
+            cxx: clang++-6.0
+    steps:
+      - uses: actions/checkout@v1
+
+      # Fetch Dependencies
+      - name: Dependencies
+        if: matrix.build_name != 'aarch64'
+        run: |
+          sudo apt update
+          sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
+
+      # Configure the project with cmake
+      - name: Configure
+        if: matrix.build_name != 'aarch64'
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          mkdir build && cd build
+          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+
+      # Build for linux
+      - name: Build
+        if: matrix.build_name != 'aarch64'
+        run: |
+          cd build
+          make -j2
+
+      # Build for aarch64
+      - name: Prepare and Build (aarch64)
+        if: matrix.build_name == 'aarch64'
+        env:
+          LABEL: aarch64
+        run: |
+          source scripts/prep-aarch64.sh
+          mkdir build && cd build
+          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+          make -j2
+
+      # Test the crypto
+      - name: Test Crypto
+        if: matrix.build_name != 'aarch64'
+        run: |
+          cd build/src
+          ./cryptotest
+
+  # Windows Builds on Windows Server 2019
+  windows_build:
+    name: Windows
+    runs-on: windows-2019
+    env:
+      MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Setup MSBuild.exe
+        uses: warrenbuckley/Setup-MSBuild@v1
+
+      # Configure project with cmake
+      - name: Configure
+        run: |
+          mkdir build
+          cd build
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default
+
+      # Build for Windows
+      - name: Build
+        run: |
+          cd build
+          MSBuild WrkzCoin.sln /p:Configuration=Release /m
+
+      # Test the crypto
+      - name: Test Crypto
+        shell: bash
+        run: |
+          cd build/src/Release
+          ./cryptotest.exe
