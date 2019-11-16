@@ -1296,6 +1296,22 @@ std::tuple<Error, uint16_t> ApiDispatcher::getTransactionDetails(
         {
             nlohmann::json j {{"transaction", tx}};
 
+            /* Replace publicKey with address for ease of use */
+            for (auto &tx : j.at("transaction.transfers"))
+            {
+                /* Get the spend key */
+                Crypto::PublicKey spendKey = tx.at("publicKey").get<Crypto::PublicKey>();
+
+                /* Get the address it belongs to */
+                const auto [error, address] = m_walletBackend->getAddress(spendKey);
+
+                /* Add the address to the json */
+                tx["address"] = address;
+
+                /* Remove the spend key */
+                tx.erase("publicKey");
+            }
+
             res.set_content(j.dump(4) + "\n", "application/json");
 
             return {SUCCESS, 200};
