@@ -9,6 +9,7 @@
 #include "json.hpp"
 
 #include <config/CryptoNoteConfig.h>
+#include <common/StringTools.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Mixins.h>
 #include <cryptopp/modes.h>
@@ -690,8 +691,20 @@ std::tuple<Error, uint16_t>
         unlockTime = getJsonValue<uint64_t>(body, "unlockTime");
     }
 
+    std::vector<uint8_t> extraData;
+
+    if (body.find("extra") != body.end())
+    {
+        std::string extra = getJsonValue<std::string>(body, "extra");
+
+        if (!Common::fromHex(extra, extraData))
+        {
+            return {INVALID_EXTRA_DATA, 400};
+        }
+    }
+
     auto [error, hash] = m_walletBackend->sendTransactionAdvanced(
-        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, unlockTime);
+        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, unlockTime, extraData);
 
     if (error)
     {
@@ -747,7 +760,19 @@ std::tuple<Error, uint16_t>
         subWalletsToTakeFrom = getJsonValue<std::vector<std::string>>(body, "sourceAddresses");
     }
 
-    auto [error, hash] = m_walletBackend->sendFusionTransactionAdvanced(mixin, subWalletsToTakeFrom, destination);
+    std::vector<uint8_t> extraData;
+
+    if (body.find("extra") != body.end())
+    {
+        std::string extra = getJsonValue<std::string>(body, "extra");
+
+        if (!Common::fromHex(extra, extraData))
+        {
+            return {INVALID_EXTRA_DATA, 400};
+        }
+    }
+
+    auto [error, hash] = m_walletBackend->sendFusionTransactionAdvanced(mixin, subWalletsToTakeFrom, destination, extraData);
 
     if (error)
     {

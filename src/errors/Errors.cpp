@@ -278,6 +278,10 @@ std::string Error::getErrorMessage() const
         {
             return "The private key given is not a valid ed25519 private key.";
         }
+        case INVALID_EXTRA_DATA:
+        {
+            return "The extra data given for the transaction could not be decoded.";
+        }
         case UNKNOWN_ERROR:
         {
             return "An unknown error occurred.";
@@ -289,7 +293,7 @@ std::string Error::getErrorMessage() const
                    "succeeded. Wait a few minutes before retrying the transaction, "
                    "as it may still succeed.";
         }
-            /* No default case so the compiler warns us if we missed one */
+        /* No default case so the compiler warns us if we missed one */
     }
 
     throw std::invalid_argument("Invalid error code given");
