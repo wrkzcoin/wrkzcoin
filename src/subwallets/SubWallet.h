@@ -49,7 +49,7 @@ class SubWallet
 
     /* Generates a key image from the derivation, and stores the
        transaction input along with the key image filled in */
-    Crypto::KeyImage getTxInputKeyImage(
+    std::tuple<Crypto::KeyImage, Crypto::SecretKey> getTxInputKeyImage(
         const Crypto::KeyDerivation derivation,
         const size_t outputIndex,
         const bool isViewWallet) const;

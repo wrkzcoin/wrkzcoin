@@ -69,7 +69,7 @@ class SubWallets
     /* Generates a key image using the public+private spend key of the
        subwallet. Will return an uninitialized keyimage if a view wallet
        (and must exist, but the WalletSynchronizer already checks this) */
-    Crypto::KeyImage getTxInputKeyImage(
+    std::tuple<Crypto::KeyImage, Crypto::SecretKey> getTxInputKeyImage(
         const Crypto::PublicKey publicSpendKey,
         const Crypto::KeyDerivation derivation,
         const size_t outputIndex) const;

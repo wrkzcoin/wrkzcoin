@@ -52,7 +52,7 @@ SubWallet::SubWallet(
 /* CLASS FUNCTIONS */
 /////////////////////
 
-Crypto::KeyImage SubWallet::getTxInputKeyImage(
+std::tuple<Crypto::KeyImage, Crypto::SecretKey> SubWallet::getTxInputKeyImage(
     const Crypto::KeyDerivation derivation,
     const size_t outputIndex,
     const bool isViewWallet) const
@@ -76,9 +76,11 @@ Crypto::KeyImage SubWallet::getTxInputKeyImage(
 
         /* Get the key image from the tmp public and private key */
         Crypto::generate_key_image(tmp.publicKey, tmp.secretKey, keyImage);
-        return keyImage;
+
+        return { keyImage, tmp.secretKey };
     }
-    return Crypto::KeyImage();
+
+    return { Crypto::KeyImage(), Crypto::SecretKey() };
 }
 
 void SubWallet::storeTransactionInput(const WalletTypes::TransactionInput input, const bool isViewWallet)

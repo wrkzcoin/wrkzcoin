@@ -364,7 +364,7 @@ void SubWallets::addTransaction(const WalletTypes::Transaction tx)
     m_transactions.push_back(tx);
 }
 
-Crypto::KeyImage SubWallets::getTxInputKeyImage(
+std::tuple<Crypto::KeyImage, Crypto::SecretKey> SubWallets::getTxInputKeyImage(
     const Crypto::PublicKey publicSpendKey,
     const Crypto::KeyDerivation derivation,
     const size_t outputIndex) const

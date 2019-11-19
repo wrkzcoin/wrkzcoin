@@ -105,9 +105,6 @@ namespace SendTransaction
     std::tuple<Error, Crypto::Hash>
         relayTransaction(const CryptoNote::Transaction tx, const std::shared_ptr<Nigel> daemon);
 
-    std::tuple<CryptoNote::KeyPair, Crypto::KeyImage>
-        genKeyImage(const WalletTypes::ObscuredInput input, const Crypto::SecretKey privateViewKey);
-
     void storeSentTransaction(
         const Crypto::Hash hash,
         const uint64_t fee,
