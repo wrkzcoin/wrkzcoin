@@ -115,17 +115,20 @@ class Nigel
                         { Logger::SYNC, Logger::DAEMON }
                     );
 
-                    const std::string status = j.at("status").get<std::string>();
-
-                    if (verifyStatus && status != "OK")
+                    if (verifyStatus)
                     {
-                        Logger::logger.log(
-                            failMessage + " - Expected status \"OK\", got " + status,
-                            Logger::INFO,
-                            { Logger::SYNC, Logger::DAEMON }
-                        );
+                        const std::string status = j.at("status").get<std::string>();
 
-                        return std::nullopt;
+                        if (status != "OK")
+                        {
+                            Logger::logger.log(
+                                failMessage + " - Expected status \"OK\", got " + status,
+                                Logger::INFO,
+                                { Logger::SYNC, Logger::DAEMON }
+                            );
+
+                            return std::nullopt;
+                        }
                     }
 
                     return parseFunc(j);

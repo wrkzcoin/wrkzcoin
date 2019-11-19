@@ -356,7 +356,7 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
 
         const auto parsedResponse = tryParseJSONResponse(res, "Failed to get random outs", [](const nlohmann::json j) {
             return j.get<std::vector<CryptoNote::RandomOuts>>();
-        });
+        }, false);
 
         if (parsedResponse)
         {
