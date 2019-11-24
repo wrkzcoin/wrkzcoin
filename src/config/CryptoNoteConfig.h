@@ -222,6 +222,10 @@ namespace CryptoNote
 
         const size_t FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 10;
+
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 800000;
+
         const uint32_t UPGRADE_HEIGHT_V2 = 1;
 
         const uint32_t UPGRADE_HEIGHT_V3 = 2;

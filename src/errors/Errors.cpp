@@ -293,6 +293,14 @@ std::string Error::getErrorMessage() const
                    "succeeded. Wait a few minutes before retrying the transaction, "
                    "as it may still succeed.";
         }
+        case OUTPUT_DECOMPOSITION:
+        {
+            return "The transaction contains more outputs than what is permitted "
+                   "by the number of inputs that have been supplied for the "
+                   "transaction. Please try to send your transaction again. "
+                   "If the problem persists, please reduce the number of "
+                   "destinations that you are trying to send to.";
+        }
         /* No default case so the compiler warns us if we missed one */
     }
 
