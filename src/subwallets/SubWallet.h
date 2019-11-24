@@ -35,7 +35,8 @@ class SubWallet
         const std::string address,
         const uint64_t scanHeight,
         const uint64_t scanTimestamp,
-        const bool isPrimaryAddress);
+        const bool isPrimaryAddress,
+        const uint64_t walletIndex = 0);
 
     /////////////////////////////
     /* Public member functions */
@@ -64,6 +65,8 @@ class SubWallet
     bool isPrimaryAddress() const;
 
     std::string address() const;
+
+    uint64_t walletIndex() const;
 
     Crypto::PublicKey publicSpendKey() const;
 
@@ -118,6 +121,9 @@ class SubWallet
 
     /* The subwallet's private spend key */
     Crypto::SecretKey m_privateSpendKey;
+
+    /* The subwallet's deterministic index value */
+    uint64_t m_walletIndex = 0;
 
     /* The timestamp to begin syncing the wallet at
        (usually creation time or zero) */

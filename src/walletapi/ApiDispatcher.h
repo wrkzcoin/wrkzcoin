@@ -120,6 +120,10 @@ class ApiDispatcher
     std::tuple<Error, uint16_t>
         importAddress(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
+    /* Imports a deterministic address using a wallet index */
+    std::tuple<Error, uint16_t>
+        importDeterministicAddress(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+
     /* Imports a view only address with a public spend key */
     std::tuple<Error, uint16_t>
         importViewAddress(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);

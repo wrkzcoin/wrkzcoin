@@ -85,6 +85,9 @@ ApiDispatcher::ApiDispatcher(
         /* Import an address with a spend secret key */
         .Post("/addresses/import", router(&ApiDispatcher::importAddress, WalletMustBeOpen, viewWalletsBanned))
 
+        /* Import a deterministic address using a wallet index */
+        .Post("/addresses/import/deterministic", router(&ApiDispatcher::importDeterministicAddress, WalletMustBeOpen, viewWalletsBanned))
+
         /* Import a view only address with a public spend key */
         .Post("/addresses/import/view", router(&ApiDispatcher::importViewAddress, WalletMustBeOpen, viewWalletsAllowed))
 
@@ -498,11 +501,11 @@ std::tuple<Error, uint16_t> ApiDispatcher::createWallet(const Request &req, Resp
 
 std::tuple<Error, uint16_t> ApiDispatcher::createAddress(const Request &req, Response &res, const nlohmann::json &body)
 {
-    const auto [error, address, privateSpendKey] = m_walletBackend->addSubWallet();
+    const auto [error, address, privateSpendKey, subWalletIndex] = m_walletBackend->addSubWallet();
 
     const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
 
-    nlohmann::json j {{"address", address}, {"privateSpendKey", privateSpendKey}, {"publicSpendKey", publicSpendKey}};
+    nlohmann::json j {{"address", address}, {"privateSpendKey", privateSpendKey}, {"publicSpendKey", publicSpendKey}, {"walletIndex", subWalletIndex}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 
@@ -523,6 +526,33 @@ std::tuple<Error, uint16_t> ApiDispatcher::importAddress(const Request &req, Res
     const auto privateSpendKey = getJsonValue<Crypto::SecretKey>(body, "privateSpendKey");
 
     const auto [error, address] = m_walletBackend->importSubWallet(privateSpendKey, scanHeight);
+
+    if (error)
+    {
+        return {error, 400};
+    }
+
+    nlohmann::json j {{"address", address}};
+
+    res.set_content(j.dump(4) + "\n", "application/json");
+
+    return {SUCCESS, 201};
+}
+
+std::tuple<Error, uint16_t> ApiDispatcher::importDeterministicAddress(const Request &req, Response &res, const nlohmann::json &body)
+{
+    uint64_t scanHeight = 0;
+
+    /* Strongly suggested to supply a scan height. Wallet syncing will have to
+       begin again from zero if none is given */
+    if (body.find("scanHeight") != body.end())
+    {
+        scanHeight = getJsonValue<uint64_t>(body, "scanHeight");
+    }
+
+    const auto walletIndex = getJsonValue<uint64_t>(body, "walletIndex");
+
+    const auto [error, address] = m_walletBackend->importSubWallet(walletIndex, scanHeight);
 
     if (error)
     {
@@ -920,14 +950,14 @@ std::tuple<Error, uint16_t>
         return {error, 400};
     }
 
-    const auto [error, publicSpendKey, privateSpendKey] = m_walletBackend->getSpendKeys(address);
+    const auto [error, publicSpendKey, privateSpendKey, walletIndex] = m_walletBackend->getSpendKeys(address);
 
     if (error)
     {
         return {error, 400};
     }
 
-    nlohmann::json j {{"publicSpendKey", publicSpendKey}, {"privateSpendKey", privateSpendKey}};
+    nlohmann::json j {{"publicSpendKey", publicSpendKey}, {"privateSpendKey", privateSpendKey}, {"walletIndex", walletIndex}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 

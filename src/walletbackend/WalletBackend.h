@@ -163,11 +163,14 @@ class WalletBackend
 
     uint64_t getTotalUnlockedBalance() const;
 
-    /* Make a new sub wallet (gens a privateSpendKey) */
-    std::tuple<Error, std::string, Crypto::SecretKey> addSubWallet();
+    /* Make a new sub wallet (gens a deterministic privateSpendKey) */
+    std::tuple<Error, std::string, Crypto::SecretKey, uint64_t> addSubWallet();
 
     /* Import a sub wallet with the given privateSpendKey */
     std::tuple<Error, std::string> importSubWallet(const Crypto::SecretKey privateSpendKey, const uint64_t scanHeight);
+
+    /* Import a deterministic sub wallet using the given wallet index */
+    std::tuple<Error, std::string> importSubWallet(const uint64_t walletIndex, const uint64_t scanHeight);
 
     /* Import a view only sub wallet with the given publicSpendKey */
     std::tuple<Error, std::string>
@@ -206,7 +209,7 @@ class WalletBackend
     Crypto::SecretKey getPrivateViewKey() const;
 
     /* Gets the public and private spend key for the given address */
-    std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey> getSpendKeys(const std::string &address) const;
+    std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey, uint64_t> getSpendKeys(const std::string &address) const;
 
     /* Get the private spend and private view for the primary address */
     std::tuple<Crypto::SecretKey, Crypto::SecretKey> getPrimaryAddressPrivateKeys() const;
@@ -299,7 +302,7 @@ class WalletBackend
 
     void init();
 
-    
+
     //////////////////////////////
     /* Private member variables */
     //////////////////////////////

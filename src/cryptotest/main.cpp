@@ -272,6 +272,37 @@ void benchmarkGenerateKeyDerivation()
     std::cout << "Time to perform generateKeyDerivation: " << timePerDerivation / 1000.0 << " ms" << std::endl;
 }
 
+void TestDeterministicSubwalletCreation (const std::string baseSpendKey, const uint64_t subWalletIndex, const std::string expectedSpendKey)
+{
+    Crypto::SecretKey f_baseSpendKey;
+
+    if (!Common::podFromHex(baseSpendKey, f_baseSpendKey))
+    {
+        std::cout << "Could not decode base private spend key!\nTerminating...";
+
+        exit(1);
+    }
+
+    Crypto::SecretKey f_expectedSpendKey;
+
+    if (!Common::podFromHex(expectedSpendKey, f_expectedSpendKey))
+    {
+        std::cout << "Could not decode expected private spend key!\nTerminating...";
+
+        exit(1);
+    }
+
+    const auto [subwalletPrivateKey, subwalletPublicKey] = Crypto::generate_deterministic_subwallet_keys(f_baseSpendKey, subWalletIndex);
+
+    if (subwalletPrivateKey != f_expectedSpendKey)
+    {
+        std::cout << "Could not deterministically create subwallet spend keys!\n"
+                  << "Expected: " << expectedSpendKey << "\nActual: " << subwalletPrivateKey << "\nTerminating.";
+
+        exit(1);
+    }
+}
+
 int main(int argc, char **argv)
 {
     bool o_help, o_version, o_benchmark;
@@ -423,6 +454,16 @@ int main(int argc, char **argv)
 
             BENCHMARK(chukwa_slow_hash, o_iterations_long);
         }
+
+        std::cout <<std::endl << "Deterministic Subwallet Creation Tests: ";
+
+        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 0, "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c");
+        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 1, "c55cbe4fd1c49dca5958fa1c7b9212c2dbf3fd5bfec84de741d434056e298600");
+        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 2, "9813c40428ed9b380a2f72bac1374a9d3852a974b0527e003cbc93afab764d01");
+        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 64, "29c2afed13271e2bb3321c2483356fd8798f2709af4de3906b6627ec71727108");
+        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 65, "0c6b5fff72260832558e35c38e690072503211af065056862288dc7fd992350a");
+
+        std::cout << "Passed." << std::endl;
     }
     catch (std::exception &e)
     {
