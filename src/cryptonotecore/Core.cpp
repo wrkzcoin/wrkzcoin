@@ -1718,11 +1718,26 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
+        /* If there are already a certain number of fusion transactions in
+           the pool, then do not try to add another */
+        if (cachedTransaction.getTransactionFee() == 0
+            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)
+        {
+            return {false, "Pool already contains the maximum amount of fusion transactions for dust"};
+        }
+
+        if (cachedTransaction.getTransactionFee() == 0
+            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT)
+        {
+            return {false, "Pool already contains the maximum amount of fusion transactions"};
+        }
+
         if (cachedTransaction.getTransaction().outputs.size() >
             cachedTransaction.getTransaction().inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
         {
             logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to block template, excessive input deconstruction.";
+                                   << " to transaction pool, excessive input deconstruction.";
 
             return {false, "Transaction has an excessive number of outputs for the input count"};
         }
