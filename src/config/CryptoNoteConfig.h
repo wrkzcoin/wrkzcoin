@@ -235,7 +235,7 @@ namespace CryptoNote
 
         const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 10;
 
-        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 800000;
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 755564;
 
         const uint32_t UPGRADE_HEIGHT_V2 = 1;
 
@@ -265,12 +265,13 @@ namespace CryptoNote
             543000,   // 5
             600000,   // 6
             678500,   // 7
-            800000,   // 8
-            1000000,  // 9
+            755564,   // 8
+            900000,   // 9
+            1000000,  // 10
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 7;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 8;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -343,9 +344,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 6;
+    const uint8_t P2P_CURRENT_VERSION = 7;
 
-    const uint8_t P2P_MINIMUM_VERSION = 5;
+    const uint8_t P2P_MINIMUM_VERSION = 6;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
