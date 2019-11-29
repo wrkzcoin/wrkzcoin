@@ -235,7 +235,7 @@ namespace CryptoNote
 
         const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 10;
 
-        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 755564;
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 777777;
 
         const uint32_t UPGRADE_HEIGHT_V2 = 1;
 
@@ -265,7 +265,7 @@ namespace CryptoNote
             543000,   // 5
             600000,   // 6
             678500,   // 7
-            755564,   // 8
+            777777,   // 8
             900000,   // 9
             1000000,  // 10
         };
