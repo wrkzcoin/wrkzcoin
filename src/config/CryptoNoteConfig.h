@@ -226,14 +226,14 @@ namespace CryptoNote
            at any given time. Incoming fusion transactions that attempt to exceed this limit
            will be rejected from the pool and will not be added. This mechanism is in place
            to help curtail fusion transaction spam. */
-        const size_t FUSION_TX_MAX_POOL_COUNT = 40;
+        const size_t FUSION_TX_MAX_POOL_COUNT = 60;
 
         /* Similar to above. This is for the dust fusion to limit in the pool. */
-        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 5;
+        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 10;
 
         const size_t FUSION_TX_MAX_POOL_AMOUNT_V1 = UINT64_C(50000);
 
-        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 10;
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 60;
 
         const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 777777;
 
