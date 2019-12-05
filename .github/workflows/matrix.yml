@@ -34,6 +34,7 @@ jobs:
             deployable: false
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
+      LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v1
 
@@ -43,6 +44,16 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
+
+      - name: Setup ccache
+        run: |
+          sudo apt install ccache
+
+      - name: Retrieve ccache
+        uses: actions/cache@v1
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.label }}
 
       # Configure the project with cmake
       - name: Configure
