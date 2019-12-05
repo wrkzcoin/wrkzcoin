@@ -1766,11 +1766,36 @@ namespace CryptoNote
                 ++CheckOutputCount;
             }
         }
+
         if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
         {
             logger(Logging::TRACE) << "Not adding transaction " << transactionHash
                                    << " to transaction pool, excessive output with small amount.";
             return {false, "Transaction has an excessive output with small amount."};
+        }
+
+        /* Many small amount for fusion */
+        if (cachedTransaction.getTransactionFee() == 0
+            && cachedTransaction.getTransaction().inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+        {
+            uint64_t CheckIntputCountFusion = 0;
+            for (const auto &input : cachedTransaction.getTransaction().inputs)
+            {
+                if (input.type() == typeid(CryptoNote::KeyInput))
+                {    
+                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                    {
+                        ++CheckIntputCountFusion;
+                    }
+                }
+            }
+            if (CheckIntputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                       << " to transaction pool, excessive input with small amount";
+                return {false, "Transaction has an excessive input with small amount."};
+            }
         }
 
         /* If there are already a certain number of fusion transactions in
