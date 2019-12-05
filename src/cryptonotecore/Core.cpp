@@ -1718,8 +1718,63 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
+        /* Prevent to add to tx pool if the sum of amount is bigger than limit set */
+        /* NORMAL_TX_OUTPUT_SUM_MIN_V1 = 100.00 WRKZ */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, below minimum sum of output amount.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+        /* 100,000.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, reach threshold sum of output amount / output size.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+
+        /* 1,000,000.00 WRKZ */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, reach threshold sum of output amount / output size.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+
+        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
+        if (cachedTransaction.getTransaction().outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, excessive output.";
+
+            return {false, "Transaction has an excessive number of outputs."};
+        }
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100 */
+        uint64_t CheckOutputCount = 0;
+        for (const auto &output : cachedTransaction.getTransaction().outputs)
+        {
+            if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+            {
+                ++CheckOutputCount;
+            }
+        }
+        if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, excessive output with small amount.";
+            return {false, "Transaction has an excessive output with small amount."};
+        }
+
         /* If there are already a certain number of fusion transactions in
-           the pool, then do not try to add another */
+        the pool, then do not try to add another */
         if (cachedTransaction.getTransactionFee() == 0
             && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
             && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)

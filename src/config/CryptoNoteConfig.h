@@ -228,14 +228,25 @@ namespace CryptoNote
            to help curtail fusion transaction spam. */
         const size_t FUSION_TX_MAX_POOL_COUNT = 60;
 
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 100;
+
         /* Similar to above. This is for the dust fusion to limit in the pool. */
         const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 10;
 
         const size_t FUSION_TX_MAX_POOL_AMOUNT_V1 = UINT64_C(50000);
 
-        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 60;
-
         const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 777777;
+
+        /* Sum of output amount not to be less than 100.00 WRKZ */
+        const size_t NORMAL_TX_OUTPUT_SUM_MIN_V1 = UINT64_C(10000);
+
+        /* Not allow to have 600 of outputs for any tx */
+        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600;
+
+        /* If there is 10.00 WRKZ in output bigger than 100 numbers */
+        const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = UINT64_C(1000);
+
+        const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100;
 
         const uint32_t UPGRADE_HEIGHT_V2 = 1;
 
