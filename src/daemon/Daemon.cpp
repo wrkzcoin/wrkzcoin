@@ -355,7 +355,7 @@ int main(int argc, char *argv[])
 
         CryptoNote::CryptoNoteProtocolHandler cprotocol(currency, dispatcher, ccore, nullptr, logManager);
         CryptoNote::NodeServer p2psrv(dispatcher, cprotocol, logManager);
-        CryptoNote::RpcServer rpcServer(dispatcher, logManager, ccore, p2psrv, cprotocol, config.enableBlockExplorerDetailed);
+        CryptoNote::RpcServer rpcServer(dispatcher, logManager, ccore, p2psrv, cprotocol, config.enableBlockExplorerDetailed, config.enableMining);
 
         cprotocol.set_p2p_endpoint(&p2psrv);
         DaemonCommandsHandler dch(ccore, p2psrv, logManager, &rpcServer);
