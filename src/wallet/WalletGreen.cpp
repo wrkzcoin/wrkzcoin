@@ -2838,6 +2838,31 @@ namespace CryptoNote
             throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
         }
 
+        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of outputs";
+
+            throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
+        }
+
+        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+			uint64_t CheckOutputCount = 0;
+			for (const auto &output : cryptoNoteTransaction.outputs)
+			{
+				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+				{
+					++CheckOutputCount;
+				}
+			}
+			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+			{
+				m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of small outputs";
+
+				throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
+			}
+        }
+
         if (cryptoNoteTransaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
         {
             m_logger(ERROR, BRIGHT_RED) << "Transaction extra is too large. Allowed: "

@@ -2223,6 +2223,33 @@ namespace CryptoNote
             return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
         }
 
+        /* limit number of output size. We use same set height of NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
+        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
+        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
+            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
+        }
+
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100, condition at height as NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
+        uint64_t CheckOutputCount = 0;
+        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
+            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+			for (const auto &output : transaction.outputs)
+			{
+				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+				{
+					++CheckOutputCount;
+				}
+			}
+			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+			{
+				return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
+			}
+        }
+
         size_t inputIndex = 0;
         for (const auto &input : transaction.inputs)
         {
