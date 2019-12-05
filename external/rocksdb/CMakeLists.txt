@@ -42,12 +42,10 @@ if(CCACHE_PROGRAM)
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/")
-include(ReadVersion)
-get_rocksdb_version(rocksdb_VERSION)
-project(rocksdb
-  VERSION ${rocksdb_VERSION}
-  LANGUAGES CXX C ASM)
+project(rocksdb)
+enable_language(CXX)
+enable_language(C)
+enable_language(ASM)
 
 if(POLICY CMP0042)
   cmake_policy(SET CMP0042 NEW)
@@ -833,8 +831,8 @@ else()
     ${THIRDPARTY_LIBS} ${SYSTEM_LIBS})
   set_target_properties(${ROCKSDB_SHARED_LIB} PROPERTIES
                         LINKER_LANGUAGE CXX
-                        VERSION ${rocksdb_VERSION}
-                        SOVERSION ${rocksdb_VERSION_MAJOR}
+                        VERSION ${ROCKSDB_VERSION}
+                        SOVERSION ${ROCKSDB_VERSION_MAJOR}
                         CXX_STANDARD 11
                         OUTPUT_NAME "rocksdb")
 endif()
@@ -889,7 +887,7 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
 
   write_basic_package_version_file(
     RocksDBConfigVersion.cmake
-    VERSION ${rocksdb_VERSION}
+    VERSION ${ROCKSDB_VERSION}
     COMPATIBILITY SameMajorVersion
   )
 
