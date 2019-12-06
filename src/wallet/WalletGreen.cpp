@@ -2866,7 +2866,7 @@ namespace CryptoNote
         if (isFusion
 			&& cryptoNoteTransaction.inputs.size() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
         {
-			uint64_t CheckIntputCountFusion = 0;
+			uint64_t CheckInputCountFusion = 0;
             for (const auto &input : cryptoNoteTransaction.inputs)
             {
                 if (input.type() == typeid(CryptoNote::KeyInput))
@@ -2874,16 +2874,16 @@ namespace CryptoNote
                     const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
                     if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
                     {
-                        ++CheckIntputCountFusion;
+                        ++CheckInputCountFusion;
                     }
                 }
             }
-            if (CheckIntputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
             {
                 /* Temporarily UNKNOWN_ERROR */
                 m_logger(ERROR, BRIGHT_RED) << "Fusion transaction has so many small inputs. Allowed: "
                                             << CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1
-                                            << ", actual: " << CheckIntputCountFusion << ".";
+                                            << ", actual: " << CheckInputCountFusion << ".";
 
                 throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR), "Fusion transaction has so many small inputs.");
             }

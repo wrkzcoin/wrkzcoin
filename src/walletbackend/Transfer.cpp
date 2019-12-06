@@ -152,7 +152,7 @@ namespace SendTransaction
             /* Check if input size is bigger than 60 and inputs each smaller than FUSION_TX_MAX_POOL_AMOUNT_DUST_V1 */
             if (tx.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
             {
-                uint64_t CheckIntputCountFusion = 0;
+                uint64_t CheckInputCountFusion = 0;
 
                 for (const auto &input : tx.inputs)
                 {
@@ -162,12 +162,12 @@ namespace SendTransaction
 
                         if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
                         {
-                            ++CheckIntputCountFusion;
+                            ++CheckInputCountFusion;
                         }
                     }
                 }
 
-                if (CheckIntputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+                if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
                 {
                     /* Reduce the amount we're sending */
                     foundMoney -= ourInputs.back().input.amount;
