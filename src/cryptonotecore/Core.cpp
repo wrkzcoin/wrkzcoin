@@ -2275,6 +2275,29 @@ namespace CryptoNote
 			}
         }
 
+        if (cachedTransaction.getTransactionFee() == 0
+            && blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT 
+            && transaction.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+        {
+            uint64_t CheckIntputCountFusion = 0;
+            for (const auto &input : transaction.inputs)
+            {
+                if (input.type() == typeid(CryptoNote::KeyInput))
+                {    
+                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                    {
+                        ++CheckIntputCountFusion;
+                    }
+                }
+            }
+            if (CheckIntputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                /* Temporarily INPUT_WRONG_COUNT */
+                return error::TransactionValidationError::INPUT_WRONG_COUNT;
+            }
+        }
+
         size_t inputIndex = 0;
         for (const auto &input : transaction.inputs)
         {
@@ -2351,7 +2374,7 @@ namespace CryptoNote
         }
 
         /* Small buffer until enforcing - helps clear out tx pool with old, previously
-     valid transactions */
+        valid transactions */
         if (blockIndex >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2_HEIGHT
                               + CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
         {

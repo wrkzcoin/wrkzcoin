@@ -149,6 +149,37 @@ namespace SendTransaction
                 continue;
             }
 
+            /* Check if input size is bigger than 60 and inputs each smaller than FUSION_TX_MAX_POOL_AMOUNT_DUST_V1 */
+            if (tx.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                uint64_t CheckIntputCountFusion = 0;
+
+                for (const auto &input : tx.inputs)
+                {
+                    if (input.type() == typeid(CryptoNote::KeyInput))
+                    {
+                        const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+
+                        if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                        {
+                            ++CheckIntputCountFusion;
+                        }
+                    }
+                }
+
+                if (CheckIntputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+                {
+                    /* Reduce the amount we're sending */
+                    foundMoney -= ourInputs.back().input.amount;
+
+                    /* Remove the last input */
+                    ourInputs.pop_back();
+
+                    /* And try again */
+                    continue;
+                }
+            }
+
             break;
         }
 
