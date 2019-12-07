@@ -222,6 +222,38 @@ namespace CryptoNote
 
         const size_t FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 
+        /* This sets the maximum number of fusion transactions that can be present in the pool
+           at any given time. Incoming fusion transactions that attempt to exceed this limit
+           will be rejected from the pool and will not be added. This mechanism is in place
+           to help curtail fusion transaction spam. */
+        const size_t FUSION_TX_MAX_POOL_COUNT = 60;
+
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 100;
+
+        /* Similar to above. This is for the dust fusion to limit in the pool. */
+        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 10;
+
+        const size_t FUSION_TX_MAX_POOL_AMOUNT_V1 = UINT64_C(50000);
+
+        /* Number of small amount in fusion to reject */
+        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1 = 60;
+
+        /* Amount less than this will add to FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1 count */
+        const size_t FUSION_TX_MAX_POOL_AMOUNT_DUST_V1 = UINT64_C(100);
+
+        const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT = 777777;
+
+        /* Sum of output amount not to be less than 100.00 WRKZ */
+        const size_t NORMAL_TX_OUTPUT_SUM_MIN_V1 = UINT64_C(10000);
+
+        /* Not allow to have 600 of outputs for any tx */
+        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600;
+
+        /* If there is 10.00 WRKZ in output bigger than 100 numbers */
+        const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = UINT64_C(1000);
+
+        const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100;
+
         const uint32_t UPGRADE_HEIGHT_V2 = 1;
 
         const uint32_t UPGRADE_HEIGHT_V3 = 2;
@@ -250,12 +282,13 @@ namespace CryptoNote
             543000,   // 5
             600000,   // 6
             678500,   // 7
-            800000,   // 8
-            1000000,  // 9
+            777777,   // 8
+            900000,   // 9
+            1000000,  // 10
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 7;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 8;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -328,9 +361,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 6;
+    const uint8_t P2P_CURRENT_VERSION = 7;
 
-    const uint8_t P2P_MINIMUM_VERSION = 5;
+    const uint8_t P2P_MINIMUM_VERSION = 6;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -370,7 +403,7 @@ namespace CryptoNote
     const char *const SEED_NODES[] = {
         "139.99.47.188:17855",        // node-sg1.wrkz.work
         "95.216.164.177:17855",       // myexplorer.wrkz.work
-        "51.15.131.220:17855",        // node-pr2.wrkz.work
+        "5.9.65.105:17855",           // node-eu1.wrkz.work
         "142.44.243.123:17855",       // node-us1.wrkz.work
         "5.172.219.174:17855"         // wrkz.stx.nl sniperviperman
     };

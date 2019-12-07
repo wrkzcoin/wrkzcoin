@@ -1120,7 +1120,7 @@ namespace CryptoNote
             }
 
             /* Loop through the rawBlock transaction hashes and verify that they are
-       all in the blocktemplate transaction hashes */
+               all in the blocktemplate transaction hashes */
             for (const auto &transaction : transactionHashes)
             {
                 const auto search = std::find(
@@ -1718,6 +1718,110 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
+        /* Prevent to add to tx pool if the sum of amount is bigger than limit set */
+        /* NORMAL_TX_OUTPUT_SUM_MIN_V1 = 100.00 WRKZ */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, below minimum sum of output amount.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+        /* 100,000.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, reach threshold sum of output amount / output size.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+
+        /* 1,000,000.00 WRKZ */
+        if (cachedTransaction.getTransactionFee() > 0
+            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, reach threshold sum of output amount / output size.";
+            return {false, "Sum of output amount is below the limit."};
+        }
+
+        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
+        if (cachedTransaction.getTransaction().outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, excessive output.";
+
+            return {false, "Transaction has an excessive number of outputs."};
+        }
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100 */
+        uint64_t CheckOutputCount = 0;
+        for (const auto &output : cachedTransaction.getTransaction().outputs)
+        {
+            if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+            {
+                ++CheckOutputCount;
+            }
+        }
+
+        if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, excessive output with small amount.";
+            return {false, "Transaction has an excessive output with small amount."};
+        }
+
+        /* Many small amount for fusion */
+        if (cachedTransaction.getTransactionFee() == 0
+            && cachedTransaction.getTransaction().inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+        {
+            uint64_t CheckInputCountFusion = 0;
+            for (const auto &input : cachedTransaction.getTransaction().inputs)
+            {
+                if (input.type() == typeid(CryptoNote::KeyInput))
+                {    
+                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                    {
+                        ++CheckInputCountFusion;
+                    }
+                }
+            }
+            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                       << " to transaction pool, excessive input with small amount";
+                return {false, "Transaction has an excessive input with small amount."};
+            }
+        }
+
+        /* If there are already a certain number of fusion transactions in
+        the pool, then do not try to add another */
+        if (cachedTransaction.getTransactionFee() == 0
+            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
+            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)
+        {
+            return {false, "Pool already contains the maximum amount of fusion transactions for dust"};
+        }
+
+        if (cachedTransaction.getTransactionFee() == 0
+            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT)
+        {
+            return {false, "Pool already contains the maximum amount of fusion transactions"};
+        }
+
+        if (cachedTransaction.getTransaction().outputs.size() >
+            cachedTransaction.getTransaction().inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
+                                   << " to transaction pool, excessive input deconstruction.";
+
+            return {false, "Transaction has an excessive number of outputs for the input count"};
+        }
+
         auto [success, err] = Mixins::validate({cachedTransaction}, getTopBlockIndex());
 
         if (!success)
@@ -2138,6 +2242,62 @@ namespace CryptoNote
             return error;
         }
 
+        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
+            transaction.outputs.size() > transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        {
+            return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
+        }
+
+        /* limit number of output size. We use same set height of NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
+        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
+        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
+            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
+        }
+
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
+        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100, condition at height as NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
+        uint64_t CheckOutputCount = 0;
+        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
+            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+			for (const auto &output : transaction.outputs)
+			{
+				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+				{
+					++CheckOutputCount;
+				}
+			}
+			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+			{
+				return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
+			}
+        }
+
+        if (cachedTransaction.getTransactionFee() == 0
+            && blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT 
+            && transaction.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+        {
+            uint64_t CheckInputCountFusion = 0;
+            for (const auto &input : transaction.inputs)
+            {
+                if (input.type() == typeid(CryptoNote::KeyInput))
+                {    
+                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                    {
+                        ++CheckInputCountFusion;
+                    }
+                }
+            }
+            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                /* Temporarily INPUT_WRONG_COUNT */
+                return error::TransactionValidationError::INPUT_WRONG_COUNT;
+            }
+        }
+
         size_t inputIndex = 0;
         for (const auto &input : transaction.inputs)
         {
@@ -2214,7 +2374,7 @@ namespace CryptoNote
         }
 
         /* Small buffer until enforcing - helps clear out tx pool with old, previously
-     valid transactions */
+        valid transactions */
         if (blockIndex >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2_HEIGHT
                               + CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
         {
@@ -2957,6 +3117,16 @@ namespace CryptoNote
     {
         const auto &transaction = cachedTransaction.getTransaction();
 
+        /* Do not select transactions for inclusion in a block that create excessive outputs
+           this is to prevent abuse whereby 1 input is used to create thousands of outputs */
+        if (transaction.outputs.size() > transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        {
+            logger(Logging::TRACE) << "Not adding transaction " << cachedTransaction.getTransactionHash()
+                                   << " to block template, excessive input deconstruction.";
+
+            return false;
+        }
+
         if (transaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
         {
             logger(Logging::TRACE) << "Not adding transaction " << cachedTransaction.getTransactionHash()
@@ -3001,7 +3171,7 @@ namespace CryptoNote
             [this, &spentInputsChecker, maxTotalSize, height, &transactionsSize, &fee, &block](
                 const CachedTransaction &transaction) {
                 /* If the current set of transactions included in the blocktemplate plus the transaction
-             we just passed in exceed the maximum size of a block, it won't fit so we'll move on */
+                   we just passed in exceed the maximum size of a block, it won't fit so we'll move on */
                 if (transactionsSize + transaction.getTransactionBinaryArray().size() > maxTotalSize)
                 {
                     return false;
@@ -3016,7 +3186,7 @@ namespace CryptoNote
                 }
 
                 /* Make sure that we have not already spent funds in this same block via
-             another transaction that we've already included in this block template */
+                   another transaction that we've already included in this block template */
                 if (!spentInputsChecker.haveSpentInputs(transaction.getTransaction()))
                 {
                     transactionsSize += transaction.getTransactionBinaryArray().size();

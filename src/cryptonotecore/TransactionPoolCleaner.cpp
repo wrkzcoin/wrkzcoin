@@ -47,6 +47,11 @@ namespace CryptoNote
         return transactionPool->removeTransaction(hash);
     }
 
+    size_t TransactionPoolCleanWrapper::getFusionTransactionCount() const
+    {
+        return transactionPool->getFusionTransactionCount();
+    }
+
     size_t TransactionPoolCleanWrapper::getTransactionCount() const
     {
         return transactionPool->getTransactionCount();

@@ -210,6 +210,20 @@ enum ErrorCode
 
     /* Not on ed25519 curve */
     INVALID_PRIVATE_KEY = 52,
+
+    /* Extra data for transaction is not a valid hexadecimal string */
+    INVALID_EXTRA_DATA = 53,
+
+    /* An unknown error occured */
+    UNKNOWN_ERROR = 54,
+
+    /* The daemon received our request but we timed out before we could figure
+     * out if it completed */
+    DAEMON_STILL_PROCESSING = 55,
+
+    /* The transaction has more outputs than are permitted for the number
+     * inputs that have been provided */
+    OUTPUT_DECOMPOSITION = 56,
 };
 
 class Error

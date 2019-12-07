@@ -38,13 +38,15 @@ SubWallet::SubWallet(
     const std::string address,
     const uint64_t scanHeight,
     const uint64_t scanTimestamp,
-    const bool isPrimaryAddress):
+    const bool isPrimaryAddress,
+    const uint64_t walletIndex):
     m_publicSpendKey(publicSpendKey),
     m_address(address),
     m_syncStartHeight(scanHeight),
     m_syncStartTimestamp(scanTimestamp),
     m_privateSpendKey(privateSpendKey),
-    m_isPrimaryAddress(isPrimaryAddress)
+    m_isPrimaryAddress(isPrimaryAddress),
+    m_walletIndex(walletIndex)
 {
 }
 
@@ -52,7 +54,7 @@ SubWallet::SubWallet(
 /* CLASS FUNCTIONS */
 /////////////////////
 
-Crypto::KeyImage SubWallet::getTxInputKeyImage(
+std::tuple<Crypto::KeyImage, Crypto::SecretKey> SubWallet::getTxInputKeyImage(
     const Crypto::KeyDerivation derivation,
     const size_t outputIndex,
     const bool isViewWallet) const
@@ -76,9 +78,11 @@ Crypto::KeyImage SubWallet::getTxInputKeyImage(
 
         /* Get the key image from the tmp public and private key */
         Crypto::generate_key_image(tmp.publicKey, tmp.secretKey, keyImage);
-        return keyImage;
+
+        return { keyImage, tmp.secretKey };
     }
-    return Crypto::KeyImage();
+
+    return { Crypto::KeyImage(), Crypto::SecretKey() };
 }
 
 void SubWallet::storeTransactionInput(const WalletTypes::TransactionInput input, const bool isViewWallet)
@@ -145,6 +149,11 @@ bool SubWallet::isPrimaryAddress() const
 std::string SubWallet::address() const
 {
     return m_address;
+}
+
+uint64_t SubWallet::walletIndex() const
+{
+    return m_walletIndex;
 }
 
 Crypto::PublicKey SubWallet::publicSpendKey() const
@@ -417,6 +426,11 @@ std::vector<Crypto::KeyImage> SubWallet::getKeyImages() const
 
 void SubWallet::fromJSON(const JSONValue &j)
 {
+    if (j.HasMember("walletIndex"))
+    {
+        m_walletIndex = getUint64FromJSON(j, "walletIndex");
+    }
+
     m_publicSpendKey.fromString(getStringFromJSON(j, "publicSpendKey"));
     m_privateSpendKey.fromString(getStringFromJSON(j, "privateSpendKey"));
     m_address = getStringFromJSON(j, "address");
@@ -452,6 +466,8 @@ void SubWallet::fromJSON(const JSONValue &j)
 void SubWallet::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
 {
     writer.StartObject();
+    writer.Key("walletIndex");
+    writer.Uint64(m_walletIndex);
     writer.Key("publicSpendKey");
     m_publicSpendKey.toJSON(writer);
     writer.Key("privateSpendKey");

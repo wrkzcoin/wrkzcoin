@@ -6,6 +6,7 @@
 #include <utilities/ParseExtra.h>
 /////////////////////////////////
 
+#include <common/Varint.h>
 #include <config/Constants.h>
 
 namespace Utilities
@@ -28,18 +29,26 @@ namespace Utilities
         return parsed.mergedMiningTag;
     }
 
+    std::vector<uint8_t> getExtraDataFromExtra(const std::vector<uint8_t> &extra)
+    {
+        const ParsedExtra parsed = parseExtra(extra);
+        return parsed.extraData;
+    }
+
     ParsedExtra parseExtra(const std::vector<uint8_t> &extra)
     {
         ParsedExtra parsed {Constants::NULL_PUBLIC_KEY, std::string(), {0, Constants::NULL_HASH}};
 
         bool seenPubKey = false;
+        bool seenNonce = false;
+        bool seenExtraData = false;
         bool seenPaymentID = false;
         bool seenMergedMiningTag = false;
 
         for (auto it = extra.begin(); it != extra.end(); it++)
         {
             /* Nothing else to parse. */
-            if (seenPubKey && seenPaymentID && seenMergedMiningTag)
+            if (seenPubKey && seenPaymentID && seenMergedMiningTag && seenExtraData)
             {
                 break;
             }
@@ -69,36 +78,93 @@ namespace Utilities
                 continue;
             }
 
-            /* Found a payment ID, and have space for extra nonce size, pid identifier,
-               and pid. */
-
-            /* Payment ID looks like this (payment ID is stored in extra nonce)
-
-               [...data...] 0x02 [size of extra nonce] 0x00 [payment ID] [...data...]
-
-            */
-            if (c == Constants::TX_EXTRA_NONCE_IDENTIFIER && elementsRemaining > 1 + 1 + 32
-                && *(it + 2) == Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER && !seenPaymentID)
+            /* Found nonce information and need to decode it.
+            /* Nonce is a sub-tagged field and thus we need to work through
+               the data to determine what fields are in here */
+            if (c == Constants::TX_EXTRA_NONCE_IDENTIFIER && elementsRemaining > 1 && !seenNonce)
             {
-                const auto dataBegin = it + 3;
+                /* Get the length of the following data in the field */
+                size_t nonceSize = 0;
 
-                Crypto::Hash paymentIDHash;
+                const auto readNonceSize = Tools::read_varint(it + 1, extra.end(), nonceSize);
 
-                /* Copy the payment ID into the hash */
-                std::copy(dataBegin, dataBegin + 32, std::begin(paymentIDHash.data));
+                /* Set up a variable to hold how much we have read so we know how far to skip ahead */
+                size_t advanceIterator = readNonceSize;
 
-                /* Convert to a string */
-                std::string paymentID = Common::podToHex(paymentIDHash);
+                /* Only start reading if there are enough bytes left to read */
+                if (elementsRemaining > readNonceSize + nonceSize)
+                {
+                    /* Copy the nonce data into a new array to make things easier to read through */
+                    std::vector<uint8_t> nonceData;
 
-                /* Convert it to lower case */
-                std::transform(paymentID.begin(), paymentID.end(), paymentID.begin(), ::tolower);
+                    std::copy(it + 1 + readNonceSize, it + 1 + readNonceSize + nonceSize, std::back_inserter(nonceData));
 
-                parsed.paymentID = paymentID;
+                    /* Loop through the nonce data looking for fields */
+                    for (auto is = nonceData.begin(); is != nonceData.end(); is++)
+                    {
+                        const uint8_t s = *is;
 
-                /* Advance past the payment ID */
-                it += 32 + 1 + 1;
+                        const auto nElementsRemaining = std::distance(is, nonceData.end());
 
-                seenPaymentID = true;
+                        /* If we encounter a Payment ID field and there are enough bytes remaining in
+                           the nonce data and we have not encountered a payment ID, then read it out */
+                        if (s == Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER && nElementsRemaining > 32 && !seenPaymentID)
+                        {
+                            /* Grab the payment ID hash out of the nonce data */
+                            Crypto::Hash paymentIDHash;
+
+                            std::copy(is + 1, is + 1 + 32, std::begin(paymentIDHash.data));
+
+                            /* Assign the payment ID to the parsed result */
+                            parsed.paymentID = Common::podToHex(paymentIDHash);
+
+                            seenPaymentID = true;
+
+                            /* Advance the main iterator by the tag (1-byte) + the hash size (32-bytes) */
+                            advanceIterator += 1 + 32;
+
+                            /* Advance the inner iterator by the hash size (32-bytes) */
+                            is += 32;
+
+                            continue;
+                        }
+
+                        /* If we encounter an arbitrary data field and there is at least one byte remaining
+                           and we have not encountered the arbitrary data yet, then read it out */
+                        if (s == Constants::TX_EXTRA_ARBITRARY_DATA_IDENTIFIER && nElementsRemaining > 1 && !seenExtraData)
+                        {
+                            /* Read out the size of the data */
+                            size_t dataSize = 0;
+
+                            const auto readDataSize = Tools::read_varint(is + 1, nonceData.end(), dataSize);
+
+                            /* If there are enough bytes left to read based upon the size above then
+                               read out the data */
+                            if (nElementsRemaining >= 1 + readDataSize + dataSize)
+                            {
+                                /* Copy the data into the parsed extraData field */
+                                std::copy(is + 1 + readDataSize, is + 1 + readDataSize + dataSize, std::back_inserter(parsed.extraData));
+
+                                seenExtraData = true;
+
+                                /* Advance the main iterator by the tag (1-byte) + the length field (readDataSize)
+                                   + the actual data size (dataSize) */
+                                advanceIterator += 1 + readDataSize + dataSize;
+
+                                /* Advance the inner iterator by the the length field (readDataSize)
+                                   + the actual data size (dataSize) */
+                                is += readDataSize + dataSize;
+
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                /* Advance the main iterator by the amount found in the nonce data */
+                it += advanceIterator;
+
+                seenNonce = true;
 
                 /* And continue parsing */
                 continue;
@@ -107,23 +173,27 @@ namespace Utilities
             if (c == Constants::TX_EXTRA_MERGE_MINING_IDENTIFIER && elementsRemaining > 1 && !seenMergedMiningTag)
             {
                 /* Get the length of the following data (Probably 33 bytes for depth+hash) */
-                const uint8_t dataSize = *(it + 1);
+                size_t dataSize = 0;
 
-                if (elementsRemaining > dataSize + 1 && dataSize >= 33)
+                const auto readDataSize = Tools::read_varint(it + 1, extra.end(), dataSize);
+
+                if (elementsRemaining > dataSize + readDataSize && dataSize >= 33)
                 {
-                    const uint8_t depth = *(it + 2);
+                    size_t depth = 0;
+
+                    const auto readDepthSize = Tools::read_varint(it + 1 + readDataSize, extra.end(), depth);
 
                     Crypto::Hash merkleRoot;
 
-                    const auto dataBegin = it + 3;
+                    const auto dataBegin = it + 1 + readDataSize + readDepthSize;
 
                     std::copy(dataBegin, dataBegin + 32, std::begin(merkleRoot.data));
 
                     parsed.mergedMiningTag.depth = depth;
                     parsed.mergedMiningTag.merkleRoot = merkleRoot;
 
-                    /* Advance past the mm tag */
-                    it += dataSize + 1;
+                    /* Advance past the mm tag by length field (readDataSize) + */
+                    it += readDepthSize + 32;
 
                     seenMergedMiningTag = true;
 

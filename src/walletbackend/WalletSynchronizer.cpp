@@ -243,7 +243,7 @@ void WalletSynchronizer::blockProcessingThread()
                             globalIndexes = getGlobalIndexes(block.blockHeight);
                         }
 
-                        const auto it = globalIndexes.find(input.parentTransactionHash);
+                        auto it = globalIndexes.find(input.parentTransactionHash);
 
                         /* Daemon returns indexes for hashes in a range. If we don't
                            find our hash, either the chain has forked, or the daemon
@@ -252,16 +252,20 @@ void WalletSynchronizer::blockProcessingThread()
                            forked.
 
                            Also need to check there are enough indexes for the one we want */
-                        if (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
+                        while (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
                         {
                             Logger::logger.log(
                                 "Warning: Failed to get correct global indexes from daemon."
                                 "\nIf you see this error message repeatedly, the daemon "
                                 "may be faulty. More likely, the chain just forked.",
-                                Logger::WARNING,
+                                Logger::FATAL,
                                 {Logger::SYNC, Logger::DAEMON});
 
-                            return;
+                            std::this_thread::sleep_for(std::chrono::seconds(5));
+
+                            globalIndexes = getGlobalIndexes(block.blockHeight);
+
+                            it = globalIndexes.find(input.parentTransactionHash);
                         }
 
                         input.globalOutputIndex = it->second[input.transactionIndex];
@@ -556,21 +560,24 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
                we'll let the subwallet do this since we need the private spend
                key. We use the key images to detect outgoing transactions,
                and we use the transaction inputs to make transactions ourself */
-            const Crypto::KeyImage keyImage =
-                m_subWallets->getTxInputKeyImage(derivedSpendKey, derivation, outputIndex);
+            const auto [keyImage, privateEphemeral]
+                = m_subWallets->getTxInputKeyImage(derivedSpendKey, derivation, outputIndex);
 
             const uint64_t spendHeight = 0;
 
-            const WalletTypes::TransactionInput input({keyImage,
-                                                       output.amount,
-                                                       blockHeight,
-                                                       rawTX.transactionPublicKey,
-                                                       outputIndex,
-                                                       output.globalOutputIndex,
-                                                       output.key,
-                                                       spendHeight,
-                                                       rawTX.unlockTime,
-                                                       rawTX.hash});
+            const WalletTypes::TransactionInput input({
+                keyImage,
+                output.amount,
+                blockHeight,
+                rawTX.transactionPublicKey,
+                outputIndex,
+                output.globalOutputIndex,
+                output.key,
+                spendHeight,
+                rawTX.unlockTime,
+                rawTX.hash,
+                privateEphemeral
+            });
 
             inputs.emplace_back(derivedSpendKey, input);
         }

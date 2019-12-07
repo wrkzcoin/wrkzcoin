@@ -12,6 +12,7 @@ namespace Logger
 {
     enum LogLevel
     {
+        TRACE = 5,
         DEBUG = 4,
         INFO = 3,
         WARNING = 2,
@@ -25,6 +26,7 @@ namespace Logger
         FILESYSTEM,
         SAVE,
         DAEMON,
+        DATABASE,
     };
 
     std::string logLevelToString(const LogLevel level);

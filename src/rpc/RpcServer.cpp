@@ -197,13 +197,15 @@ namespace CryptoNote
         Core &c,
         NodeServer &p2p,
         ICryptoNoteProtocolHandler &protocol,
-        const bool BlockExplorerDetailed):
+        const bool BlockExplorerDetailed,
+        const bool Mining):
         HttpServer(dispatcher, log),
         logger(log, "RpcServer"),
         m_core(c),
         m_p2p(p2p),
         m_protocol(protocol),
-        m_blockExplorerDetailed(BlockExplorerDetailed)
+        m_blockExplorerDetailed(BlockExplorerDetailed),
+        m_Mining(Mining)
     {
     }
 
@@ -1288,6 +1290,12 @@ namespace CryptoNote
         const COMMAND_RPC_GETBLOCKTEMPLATE::request &req,
         COMMAND_RPC_GETBLOCKTEMPLATE::response &res)
     {
+        /* Check if enable-mining is enabled */
+        if (!m_Mining)
+        {
+            return false;
+        }
+
         if (req.reserve_size > TX_EXTRA_NONCE_MAX_COUNT)
         {
             throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_TOO_BIG_RESERVE_SIZE, "To big reserved size, maximum 255"};
@@ -1361,6 +1369,12 @@ namespace CryptoNote
 
     bool RpcServer::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request &req, COMMAND_RPC_SUBMITBLOCK::response &res)
     {
+        /* Check if enable-mining is enabled */
+        if (!m_Mining)
+        {
+            return false;
+        }
+
         if (req.size() != 1)
         {
             throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM, "Wrong param"};

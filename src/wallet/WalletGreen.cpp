@@ -2830,6 +2830,65 @@ namespace CryptoNote
                 make_error_code(error::INTERNAL_WALLET_ERROR), "Failed to deserialize created transaction");
         }
 
+        if (cryptoNoteTransaction.outputs.size() > cryptoNoteTransaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        {
+            m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of outputs "
+                                        << " for the input count";
+
+            throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
+        }
+
+        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        {
+            m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of outputs";
+
+            throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
+        }
+
+        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+        {
+			uint64_t CheckOutputCount = 0;
+			for (const auto &output : cryptoNoteTransaction.outputs)
+			{
+				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
+				{
+					++CheckOutputCount;
+				}
+			}
+			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
+			{
+				m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of small outputs";
+
+				throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
+			}
+        }
+
+        if (isFusion
+			&& cryptoNoteTransaction.inputs.size() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+        {
+			uint64_t CheckInputCountFusion = 0;
+            for (const auto &input : cryptoNoteTransaction.inputs)
+            {
+                if (input.type() == typeid(CryptoNote::KeyInput))
+                {    
+                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
+                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
+                    {
+                        ++CheckInputCountFusion;
+                    }
+                }
+            }
+            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
+            {
+                /* Temporarily UNKNOWN_ERROR */
+                m_logger(ERROR, BRIGHT_RED) << "Fusion transaction has so many small inputs. Allowed: "
+                                            << CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1
+                                            << ", actual: " << CheckInputCountFusion << ".";
+
+                throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR), "Fusion transaction has so many small inputs.");
+            }
+        }
+
         if (cryptoNoteTransaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
         {
             m_logger(ERROR, BRIGHT_RED) << "Transaction extra is too large. Allowed: "

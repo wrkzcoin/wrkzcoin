@@ -139,6 +139,9 @@ namespace WalletTypes
         /* The transaction hash of the transaction that contains this input */
         Crypto::Hash parentTransactionHash;
 
+        /* The private ephemeral generated along with the key image */
+        std::optional<Crypto::SecretKey> privateEphemeral;
+
         bool operator==(const TransactionInput &other)
         {
             return keyImage == other.keyImage;
@@ -148,26 +151,43 @@ namespace WalletTypes
         void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
         {
             writer.StartObject();
-            writer.Key("keyImage");
-            keyImage.toJSON(writer);
-            writer.Key("amount");
-            writer.Uint64(amount);
-            writer.Key("blockHeight");
-            writer.Uint64(blockHeight);
-            writer.Key("transactionPublicKey");
-            transactionPublicKey.toJSON(writer);
-            writer.Key("transactionIndex");
-            writer.Uint64(transactionIndex);
-            writer.Key("globalOutputIndex");
-            writer.Uint64(globalOutputIndex.value_or(0));
-            writer.Key("key");
-            key.toJSON(writer);
-            writer.Key("spendHeight");
-            writer.Uint64(spendHeight);
-            writer.Key("unlockTime");
-            writer.Uint64(unlockTime);
-            writer.Key("parentTransactionHash");
-            parentTransactionHash.toJSON(writer);
+            {
+                writer.Key("keyImage");
+                keyImage.toJSON(writer);
+
+                writer.Key("amount");
+                writer.Uint64(amount);
+
+                writer.Key("blockHeight");
+                writer.Uint64(blockHeight);
+
+                writer.Key("transactionPublicKey");
+                transactionPublicKey.toJSON(writer);
+
+                writer.Key("transactionIndex");
+                writer.Uint64(transactionIndex);
+
+                writer.Key("globalOutputIndex");
+                writer.Uint64(globalOutputIndex.value_or(0));
+
+                writer.Key("key");
+                key.toJSON(writer);
+
+                writer.Key("spendHeight");
+                writer.Uint64(spendHeight);
+
+                writer.Key("unlockTime");
+                writer.Uint64(unlockTime);
+
+                writer.Key("parentTransactionHash");
+                parentTransactionHash.toJSON(writer);
+
+                if (privateEphemeral)
+                {
+                    writer.Key("privateEphemeral");
+                    privateEphemeral->toJSON(writer);
+                }
+            }
             writer.EndObject();
         }
 
@@ -184,6 +204,13 @@ namespace WalletTypes
             spendHeight = getUint64FromJSON(j, "spendHeight");
             unlockTime = getUint64FromJSON(j, "unlockTime");
             parentTransactionHash.fromString(getStringFromJSON(j, "parentTransactionHash"));
+
+            if (j.HasMember("privateEphemeral"))
+            {
+                Crypto::SecretKey tmp;
+                tmp.fromString(getStringFromJSON(j, "privateEphemeral"));
+                privateEphemeral = tmp;
+            }
         }
     };
 
@@ -217,26 +244,39 @@ namespace WalletTypes
         /* The amount of the transaction output */
         uint64_t amount;
     };
+
     struct GlobalIndexKey
     {
         uint64_t index;
         Crypto::PublicKey key;
     };
+
     struct ObscuredInput
     {
         /* The outputs, including our real output, and the fake mixin outputs */
         std::vector<GlobalIndexKey> outputs;
+
         /* The index of the real output in the outputs vector */
         uint64_t realOutput;
+
         /* The real transaction public key */
         Crypto::PublicKey realTransactionPublicKey;
+
         /* The index in the transaction outputs vector */
         uint64_t realOutputTransactionIndex;
+
         /* The amount being sent */
         uint64_t amount;
+
         /* The owners keys, so we can sign the input correctly */
         Crypto::PublicKey ownerPublicSpendKey;
         Crypto::SecretKey ownerPrivateSpendKey;
+
+        /* The key image of the input */
+        Crypto::KeyImage keyImage;
+
+        /* The private ephemeral generated along with the key image */
+        std::optional<Crypto::SecretKey> privateEphemeral;
     };
 
     class Transaction

@@ -765,10 +765,11 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionAdvanced(
     const std::string paymentID,
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string changeAddress,
-    const uint64_t unlockTime)
+    const uint64_t unlockTime,
+    const std::vector<uint8_t> extraData)
 {
     return SendTransaction::sendTransactionAdvanced(
-        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, m_daemon, m_subWallets, unlockTime);
+        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, m_daemon, m_subWallets, unlockTime, extraData);
 }
 
 std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
@@ -779,10 +780,11 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
 std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
     const uint64_t mixin,
     const std::vector<std::string> subWalletsToTakeFrom,
-    const std::string destination)
+    const std::string destination,
+    const std::vector<uint8_t> extraData)
 {
     return SendTransaction::sendFusionTransactionAdvanced(
-        mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets);
+        mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets, extraData);
 }
 
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)
@@ -812,7 +814,7 @@ void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)
     });
 }
 
-std::tuple<Error, std::string, Crypto::SecretKey> WalletBackend::addSubWallet()
+std::tuple<Error, std::string, Crypto::SecretKey, uint64_t> WalletBackend::addSubWallet()
 {
     return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this]() {
         /* Add the sub wallet */
@@ -831,6 +833,34 @@ std::tuple<Error, std::string>
     return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([&, this]() {
         /* Add the sub wallet */
         const auto [error, address] = m_subWallets->importSubWallet(privateSpendKey, scanHeight);
+
+        if (!error)
+        {
+            /* If we're not making a new wallet, check if we need to reset the scan
+               height of the wallet synchronizer, to pick up the new wallet data
+               from the requested height */
+            uint64_t currentHeight = m_walletSynchronizer->getCurrentScanHeight();
+
+            if (currentHeight >= scanHeight)
+            {
+                /* Empty the sync status and reset the start height */
+                m_walletSynchronizer->reset(scanHeight);
+
+                /* Reset transactions, inputs, etc */
+                m_subWallets->reset(scanHeight);
+            }
+        }
+
+        return std::make_tuple(error, address);
+    });
+}
+
+std::tuple<Error, std::string>
+    WalletBackend::importSubWallet(const uint64_t walletIndex, const uint64_t scanHeight)
+{
+    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([&, this]() {
+        /* Add the sub wallet */
+        const auto [error, address] = m_subWallets->importSubWallet(walletIndex, scanHeight);
 
         if (!error)
         {
@@ -957,20 +987,20 @@ Error WalletBackend::changePassword(const std::string newPassword)
     return save();
 }
 
-std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey> WalletBackend::getSpendKeys(const std::string &address) const
+std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey, uint64_t> WalletBackend::getSpendKeys(const std::string &address) const
 {
     const bool allowIntegratedAddresses = false;
 
     if (Error error = validateAddresses({address}, allowIntegratedAddresses); error != SUCCESS)
     {
-        return {error, Crypto::PublicKey(), Crypto::SecretKey()};
+        return {error, Crypto::PublicKey(), Crypto::SecretKey(), 0};
     }
 
     const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
 
-    const auto [success, privateSpendKey] = m_subWallets->getPrivateSpendKey(publicSpendKey);
+    const auto [success, privateSpendKey, walletIndex] = m_subWallets->getPrivateSpendKey(publicSpendKey);
 
-    return {success, publicSpendKey, privateSpendKey};
+    return {success, publicSpendKey, privateSpendKey, walletIndex};
 }
 
 Crypto::SecretKey WalletBackend::getPrivateViewKey() const
@@ -999,7 +1029,7 @@ std::tuple<Error, std::string> WalletBackend::getMnemonicSeedForAddress(const st
     }
 
     const auto privateViewKey = getPrivateViewKey();
-    const auto [error, publicSpendKey, privateSpendKey] = getSpendKeys(address);
+    const auto [error, publicSpendKey, privateSpendKey, walletIndex] = getSpendKeys(address);
 
     if (error)
     {

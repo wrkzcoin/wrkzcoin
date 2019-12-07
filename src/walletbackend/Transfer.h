@@ -20,7 +20,8 @@ namespace SendTransaction
         const std::vector<std::string> addressesToTakeFrom,
         std::string destination,
         const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets);
+        const std::shared_ptr<SubWallets> subWallets,
+        const std::vector<uint8_t> extraData);
 
     std::tuple<Error, Crypto::Hash> sendTransactionBasic(
         std::string destination,
@@ -38,7 +39,8 @@ namespace SendTransaction
         std::string changeAddress,
         const std::shared_ptr<Nigel> daemon,
         const std::shared_ptr<SubWallets> subWallets,
-        const uint64_t unlockTime);
+        const uint64_t unlockTime,
+        const std::vector<uint8_t> extraData);
 
     std::vector<WalletTypes::TransactionDestination> setupDestinations(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
@@ -100,13 +102,11 @@ namespace SendTransaction
         const std::string paymentID,
         const std::vector<WalletTypes::TransactionDestination> destinations,
         const std::shared_ptr<SubWallets> subWallets,
-        const uint64_t unlockTime);
+        const uint64_t unlockTime,
+        const std::vector<uint8_t> extraData);
 
     std::tuple<Error, Crypto::Hash>
         relayTransaction(const CryptoNote::Transaction tx, const std::shared_ptr<Nigel> daemon);
-
-    std::tuple<CryptoNote::KeyPair, Crypto::KeyImage>
-        genKeyImage(const WalletTypes::ObscuredInput input, const Crypto::SecretKey privateViewKey);
 
     void storeSentTransaction(
         const Crypto::Hash hash,

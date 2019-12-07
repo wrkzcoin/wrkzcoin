@@ -10,6 +10,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace Tools
 {
@@ -68,5 +69,23 @@ namespace Tools
     template<typename InputIt, typename T> int read_varint(InputIt &&first, InputIt &&last, T &i)
     {
         return read_varint<std::numeric_limits<T>::digits, InputIt, T>(std::move(first), std::move(last), i);
+    }
+
+    inline std::vector<uint8_t> uintToVarintVector(size_t i)
+    {
+        std::vector<uint8_t> output;
+
+        while (i >= 0x80)
+        {
+            char elem = (static_cast<char>(i) & 0x7f) | 0x80;
+
+            output.push_back(elem);
+
+            i >>= 7;
+        }
+
+        output.push_back(static_cast<char>(i));
+
+        return output;
     }
 } // namespace Tools

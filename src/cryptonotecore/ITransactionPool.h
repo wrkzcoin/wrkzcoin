@@ -24,6 +24,8 @@ namespace CryptoNote
 
         virtual size_t getTransactionCount() const = 0;
 
+        virtual size_t getFusionTransactionCount() const = 0;
+
         virtual std::vector<Crypto::Hash> getTransactionHashes() const = 0;
 
         virtual bool checkIfTransactionPresent(const Crypto::Hash &hash) const = 0;
