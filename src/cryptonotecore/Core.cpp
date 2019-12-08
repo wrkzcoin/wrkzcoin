@@ -26,6 +26,7 @@
 #include <cryptonotecore/TransactionPool.h>
 #include <cryptonotecore/TransactionPoolCleaner.h>
 #include <cryptonotecore/UpgradeManager.h>
+#include <cryptonotecore/ValidateTransaction.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
 #include <numeric>
 #include <set>
@@ -35,7 +36,6 @@
 #include <utilities/FormatTools.h>
 #include <utilities/LicenseCanary.h>
 #include <utilities/ParseExtra.h>
-#include <utilities/Fees.h>
 
 using namespace Crypto;
 
@@ -1139,36 +1139,13 @@ namespace CryptoNote
             }
         }
 
-        // This allows us to accept blocks with transaction mixins for the mined money unlock window
-        // that may be using older mixin rules on the network. This helps to clear out the transaction
-        // pool during a network soft fork that requires a mixin lower or upper bound change
-        uint32_t mixinChangeWindow = blockIndex;
-        if (mixinChangeWindow > CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
-        {
-            mixinChangeWindow = mixinChangeWindow - CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW;
-        }
-
-        auto [success, error] = Mixins::validate(transactions, blockIndex);
-
-        if (!success)
-        {
-            /* Warning, this shadows the above variables */
-            auto [success, error] = Mixins::validate(transactions, mixinChangeWindow);
-
-            if (!success)
-            {
-                logger(Logging::DEBUGGING) << error;
-                return error::TransactionValidationError::INVALID_MIXIN;
-            }
-        }
-
         uint64_t cumulativeFee = 0;
 
         for (const auto &transaction : transactions)
         {
             uint64_t fee = 0;
             auto transactionValidationResult =
-                validateTransaction(transaction, validatorState, cache, fee, previousBlockIndex);
+                validateTransaction(transaction, validatorState, cache, fee, previousBlockIndex, false);
             if (transactionValidationResult)
             {
                 logger(Logging::DEBUGGING) << "Failed to validate transaction " << transaction.getTransactionHash()
@@ -1718,88 +1695,6 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
-        /* Prevent to add to tx pool if the sum of amount is bigger than limit set */
-        /* NORMAL_TX_OUTPUT_SUM_MIN_V1 = 100.00 WRKZ */
-        if (cachedTransaction.getTransactionFee() > 0
-            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, below minimum sum of output amount.";
-            return {false, "Sum of output amount is below the limit."};
-        }
-        /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
-        if (cachedTransaction.getTransactionFee() > 0
-            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
-            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, reach threshold sum of output amount / output size.";
-            return {false, "Sum of output amount is below the limit."};
-        }
-
-        /* 1,000,000.00 WRKZ */
-        if (cachedTransaction.getTransactionFee() > 0
-            && cachedTransaction.getTransaction().outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
-            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, reach threshold sum of output amount / output size.";
-            return {false, "Sum of output amount is below the limit."};
-        }
-
-        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
-        if (cachedTransaction.getTransaction().outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, excessive output.";
-
-            return {false, "Transaction has an excessive number of outputs."};
-        }
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100 */
-        uint64_t CheckOutputCount = 0;
-        for (const auto &output : cachedTransaction.getTransaction().outputs)
-        {
-            if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-            {
-                ++CheckOutputCount;
-            }
-        }
-
-        if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, excessive output with small amount.";
-            return {false, "Transaction has an excessive output with small amount."};
-        }
-
-        /* Many small amount for fusion */
-        if (cachedTransaction.getTransactionFee() == 0
-            && cachedTransaction.getTransaction().inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-        {
-            uint64_t CheckInputCountFusion = 0;
-            for (const auto &input : cachedTransaction.getTransaction().inputs)
-            {
-                if (input.type() == typeid(CryptoNote::KeyInput))
-                {    
-                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
-                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
-                    {
-                        ++CheckInputCountFusion;
-                    }
-                }
-            }
-            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-            {
-                logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                       << " to transaction pool, excessive input with small amount";
-                return {false, "Transaction has an excessive input with small amount."};
-            }
-        }
-
-        /* If there are already a certain number of fusion transactions in
-        the pool, then do not try to add another */
         if (cachedTransaction.getTransactionFee() == 0
             && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
             && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)
@@ -1807,69 +1702,22 @@ namespace CryptoNote
             return {false, "Pool already contains the maximum amount of fusion transactions for dust"};
         }
 
+        /* If there are already a certain number of fusion transactions in
+           the pool, then do not try to add another */
         if (cachedTransaction.getTransactionFee() == 0
             && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT)
         {
             return {false, "Pool already contains the maximum amount of fusion transactions"};
         }
 
-        if (cachedTransaction.getTransaction().outputs.size() >
-            cachedTransaction.getTransaction().inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to transaction pool, excessive input deconstruction.";
-
-            return {false, "Transaction has an excessive number of outputs for the input count"};
-        }
-
-        auto [success, err] = Mixins::validate({cachedTransaction}, getTopBlockIndex());
-
-        if (!success)
-        {
-            return {false, "Transaction does not contain the proper number of ring signatures"};
-        }
-
-        if (cachedTransaction.getTransaction().extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << transactionHash
-                                   << " to pool, extra too large.";
-
-            return {false, "Transaction extra data is too large"};
-        }
-
-        auto maxTransactionSize = getMaximumTransactionAllowedSize(blockMedianSize, currency);
-        if (cachedTransaction.getTransactionBinaryArray().size() > maxTransactionSize)
-        {
-            logger(Logging::WARNING) << "Transaction " << transactionHash
-                                     << " is not valid. Reason: transaction is too big ("
-                                     << cachedTransaction.getTransactionBinaryArray().size()
-                                     << "). Maximum allowed size is " << maxTransactionSize;
-            return {false, "Transaction size (bytes) is too large"};
-        }
-
         uint64_t fee;
 
         if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], fee, getTopBlockIndex()))
+                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], fee, getTopBlockIndex(), true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
             return {false, validationResult.message()};
-        }
-
-        bool isFusion = fee == 0
-                        && currency.isFusionTransaction(
-                            cachedTransaction.getTransaction(),
-                            cachedTransaction.getTransactionBinaryArray().size(),
-                            getTopBlockIndex());
-
-        const uint64_t minFee = Utilities::getMinimumFee(getTopBlockIndex());
-
-        if (!isFusion && fee < minFee)
-        {
-            logger(Logging::WARNING) << "Transaction " << transactionHash
-                                     << " is not valid. Reason: fee is too small and it's not a fusion transaction";
-            return {false, "Transaction fee is too small"};
         }
 
         return {true, ""};
@@ -2232,263 +2080,25 @@ namespace CryptoNote
         TransactionValidatorState &state,
         IBlockchainCache *cache,
         uint64_t &fee,
-        uint32_t blockIndex)
+        uint32_t blockIndex,
+        const bool isPoolTransaction)
     {
-        // TransactionValidatorState currentState;
-        const auto &transaction = cachedTransaction.getTransaction();
-        auto error = validateSemantic(transaction, fee, blockIndex);
-        if (error != error::TransactionValidationError::VALIDATION_SUCCESS)
-        {
-            return error;
-        }
+        ValidateTransaction txValidator(
+            cachedTransaction,
+            state,
+            cache,
+            currency,
+            checkpoints,
+            blockIndex,
+            blockMedianSize,
+            isPoolTransaction
+        );
 
-        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
-            transaction.outputs.size() > transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
-        {
-            return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-        }
+        const auto result = txValidator.validate();
 
-        /* limit number of output size. We use same set height of NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
-        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
-        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
-            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
-        {
-            return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-        }
+        fee = result.fee;
 
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100, condition at height as NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT */
-        uint64_t CheckOutputCount = 0;
-        if (blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT &&
-            transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-			for (const auto &output : transaction.outputs)
-			{
-				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-				{
-					++CheckOutputCount;
-				}
-			}
-			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-			{
-				return error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-			}
-        }
-
-        if (cachedTransaction.getTransactionFee() == 0
-            && blockIndex >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT 
-            && transaction.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-        {
-            uint64_t CheckInputCountFusion = 0;
-            for (const auto &input : transaction.inputs)
-            {
-                if (input.type() == typeid(CryptoNote::KeyInput))
-                {    
-                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
-                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
-                    {
-                        ++CheckInputCountFusion;
-                    }
-                }
-            }
-            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-            {
-                /* Temporarily INPUT_WRONG_COUNT */
-                return error::TransactionValidationError::INPUT_WRONG_COUNT;
-            }
-        }
-
-        size_t inputIndex = 0;
-        for (const auto &input : transaction.inputs)
-        {
-            if (input.type() == typeid(KeyInput))
-            {
-                const KeyInput &in = boost::get<KeyInput>(input);
-                if (!state.spentKeyImages.insert(in.keyImage).second)
-                {
-                    return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
-                }
-
-                if (!checkpoints.isInCheckpointZone(blockIndex + 1))
-                {
-                    if (cache->checkIfSpent(in.keyImage, blockIndex))
-                    {
-                        return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
-                    }
-
-                    std::vector<PublicKey> outputKeys;
-                    assert(!in.outputIndexes.empty());
-
-                    std::vector<uint32_t> globalIndexes(in.outputIndexes.size());
-                    globalIndexes[0] = in.outputIndexes[0];
-                    for (size_t i = 1; i < in.outputIndexes.size(); ++i)
-                    {
-                        globalIndexes[i] = globalIndexes[i - 1] + in.outputIndexes[i];
-                    }
-
-                    auto result = cache->extractKeyOutputKeys(
-                        in.amount, blockIndex, {globalIndexes.data(), globalIndexes.size()}, outputKeys);
-                    if (result == ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
-                    {
-                        return error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
-                    }
-
-                    if (result == ExtractOutputKeysResult::OUTPUT_LOCKED)
-                    {
-                        return error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
-                    }
-
-                    if (blockIndex >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT
-                        && outputKeys.size() != cachedTransaction.getTransaction().signatures[inputIndex].size())
-                    {
-                        return error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
-                    }
-
-                    if (!Crypto::crypto_ops::checkRingSignature(
-                            cachedTransaction.getTransactionPrefixHash(),
-                            in.keyImage,
-                            outputKeys,
-                            transaction.signatures[inputIndex]))
-                    {
-                        return error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
-                    }
-                }
-            }
-            else
-            {
-                assert(false);
-                return error::TransactionValidationError::INPUT_UNKNOWN_TYPE;
-            }
-
-            inputIndex++;
-        }
-
-        return error::TransactionValidationError::VALIDATION_SUCCESS;
-    }
-
-    std::error_code Core::validateSemantic(const Transaction &transaction, uint64_t &fee, uint32_t blockIndex)
-    {
-        if (transaction.inputs.empty())
-        {
-            return error::TransactionValidationError::EMPTY_INPUTS;
-        }
-
-        /* Small buffer until enforcing - helps clear out tx pool with old, previously
-        valid transactions */
-        if (blockIndex >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2_HEIGHT
-                              + CryptoNote::parameters::CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW)
-        {
-            if (transaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
-            {
-                return error::TransactionValidationError::EXTRA_TOO_LARGE;
-            }
-        }
-
-        uint64_t summaryOutputAmount = 0;
-        for (const auto &output : transaction.outputs)
-        {
-            if (output.amount == 0)
-            {
-                return error::TransactionValidationError::OUTPUT_ZERO_AMOUNT;
-            }
-
-            if (blockIndex >= CryptoNote::parameters::MAX_OUTPUT_SIZE_HEIGHT)
-            {
-                if (output.amount > CryptoNote::parameters::MAX_OUTPUT_SIZE_NODE)
-                {
-                    return error::TransactionValidationError::OUTPUT_AMOUNT_TOO_LARGE;
-                }
-            }
-
-            if (output.target.type() == typeid(KeyOutput))
-            {
-                if (!check_key(boost::get<KeyOutput>(output.target).key))
-                {
-                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
-                }
-            }
-            else
-            {
-                return error::TransactionValidationError::OUTPUT_UNKNOWN_TYPE;
-            }
-
-            if (std::numeric_limits<uint64_t>::max() - output.amount < summaryOutputAmount)
-            {
-                return error::TransactionValidationError::OUTPUTS_AMOUNT_OVERFLOW;
-            }
-
-            summaryOutputAmount += output.amount;
-        }
-
-        // parameters used for the additional key_image check
-        static const Crypto::KeyImage Z = {{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
-        if (Z == Z)
-        {
-        }
-        static const Crypto::KeyImage I = {{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
-        static const Crypto::KeyImage L = {{0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7,
-                                            0xa2, 0xde, 0xf9, 0xde, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                                            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10}};
-
-        uint64_t summaryInputAmount = 0;
-        std::unordered_set<Crypto::KeyImage> ki;
-        std::set<std::pair<uint64_t, uint32_t>> outputsUsage;
-        for (const auto &input : transaction.inputs)
-        {
-            uint64_t amount = 0;
-            if (input.type() == typeid(KeyInput))
-            {
-                const KeyInput &in = boost::get<KeyInput>(input);
-                amount = in.amount;
-                if (!ki.insert(in.keyImage).second)
-                {
-                    return error::TransactionValidationError::INPUT_IDENTICAL_KEYIMAGES;
-                }
-
-                if (in.outputIndexes.empty())
-                {
-                    return error::TransactionValidationError::INPUT_EMPTY_OUTPUT_USAGE;
-                }
-
-                // outputIndexes are packed here, first is absolute, others are offsets to previous,
-                // so first can be zero, others can't
-                // Fix discovered by Monero Lab and suggested by "fluffypony" (bitcointalk.org)
-                if (!(scalarmultKey(in.keyImage, L) == I))
-                {
-                    return error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
-                }
-
-                if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0)
-                    != std::end(in.outputIndexes))
-                {
-                    return error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
-                }
-            }
-            else
-            {
-                return error::TransactionValidationError::INPUT_UNKNOWN_TYPE;
-            }
-
-            if (std::numeric_limits<uint64_t>::max() - amount < summaryInputAmount)
-            {
-                return error::TransactionValidationError::INPUTS_AMOUNT_OVERFLOW;
-            }
-
-            summaryInputAmount += amount;
-        }
-
-        if (summaryOutputAmount > summaryInputAmount)
-        {
-            return error::TransactionValidationError::WRONG_AMOUNT;
-        }
-
-        assert(transaction.signatures.size() == transaction.inputs.size());
-        fee = summaryInputAmount - summaryOutputAmount;
-        return error::TransactionValidationError::VALIDATION_SUCCESS;
+        return result.errorCode;
     }
 
     uint32_t Core::findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const
@@ -3115,35 +2725,23 @@ namespace CryptoNote
     bool Core::validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight)
         const
     {
-        const auto &transaction = cachedTransaction.getTransaction();
+        /* Not used in revalidateAfterHeightChange() */
+        TransactionValidatorState state;
 
-        /* Do not select transactions for inclusion in a block that create excessive outputs
-           this is to prevent abuse whereby 1 input is used to create thousands of outputs */
-        if (transaction.outputs.size() > transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << cachedTransaction.getTransactionHash()
-                                   << " to block template, excessive input deconstruction.";
+        ValidateTransaction txValidator(
+            cachedTransaction,
+            state,
+            nullptr, /* Not used in revalidateAfterHeightChange() */
+            currency,
+            checkpoints,
+            blockHeight,
+            blockMedianSize,
+            true /* Pool transaction */
+        );
 
-            return false;
-        }
+        const auto result = txValidator.revalidateAfterHeightChange();
 
-        if (transaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << cachedTransaction.getTransactionHash()
-                                   << " to block template, extra too large.";
-            return false;
-        }
-
-        auto [success, error] = Mixins::validate({cachedTransaction}, blockHeight);
-
-        if (!success)
-        {
-            logger(Logging::TRACE) << "Not adding transaction " << cachedTransaction.getTransactionHash()
-                                   << " to block template, " << error;
-            return false;
-        }
-
-        return true;
+        return result.valid;
     }
 
     void Core::fillBlockTemplate(
