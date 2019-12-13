@@ -216,6 +216,80 @@ namespace Utilities
         return true;
     }
 
+    uint64_t getTransactionFee(
+        const size_t transactionSize,
+        const uint64_t height,
+        const uint64_t feePerByte)
+    {
+        const double numChunks = std::ceil(transactionSize / 256.0);
+        const uint64_t multiplier = feePerByte * 256;
+
+        return static_cast<uint64_t>(numChunks) * multiplier;
+    }
+
+    uint64_t getMinimumTransactionFee(
+        const size_t transactionSize,
+        const uint64_t height)
+    {
+        return getTransactionFee(
+            transactionSize,
+            height,
+            CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1
+        );
+    }
+
+    size_t estimateTransactionSize(
+        const uint64_t mixin,
+        const size_t numInputs,
+        const size_t numOutputs,
+        const bool havePaymentID,
+        const size_t extraDataSize)
+    {
+        const size_t KEY_IMAGE_SIZE = sizeof(Crypto::KeyImage);
+        const size_t OUTPUT_KEY_SIZE = sizeof(decltype(CryptoNote::KeyOutput::key));
+        const size_t AMOUNT_SIZE = sizeof(uint64_t) + 2; // varint
+        const size_t GLOBAL_INDEXES_VECTOR_SIZE_SIZE = sizeof(uint8_t); // varint
+        const size_t GLOBAL_INDEXES_INITIAL_VALUE_SIZE = sizeof(uint32_t); // varint
+        const size_t GLOBAL_INDEXES_DIFFERENCE_SIZE = sizeof(uint32_t); // varint
+        const size_t SIGNATURE_SIZE = sizeof(Crypto::Signature);
+        const size_t EXTRA_TAG_SIZE = sizeof(uint8_t);
+        const size_t INPUT_TAG_SIZE = sizeof(uint8_t);
+        const size_t OUTPUT_TAG_SIZE = sizeof(uint8_t);
+        const size_t PUBLIC_KEY_SIZE = sizeof(Crypto::PublicKey);
+        const size_t TRANSACTION_VERSION_SIZE = sizeof(uint8_t);
+        const size_t TRANSACTION_UNLOCK_TIME_SIZE = sizeof(uint64_t);
+        const size_t EXTRA_DATA_SIZE = extraDataSize > 0 ? extraDataSize + 4 : 0;
+        const size_t PAYMENT_ID_SIZE = havePaymentID ? 34 : 0;
+
+        /* The size of the transaction preamble */
+        const size_t headerSize = TRANSACTION_VERSION_SIZE
+                                + TRANSACTION_UNLOCK_TIME_SIZE
+                                + EXTRA_TAG_SIZE
+                                + EXTRA_DATA_SIZE
+                                + PUBLIC_KEY_SIZE
+                                + PAYMENT_ID_SIZE;
+        
+        /* The size of each transaction input */
+        const size_t inputSize = INPUT_TAG_SIZE
+                               + AMOUNT_SIZE
+                               + KEY_IMAGE_SIZE
+                               + SIGNATURE_SIZE
+                               + GLOBAL_INDEXES_VECTOR_SIZE_SIZE
+                               + GLOBAL_INDEXES_INITIAL_VALUE_SIZE
+                               + mixin * (GLOBAL_INDEXES_DIFFERENCE_SIZE + SIGNATURE_SIZE);
+
+        const size_t inputsSize = inputSize * numInputs;
+
+        /* The size of each transaction output. */
+        const size_t outputSize = OUTPUT_TAG_SIZE
+                                + OUTPUT_KEY_SIZE
+                                + AMOUNT_SIZE;
+
+        const size_t outputsSize = outputSize * numOutputs;
+
+        return headerSize + inputsSize + outputsSize;
+    }
+
     size_t
         getApproximateMaximumInputCount(const size_t transactionSize, const size_t outputCount, const size_t mixinCount)
     {

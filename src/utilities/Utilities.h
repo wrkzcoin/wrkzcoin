@@ -36,6 +36,22 @@ namespace Utilities
 
     bool parseDaemonAddressFromString(std::string &host, uint16_t &port, std::string address);
 
+    uint64_t getTransactionFee(
+        const size_t transactionSize,
+        const uint64_t height,
+        const uint64_t feePerByte);
+
+    uint64_t getMinimumTransactionFee(
+        const size_t transactionSize,
+        const uint64_t height);
+
+    size_t estimateTransactionSize(
+        const uint64_t mixin,
+        const size_t numInputs,
+        const size_t numOutputs,
+        const bool havePaymentID,
+        const size_t extraDataSize);
+
     size_t getApproximateMaximumInputCount(
         const size_t transactionSize,
         const size_t outputCount,

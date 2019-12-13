@@ -129,20 +129,33 @@ class WalletBackend
         const bool daemonSSL,
         const unsigned int syncThreadCount);
 
+    /* Remove a previously prepared transaction. */
+    bool removePreparedTransaction(const Crypto::Hash &transactionHash);
+
+    /* Sends a previously prepared transaction to the network */
+    std::tuple<Error, Crypto::Hash> sendPreparedTransaction(
+        const Crypto::Hash transactionHash);
+
     /* Send a transaction of amount to destination with paymentID */
-    std::tuple<Error, Crypto::Hash>
-        sendTransactionBasic(const std::string destination, const uint64_t amount, const std::string paymentID);
+    std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionBasic(
+        const std::string destination,
+        const uint64_t amount,
+        const std::string paymentID,
+        const bool sendAll = false,
+        const bool sendTransaction = true);
 
     /* Advanced send transaction, specify mixin, change address, etc */
-    std::tuple<Error, Crypto::Hash> sendTransactionAdvanced(
+    std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
         const std::vector<std::pair<std::string, uint64_t>> destinations,
         const uint64_t mixin,
-        const uint64_t fee,
+        const WalletTypes::FeeType fee,
         const std::string paymentID,
         const std::vector<std::string> subWalletsToTakeFrom,
         const std::string changeAddress,
         const uint64_t unlockTime,
-        const std::vector<uint8_t> extraData);
+        const std::vector<uint8_t> extraData,
+        const bool sendAll = false,
+        const bool sendTransaction = true);
 
     /* Send a fusion using default mixin, default destination, and
        taking from all subwallets */
@@ -325,4 +338,7 @@ class WalletBackend
     std::shared_ptr<WalletSynchronizerRAIIWrapper> m_syncRAIIWrapper;
 
     unsigned int m_syncThreadCount;
+
+    /* Prepared, unsent transactions. */
+    std::unordered_map<Crypto::Hash, WalletTypes::PreparedTransactionInfo> m_preparedTransactions;
 };

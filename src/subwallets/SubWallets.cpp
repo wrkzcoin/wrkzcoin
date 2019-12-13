@@ -445,13 +445,28 @@ std::tuple<bool, Crypto::PublicKey> SubWallets::getKeyImageOwner(const Crypto::K
     return {false, Crypto::PublicKey()};
 }
 
+/* Determine if the input given is available for spending */
+bool SubWallets::haveSpendableInput(
+    const WalletTypes::TransactionInput& input,
+    const uint64_t height) const
+{
+    for (const auto &[pubKey, subWallet] : m_subWallets)
+    {
+        if (subWallet.haveSpendableInput(input, height))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /* Remember if the transaction suceeds, we need to remove these key images
    so we don't double spend.
 
    This may throw if you don't validate the user has enough balance, and
    that each of the subwallets exist. */
-std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t> SubWallets::getTransactionInputsForAmount(
-    const uint64_t amount,
+std::vector<WalletTypes::TxInputAndOwner> SubWallets::getSpendableTransactionInputs(
     const bool takeFromAll,
     std::vector<Crypto::PublicKey> subWalletsToTakeFrom,
     const uint64_t height) const
@@ -489,27 +504,7 @@ std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t> SubWallets::getT
     /* Shuffle the inputs */
     std::shuffle(availableInputs.begin(), availableInputs.end(), std::random_device {});
 
-    uint64_t foundMoney = 0;
-
-    std::vector<WalletTypes::TxInputAndOwner> inputsToUse;
-
-    /* Loop through each input */
-    for (const auto walletAmount : availableInputs)
-    {
-        /* Add each input */
-        inputsToUse.push_back(walletAmount);
-
-        foundMoney += walletAmount.input.amount;
-
-        /* Keep adding until we have enough money for the transaction */
-        if (foundMoney >= amount)
-        {
-            return {inputsToUse, foundMoney};
-        }
-    }
-
-    /* Not enough money to cover the transaction */
-    throw std::invalid_argument("Not enough funds found!");
+    return availableInputs;
 }
 
 /* Remember if the transaction suceeds, we need to remove these key images

@@ -343,6 +343,24 @@ void SubWallet::removeCancelledTransactions(const std::unordered_set<Crypto::Has
     }
 }
 
+bool SubWallet::haveSpendableInput(
+    const WalletTypes::TransactionInput& input,
+    const uint64_t height) const
+{
+    for (const auto i : m_unspentInputs)
+    {
+        /* Checking for .key to support view wallets */
+        if (input.keyImage == i.keyImage || input.key == i.key)
+        {
+            /* Only gonna be one input that matches so can early return false
+             * if the input is locked */
+            return Utilities::isInputUnlocked(i.unlockTime, height);
+        }
+    }
+
+    return false;
+}
+
 std::vector<WalletTypes::TxInputAndOwner> SubWallet::getSpendableInputs(const uint64_t height) const
 {
     std::vector<WalletTypes::TxInputAndOwner> inputs;
