@@ -391,14 +391,14 @@ namespace PaymentService
         SendTransaction::Request &request,
         SendTransaction::Response &response)
     {
-        return service.sendTransaction(request, response.transactionHash);
+        return service.sendTransaction(request, response.transactionHash, response.fee);
     }
 
     std::error_code PaymentServiceJsonRpcServer::handleCreateDelayedTransaction(
         CreateDelayedTransaction::Request &request,
         CreateDelayedTransaction::Response &response)
     {
-        return service.createDelayedTransaction(request, response.transactionHash);
+        return service.createDelayedTransaction(request, response.transactionHash, response.fee);
     }
 
     std::error_code PaymentServiceJsonRpcServer::handleGetDelayedTransactionHashes(

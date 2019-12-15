@@ -367,7 +367,7 @@ namespace CryptoNote
         void prepareTransaction(
             std::vector<WalletOuts> &&wallets,
             const std::vector<WalletOrder> &orders,
-            uint64_t fee,
+            WalletTypes::FeeType fee,
             uint16_t mixIn,
             const std::string &extra,
             uint64_t unlockTimestamp,

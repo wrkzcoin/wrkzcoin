@@ -143,10 +143,15 @@ namespace PaymentService
 
         std::error_code getAddresses(std::vector<std::string> &addresses);
 
-        std::error_code sendTransaction(SendTransaction::Request &request, std::string &transactionHash);
+        std::error_code sendTransaction(
+            SendTransaction::Request &request,
+            std::string &transactionHash,
+            uint64_t &fee);
 
-        std::error_code
-            createDelayedTransaction(CreateDelayedTransaction::Request &request, std::string &transactionHash);
+        std::error_code createDelayedTransaction(
+            CreateDelayedTransaction::Request &request,
+            std::string &transactionHash,
+            uint64_t &fee);
 
         std::error_code getDelayedTransactionHashes(std::vector<std::string> &transactionHashes);
 
