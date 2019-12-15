@@ -335,7 +335,7 @@ bool ValidateTransaction::validateTransactionFee()
     {
         bool validFee = fee != 0;
 
-        if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_256_BYTES_V1_HEIGHT)
+        if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
         {
             const auto minFee = Utilities::getMinimumTransactionFee(
                 m_cachedTransaction.getTransactionBinaryArray().size(),
@@ -344,9 +344,15 @@ bool ValidateTransaction::validateTransactionFee()
 
             validFee = fee >= minFee;
         }
-        else if (m_blockHeight > CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT)
+        else if (m_blockHeight > CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
         {
             const auto minFee = CryptoNote::parameters::MINIMUM_FEE_V1;
+
+            validFee = fee >= minFee;
+        }
+        else if (m_blockHeight <= CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
+        {
+            const auto minFee = CryptoNote::parameters::MINIMUM_FEE;
 
             validFee = fee >= minFee;
         }

@@ -98,17 +98,22 @@ namespace CryptoNote
 
         const uint64_t MINIMUM_FEE_V1_HEIGHT = 678500;
 
-        /* Fee to charge per byte of transaction. Effective, because we round
-         * it up in chunks of 256 bytes. */
+        /* Fee to charge per byte of transaction. Will be applied in chunks, see
+         * below. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1 = 2;
+
+        /* Fee per byte is rounded up in chunks. This helps makes estimates
+         * more accurate. It's suggested to make this a power of two, to relate
+         * to the underlying storage cost / page sizes for storing a transaction. */
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
 
         /* 512 atomic units of fee, per 256 bytes of transaction - i.e., 2
          * atomic units per byte. We do it in chunks of 256 bytes, as we have
          * varint fields and so on. */
-        const uint64_t MINIMUM_FEE_PER_256_BYTES_V1 = 250 * MINIMUM_FEE_PER_BYTE_V1;
+        const uint64_t MINIMUM_FEE_PER_CHUNK = FEE_PER_BYTE_CHUNK_SIZE * MINIMUM_FEE_PER_BYTE_V1;
 
         /* Height for our first fee to byte change to take effect. */
-        const uint64_t MINIMUM_FEE_PER_256_BYTES_V1_HEIGHT = 900000;
+        const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 900000;
 
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;

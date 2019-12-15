@@ -501,10 +501,52 @@ std::vector<WalletTypes::TxInputAndOwner> SubWallets::getSpendableTransactionInp
         availableInputs.insert(availableInputs.end(), moreInputs.begin(), moreInputs.end());
     }
 
-    /* Shuffle the inputs */
-    std::shuffle(availableInputs.begin(), availableInputs.end(), std::random_device {});
+    /* Sort inputs by their amounts, largest first */
+    std::sort(availableInputs.begin(), availableInputs.end(), [](const auto a, const auto b)
+    {
+        return a.input.amount > b.input.amount;
+    });
 
-    return availableInputs;
+    std::map<uint64_t, std::vector<WalletTypes::TxInputAndOwner>> buckets;
+
+    /* Push into base 10 buckets. Smallest amount buckets will come first, and
+     * largest amounts within those buckets come first */
+    for (const auto &walletAmount : availableInputs)
+    {
+        /* Find out how many digits the amount has, i.e. 1337 has 4 digits,
+           420 has 3 digits */
+        int numberOfDigits = floor(log10(walletAmount.input.amount)) + 1;
+
+        /* Insert the amount into the correct bucket */
+        buckets[numberOfDigits].push_back(walletAmount);
+    }
+
+    std::vector<WalletTypes::TxInputAndOwner> ordered;
+
+    while (!buckets.empty())
+    {
+        /* Take one element from each bucket, smallest first. */
+        for (auto bucket = buckets.begin(); bucket != buckets.end();)
+        {
+            /* Bucket has been exhausted, remove from list */
+            if (bucket->second.empty())
+            {
+                bucket = buckets.erase(bucket);
+            }
+            else
+            {
+                /* Add the final (smallest amount in this bucket) to the result */
+                ordered.push_back(bucket->second.back());
+
+                /* Remove amount we just added */
+                bucket->second.pop_back();
+
+                bucket++;
+            }
+        }
+    }
+
+    return ordered;
 }
 
 /* Remember if the transaction suceeds, we need to remove these key images
