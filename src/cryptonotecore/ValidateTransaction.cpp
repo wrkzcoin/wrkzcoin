@@ -434,7 +434,7 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
             return false;
         }
         /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
+        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 */
         if (!isFusion
             && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
             && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)

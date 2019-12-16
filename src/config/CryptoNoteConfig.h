@@ -113,7 +113,7 @@ namespace CryptoNote
         const uint64_t MINIMUM_FEE_PER_CHUNK = FEE_PER_BYTE_CHUNK_SIZE * MINIMUM_FEE_PER_BYTE_V1;
 
         /* Height for our first fee to byte change to take effect. */
-        const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 900000;
+        const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
 
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
@@ -300,12 +300,12 @@ namespace CryptoNote
             600000,   // 6
             678500,   // 7
             777777,   // 8
-            900000,   // 9
+            832000,   // 9
             1000000,  // 10
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 8;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 9;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
