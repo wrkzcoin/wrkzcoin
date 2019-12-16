@@ -434,10 +434,10 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
             return false;
         }
         /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 */
+        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 90 */
         if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
+            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 30)
+            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000))
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
             m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
@@ -447,8 +447,8 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
 
         /* 1,000,000.00 WRKZ */
         if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
+            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 15)
+            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000))
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
             m_validationResult.errorMessage = "Transaction has excessive output/input ratio";

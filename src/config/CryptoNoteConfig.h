@@ -263,8 +263,8 @@ namespace CryptoNote
         /* Sum of output amount not to be less than 100.00 WRKZ */
         const size_t NORMAL_TX_OUTPUT_SUM_MIN_V1 = UINT64_C(10000);
 
-        /* Not allow to have 120 of outputs for any tx */
-        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 120;
+        /* Not allow to have 90 of outputs for any tx */
+        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 90;
 
         /* If there is 10.00 WRKZ in output bigger than 100 numbers */
         const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = UINT64_C(1000);
