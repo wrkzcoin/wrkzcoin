@@ -190,7 +190,7 @@ namespace SendTransaction
 
         const uint64_t actualFee = sumTransactionFee(tx);
 
-        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(0), actualFee, tx))
+        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(0), actualFee, daemon->networkBlockCount(), tx))
         {
             return {UNEXPECTED_FEE, Crypto::Hash()};
         }
@@ -507,7 +507,7 @@ namespace SendTransaction
 
         const uint64_t actualFee = sumTransactionFee(txResult.transaction);
 
-        if (!verifyTransactionFee(fee, actualFee, txResult.transaction))
+        if (!verifyTransactionFee(fee, actualFee, daemon->networkBlockCount(), txResult.transaction))
         {
             return {UNEXPECTED_FEE, Crypto::Hash(), txInfo};
         }
@@ -1512,25 +1512,37 @@ namespace SendTransaction
     bool verifyTransactionFee(
         const WalletTypes::FeeType expectedFee,
         const uint64_t actualFee,
+        const uint64_t height,
         const CryptoNote::Transaction tx)
     {
-        if (expectedFee.isFixedFee)
+        if (height <= CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
         {
-            return expectedFee.fixedFee == actualFee;
+            return actualFee >= CryptoNote::parameters::MINIMUM_FEE;
+        }
+        else if (height < CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
+        {
+            return actualFee >= CryptoNote::parameters::MINIMUM_FEE_V1;
         }
         else
         {
-            const uint64_t feePerByte = expectedFee.isFeePerByte
-                ? expectedFee.feePerByte
-                : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+            if (expectedFee.isFixedFee)
+            {
+                return expectedFee.fixedFee == actualFee;
+            }
+            else
+            {
+                const uint64_t feePerByte = expectedFee.isFeePerByte
+                    ? expectedFee.feePerByte
+                    : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
 
-            const size_t txSize = toBinaryArray(tx).size();
+                const size_t txSize = toBinaryArray(tx).size();
 
-            const size_t calculatedFee = feePerByte * txSize;
+                const size_t calculatedFee = feePerByte * txSize;
 
-            /* Ensure fee is greater or equal to the fee per byte specified,
-             * and no more than two times the fee per byte specified. */
-            return actualFee >= calculatedFee && actualFee <= calculatedFee * 2;
+                /* Ensure fee is greater or equal to the fee per byte specified,
+                 * and no more than two times the fee per byte specified. */
+                return actualFee >= calculatedFee && actualFee <= calculatedFee * 2;
+        }
         }
     }
 

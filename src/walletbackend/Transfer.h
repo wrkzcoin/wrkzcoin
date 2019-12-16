@@ -149,6 +149,7 @@ namespace SendTransaction
     bool verifyTransactionFee(
         const WalletTypes::FeeType expectedFee,
         const uint64_t actualFee,
+        const uint64_t height,
         const CryptoNote::Transaction tx);
 
     /* Template so we can do transaction, and transactionprefix */
