@@ -171,7 +171,7 @@ namespace CryptoNote
             const AccountPublicAddress &adr,
             const BinaryArray &extraNonce,
             uint64_t &difficulty,
-            uint32_t &height) const = 0;
+            uint32_t &height) = 0;
 
         virtual CoreStatistics getCoreStatistics() const = 0;
 

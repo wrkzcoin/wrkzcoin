@@ -17,6 +17,7 @@ ValidateTransaction::ValidateTransaction(
     CryptoNote::IBlockchainCache *cache,
     const CryptoNote::Currency &currency,
     const CryptoNote::Checkpoints &checkpoints,
+    Utilities::ThreadPool<bool> &threadPool,
     const uint64_t blockHeight,
     const uint64_t blockSizeMedian,
     const bool isPoolTransaction):
@@ -25,6 +26,7 @@ ValidateTransaction::ValidateTransaction(
     m_validatorState(state),
     m_currency(currency),
     m_checkpoints(checkpoints),
+    m_threadPool(threadPool),
     m_blockchainCache(cache),
     m_blockHeight(blockHeight),
     m_blockSizeMedian(blockSizeMedian),
@@ -563,78 +565,96 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
 
     uint64_t inputIndex = 0;
 
+    std::vector<std::future<bool>> validationResult;
+
+    const Crypto::Hash prefixHash = m_cachedTransaction.getTransactionPrefixHash();
+
     for (const auto &input : m_transaction.inputs)
     {
-        const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
+        /* Validate each input on a separate thread in our thread pool */
+        validationResult.push_back(m_threadPool.addJob([inputIndex, &input, &prefixHash, this]{
+            const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
 
-        if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
-            m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
-
-            return false;
-        }
-
-        std::vector<Crypto::PublicKey> outputKeys;
-        std::vector<uint32_t> globalIndexes(in.outputIndexes.size());
-
-        globalIndexes[0] = in.outputIndexes[0];
-
-        /* Convert output indexes from relative to absolute */
-        for (size_t i = 1; i < in.outputIndexes.size(); ++i)
-        {
-            globalIndexes[i] = globalIndexes[i - 1] + in.outputIndexes[i];
-        }
-
-        const auto result = m_blockchainCache->extractKeyOutputKeys(
-            in.amount,
-            m_blockHeight,
-            { globalIndexes.data(), globalIndexes.size() },
-            outputKeys
-        );
-
-        if (result == CryptoNote::ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
-            m_validationResult.errorMessage = "Transaction contains invalid global indexes";
-
-            return false;
-        }
-
-        if (result == CryptoNote::ExtractOutputKeysResult::OUTPUT_LOCKED)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
-            m_validationResult.errorMessage = "Transaction includes an input which is still locked";
-
-            return false;
-        }
-
-        if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
-        {
-            if (outputKeys.size() != m_transaction.signatures[inputIndex].size())
+            if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
-                m_validationResult.errorMessage = "Transaction has an invalid number of signatures";
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
 
                 return false;
             }
-        }
 
-        if (!Crypto::crypto_ops::checkRingSignature(
-            m_cachedTransaction.getTransactionPrefixHash(),
-            in.keyImage,
-            outputKeys,
-            m_transaction.signatures[inputIndex]))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
-            m_validationResult.errorMessage = "Transaction contains invalid signatures";
+            std::vector<Crypto::PublicKey> outputKeys;
+            std::vector<uint32_t> globalIndexes(in.outputIndexes.size());
 
-            return false;
-        }
+            globalIndexes[0] = in.outputIndexes[0];
+
+            /* Convert output indexes from relative to absolute */
+            for (size_t i = 1; i < in.outputIndexes.size(); ++i)
+            {
+                globalIndexes[i] = globalIndexes[i - 1] + in.outputIndexes[i];
+            }
+
+            const auto result = m_blockchainCache->extractKeyOutputKeys(
+                in.amount,
+                m_blockHeight,
+                { globalIndexes.data(), globalIndexes.size() },
+                outputKeys
+            );
+
+            if (result == CryptoNote::ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
+                m_validationResult.errorMessage = "Transaction contains invalid global indexes";
+
+                return false;
+            }
+
+            if (result == CryptoNote::ExtractOutputKeysResult::OUTPUT_LOCKED)
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
+                m_validationResult.errorMessage = "Transaction includes an input which is still locked";
+
+                return false;
+            }
+
+            if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
+            {
+                if (outputKeys.size() != m_transaction.signatures[inputIndex].size())
+                {
+                    m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
+                    m_validationResult.errorMessage = "Transaction has an invalid number of signatures";
+
+                    return false;
+                }
+            }
+
+            if (!Crypto::crypto_ops::checkRingSignature(
+                prefixHash,
+                in.keyImage,
+                outputKeys,
+                m_transaction.signatures[inputIndex]))
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
+                m_validationResult.errorMessage = "Transaction contains invalid signatures";
+
+                return false;
+            }
+
+            return true;
+        }));
 
         inputIndex++;
     }
-    
-    return true;
-}
 
+    bool valid = true;
+
+    for (auto &result : validationResult)
+    {
+        if (!result.get())
+        {
+            valid = false;
+        }
+    }
+
+    return valid;
+}

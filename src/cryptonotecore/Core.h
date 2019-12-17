@@ -27,6 +27,7 @@
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
 #include <unordered_map>
+#include <utilities/ThreadPool.h>
 #include <vector>
 
 namespace CryptoNote
@@ -40,7 +41,8 @@ namespace CryptoNote
             Checkpoints &&checkpoints,
             System::Dispatcher &dispatcher,
             std::unique_ptr<IBlockchainCacheFactory> &&blockchainCacheFactory,
-            std::unique_ptr<IMainChainStorage> &&mainChainStorage);
+            std::unique_ptr<IMainChainStorage> &&mainChainStorage,
+            uint32_t transactionValidationThreads);
 
         virtual ~Core();
 
@@ -174,7 +176,7 @@ namespace CryptoNote
             const AccountPublicAddress &adr,
             const BinaryArray &extraNonce,
             uint64_t &difficulty,
-            uint32_t &height) const override;
+            uint32_t &height) override;
 
         virtual CoreStatistics getCoreStatistics() const override;
 
@@ -237,6 +239,8 @@ namespace CryptoNote
 
         std::unique_ptr<IMainChainStorage> mainChainStorage;
 
+        Utilities::ThreadPool<bool> m_transactionValidationThreadPool;
+
         bool initialized;
 
         time_t start_time;
@@ -254,6 +258,7 @@ namespace CryptoNote
             const CachedTransaction &transaction,
             TransactionValidatorState &state,
             IBlockchainCache *cache,
+            Utilities::ThreadPool<bool> &threadPool,
             uint64_t &fee,
             uint32_t blockIndex,
             const bool isPoolTransaction);
@@ -335,8 +340,7 @@ namespace CryptoNote
 
         size_t calculateCumulativeBlocksizeLimit(uint32_t height) const;
 
-        bool validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight)
-            const;
+        bool validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight);
 
         void fillBlockTemplate(
             BlockTemplate &block,
@@ -344,7 +348,7 @@ namespace CryptoNote
             const size_t maxCumulativeSize,
             const uint64_t height,
             size_t &transactionsSize,
-            uint64_t &fee) const;
+            uint64_t &fee);
 
         void deleteAlternativeChains();
 
