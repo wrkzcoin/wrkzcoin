@@ -295,9 +295,16 @@ namespace PaymentService
 
         serializer(changeAddress, "changeAddress");
 
-        if (!serializer(fee, "fee"))
+        uint64_t fixedFee;
+        uint64_t feePerByte;
+
+        if (serializer(fixedFee, "fee"))
         {
-            throw RequestSerializationError();
+            fee = WalletTypes::FeeType::FixedFee(fixedFee);
+        }
+        else if (serializer(feePerByte, "feePerByte"))
+        {
+            fee = WalletTypes::FeeType::FeePerByte(feePerByte);
         }
 
         if (!serializer(anonymity, "anonymity"))
@@ -319,6 +326,7 @@ namespace PaymentService
     void SendTransaction::Response::serialize(CryptoNote::ISerializer &serializer)
     {
         serializer(transactionHash, "transactionHash");
+        serializer(fee, "fee");
     }
 
     void CreateDelayedTransaction::Request::serialize(CryptoNote::ISerializer &serializer, const WalletService &service)
@@ -332,9 +340,16 @@ namespace PaymentService
 
         serializer(changeAddress, "changeAddress");
 
-        if (!serializer(fee, "fee"))
+        uint64_t fixedFee;
+        uint64_t feePerByte;
+
+        if (!serializer(fixedFee, "fee"))
         {
-            throw RequestSerializationError();
+            fee = WalletTypes::FeeType::FixedFee(fixedFee);
+        }
+        else if (!serializer(feePerByte, "feePerByte"))
+        {
+            fee = WalletTypes::FeeType::FeePerByte(feePerByte);
         }
 
         if (!serializer(anonymity, "anonymity"))
@@ -356,6 +371,7 @@ namespace PaymentService
     void CreateDelayedTransaction::Response::serialize(CryptoNote::ISerializer &serializer)
     {
         serializer(transactionHash, "transactionHash");
+        serializer(fee, "fee");
     }
 
     void GetDelayedTransactionHashes::Request::serialize(CryptoNote::ISerializer &serializer) {}

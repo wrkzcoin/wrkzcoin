@@ -2,6 +2,8 @@
 //
 // Please see the included LICENSE file for more information.
 
+#pragma once
+
 #include <CryptoNote.h>
 #include <WalletTypes.h>
 #include <errors/Errors.h>
@@ -23,24 +25,33 @@ namespace SendTransaction
         const std::shared_ptr<SubWallets> subWallets,
         const std::vector<uint8_t> extraData);
 
-    std::tuple<Error, Crypto::Hash> sendTransactionBasic(
+    std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionBasic(
         std::string destination,
         const uint64_t amount,
         std::string paymentID,
         const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets);
+        const std::shared_ptr<SubWallets> subWallets,
+        const bool sendAll = false,
+        const bool sendTransaction = true);
 
-    std::tuple<Error, Crypto::Hash> sendTransactionAdvanced(
+    std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const uint64_t mixin,
-        const uint64_t fee,
+        const WalletTypes::FeeType fee,
         std::string paymentID,
         const std::vector<std::string> addressesToTakeFrom,
         std::string changeAddress,
         const std::shared_ptr<Nigel> daemon,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
-        const std::vector<uint8_t> extraData);
+        const std::vector<uint8_t> extraData,
+        const bool sendAll = false,
+        const bool sendTransaction = true);
+
+    std::tuple<Error, Crypto::Hash> sendPreparedTransaction(
+        const WalletTypes::PreparedTransactionInfo txInfo,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets);
 
     std::vector<WalletTypes::TransactionDestination> setupDestinations(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
@@ -78,24 +89,8 @@ namespace SendTransaction
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources);
-
-    struct TransactionResult
-    {
-        /* The error, if any */
-        Error error;
-
-        /* The raw transaction */
-        CryptoNote::Transaction transaction;
-
-        /* The transaction outputs, before converted into boost uglyness, used
-           for determining key inputs from the tx that belong to us */
-        std::vector<WalletTypes::KeyOutput> outputs;
-
-        /* The random key pair we generated */
-        CryptoNote::KeyPair txKeyPair;
-    };
-
-    TransactionResult makeTransaction(
+    
+    WalletTypes::TransactionResult makeTransaction(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
@@ -117,6 +112,22 @@ namespace SendTransaction
         const uint64_t changeRequired,
         const std::shared_ptr<SubWallets> subWallets);
 
+    std::tuple<bool, WalletTypes::TransactionResult, uint64_t, uint64_t> tryMakeFeePerByteTransaction(
+        const uint64_t sumOfInputs,
+        uint64_t totalAmount,
+        uint64_t estimatedAmount,
+        const uint64_t feePerByte,
+        std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
+        const std::string changeAddress,
+        const uint64_t mixin,
+        const std::shared_ptr<Nigel> daemon,
+        const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
+        const std::string paymentID,
+        const std::shared_ptr<SubWallets> subWallets,
+        const uint64_t unlockTime,
+        const std::vector<uint8_t> extraData,
+        const bool sendAll);
+
     Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight);
 
     void storeUnconfirmedIncomingInputs(
@@ -131,8 +142,15 @@ namespace SendTransaction
     /* Verify all amounts given are PRETTY_AMOUNTS */
     bool verifyAmounts(const std::vector<uint64_t> amounts);
 
-    /* Verify fee is as expected */
-    bool verifyTransactionFee(const uint64_t expectedFee, CryptoNote::Transaction tx);
+    /* Compute the fee of the transaction */
+    uint64_t sumTransactionFee(const CryptoNote::Transaction tx);
+
+    /* Verify fee is as expected (or expected range, in the case of fee per byte) */
+    bool verifyTransactionFee(
+        const WalletTypes::FeeType expectedFee,
+        const uint64_t actualFee,
+        const uint64_t height,
+        const CryptoNote::Transaction tx);
 
     /* Template so we can do transaction, and transactionprefix */
     template<typename T> Crypto::Hash getTransactionHash(T tx)

@@ -8,6 +8,7 @@
 #include "rapidjson/writer.h"
 
 #include <CryptoNote.h>
+#include <errors/Errors.h>
 #include <JsonHelper.h>
 #include <optional>
 #include <string>
@@ -475,6 +476,78 @@ namespace WalletTypes
     {
         Crypto::Hash hash;
         uint64_t height;
+    };
+
+    class FeeType
+    {
+        public:
+            /* Fee will be specified as fee per byte, for example, 1 atomic TRTL per byte. */
+            bool isFeePerByte = false;
+
+            /* Fee for each byte, in atomic units */
+            uint64_t feePerByte = 0;
+
+            /* Fee will be specified as a fixed fee */
+            bool isFixedFee = false;
+
+            /* Total fee to use */
+            uint64_t fixedFee = 0;
+
+            /* Fee will not be specified, use the minimum possible */
+            bool isMinimumFee = false;
+
+            static FeeType MinimumFee()
+            {
+                FeeType fee;
+                fee.isMinimumFee = true;
+                return fee;
+            }
+
+            static FeeType FeePerByte(const uint64_t feePerByte)
+            {
+                FeeType fee;
+                fee.isFeePerByte = true;
+                fee.feePerByte = feePerByte;
+                return fee;
+            }
+
+            static FeeType FixedFee(const uint64_t fixedFee)
+            {
+                FeeType fee;
+                fee.isFixedFee = true;
+                fee.fixedFee = fixedFee;
+                return fee;
+            }
+
+        private:
+            FeeType() = default;
+    };
+
+    struct TransactionResult
+    {
+        /* The error, if any */
+        Error error;
+
+        /* The raw transaction */
+        CryptoNote::Transaction transaction;
+
+        /* The transaction outputs, before converted into boost uglyness, used
+           for determining key inputs from the tx that belong to us */
+        std::vector<WalletTypes::KeyOutput> outputs;
+
+        /* The random key pair we generated */
+        CryptoNote::KeyPair txKeyPair;
+    };
+
+    struct PreparedTransactionInfo
+    {
+        uint64_t fee;
+        std::string paymentID;
+        std::vector<WalletTypes::TxInputAndOwner> inputs;
+        std::string changeAddress;
+        uint64_t changeRequired;
+        TransactionResult tx;
+        Crypto::Hash transactionHash;
     };
 
     inline void to_json(nlohmann::json &j, const TopBlock &t)

@@ -9,7 +9,7 @@
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
-#include <utilities/Fees.h>
+#include <utilities/Utilities.h>
 
 ValidateTransaction::ValidateTransaction(
     const CryptoNote::CachedTransaction &cachedTransaction,
@@ -333,8 +333,35 @@ bool ValidateTransaction::validateTransactionFee()
 
     if (!isFusion)
     {
-        const uint64_t minFee = Utilities::getMinimumFee(m_blockHeight);
-        if (fee == 0 || (fee < minFee))
+        bool validFee = fee != 0;
+
+        if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
+        {
+            const auto minFee = Utilities::getMinimumTransactionFee(
+                m_cachedTransaction.getTransactionBinaryArray().size(),
+                m_blockHeight
+            );
+
+            validFee = fee >= minFee;
+        }
+        else if (m_blockHeight > CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
+        {
+            const auto minFee = CryptoNote::parameters::MINIMUM_FEE_V1;
+
+            validFee = fee >= minFee;
+        }
+        else if (m_blockHeight <= CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
+        {
+            const auto minFee = CryptoNote::parameters::MINIMUM_FEE;
+
+            validFee = fee >= minFee;
+        }
+        else if (m_isPoolTransaction)
+        {
+            validFee = fee >= CryptoNote::parameters::MINIMUM_FEE_V1;
+        }
+
+        if (!validFee)
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::WRONG_FEE;
             m_validationResult.errorMessage = "Transaction fee is below minimum fee and is not a fusion transaction";
@@ -407,10 +434,10 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
             return false;
         }
         /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
+        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 90 */
         if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
+            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 30)
+            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000))
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
             m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
@@ -420,8 +447,8 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
 
         /* 1,000,000.00 WRKZ */
         if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
+            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 15)
+            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000))
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
             m_validationResult.errorMessage = "Transaction has excessive output/input ratio";

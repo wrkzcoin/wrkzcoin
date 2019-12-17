@@ -98,6 +98,23 @@ namespace CryptoNote
 
         const uint64_t MINIMUM_FEE_V1_HEIGHT = 678500;
 
+        /* Fee to charge per byte of transaction. Will be applied in chunks, see
+         * below. */
+        const uint64_t MINIMUM_FEE_PER_BYTE_V1 = 2;
+
+        /* Fee per byte is rounded up in chunks. This helps makes estimates
+         * more accurate. It's suggested to make this a power of two, to relate
+         * to the underlying storage cost / page sizes for storing a transaction. */
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
+
+        /* 512 atomic units of fee, per 256 bytes of transaction - i.e., 2
+         * atomic units per byte. We do it in chunks of 256 bytes, as we have
+         * varint fields and so on. */
+        const uint64_t MINIMUM_FEE_PER_CHUNK = FEE_PER_BYTE_CHUNK_SIZE * MINIMUM_FEE_PER_BYTE_V1;
+
+        /* Height for our first fee to byte change to take effect. */
+        const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
+
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
 
@@ -246,8 +263,8 @@ namespace CryptoNote
         /* Sum of output amount not to be less than 100.00 WRKZ */
         const size_t NORMAL_TX_OUTPUT_SUM_MIN_V1 = UINT64_C(10000);
 
-        /* Not allow to have 600 of outputs for any tx */
-        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600;
+        /* Not allow to have 90 of outputs for any tx */
+        const size_t NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 90;
 
         /* If there is 10.00 WRKZ in output bigger than 100 numbers */
         const size_t NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = UINT64_C(1000);
@@ -283,12 +300,12 @@ namespace CryptoNote
             600000,   // 6
             678500,   // 7
             777777,   // 8
-            900000,   // 9
+            832000,   // 9
             1000000,  // 10
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 8;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 9;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
