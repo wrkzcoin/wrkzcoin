@@ -246,7 +246,7 @@ namespace CryptoNote
         const size_t NORMAL_TX_MAX_OUTPUT_RATIO_V1 = 100;
 
         /* Similar to above. This is for the dust fusion to limit in the pool. */
-        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 10;
+        const size_t FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1 = 20;
 
         const size_t FUSION_TX_MAX_POOL_AMOUNT_V1 = UINT64_C(50000);
 
