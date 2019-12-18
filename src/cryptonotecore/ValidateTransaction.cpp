@@ -86,7 +86,7 @@ TransactionValidationResult ValidateTransaction::validate()
     {
         return m_validationResult;
     }
-    
+
     m_validationResult.valid = true;
     m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::VALIDATION_SUCCESS;
 
@@ -191,16 +191,17 @@ bool ValidateTransaction::validateTransactionInputs()
              * Fix discovered by Monero Lab and suggested by "fluffypony" (bitcointalk.org) */
             if (!(scalarmultKey(in.keyImage, L) == I))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
                 m_validationResult.errorMessage = "Transaction contains key images in an invalid domain";
 
                 return false;
             }
 
-            if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0)
-                != std::end(in.outputIndexes))
+            if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0) != std::end(in.outputIndexes))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
                 m_validationResult.errorMessage = "Transaction contains identical output indexes";
 
                 return false;
@@ -208,7 +209,8 @@ bool ValidateTransaction::validateTransactionInputs()
 
             if (!m_validatorState.spentKeyImages.insert(in.keyImage).second)
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
                 m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
 
                 return false;
@@ -232,7 +234,7 @@ bool ValidateTransaction::validateTransactionInputs()
 
         sumOfInputs += amount;
     }
-    
+
     m_sumOfInputs = sumOfInputs;
 
     return true;
@@ -305,10 +307,8 @@ bool ValidateTransaction::validateTransactionFee()
 {
     if (m_sumOfInputs == 0)
     {
-        throw std::runtime_error(
-            "Error! You must call validateTransactionInputs() and "
-            "validateTransactionOutputs() before calling validateTransactionFee()!"
-        );
+        throw std::runtime_error("Error! You must call validateTransactionInputs() and "
+                                 "validateTransactionOutputs() before calling validateTransactionFee()!");
     }
 
     if (m_sumOfOutputs > m_sumOfInputs)
@@ -405,6 +405,7 @@ bool ValidateTransaction::validateInputOutputRatio()
             return false;
         }
     }
+
     return true;
 }
 
@@ -460,15 +461,18 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
     uint64_t inputIndex = 0;
 
     std::vector<std::future<bool>> validationResult;
-
+    std::atomic<bool> cancelValidation = false;
     const Crypto::Hash prefixHash = m_cachedTransaction.getTransactionPrefixHash();
 
     for (const auto &input : m_transaction.inputs)
     {
         /* Validate each input on a separate thread in our thread pool */
-        validationResult.push_back(m_threadPool.addJob([inputIndex, &input, &prefixHash, this]{
+        validationResult.push_back(m_threadPool.addJob([inputIndex, &input, &prefixHash, &cancelValidation, this] {
             const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
-
+            if (cancelValidation)
+            {
+                return false; // fail the validation immediately if cancel requested
+            }
             if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
             {
                 m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
@@ -547,6 +551,7 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
         if (!result.get())
         {
             valid = false;
+            cancelValidation = true;
         }
     }
 
