@@ -484,31 +484,6 @@ bool ValidateTransaction::validateInputOutputCheckingExtend()
 
             return false;
         }
-
-        /* Many small amount for fusion */
-        if (isFusion
-            && m_transaction.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-        {
-            uint64_t CheckInputCountFusion = 0;
-            for (const auto &input : m_transaction.inputs)
-            {
-                if (input.type() == typeid(CryptoNote::KeyInput))
-                {    
-                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
-                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
-                    {
-                        ++CheckInputCountFusion;
-                    }
-                }
-            }
-            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-            {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_SMALL_INPUTS;
-                m_validationResult.errorMessage = "Transaction has an excessive input with small amount.";
-
-                return false;
-            }
-        }
     }
 
     return true;
