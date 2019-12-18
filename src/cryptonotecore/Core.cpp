@@ -1708,13 +1708,6 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
-        if (cachedTransaction.getTransactionFee() == 0
-            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
-            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)
-        {
-            return {false, "Pool already contains the maximum amount of fusion transactions for dust"};
-        }
-
         /* If there are already a certain number of fusion transactions in
            the pool, then do not try to add another */
         if (cachedTransaction.getTransactionFee() == 0

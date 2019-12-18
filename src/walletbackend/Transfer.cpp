@@ -1387,37 +1387,11 @@ namespace SendTransaction
            working, maybe we can work some magic. TODO */
         setupTX.outputs = keyOutputToTransactionOutput(result.outputs);
 
-        if (setupTX.outputs.size() > setupTX.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        if (setupTX.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             result.error = OUTPUT_DECOMPOSITION;
 
             return result;
-        }
-
-        /* */
-        if (setupTX.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
-        {
-            result.error = OUTPUT_DECOMPOSITION;
-
-            return result;
-        }
-
-        if (setupTX.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-			uint64_t CheckOutputCount = 0;
-			for (const auto &output : setupTX.outputs)
-			{
-				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-				{
-					++CheckOutputCount;
-				}
-			}
-			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-			{
-				result.error = OUTPUT_DECOMPOSITION;
-
-				return result;
-			}
         }
 
         /* Pubkey, payment ID */

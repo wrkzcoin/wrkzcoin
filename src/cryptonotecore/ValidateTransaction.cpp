@@ -72,12 +72,6 @@ TransactionValidationResult ValidateTransaction::validate()
         return m_validationResult;
     }
 
-    /* Validate transaction input and output ratio. Extended. */
-    if (!validateInputOutputCheckingExtend())
-    {
-        return m_validationResult;
-    }
-
     /* Validate transaction mixin is in the valid range */
     if (!validateTransactionMixin())
     {
@@ -401,91 +395,16 @@ bool ValidateTransaction::validateTransactionExtra()
 
 bool ValidateTransaction::validateInputOutputRatio()
 {
-    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT)
+    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1_HEIGHT)
     {
-        if (m_transaction.outputs.size() > m_transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        if (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
+            m_validationResult.errorMessage = "Transaction has excessive outputs. Reduce the number of payees.";
 
             return false;
         }
     }
-    return true;
-}
-
-/* New checking Input/Output */
-bool ValidateTransaction::validateInputOutputCheckingExtend()
-{
-	const bool isFusion = m_currency.isFusionTransaction(
-        m_transaction,
-        m_cachedTransaction.getTransactionBinaryArray().size(),
-        m_blockHeight
-    );
-
-    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT)
-    {
-        /* Prevent to add to tx pool if the sum of amount is bigger than limit set */
-        /* NORMAL_TX_OUTPUT_SUM_MIN_V1 = 100.00 WRKZ */
-        if (!isFusion
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output. Sum of output amount is below the limit";
-
-            return false;
-        }
-        /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 90 */
-        if (!isFusion
-            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 30)
-            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
-
-            return false;
-        }
-
-        /* 1,000,000.00 WRKZ */
-        if (!isFusion
-            && (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 - 15)
-            && (m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
-
-            return false;
-        }
-
-        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
-        if (m_transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive outputs";
-
-            return false;
-        }
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100 */
-        uint64_t CheckOutputCount = 0;
-        for (const auto &output : m_transaction.outputs)
-        {
-            if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-            {
-                ++CheckOutputCount;
-            }
-        }
-
-        if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive outputs";
-
-            return false;
-        }
-    }
-
     return true;
 }
 
