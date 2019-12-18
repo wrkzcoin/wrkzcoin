@@ -296,7 +296,7 @@ namespace PaymentService
         serializer(changeAddress, "changeAddress");
 
         uint64_t fixedFee;
-        uint64_t feePerByte;
+        double feePerByte;
 
         if (serializer(fixedFee, "fee"))
         {
@@ -341,7 +341,7 @@ namespace PaymentService
         serializer(changeAddress, "changeAddress");
 
         uint64_t fixedFee;
-        uint64_t feePerByte;
+        double feePerByte;
 
         if (!serializer(fixedFee, "fee"))
         {

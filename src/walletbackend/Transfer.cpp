@@ -385,7 +385,7 @@ namespace SendTransaction
                         extraData.size()
                     );
 
-                    const uint64_t feePerByte = fee.isFeePerByte
+                    const double feePerByte = fee.isFeePerByte
                         ? fee.feePerByte
                         : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
 
@@ -607,7 +607,7 @@ namespace SendTransaction
         const uint64_t sumOfInputs,
         uint64_t amountPreFee,
         uint64_t amountIncludingFee,
-        const uint64_t feePerByte,
+        const double feePerByte,
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const std::string changeAddress,
         const uint64_t mixin,
@@ -1531,13 +1531,13 @@ namespace SendTransaction
             }
             else
             {
-                const uint64_t feePerByte = expectedFee.isFeePerByte
+                const double feePerByte = expectedFee.isFeePerByte
                     ? expectedFee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
 
                 const size_t txSize = toBinaryArray(tx).size();
 
-                const size_t calculatedFee = feePerByte * txSize;
+                const size_t calculatedFee = static_cast<uint64_t>(feePerByte * txSize);
 
                 /* Ensure fee is greater or equal to the fee per byte specified,
                  * and no more than two times the fee per byte specified. */

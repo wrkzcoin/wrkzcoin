@@ -484,8 +484,9 @@ namespace WalletTypes
             /* Fee will be specified as fee per byte, for example, 1 atomic TRTL per byte. */
             bool isFeePerByte = false;
 
-            /* Fee for each byte, in atomic units */
-            uint64_t feePerByte = 0;
+            /* Fee for each byte, in atomic units. Allowed to be a double, since
+             * we will truncate it to an int upon performing the chunking. */
+            double feePerByte = 0;
 
             /* Fee will be specified as a fixed fee */
             bool isFixedFee = false;
@@ -503,7 +504,7 @@ namespace WalletTypes
                 return fee;
             }
 
-            static FeeType FeePerByte(const uint64_t feePerByte)
+            static FeeType FeePerByte(const double feePerByte)
             {
                 FeeType fee;
                 fee.isFeePerByte = true;

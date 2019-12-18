@@ -116,7 +116,7 @@ namespace SendTransaction
         const uint64_t sumOfInputs,
         uint64_t totalAmount,
         uint64_t estimatedAmount,
-        const uint64_t feePerByte,
+        const double feePerByte,
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const std::string changeAddress,
         const uint64_t mixin,

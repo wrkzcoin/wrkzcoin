@@ -774,7 +774,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
     }
     else if (body.find("feePerByte") != body.end())
     {
-        fee = WalletTypes::FeeType::FeePerByte(getJsonValue<uint64_t>(body, "feePerByte"));
+        fee = WalletTypes::FeeType::FeePerByte(getJsonValue<float>(body, "feePerByte"));
     }
 
     std::vector<std::string> subWalletsToTakeFrom = {};

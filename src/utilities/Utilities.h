@@ -39,7 +39,7 @@ namespace Utilities
     uint64_t getTransactionFee(
         const size_t transactionSize,
         const uint64_t height,
-        const uint64_t feePerByte);
+        const double feePerByte);
 
     uint64_t getMinimumTransactionFee(
         const size_t transactionSize,
