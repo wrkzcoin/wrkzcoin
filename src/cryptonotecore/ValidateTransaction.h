@@ -14,6 +14,7 @@
 #include <cryptonotecore/Checkpoints.h>
 #include <cryptonotecore/Currency.h>
 #include <cryptonotecore/IBlockchainCache.h>
+#include <utilities/ThreadPool.h>
 
 struct TransactionValidationResult 
 {
@@ -45,6 +46,7 @@ class ValidateTransaction
             CryptoNote::IBlockchainCache *cache,
             const CryptoNote::Currency &currency,
             const CryptoNote::Checkpoints &checkpoints,
+            Utilities::ThreadPool<bool> &threadPool,
             const uint64_t blockHeight,
             const uint64_t blockSizeMedian,
             const bool isPoolTransaction);
@@ -71,8 +73,6 @@ class ValidateTransaction
         bool validateTransactionExtra();
 
         bool validateInputOutputRatio();
-
-        bool validateInputOutputCheckingExtend();
 
         bool validateTransactionMixin();
 
@@ -103,4 +103,6 @@ class ValidateTransaction
 
         uint64_t m_sumOfOutputs = 0;
         uint64_t m_sumOfInputs = 0;
+
+        Utilities::ThreadPool<bool> &m_threadPool;
 };

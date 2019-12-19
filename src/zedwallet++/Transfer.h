@@ -12,17 +12,13 @@ void sendTransaction(
     const std::shared_ptr<WalletBackend> walletBackend,
     const std::string address,
     const uint64_t amount,
-    const std::string paymentID);
-
-void splitTX(
-    const std::shared_ptr<WalletBackend> walletBackend,
-    const std::string address,
-    const uint64_t amount,
-    const std::string paymentID);
+    const std::string paymentID,
+    const bool sendAll = false);
 
 bool confirmTransaction(
     const std::shared_ptr<WalletBackend> walletBackend,
     const std::string address,
     const uint64_t amount,
     const std::string paymentID,
-    const uint64_t nodeFee);
+    const uint64_t nodeFee,
+    const uint64_t fee);

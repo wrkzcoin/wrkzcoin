@@ -348,7 +348,8 @@ int main(int argc, char *argv[])
             std::move(checkpoints),
             dispatcher,
             std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(database, logger.getLogger())),
-            std::move(tmainChainStorage));
+            std::move(tmainChainStorage),
+            config.transactionValidationThreads);
 
         ccore.load();
         logger(INFO) << "Core initialized OK";

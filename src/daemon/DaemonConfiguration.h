@@ -11,6 +11,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
 #include <rapidjson/document.h>
+#include <thread>
 
 using namespace rapidjson;
 
@@ -36,6 +37,7 @@ namespace DaemonConfig
             p2pInterface = "0.0.0.0";
             p2pPort = CryptoNote::P2P_DEFAULT_PORT;
             p2pExternalPort = 0;
+            transactionValidationThreads = std::thread::hardware_concurrency();
             rpcInterface = "127.0.0.1";
             rpcPort = CryptoNote::RPC_DEFAULT_PORT;
             noConsole = false;
@@ -85,6 +87,8 @@ namespace DaemonConfig
         int p2pPort;
 
         int p2pExternalPort;
+
+        uint32_t transactionValidationThreads;
 
         int dbThreads;
 

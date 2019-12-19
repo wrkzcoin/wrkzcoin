@@ -20,7 +20,6 @@ extern "C"
 #include <regex>
 #include <utilities/Addresses.h>
 #include <utilities/Mixins.h>
-#include <utilities/Fees.h>
 #include <utilities/Utilities.h>
 
 Error validateFusionTransaction(
@@ -54,7 +53,7 @@ Error validateFusionTransaction(
 Error validateTransaction(
     const std::vector<std::pair<std::string, uint64_t>> destinations,
     const uint64_t mixin,
-    const uint64_t fee,
+    const WalletTypes::FeeType fee,
     const std::string paymentID,
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string changeAddress,
@@ -229,15 +228,18 @@ Error validateMixin(const uint64_t mixin, const uint64_t height)
 
 Error validateAmount(
     const std::vector<std::pair<std::string, uint64_t>> destinations,
-    const uint64_t fee,
+    const WalletTypes::FeeType fee,
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::shared_ptr<SubWallets> subWallets,
     const uint64_t currentHeight)
 {
-    const uint64_t minFee = Utilities::getMinimumFee(currentHeight);
+    if (!fee.isFeePerByte && !fee.isFixedFee && !fee.isMinimumFee)
+    {
+        throw std::runtime_error("Programmer error: fee type not specified");
+    }
 
-    /* Verify the fee is valid */
-    if (fee < minFee)
+    /* Using a fee per byte, and doesn't meet the min fee per byte requirement. */
+    if (fee.isFeePerByte && fee.feePerByte < CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1)
     {
         return FEE_TOO_SMALL;
     }
@@ -250,9 +252,18 @@ Error validateAmount(
         currentHeight);
 
     /* Get the total amount of the transaction */
-    uint64_t totalAmount = Utilities::getTransactionSum(destinations) + fee;
+    uint64_t totalAmount = Utilities::getTransactionSum(destinations);
 
-    std::vector<uint64_t> amounts {fee};
+    std::vector<uint64_t> amounts;
+
+    /* If we are using a fixed fee, we can calculate if we've got enough funds
+     * to cover the transaction. If we don't, we'll leave the verification until
+     * we have constructed the transaction */
+    if (fee.isFixedFee)
+    {
+        totalAmount += fee.fixedFee;
+        amounts.push_back(fee.fixedFee);
+    }
 
     std::transform(destinations.begin(), destinations.end(), std::back_inserter(amounts), [](const auto destination) {
         return destination.second;

@@ -235,7 +235,8 @@ namespace CryptoNote
         Checkpoints &&checkpoints,
         System::Dispatcher &dispatcher,
         std::unique_ptr<IBlockchainCacheFactory> &&blockchainCacheFactory,
-        std::unique_ptr<IMainChainStorage> &&mainchainStorage):
+        std::unique_ptr<IMainChainStorage> &&mainchainStorage,
+        const uint32_t transactionValidationThreads):
         currency(currency),
         dispatcher(dispatcher),
         contextGroup(dispatcher),
@@ -244,7 +245,8 @@ namespace CryptoNote
         upgradeManager(new UpgradeManager()),
         blockchainCacheFactory(std::move(blockchainCacheFactory)),
         mainChainStorage(std::move(mainchainStorage)),
-        initialized(false)
+        initialized(false),
+        m_transactionValidationThreadPool(transactionValidationThreads)
     {
         upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_2, currency.upgradeHeight(BLOCK_MAJOR_VERSION_2));
         upgradeManager->addMajorBlockVersion(BLOCK_MAJOR_VERSION_3, currency.upgradeHeight(BLOCK_MAJOR_VERSION_3));
@@ -1145,11 +1147,22 @@ namespace CryptoNote
         {
             uint64_t fee = 0;
             auto transactionValidationResult =
-                validateTransaction(transaction, validatorState, cache, fee, previousBlockIndex, false);
+                validateTransaction(transaction, validatorState, cache, m_transactionValidationThreadPool, fee, previousBlockIndex, false);
+
             if (transactionValidationResult)
             {
-                logger(Logging::DEBUGGING) << "Failed to validate transaction " << transaction.getTransactionHash()
+                const auto hash = transaction.getTransactionHash();
+
+                logger(Logging::DEBUGGING) << "Failed to validate transaction " << hash
                                            << ": " << transactionValidationResult.message();
+
+                if (transactionPool->checkIfTransactionPresent(hash))
+                {
+                    logger(Logging::DEBUGGING) << "Invalid transaction " << hash << " is present in the pool, removing";
+                    transactionPool->removeTransaction(hash);
+                    notifyObservers(makeDelTransactionMessage({hash}, Messages::DeleteTransaction::Reason::NotActual));
+                }
+
                 return transactionValidationResult;
             }
 
@@ -1695,13 +1708,6 @@ namespace CryptoNote
     {
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
-        if (cachedTransaction.getTransactionFee() == 0
-            && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_V1
-            && cachedTransaction.getTransactionAmount() < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_V1)
-        {
-            return {false, "Pool already contains the maximum amount of fusion transactions for dust"};
-        }
-
         /* If there are already a certain number of fusion transactions in
            the pool, then do not try to add another */
         if (cachedTransaction.getTransactionFee() == 0
@@ -1713,7 +1719,7 @@ namespace CryptoNote
         uint64_t fee;
 
         if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], fee, getTopBlockIndex(), true))
+                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
@@ -1791,7 +1797,7 @@ namespace CryptoNote
         const AccountPublicAddress &adr,
         const BinaryArray &extraNonce,
         uint64_t &difficulty,
-        uint32_t &height) const
+        uint32_t &height)
     {
         throwIfNotInitialized();
 
@@ -2079,6 +2085,7 @@ namespace CryptoNote
         const CachedTransaction &cachedTransaction,
         TransactionValidatorState &state,
         IBlockchainCache *cache,
+        Utilities::ThreadPool<bool> &threadPool,
         uint64_t &fee,
         uint32_t blockIndex,
         const bool isPoolTransaction)
@@ -2089,6 +2096,7 @@ namespace CryptoNote
             cache,
             currency,
             checkpoints,
+            threadPool,
             blockIndex,
             blockMedianSize,
             isPoolTransaction
@@ -2723,7 +2731,6 @@ namespace CryptoNote
     /* A transaction that is valid at the time it was added to the pool, is not
        neccessarily valid now, if the network rules changed. */
     bool Core::validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight)
-        const
     {
         /* Not used in revalidateAfterHeightChange() */
         TransactionValidatorState state;
@@ -2734,6 +2741,7 @@ namespace CryptoNote
             nullptr, /* Not used in revalidateAfterHeightChange() */
             currency,
             checkpoints,
+            m_transactionValidationThreadPool,
             blockHeight,
             blockMedianSize,
             true /* Pool transaction */
@@ -2750,7 +2758,7 @@ namespace CryptoNote
         const size_t maxCumulativeSize,
         const uint64_t height,
         size_t &transactionsSize,
-        uint64_t &fee) const
+        uint64_t &fee)
     {
         transactionsSize = 0;
         fee = 0;

@@ -42,7 +42,6 @@
 #include <utilities/Addresses.h>
 #include <utilities/ParseExtra.h>
 #include <utilities/Utilities.h>
-#include <utilities/Fees.h>
 #include <utility>
 #include <wallet/WalletErrors.h>
 #include <wallet/WalletSerializationV2.h>
@@ -1692,8 +1691,7 @@ namespace CryptoNote
                                      << Common::makeContainerFormatter(transactionParameters.sourceAddresses) << ", to "
                                      << WalletOrderListFormatter(m_currency, transactionParameters.destinations)
                                      << ", change address '" << transactionParameters.changeDestination << '\''
-                                     << ", fee " << m_currency.formatAmount(transactionParameters.fee) << ", mixin "
-                                     << transactionParameters.mixIn << ", unlockTimestamp "
+                                     << ", mixin " << transactionParameters.mixIn << ", unlockTimestamp "
                                      << transactionParameters.unlockTimestamp;
 
         id = doTransfer(transactionParameters);
@@ -1721,7 +1719,7 @@ namespace CryptoNote
     void WalletGreen::prepareTransaction(
         std::vector<WalletOuts> &&wallets,
         const std::vector<WalletOrder> &orders,
-        uint64_t fee,
+        WalletTypes::FeeType fee,
         uint16_t mixIn,
         const std::string &extra,
         uint64_t unlockTimestamp,
@@ -1730,61 +1728,194 @@ namespace CryptoNote
         PreparedTransaction &preparedTransaction)
     {
         preparedTransaction.destinations = convertOrdersToTransfers(orders);
-        preparedTransaction.neededMoney = countNeededMoney(preparedTransaction.destinations, fee);
 
-        std::vector<OutputToTransfer> selectedTransfers;
-        uint64_t foundMoney = selectTransfers(
-            preparedTransaction.neededMoney,
-            mixIn == 0,
-            m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()),
-            std::move(wallets),
-            selectedTransfers);
+        /* To begin with, no estimate for fee per byte. We'll adjust once we
+         * have more information. */
+        uint64_t estimatedFee = fee.isFixedFee ? fee.fixedFee : 0;
+        
+        const uint64_t totalAmount = countNeededMoney(preparedTransaction.destinations, 0);
 
-        if (foundMoney < preparedTransaction.neededMoney)
+        while (true)
         {
-            m_logger(ERROR, BRIGHT_RED) << "Failed to create transaction: not enough money. Needed "
-                                        << m_currency.formatAmount(preparedTransaction.neededMoney) << ", found "
-                                        << m_currency.formatAmount(foundMoney);
-            throw std::system_error(make_error_code(error::WRONG_AMOUNT), "Not enough money");
+            /* Remove outdated change destination */
+            if (preparedTransaction.destinations.back().type == WalletTransferType::CHANGE)
+            {
+                /* Remove old change destination / amount */
+                preparedTransaction.destinations.pop_back();
+            }
+
+            preparedTransaction.neededMoney = totalAmount + estimatedFee;
+
+            std::vector<OutputToTransfer> selectedTransfers;
+
+            uint64_t foundMoney = selectTransfers(
+                preparedTransaction.neededMoney,
+                mixIn == 0,
+                m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()),
+                std::move(wallets),
+                selectedTransfers);
+
+            if (foundMoney < preparedTransaction.neededMoney)
+            {
+                m_logger(ERROR, BRIGHT_RED) << "Failed to create transaction: not enough money. Needed "
+                                            << m_currency.formatAmount(preparedTransaction.neededMoney) << ", found "
+                                            << m_currency.formatAmount(foundMoney);
+                throw std::system_error(make_error_code(error::WRONG_AMOUNT), "Not enough money");
+            }
+
+            std::vector<RandomOuts> mixinResult;
+
+            if (mixIn != 0)
+            {
+                requestMixinOuts(selectedTransfers, mixIn, mixinResult);
+            }
+
+            std::vector<InputInfo> keysInfo;
+            prepareInputs(selectedTransfers, mixinResult, mixIn, keysInfo);
+
+            preparedTransaction.changeAmount = foundMoney - preparedTransaction.neededMoney;
+
+            std::vector<ReceiverAmounts> decomposedOutputs = splitDestinations(
+                preparedTransaction.destinations,
+                m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()),
+                m_currency);
+
+            if (preparedTransaction.changeAmount != 0)
+            {
+                WalletTransfer changeTransfer;
+                changeTransfer.type = WalletTransferType::CHANGE;
+                changeTransfer.address = m_currency.accountAddressAsString(changeDestination);
+                changeTransfer.amount = static_cast<int64_t>(preparedTransaction.changeAmount);
+                preparedTransaction.destinations.emplace_back(std::move(changeTransfer));
+
+                auto splittedChange = splitAmount(
+                    preparedTransaction.changeAmount,
+                    changeDestination,
+                    m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()));
+                decomposedOutputs.emplace_back(std::move(splittedChange));
+            }
+
+            if (!fee.isFixedFee)
+            {
+                const double feePerByte = fee.isFeePerByte
+                    ? fee.feePerByte
+                    : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+
+                /* If we haven't made an estimate already */
+                if (estimatedFee == 0)
+                {
+                    const uint64_t numOutputs = std::accumulate(
+                        decomposedOutputs.begin(),
+                        decomposedOutputs.end(),
+                        0,
+                        [](const uint64_t accumulator, const auto output) { return accumulator + output.amounts.size(); });
+
+                    const std::string paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(extra));
+
+                    const size_t transactionSize = Utilities::estimateTransactionSize(
+                        mixIn,
+                        keysInfo.size(),
+                        numOutputs,
+                        paymentID != "",
+                        extra.size() - paymentID.size()
+                    );
+
+                    estimatedFee = Utilities::getTransactionFee(
+                        transactionSize,
+                        m_node.getLastKnownBlockHeight(),
+                        feePerByte
+                    );
+                }
+
+                /* Update change with actual fee */
+                preparedTransaction.neededMoney = totalAmount + estimatedFee;
+
+                /* Ok, we have enough inputs to add our estimated fee, lets
+                 * go ahead and try and make the transaction. */
+                if (foundMoney >= preparedTransaction.neededMoney)
+                {
+                    preparedTransaction.changeAmount = foundMoney - preparedTransaction.neededMoney;
+
+                    const auto maybeChange = preparedTransaction.destinations.back();
+
+                    /* If we have a change destination, and the amount is incorrect */
+                    if (maybeChange.type == WalletTransferType::CHANGE
+                     && maybeChange.amount != static_cast<int64_t>(preparedTransaction.changeAmount))
+                    {
+                        /* Remove old change destination / amount */
+                        preparedTransaction.destinations.pop_back();
+                        decomposedOutputs.pop_back();
+
+                        /* Add new change destination if needed */
+                        if (preparedTransaction.changeAmount != 0)
+                        {
+                            WalletTransfer changeTransfer;
+                            changeTransfer.type = WalletTransferType::CHANGE;
+                            changeTransfer.address = m_currency.accountAddressAsString(changeDestination);
+                            changeTransfer.amount = static_cast<int64_t>(preparedTransaction.changeAmount);
+                            preparedTransaction.destinations.emplace_back(std::move(changeTransfer));
+
+                            auto splittedChange = splitAmount(
+                                preparedTransaction.changeAmount,
+                                changeDestination,
+                                m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()));
+                            decomposedOutputs.emplace_back(std::move(splittedChange));
+                        }
+                    }
+
+                    preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp);
+
+                    const uint64_t actualFee = Utilities::getTransactionFee(
+                        preparedTransaction.transaction->getTransactionData().size(),
+                        m_node.getLastKnownBlockHeight(),
+                        feePerByte
+                    );
+
+                    /* Great! The fee we estimated is greater than or equal
+                     * to the min/specified fee per byte for a transaction
+                     * of this size, so we can continue with sending the
+                     * transaction. */
+                    if (estimatedFee >= actualFee)
+                    {
+                        return;
+                    }
+                    /* Estimate was too low. Retry with actual fee for a transaction
+                     * of the size we just created. */
+                    else
+                    {
+                        estimatedFee = actualFee;
+                        continue;
+                    }
+                }
+                /* Didn't get enough money selecting transfers. Fee has already
+                 * been updated, so we will select more next iteration */
+                else
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp);
+
+                const uint64_t minFee = Utilities::getMinimumTransactionFee(
+                    preparedTransaction.transaction->getTransactionData().size(),
+                    m_node.getLastKnownBlockHeight()
+                );
+
+                /* User specified fixed fee, and fee is not enough to cover
+                 * minimum fee per byte */
+                if (fee.fixedFee < minFee)
+                {
+                    std::string message = "Fee is too small. Fee " + m_currency.formatAmount(fee.fixedFee)
+                                          + ", minimum fee for a transaction of this size: " + m_currency.formatAmount(minFee);
+                    m_logger(ERROR, BRIGHT_RED) << message;
+                    throw std::system_error(make_error_code(error::FEE_TOO_SMALL), message);
+                }
+
+                return;
+            }
         }
-
-        std::vector<RandomOuts> mixinResult;
-
-        if (mixIn != 0)
-        {
-            requestMixinOuts(selectedTransfers, mixIn, mixinResult);
-        }
-
-        std::vector<InputInfo> keysInfo;
-        prepareInputs(selectedTransfers, mixinResult, mixIn, keysInfo);
-
-        uint64_t donationAmount = pushDonationTransferIfPossible(
-            donation,
-            foundMoney - preparedTransaction.neededMoney,
-            m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()),
-            preparedTransaction.destinations);
-        preparedTransaction.changeAmount = foundMoney - preparedTransaction.neededMoney - donationAmount;
-
-        std::vector<ReceiverAmounts> decomposedOutputs = splitDestinations(
-            preparedTransaction.destinations,
-            m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()),
-            m_currency);
-        if (preparedTransaction.changeAmount != 0)
-        {
-            WalletTransfer changeTransfer;
-            changeTransfer.type = WalletTransferType::CHANGE;
-            changeTransfer.address = m_currency.accountAddressAsString(changeDestination);
-            changeTransfer.amount = static_cast<int64_t>(preparedTransaction.changeAmount);
-            preparedTransaction.destinations.emplace_back(std::move(changeTransfer));
-
-            auto splittedChange = splitAmount(
-                preparedTransaction.changeAmount,
-                changeDestination,
-                m_currency.defaultDustThreshold(m_node.getLastKnownBlockHeight()));
-            decomposedOutputs.emplace_back(std::move(splittedChange));
-        }
-
-        preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp);
     }
 
     void WalletGreen::validateSourceAddresses(const std::vector<std::string> &sourceAddresses) const
@@ -2010,14 +2141,10 @@ namespace CryptoNote
             throw std::system_error(make_error_code(error::ZERO_DESTINATION));
         }
 
-        uint32_t currentHeight = m_node.getLastKnownBlockHeight();
-
-        const uint64_t minFee = Utilities::getMinimumFee(currentHeight);
-
-        if (transactionParameters.fee < minFee)
+        if (transactionParameters.fee.isFixedFee && transactionParameters.fee.fixedFee < m_currency.minimumFee())
         {
-            std::string message = "Fee is too small. Fee " + m_currency.formatAmount(transactionParameters.fee)
-                                  + ", minimum fee " + m_currency.formatAmount(minFee);
+            std::string message = "Fee is too small. Fee " + m_currency.formatAmount(transactionParameters.fee.fixedFee)
+                                  + ", minimum fee " + m_currency.formatAmount(m_currency.minimumFee());
             m_logger(ERROR, BRIGHT_RED) << message;
             throw std::system_error(make_error_code(error::FEE_TOO_SMALL), message);
         }
@@ -2142,8 +2269,7 @@ namespace CryptoNote
         m_logger(INFO, BRIGHT_WHITE) << "makeTransaction"
                                      << ", from " << Common::makeContainerFormatter(sendingTransaction.sourceAddresses)
                                      << ", to " << WalletOrderListFormatter(m_currency, sendingTransaction.destinations)
-                                     << ", change address '" << sendingTransaction.changeDestination << '\'' << ", fee "
-                                     << m_currency.formatAmount(sendingTransaction.fee) << ", mixin "
+                                     << ", change address '" << sendingTransaction.changeDestination << '\'' << ", mixin "
                                      << sendingTransaction.mixIn << ", unlockTimestamp "
                                      << sendingTransaction.unlockTimestamp;
 
@@ -2830,63 +2956,11 @@ namespace CryptoNote
                 make_error_code(error::INTERNAL_WALLET_ERROR), "Failed to deserialize created transaction");
         }
 
-        if (cryptoNoteTransaction.outputs.size() > cryptoNoteTransaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
-        {
-            m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of outputs "
-                                        << " for the input count";
-
-            throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
-        }
-
-        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
+        if (cryptoNoteTransaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of outputs";
 
             throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
-        }
-
-        if (cryptoNoteTransaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-			uint64_t CheckOutputCount = 0;
-			for (const auto &output : cryptoNoteTransaction.outputs)
-			{
-				if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-				{
-					++CheckOutputCount;
-				}
-			}
-			if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-			{
-				m_logger(ERROR, BRIGHT_RED) << "Transaction has an excessive number of small outputs";
-
-				throw std::system_error(make_error_code(error::EXCESSIVE_OUTPUTS));
-			}
-        }
-
-        if (isFusion
-			&& cryptoNoteTransaction.inputs.size() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-        {
-			uint64_t CheckInputCountFusion = 0;
-            for (const auto &input : cryptoNoteTransaction.inputs)
-            {
-                if (input.type() == typeid(CryptoNote::KeyInput))
-                {    
-                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
-                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
-                    {
-                        ++CheckInputCountFusion;
-                    }
-                }
-            }
-            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-            {
-                /* Temporarily UNKNOWN_ERROR */
-                m_logger(ERROR, BRIGHT_RED) << "Fusion transaction has so many small inputs. Allowed: "
-                                            << CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1
-                                            << ", actual: " << CheckInputCountFusion << ".";
-
-                throw std::system_error(make_error_code(error::INTERNAL_WALLET_ERROR), "Fusion transaction has so many small inputs.");
-            }
         }
 
         if (cryptoNoteTransaction.extra.size() >= CryptoNote::parameters::MAX_EXTRA_SIZE_V2)

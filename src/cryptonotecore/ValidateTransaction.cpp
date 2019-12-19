@@ -9,7 +9,7 @@
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
-#include <utilities/Fees.h>
+#include <utilities/Utilities.h>
 
 ValidateTransaction::ValidateTransaction(
     const CryptoNote::CachedTransaction &cachedTransaction,
@@ -17,6 +17,7 @@ ValidateTransaction::ValidateTransaction(
     CryptoNote::IBlockchainCache *cache,
     const CryptoNote::Currency &currency,
     const CryptoNote::Checkpoints &checkpoints,
+    Utilities::ThreadPool<bool> &threadPool,
     const uint64_t blockHeight,
     const uint64_t blockSizeMedian,
     const bool isPoolTransaction):
@@ -25,6 +26,7 @@ ValidateTransaction::ValidateTransaction(
     m_validatorState(state),
     m_currency(currency),
     m_checkpoints(checkpoints),
+    m_threadPool(threadPool),
     m_blockchainCache(cache),
     m_blockHeight(blockHeight),
     m_blockSizeMedian(blockSizeMedian),
@@ -70,12 +72,6 @@ TransactionValidationResult ValidateTransaction::validate()
         return m_validationResult;
     }
 
-    /* Validate transaction input and output ratio. Extended. */
-    if (!validateInputOutputCheckingExtend())
-    {
-        return m_validationResult;
-    }
-
     /* Validate transaction mixin is in the valid range */
     if (!validateTransactionMixin())
     {
@@ -90,7 +86,7 @@ TransactionValidationResult ValidateTransaction::validate()
     {
         return m_validationResult;
     }
-    
+
     m_validationResult.valid = true;
     m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::VALIDATION_SUCCESS;
 
@@ -195,16 +191,17 @@ bool ValidateTransaction::validateTransactionInputs()
              * Fix discovered by Monero Lab and suggested by "fluffypony" (bitcointalk.org) */
             if (!(scalarmultKey(in.keyImage, L) == I))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
                 m_validationResult.errorMessage = "Transaction contains key images in an invalid domain";
 
                 return false;
             }
 
-            if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0)
-                != std::end(in.outputIndexes))
+            if (std::find(++std::begin(in.outputIndexes), std::end(in.outputIndexes), 0) != std::end(in.outputIndexes))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_IDENTICAL_OUTPUT_INDEXES;
                 m_validationResult.errorMessage = "Transaction contains identical output indexes";
 
                 return false;
@@ -212,7 +209,8 @@ bool ValidateTransaction::validateTransactionInputs()
 
             if (!m_validatorState.spentKeyImages.insert(in.keyImage).second)
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
                 m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
 
                 return false;
@@ -236,7 +234,7 @@ bool ValidateTransaction::validateTransactionInputs()
 
         sumOfInputs += amount;
     }
-    
+
     m_sumOfInputs = sumOfInputs;
 
     return true;
@@ -309,10 +307,8 @@ bool ValidateTransaction::validateTransactionFee()
 {
     if (m_sumOfInputs == 0)
     {
-        throw std::runtime_error(
-            "Error! You must call validateTransactionInputs() and "
-            "validateTransactionOutputs() before calling validateTransactionFee()!"
-        );
+        throw std::runtime_error("Error! You must call validateTransactionInputs() and "
+                                 "validateTransactionOutputs() before calling validateTransactionFee()!");
     }
 
     if (m_sumOfOutputs > m_sumOfInputs)
@@ -333,8 +329,35 @@ bool ValidateTransaction::validateTransactionFee()
 
     if (!isFusion)
     {
-        const uint64_t minFee = Utilities::getMinimumFee(m_blockHeight);
-        if (fee == 0 || (fee < minFee))
+        bool validFee = fee != 0;
+
+        if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
+        {
+            const auto minFee = Utilities::getMinimumTransactionFee(
+                m_cachedTransaction.getTransactionBinaryArray().size(),
+                m_blockHeight
+            );
+
+            validFee = fee >= minFee;
+        }
+        else if (m_blockHeight > CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
+        {
+            const auto minFee = CryptoNote::parameters::MINIMUM_FEE_V1;
+
+            validFee = fee >= minFee;
+        }
+        else if (m_blockHeight <= CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1)
+        {
+            const auto minFee = CryptoNote::parameters::MINIMUM_FEE;
+
+            validFee = fee >= minFee;
+        }
+        else if (m_isPoolTransaction)
+        {
+            validFee = fee >= CryptoNote::parameters::MINIMUM_FEE_V1;
+        }
+
+        if (!validFee)
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::WRONG_FEE;
             m_validationResult.errorMessage = "Transaction fee is below minimum fee and is not a fusion transaction";
@@ -372,113 +395,14 @@ bool ValidateTransaction::validateTransactionExtra()
 
 bool ValidateTransaction::validateInputOutputRatio()
 {
-    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT)
+    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1_HEIGHT)
     {
-        if (m_transaction.outputs.size() > m_transaction.inputs.size() * CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1)
+        if (m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
+            m_validationResult.errorMessage = "Transaction has excessive outputs. Reduce the number of payees.";
 
             return false;
-        }
-    }
-    return true;
-}
-
-/* New checking Input/Output */
-bool ValidateTransaction::validateInputOutputCheckingExtend()
-{
-	const bool isFusion = m_currency.isFusionTransaction(
-        m_transaction,
-        m_cachedTransaction.getTransactionBinaryArray().size(),
-        m_blockHeight
-    );
-
-    if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_RATIO_V1_HEIGHT)
-    {
-        /* Prevent to add to tx pool if the sum of amount is bigger than limit set */
-        /* NORMAL_TX_OUTPUT_SUM_MIN_V1 = 100.00 WRKZ */
-        if (!isFusion
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output. Sum of output amount is below the limit";
-
-            return false;
-        }
-        /* 100,000.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 = 600 */
-        if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 1000)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
-
-            return false;
-        }
-
-        /* 1,000,000.00 WRKZ */
-        if (!isFusion
-            && m_transaction.outputs.size() > CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1 / 3 * 2
-            && m_cachedTransaction.getTransactionAmount() < CryptoNote::parameters::NORMAL_TX_OUTPUT_SUM_MIN_V1 * 10000)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive output/input ratio";
-
-            return false;
-        }
-
-        /* Prevent to add to tx pool if the sum of output numbers is bigger than limit set */
-        if (m_transaction.outputs.size() >= CryptoNote::parameters::NORMAL_TX_OUTPUT_COUNT_LIMIT_V1)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive outputs";
-
-            return false;
-        }
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1 = 10.00 WRKZ */
-        /* NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD = 100 */
-        uint64_t CheckOutputCount = 0;
-        for (const auto &output : m_transaction.outputs)
-        {
-            if (output.amount < CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1)
-            {
-                ++CheckOutputCount;
-            }
-        }
-
-        if (CheckOutputCount > CryptoNote::parameters::NORMAL_TX_OUTPUT_EACH_AMOUNT_V1_THRESHOLD)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_OUTPUTS;
-            m_validationResult.errorMessage = "Transaction has excessive outputs";
-
-            return false;
-        }
-
-        /* Many small amount for fusion */
-        if (isFusion
-            && m_transaction.inputs.size() > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-        {
-            uint64_t CheckInputCountFusion = 0;
-            for (const auto &input : m_transaction.inputs)
-            {
-                if (input.type() == typeid(CryptoNote::KeyInput))
-                {    
-                    const uint64_t amount = boost::get<CryptoNote::KeyInput>(input).amount;
-                    if (amount < CryptoNote::parameters::FUSION_TX_MAX_POOL_AMOUNT_DUST_V1)
-                    {
-                        ++CheckInputCountFusion;
-                    }
-                }
-            }
-            if (CheckInputCountFusion > CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT_FOR_AMOUNT_DUST_V1)
-            {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::EXCESSIVE_SMALL_INPUTS;
-                m_validationResult.errorMessage = "Transaction has an excessive input with small amount.";
-
-                return false;
-            }
         }
     }
 
@@ -536,78 +460,100 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
 
     uint64_t inputIndex = 0;
 
+    std::vector<std::future<bool>> validationResult;
+    std::atomic<bool> cancelValidation = false;
+    const Crypto::Hash prefixHash = m_cachedTransaction.getTransactionPrefixHash();
+
     for (const auto &input : m_transaction.inputs)
     {
-        const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
-
-        if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
-            m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
-
-            return false;
-        }
-
-        std::vector<Crypto::PublicKey> outputKeys;
-        std::vector<uint32_t> globalIndexes(in.outputIndexes.size());
-
-        globalIndexes[0] = in.outputIndexes[0];
-
-        /* Convert output indexes from relative to absolute */
-        for (size_t i = 1; i < in.outputIndexes.size(); ++i)
-        {
-            globalIndexes[i] = globalIndexes[i - 1] + in.outputIndexes[i];
-        }
-
-        const auto result = m_blockchainCache->extractKeyOutputKeys(
-            in.amount,
-            m_blockHeight,
-            { globalIndexes.data(), globalIndexes.size() },
-            outputKeys
-        );
-
-        if (result == CryptoNote::ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
-            m_validationResult.errorMessage = "Transaction contains invalid global indexes";
-
-            return false;
-        }
-
-        if (result == CryptoNote::ExtractOutputKeysResult::OUTPUT_LOCKED)
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
-            m_validationResult.errorMessage = "Transaction includes an input which is still locked";
-
-            return false;
-        }
-
-        if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
-        {
-            if (outputKeys.size() != m_transaction.signatures[inputIndex].size())
+        /* Validate each input on a separate thread in our thread pool */
+        validationResult.push_back(m_threadPool.addJob([inputIndex, &input, &prefixHash, &cancelValidation, this] {
+            const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
+            if (cancelValidation)
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
-                m_validationResult.errorMessage = "Transaction has an invalid number of signatures";
+                return false; // fail the validation immediately if cancel requested
+            }
+            if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
 
                 return false;
             }
-        }
 
-        if (!Crypto::crypto_ops::checkRingSignature(
-            m_cachedTransaction.getTransactionPrefixHash(),
-            in.keyImage,
-            outputKeys,
-            m_transaction.signatures[inputIndex]))
-        {
-            m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
-            m_validationResult.errorMessage = "Transaction contains invalid signatures";
+            std::vector<Crypto::PublicKey> outputKeys;
+            std::vector<uint32_t> globalIndexes(in.outputIndexes.size());
 
-            return false;
-        }
+            globalIndexes[0] = in.outputIndexes[0];
+
+            /* Convert output indexes from relative to absolute */
+            for (size_t i = 1; i < in.outputIndexes.size(); ++i)
+            {
+                globalIndexes[i] = globalIndexes[i - 1] + in.outputIndexes[i];
+            }
+
+            const auto result = m_blockchainCache->extractKeyOutputKeys(
+                in.amount,
+                m_blockHeight,
+                { globalIndexes.data(), globalIndexes.size() },
+                outputKeys
+            );
+
+            if (result == CryptoNote::ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
+                m_validationResult.errorMessage = "Transaction contains invalid global indexes";
+
+                return false;
+            }
+
+            if (result == CryptoNote::ExtractOutputKeysResult::OUTPUT_LOCKED)
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_SPEND_LOCKED_OUT;
+                m_validationResult.errorMessage = "Transaction includes an input which is still locked";
+
+                return false;
+            }
+
+            if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
+            {
+                if (outputKeys.size() != m_transaction.signatures[inputIndex].size())
+                {
+                    m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
+                    m_validationResult.errorMessage = "Transaction has an invalid number of signatures";
+
+                    return false;
+                }
+            }
+
+            if (!Crypto::crypto_ops::checkRingSignature(
+                prefixHash,
+                in.keyImage,
+                outputKeys,
+                m_transaction.signatures[inputIndex]))
+            {
+                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES;
+                m_validationResult.errorMessage = "Transaction contains invalid signatures";
+
+                return false;
+            }
+
+            return true;
+        }));
 
         inputIndex++;
     }
-    
-    return true;
-}
 
+    bool valid = true;
+
+    for (auto &result : validationResult)
+    {
+        if (!result.get())
+        {
+            valid = false;
+            cancelValidation = true;
+        }
+    }
+
+    return valid;
+}

@@ -224,6 +224,15 @@ enum ErrorCode
     /* The transaction has more outputs than are permitted for the number
      * inputs that have been provided */
     OUTPUT_DECOMPOSITION = 56,
+
+    /* The inputs that were included in a prepared transaction have since been
+     * spent or are for some other reason no longer available. */
+    PREPARED_TRANSACTION_EXPIRED = 57,
+
+    /* The prepared transaction hash specified does not exist, either because
+     * it never existed, or because the wallet was restarted and the prepared
+     * transaction state was lost */
+    PREPARED_TRANSACTION_NOT_FOUND = 58,
 };
 
 class Error

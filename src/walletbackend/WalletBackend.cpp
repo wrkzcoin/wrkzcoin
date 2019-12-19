@@ -748,28 +748,120 @@ uint64_t WalletBackend::getTotalUnlockedBalance() const
     return unlockedBalance;
 }
 
-/* This is simply a wrapper for Transfer::sendTransactionBasic - we need to
-   pass in the daemon and subwallets instance */
-std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionBasic(
-    const std::string destination,
-    const uint64_t amount,
-    const std::string paymentID)
+bool WalletBackend::removePreparedTransaction(const Crypto::Hash &transactionHash)
 {
-    return SendTransaction::sendTransactionBasic(destination, amount, paymentID, m_daemon, m_subWallets);
+    const bool removed = m_preparedTransactions.erase(transactionHash) == 1;
+
+    std::stringstream stream;
+
+    if (removed)
+    {
+        stream << "Removed prepared transaction " << transactionHash
+               << " as it is no longer valid or has just been sent.";
+    }
+    else
+    {
+        stream << "Could not remove prepared transaction: " << transactionHash
+               << " as it does not exist in the prepared transaction container.";
+    }
+
+    Logger::logger.log(
+        stream.str(),
+        Logger::INFO,
+        { Logger::TRANSACTIONS }
+    );
+
+    return removed;
 }
 
-std::tuple<Error, Crypto::Hash> WalletBackend::sendTransactionAdvanced(
+std::tuple<Error, Crypto::Hash> WalletBackend::sendPreparedTransaction(
+    const Crypto::Hash transactionHash)
+{
+    auto it = m_preparedTransactions.find(transactionHash);
+
+    if (it == m_preparedTransactions.end())
+    {
+        return {PREPARED_TRANSACTION_NOT_FOUND, Crypto::Hash()};
+    }
+
+    const auto preparedTransaction = it->second;
+
+    const auto [error, hash] = SendTransaction::sendPreparedTransaction(
+        preparedTransaction,
+        m_daemon,
+        m_subWallets
+    );
+
+    /* Remove the prepared transaction if we just sent it or it's no longer
+     * valid */
+    if (error == PREPARED_TRANSACTION_EXPIRED || !error)
+    {
+        removePreparedTransaction(preparedTransaction.transactionHash);
+    }
+
+    return {error, hash};
+}
+
+/* This is simply a wrapper for Transfer::sendTransactionBasic - we need to
+   pass in the daemon and subwallets instance */
+std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBackend::sendTransactionBasic(
+    const std::string destination,
+    const uint64_t amount,
+    const std::string paymentID,
+    const bool sendAll,
+    const bool sendTransaction)
+{
+    const auto [error, hash, preparedTransaction] = SendTransaction::sendTransactionBasic(
+        destination,
+        amount,
+        paymentID,
+        m_daemon,
+        m_subWallets,
+        sendAll,
+        sendTransaction
+    );
+
+    if (!sendTransaction && !error)
+    {
+        m_preparedTransactions[hash] = preparedTransaction;
+    }
+
+    return {error, hash, preparedTransaction};
+}
+
+std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBackend::sendTransactionAdvanced(
     const std::vector<std::pair<std::string, uint64_t>> destinations,
     const uint64_t mixin,
-    const uint64_t fee,
+    const WalletTypes::FeeType fee,
     const std::string paymentID,
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string changeAddress,
     const uint64_t unlockTime,
-    const std::vector<uint8_t> extraData)
+    const std::vector<uint8_t> extraData,
+    const bool sendAll,
+    const bool sendTransaction)
 {
-    return SendTransaction::sendTransactionAdvanced(
-        destinations, mixin, fee, paymentID, subWalletsToTakeFrom, changeAddress, m_daemon, m_subWallets, unlockTime, extraData);
+    const auto [error, hash, preparedTransaction] = SendTransaction::sendTransactionAdvanced(
+        destinations,
+        mixin,
+        fee,
+        paymentID,
+        subWalletsToTakeFrom,
+        changeAddress,
+        m_daemon,
+        m_subWallets,
+        unlockTime,
+        extraData,
+        sendAll,
+        sendTransaction
+    );
+
+    if (!sendTransaction && !error)
+    {
+        m_preparedTransactions[hash] = preparedTransaction;
+    }
+
+    return {error, hash, preparedTransaction};
 }
 
 std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()

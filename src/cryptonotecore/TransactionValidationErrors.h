@@ -46,7 +46,6 @@ namespace CryptoNote
             EXCESSIVE_OUTPUTS,
             WRONG_FEE,
             SIZE_TOO_LARGE,
-            EXCESSIVE_SMALL_INPUTS,
         };
 
         // custom category:
@@ -128,13 +127,11 @@ namespace CryptoNote
                     case TransactionValidationError::OUTPUT_AMOUNT_TOO_LARGE:
                         return "Transaction has output exceeding max output size";
                     case TransactionValidationError::EXCESSIVE_OUTPUTS:
-                        return "Transaction has an excessive number of outputs for the input count";
+                        return "Transaction has an excessive number of outputs. Reduce the number of payees.";
                     case TransactionValidationError::WRONG_FEE:
                         return "Transaction fee is below minimum fee and is not a fusion transaction";
                     case TransactionValidationError::SIZE_TOO_LARGE:
                         return "Transaction is too large (in bytes)";
-                    case TransactionValidationError::EXCESSIVE_SMALL_INPUTS:
-                        return "Transaction has an excessive number of small input count";
                     default:
                         return "Unknown error";
                 }

@@ -79,6 +79,10 @@ class SubWallet
     std::vector<Crypto::KeyImage> removeForkedInputs(const uint64_t forkHeight, const bool isViewWallet);
 
     void removeCancelledTransactions(const std::unordered_set<Crypto::Hash> cancelledTransactions);
+    
+    bool haveSpendableInput(
+        const WalletTypes::TransactionInput &input,
+        const uint64_t height) const;
 
     /* Gets inputs that are spendable at the given height */
     std::vector<WalletTypes::TxInputAndOwner> getSpendableInputs(const uint64_t height) const;

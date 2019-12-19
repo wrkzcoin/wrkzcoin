@@ -445,13 +445,28 @@ std::tuple<bool, Crypto::PublicKey> SubWallets::getKeyImageOwner(const Crypto::K
     return {false, Crypto::PublicKey()};
 }
 
+/* Determine if the input given is available for spending */
+bool SubWallets::haveSpendableInput(
+    const WalletTypes::TransactionInput& input,
+    const uint64_t height) const
+{
+    for (const auto &[pubKey, subWallet] : m_subWallets)
+    {
+        if (subWallet.haveSpendableInput(input, height))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /* Remember if the transaction suceeds, we need to remove these key images
    so we don't double spend.
 
    This may throw if you don't validate the user has enough balance, and
    that each of the subwallets exist. */
-std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t> SubWallets::getTransactionInputsForAmount(
-    const uint64_t amount,
+std::vector<WalletTypes::TxInputAndOwner> SubWallets::getSpendableTransactionInputs(
     const bool takeFromAll,
     std::vector<Crypto::PublicKey> subWalletsToTakeFrom,
     const uint64_t height) const
@@ -486,30 +501,52 @@ std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t> SubWallets::getT
         availableInputs.insert(availableInputs.end(), moreInputs.begin(), moreInputs.end());
     }
 
-    /* Shuffle the inputs */
-    std::shuffle(availableInputs.begin(), availableInputs.end(), std::random_device {});
-
-    uint64_t foundMoney = 0;
-
-    std::vector<WalletTypes::TxInputAndOwner> inputsToUse;
-
-    /* Loop through each input */
-    for (const auto walletAmount : availableInputs)
+    /* Sort inputs by their amounts, largest first */
+    std::sort(availableInputs.begin(), availableInputs.end(), [](const auto a, const auto b)
     {
-        /* Add each input */
-        inputsToUse.push_back(walletAmount);
+        return a.input.amount > b.input.amount;
+    });
 
-        foundMoney += walletAmount.input.amount;
+    std::map<uint64_t, std::vector<WalletTypes::TxInputAndOwner>> buckets;
 
-        /* Keep adding until we have enough money for the transaction */
-        if (foundMoney >= amount)
+    /* Push into base 10 buckets. Smallest amount buckets will come first, and
+     * largest amounts within those buckets come first */
+    for (const auto &walletAmount : availableInputs)
+    {
+        /* Find out how many digits the amount has, i.e. 1337 has 4 digits,
+           420 has 3 digits */
+        int numberOfDigits = floor(log10(walletAmount.input.amount)) + 1;
+
+        /* Insert the amount into the correct bucket */
+        buckets[numberOfDigits].push_back(walletAmount);
+    }
+
+    std::vector<WalletTypes::TxInputAndOwner> ordered;
+
+    while (!buckets.empty())
+    {
+        /* Take one element from each bucket, smallest first. */
+        for (auto bucket = buckets.begin(); bucket != buckets.end();)
         {
-            return {inputsToUse, foundMoney};
+            /* Bucket has been exhausted, remove from list */
+            if (bucket->second.empty())
+            {
+                bucket = buckets.erase(bucket);
+            }
+            else
+            {
+                /* Add the final (smallest amount in this bucket) to the result */
+                ordered.push_back(bucket->second.back());
+
+                /* Remove amount we just added */
+                bucket->second.pop_back();
+
+                bucket++;
+            }
         }
     }
 
-    /* Not enough money to cover the transaction */
-    throw std::invalid_argument("Not enough funds found!");
+    return ordered;
 }
 
 /* Remember if the transaction suceeds, we need to remove these key images
