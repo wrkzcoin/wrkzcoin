@@ -81,7 +81,7 @@ jobs:
           cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
           make -j2
           cd src
-          TARGETS="Wrkzd miner zedwallet zedwallet++ wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
           ${STRIP} ${TARGETS}
 
       # Test the crypto
