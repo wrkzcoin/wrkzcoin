@@ -36,7 +36,11 @@ namespace CryptoNote
 
     RawBlock SwappedBlockchainStorage::getBlockByIndex(uint32_t index) const
     {
-        assert(index < getBlockCount());
+        if (index >= getBlockCount())
+        {
+            throw std::out_of_range("SwappedBlockchainStorage, index < blockCount!");
+        }
+
         return blocks[index];
     }
 

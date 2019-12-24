@@ -110,17 +110,6 @@ namespace CryptoNote
 
         virtual void getFeeInfo() = 0;
 
-        virtual void getBlockHashesByTimestamps(
-            uint64_t timestampBegin,
-            size_t secondsCount,
-            std::vector<Crypto::Hash> &blockHashes,
-            const Callback &callback) = 0;
-
-        virtual void getTransactionHashesByPaymentId(
-            const Crypto::Hash &paymentId,
-            std::vector<Crypto::Hash> &transactionHashes,
-            const Callback &callback) = 0;
-
         virtual BlockHeaderInfo getLastLocalBlockHeaderInfo() const = 0;
 
         virtual void relayTransaction(const Transaction &transaction, const Callback &callback) = 0;
@@ -169,23 +158,6 @@ namespace CryptoNote
             bool &isBcActual,
             std::vector<std::unique_ptr<ITransactionReader>> &newTxs,
             std::vector<Crypto::Hash> &deletedTxIds,
-            const Callback &callback) = 0;
-
-        virtual void getBlocks(
-            const std::vector<uint32_t> &blockHeights,
-            std::vector<std::vector<BlockDetails>> &blocks,
-            const Callback &callback) = 0;
-
-        virtual void getBlocks(
-            const std::vector<Crypto::Hash> &blockHashes,
-            std::vector<BlockDetails> &blocks,
-            const Callback &callback) = 0;
-
-        virtual void getBlock(const uint32_t blockHeight, BlockDetails &block, const Callback &callback) = 0;
-
-        virtual void getTransactions(
-            const std::vector<Crypto::Hash> &transactionHashes,
-            std::vector<TransactionDetails> &transactions,
             const Callback &callback) = 0;
 
         virtual void isSynchronized(bool &syncStatus, const Callback &callback) = 0;

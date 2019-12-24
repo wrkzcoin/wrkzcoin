@@ -54,7 +54,7 @@ namespace CryptoNote
 
             for (const auto &rawBlock : rawBlocks)
             {
-                legacy.emplace_back(RawBlockLegacy {rawBlock.block, rawBlock.transactions});
+                legacy.emplace_back(rawBlock.block, rawBlock.transactions);
             }
 
             return legacy;

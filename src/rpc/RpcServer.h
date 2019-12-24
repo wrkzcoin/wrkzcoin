@@ -1,224 +1,224 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018, The Karai Developers
+// Copyright (c) 2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
-#include "CoreRpcServerCommandsDefinitions.h"
-#include "HttpServer.h"
-#include "JsonRpc.h"
-#include "common/Math.h"
+#include <future>
+#include <memory>
+#include <optional>
+#include <string>
 
-#include <functional>
-#include <logging/LoggerRef.h>
-#include <unordered_map>
+#include "httplib.h"
+#include "JsonHelper.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/writer.h"
 
-namespace CryptoNote
+#include <cryptonotecore/Core.h>
+#include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
+#include <errors/Errors.h>
+#include <p2p/NetNode.h>
+
+enum class RpcMode
 {
-    class Core;
+    Default = 0,
+    BlockExplorerEnabled = 1,
+	MiningEnabled = 2,
+    AllMethodsEnabled = 3,
+};
 
-    class NodeServer;
+class RpcServer
+{
+  public:
 
-    struct ICryptoNoteProtocolHandler;
+    ////////////////////////////////
+    /* Constructors / Destructors */
+    ////////////////////////////////
+    RpcServer(
+        const uint16_t bindPort,
+        const std::string rpcBindIp,
+        const std::string corsHeader,
+        const std::string feeAddress,
+        const uint64_t feeAmount,
+        const RpcMode rpcMode,
+        const std::shared_ptr<CryptoNote::Core> core,
+        const std::shared_ptr<CryptoNote::NodeServer> p2p,
+        const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager);
 
-    class RpcServer : public HttpServer
-    {
-      public:
-        RpcServer(
-            System::Dispatcher &dispatcher,
-            std::shared_ptr<Logging::ILogger> log,
-            Core &c,
-            NodeServer &p2p,
-            ICryptoNoteProtocolHandler &protocol,
-            const bool BlockExplorerDetailed,
-            const bool Mining);
+    ~RpcServer();
 
-        typedef std::function<bool(RpcServer *, const HttpRequest &request, HttpResponse &response)> HandlerFunction;
+    /////////////////////////////
+    /* Public member functions */
+    /////////////////////////////
 
-        bool enableCors(const std::vector<std::string> domains);
+    /* Starts the server. */
+    void start();
 
-        bool setFeeAddress(const std::string fee_address);
+    /* Stops the server. */
+    void stop();
 
-        bool setFeeAmount(const uint32_t fee_amount);
+    /* Gets the IP/port combo the server is running on */
+    std::tuple<std::string, uint16_t> getConnectionInfo();
 
-        std::vector<std::string> getCorsDomains();
+  private:
+    //////////////////////////////
+    /* Private member functions */
+    //////////////////////////////
 
-        bool on_get_block_headers_range(
-            const COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request &req,
-            COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response &res,
-            JsonRpc::JsonRpcError &error_resp);
+    /* Starts listening for requests on the server */
+    void listen();
 
-        bool on_get_info(const COMMAND_RPC_GET_INFO::request &req, COMMAND_RPC_GET_INFO::response &res);
+    std::optional<rapidjson::Document> getJsonBody(
+        const httplib::Request &req,
+        httplib::Response &res,
+        const bool bodyRequired);
 
-      private:
-        template<class Handler> struct RpcHandler
-        {
-            const Handler handler;
-            const bool allowBusyCore;
-        };
+    /* Handles stuff like parsing json and then forwards onto the handler */
+    void middleware(
+        const httplib::Request &req,
+        httplib::Response &res,
+        const RpcMode routePermissions,
+        const bool bodyRequired,
+        std::function<std::tuple<Error, uint16_t>(
+            const httplib::Request &req,
+            httplib::Response &res,
+            const rapidjson::Document &body)> handler);
 
-        typedef void (RpcServer::*HandlerPtr)(const HttpRequest &request, HttpResponse &response);
+    void failRequest(uint16_t statusCode, std::string body, httplib::Response &res);
 
-        static std::unordered_map<std::string, RpcHandler<HandlerFunction>> s_handlers;
+    void failJsonRpcRequest(
+        const int64_t errorCode,
+        const std::string errorMessage,
+        httplib::Response &res);
 
-        virtual void processRequest(const HttpRequest &request, HttpResponse &response) override;
+    /////////////////////
+    /* OPTION REQUESTS */
+    /////////////////////
 
-        bool processJsonRpcRequest(const HttpRequest &request, HttpResponse &response);
+    void handleOptions(const httplib::Request &req, httplib::Response &res) const;
 
-        bool isCoreReady();
+    //////////////////
+    /* GET REQUESTS */
+    //////////////////
 
-        // json handlers
-        bool on_get_blocks(const COMMAND_RPC_GET_BLOCKS_FAST::request &req, COMMAND_RPC_GET_BLOCKS_FAST::response &res);
+    std::tuple<Error, uint16_t>
+        info(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_query_blocks(const COMMAND_RPC_QUERY_BLOCKS::request &req, COMMAND_RPC_QUERY_BLOCKS::response &res);
+    std::tuple<Error, uint16_t>
+        fee(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_query_blocks_lite(
-            const COMMAND_RPC_QUERY_BLOCKS_LITE::request &req,
-            COMMAND_RPC_QUERY_BLOCKS_LITE::response &res);
+    std::tuple<Error, uint16_t>
+        height(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_query_blocks_detailed(
-            const COMMAND_RPC_QUERY_BLOCKS_DETAILED::request &req,
-            COMMAND_RPC_QUERY_BLOCKS_DETAILED::response &res);
+    std::tuple<Error, uint16_t>
+        peers(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_wallet_sync_data(
-            const COMMAND_RPC_GET_WALLET_SYNC_DATA::request &req,
-            COMMAND_RPC_GET_WALLET_SYNC_DATA::response &res);
+    ///////////////////
+    /* POST REQUESTS */
+    ///////////////////
 
-        bool on_get_indexes(
-            const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request &req,
-            COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response &res);
+    std::tuple<Error, uint16_t>
+        sendTransaction(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetTransactionsStatus(
-            const COMMAND_RPC_GET_TRANSACTIONS_STATUS::request &req,
-            COMMAND_RPC_GET_TRANSACTIONS_STATUS::response &res);
+    std::tuple<Error, uint16_t>
+        getRandomOuts(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetGlobalIndexesForRange(
-            const COMMAND_RPC_GET_GLOBAL_INDEXES_FOR_RANGE::request &req,
-            COMMAND_RPC_GET_GLOBAL_INDEXES_FOR_RANGE::response &res);
+    std::tuple<Error, uint16_t>
+        getWalletSyncData(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_random_outs(
-            const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request &req,
-            COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response &res);
+    std::tuple<Error, uint16_t>
+        getGlobalIndexes(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetPoolChanges(
-            const COMMAND_RPC_GET_POOL_CHANGES::request &req,
-            COMMAND_RPC_GET_POOL_CHANGES::response &rsp);
+    std::tuple<Error, uint16_t>
+        queryBlocksLite(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetPoolChangesLite(
-            const COMMAND_RPC_GET_POOL_CHANGES_LITE::request &req,
-            COMMAND_RPC_GET_POOL_CHANGES_LITE::response &rsp);
+    std::tuple<Error, uint16_t>
+        getTransactionsStatus(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetBlocksDetailsByHeights(
-            const COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HEIGHTS::request &req,
-            COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HEIGHTS::response &rsp);
+    std::tuple<Error, uint16_t>
+        getPoolChanges(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetBlocksDetailsByHashes(
-            const COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HASHES::request &req,
-            COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HASHES::response &rsp);
+    std::tuple<Error, uint16_t>
+        queryBlocksDetailed(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetBlockDetailsByHeight(
-            const COMMAND_RPC_GET_BLOCK_DETAILS_BY_HEIGHT::request &req,
-            COMMAND_RPC_GET_BLOCK_DETAILS_BY_HEIGHT::response &rsp);
+    /* Deprecated. Use getGlobalIndexes instead. */
+    std::tuple<Error, uint16_t>
+        getGlobalIndexesDeprecated(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetBlocksHashesByTimestamps(
-            const COMMAND_RPC_GET_BLOCKS_HASHES_BY_TIMESTAMPS::request &req,
-            COMMAND_RPC_GET_BLOCKS_HASHES_BY_TIMESTAMPS::response &rsp);
+    std::tuple<Error, uint16_t>
+        getRawBlocks(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool onGetTransactionDetailsByHashes(
-            const COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::request &req,
-            COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::response &rsp);
+    ///////////////////////
+    /* JSON RPC REQUESTS */
+    ///////////////////////
 
-        bool onGetTransactionHashesByPaymentId(
-            const COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::request &req,
-            COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::response &rsp);
+    std::tuple<Error, uint16_t>
+        getBlockTemplate(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_height(const COMMAND_RPC_GET_HEIGHT::request &req, COMMAND_RPC_GET_HEIGHT::response &res);
+    std::tuple<Error, uint16_t>
+        submitBlock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_transactions(
-            const COMMAND_RPC_GET_TRANSACTIONS::request &req,
-            COMMAND_RPC_GET_TRANSACTIONS::response &res);
+    std::tuple<Error, uint16_t>
+        getBlockCount(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request &req, COMMAND_RPC_SEND_RAW_TX::response &res);
+    std::tuple<Error, uint16_t>
+        getBlockHashForHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_fee_info(
-            const COMMAND_RPC_GET_FEE_ADDRESS::request &req,
-            COMMAND_RPC_GET_FEE_ADDRESS::response &res);
+    std::tuple<Error, uint16_t>
+        getLastBlockHeader(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_peers(const COMMAND_RPC_GET_PEERS::request &req, COMMAND_RPC_GET_PEERS::response &res);
+    std::tuple<Error, uint16_t>
+        getBlockHeaderByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        // json rpc
-        bool on_getblockcount(const COMMAND_RPC_GETBLOCKCOUNT::request &req, COMMAND_RPC_GETBLOCKCOUNT::response &res);
+    std::tuple<Error, uint16_t>
+        getBlockHeaderByHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_getblockhash(const COMMAND_RPC_GETBLOCKHASH::request &req, COMMAND_RPC_GETBLOCKHASH::response &res);
+    std::tuple<Error, uint16_t>
+        getBlocksByHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_getblocktemplate(
-            const COMMAND_RPC_GETBLOCKTEMPLATE::request &req,
-            COMMAND_RPC_GETBLOCKTEMPLATE::response &res);
+    std::tuple<Error, uint16_t>
+        getBlockDetailsByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_currency_id(
-            const COMMAND_RPC_GET_CURRENCY_ID::request &req,
-            COMMAND_RPC_GET_CURRENCY_ID::response &res);
+    std::tuple<Error, uint16_t>
+        getTransactionDetailsByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request &req, COMMAND_RPC_SUBMITBLOCK::response &res);
+    std::tuple<Error, uint16_t>
+        getTransactionsInPool(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
-        bool on_get_last_block_header(
-            const COMMAND_RPC_GET_LAST_BLOCK_HEADER::request &req,
-            COMMAND_RPC_GET_LAST_BLOCK_HEADER::response &res);
+    //////////////////////////////
+    /* Private member variables */
+    //////////////////////////////
 
-        bool on_get_block_header_by_hash(
-            const COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::request &req,
-            COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::response &res);
+    /* Our server instance */
+    httplib::Server m_server;
 
-        bool on_get_block_header_by_height(
-            const COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request &req,
-            COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response &res);
+    /* The server host */
+    const std::string m_host;
 
-        void fill_block_header_response(
-            const BlockTemplate &blk,
-            bool orphan_status,
-            uint32_t index,
-            const Crypto::Hash &hash,
-            block_header_response &responce);
+    /* The server port */
+    const uint16_t m_port;
 
-        RawBlockLegacy prepareRawBlockLegacy(BinaryArray &&blockBlob);
+    /* The header to use with 'Access-Control-Allow-Origin'. If empty string,
+     * header is not added. */
+    const std::string m_corsHeader;
 
-        bool f_on_blocks_list_json(
-            const F_COMMAND_RPC_GET_BLOCKS_LIST::request &req,
-            F_COMMAND_RPC_GET_BLOCKS_LIST::response &res);
+    /* The thread running the server */
+    std::thread m_serverThread;
 
-        bool f_on_block_json(
-            const F_COMMAND_RPC_GET_BLOCK_DETAILS::request &req,
-            F_COMMAND_RPC_GET_BLOCK_DETAILS::response &res);
+    /* The address to return from the /fee endpoint */
+    const std::string m_feeAddress;
 
-        bool f_on_transaction_json(
-            const F_COMMAND_RPC_GET_TRANSACTION_DETAILS::request &req,
-            F_COMMAND_RPC_GET_TRANSACTION_DETAILS::response &res);
+    /* The amount to return from the /fee endpoint */
+    const uint64_t m_feeAmount;
 
-        bool f_on_transactions_pool_json(
-            const F_COMMAND_RPC_GET_POOL::request &req,
-            F_COMMAND_RPC_GET_POOL::response &res);
+    /* RPC methods that are enabled */
+    const RpcMode m_rpcMode;
 
-        bool f_getMixin(const Transaction &transaction, uint64_t &mixin);
+    /* A pointer to our CryptoNoteCore instance */
+    const std::shared_ptr<CryptoNote::Core> m_core;
 
-        Logging::LoggerRef logger;
+    /* A pointer to our P2P stack */
+    const std::shared_ptr<CryptoNote::NodeServer> m_p2p;
 
-        Core &m_core;
-
-        NodeServer &m_p2p;
-
-        ICryptoNoteProtocolHandler &m_protocol;
-
-        std::vector<std::string> m_cors_domains;
-
-        std::string m_fee_address;
-
-        uint32_t m_fee_amount;
-        
-        bool m_blockExplorerDetailed;
-
-        bool m_Mining;
-    };
-
-} // namespace CryptoNote
+    const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> m_syncManager;
+};

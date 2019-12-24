@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <cryptonotecore/Core.h>
 #include "cryptonotecore/CryptoNoteBasic.h"
 
 #include <list>
@@ -26,8 +27,35 @@ namespace CryptoNote
     // just to keep backward compatibility with BlockCompleteEntry serialization
     struct RawBlockLegacy
     {
-        BinaryArray blockTemplate;
-        std::vector<BinaryArray> transactions;
+        std::vector<uint8_t> blockTemplate;
+        std::vector<std::vector<uint8_t>> transactions;
+
+        RawBlockLegacy() {};
+
+        RawBlockLegacy(
+            const std::vector<uint8_t> blockTemplate_,
+            const std::vector<std::vector<uint8_t>> transactions_):
+            blockTemplate(blockTemplate_),
+            transactions(transactions_)
+        {
+        }
+
+        RawBlockLegacy(
+            const std::vector<uint8_t> &rawBlob,
+            const BlockTemplate blockTmp,
+            const std::shared_ptr<CryptoNote::Core> core)
+        {
+            blockTemplate = rawBlob;
+
+            if (!blockTmp.transactionHashes.empty())
+            {
+                transactions.reserve(blockTmp.transactionHashes.size());
+
+                std::vector<Crypto::Hash> ignore;
+
+                core->getTransactions(blockTmp.transactionHashes, transactions, ignore);
+            }
+        }
     };
 
     struct NOTIFY_NEW_BLOCK_request

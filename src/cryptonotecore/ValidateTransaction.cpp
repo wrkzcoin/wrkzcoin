@@ -475,7 +475,8 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
             }
             if (m_blockchainCache->checkIfSpent(in.keyImage, m_blockHeight))
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
                 m_validationResult.errorMessage = "Transaction contains key image that has already been spent";
 
                 return false;
@@ -501,7 +502,8 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
 
             if (result == CryptoNote::ExtractOutputKeysResult::INVALID_GLOBAL_INDEX)
             {
-                m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
+                m_validationResult.errorCode =
+                    CryptoNote::error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
                 m_validationResult.errorMessage = "Transaction contains invalid global indexes";
 
                 return false;
@@ -515,11 +517,13 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
                 return false;
             }
 
-            if (m_isPoolTransaction || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
+            if (m_isPoolTransaction
+                || m_blockHeight >= CryptoNote::parameters::TRANSACTION_SIGNATURE_COUNT_VALIDATION_HEIGHT)
             {
                 if (outputKeys.size() != m_transaction.signatures[inputIndex].size())
                 {
-                    m_validationResult.errorCode = CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
+                    m_validationResult.errorCode =
+                        CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES_COUNT;
                     m_validationResult.errorMessage = "Transaction has an invalid number of signatures";
 
                     return false;

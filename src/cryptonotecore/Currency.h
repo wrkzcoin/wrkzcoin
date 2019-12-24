@@ -325,7 +325,8 @@ namespace CryptoNote
             uint64_t alreadyGeneratedCoins,
             size_t currentBlockSize,
             uint64_t fee,
-            const AccountPublicAddress &minerAddress,
+            const Crypto::PublicKey &publicViewKey,
+            const Crypto::PublicKey &publicSpendKey,
             Transaction &tx,
             const BinaryArray &extraNonce = BinaryArray(),
             size_t maxOuts = 1) const;
@@ -505,8 +506,6 @@ namespace CryptoNote
         }
 
         Transaction generateGenesisTransaction();
-
-        Transaction generateGenesisTransaction(const std::vector<AccountPublicAddress>& targets);
 
         CurrencyBuilder &maxBlockNumber(uint32_t val)
         {

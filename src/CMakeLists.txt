@@ -15,7 +15,6 @@ include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
 # can find the new file
-file(GLOB_RECURSE BlockchainExplorer blockchainexplorer/*)
 file(GLOB_RECURSE Common common/*)
 file(GLOB_RECURSE Config config/*)
 file(GLOB_RECURSE Crypto crypto/*)
@@ -57,7 +56,6 @@ endif ()
 source_group("" FILES $${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
 
 # Define a group of files as a library to link against
-add_library(BlockchainExplorer STATIC ${BlockchainExplorer})
 add_library(Common STATIC ${Common})
 add_library(Config STATIC ${Config})
 add_library(Crypto STATIC ${Crypto})

@@ -1390,7 +1390,6 @@ namespace SendTransaction
         if (setupTX.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             result.error = OUTPUT_DECOMPOSITION;
-
             return result;
         }
 

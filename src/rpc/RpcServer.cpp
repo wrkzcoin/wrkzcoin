@@ -1,6 +1,4 @@
-// Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018, The Karai Developers
+// Copyright (c) 2019, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -8,1586 +6,3176 @@
 #include <rpc/RpcServer.h>
 //////////////////////////
 
+#include <iostream>
+
 #include "version.h"
 
-#include <cmath>
+#include <config/Constants.h>
 #include <common/CryptoNoteTools.h>
-#include <common/StringTools.h>
-#include <common/TransactionExtra.h>
-#include <config/CryptoNoteConfig.h>
-#include <cryptonotecore/Core.h>
-#include <cryptonotecore/CryptoNoteFormatUtils.h>
-#include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
-#include <future>
-#include <p2p/NetNode.h>
-#include <rpc/CoreRpcServerErrorCodes.h>
-#include <rpc/JsonRpc.h>
-#include <unordered_map>
+#include <errors/ValidateParameters.h>
+#include <logger/Logger.h>
+#include <serialization/SerializationTools.h>
+#include <utilities/Addresses.h>
+#include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
+#include <utilities/ParseExtra.h>
 
-#undef ERROR
-
-using namespace Logging;
-using namespace Crypto;
-using namespace Common;
-
-namespace CryptoNote
+RpcServer::RpcServer(
+    const uint16_t bindPort,
+    const std::string rpcBindIp,
+    const std::string corsHeader,
+    const std::string feeAddress,
+    const uint64_t feeAmount,
+    const RpcMode rpcMode,
+    const std::shared_ptr<CryptoNote::Core> core,
+    const std::shared_ptr<CryptoNote::NodeServer> p2p,
+    const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager):
+    m_port(bindPort),
+    m_host(rpcBindIp),
+    m_corsHeader(corsHeader),
+    m_feeAddress(feeAddress),
+    m_feeAmount(feeAmount),
+    m_rpcMode(rpcMode),
+    m_core(core),
+    m_p2p(p2p),
+    m_syncManager(syncManager)
 {
-    static inline void serialize(COMMAND_RPC_GET_BLOCKS_FAST::response &response, ISerializer &s)
+    if (m_feeAddress != "")
     {
-        KV_MEMBER(response.blocks)
-        KV_MEMBER(response.start_height)
-        KV_MEMBER(response.current_height)
-        KV_MEMBER(response.status)
-    }
+        Error error = validateAddresses({m_feeAddress}, false);
 
-    void serialize(BlockFullInfo &blockFullInfo, ISerializer &s)
-    {
-        KV_MEMBER(blockFullInfo.block_id);
-        KV_MEMBER(blockFullInfo.block);
-        s(blockFullInfo.transactions, "txs");
-    }
-
-    void serialize(TransactionPrefixInfo &transactionPrefixInfo, ISerializer &s)
-    {
-        KV_MEMBER(transactionPrefixInfo.txHash);
-        KV_MEMBER(transactionPrefixInfo.txPrefix);
-    }
-
-    void serialize(BlockShortInfo &blockShortInfo, ISerializer &s)
-    {
-        KV_MEMBER(blockShortInfo.blockId);
-        KV_MEMBER(blockShortInfo.block);
-        KV_MEMBER(blockShortInfo.txPrefixes);
-    }
-
-    void serialize(WalletTypes::WalletBlockInfo &walletBlockInfo, ISerializer &s)
-    {
-        if (walletBlockInfo.coinbaseTransaction)
+        if (error != SUCCESS)
         {
-            s(*(walletBlockInfo.coinbaseTransaction), "coinbaseTX");
+            std::cout << WarningMsg("Fee address given is not valid: " + error.getErrorMessage()) << std::endl;
+            exit(1);
+        }
+    }
+
+    const bool bodyRequired = true;
+    const bool bodyNotRequired = false;
+
+    /* Route the request through our middleware function, before forwarding
+       to the specified function */
+    const auto router = [this](const auto function, const RpcMode routePermissions, const bool isBodyRequired) {
+        return [=](const httplib::Request &req, httplib::Response &res) {
+            /* Pass the inputted function with the arguments passed through
+               to middleware */
+            middleware(
+                req,
+                res,
+                routePermissions,
+                isBodyRequired,
+                std::bind(function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)
+            );
+        };
+    };
+
+    const auto jsonRpc = [this, router, bodyRequired, bodyNotRequired](const auto &req, auto &res) {
+        const auto body = getJsonBody(req, res, true);
+
+        if (!body)
+        {
+            return;
         }
 
-        s(walletBlockInfo.transactions, "transactions");
-        s(walletBlockInfo.blockHeight, "blockHeight");
-        s(walletBlockInfo.blockHash, "blockHash");
-        s(walletBlockInfo.blockTimestamp, "blockTimestamp");
-    }
-
-    void serialize(WalletTypes::RawTransaction &rawTransaction, ISerializer &s)
-    {
-        s(rawTransaction.keyInputs, "inputs");
-        s(rawTransaction.paymentID, "paymentID");
-        s(rawTransaction.keyOutputs, "outputs");
-        s(rawTransaction.hash, "hash");
-        s(rawTransaction.transactionPublicKey, "txPublicKey");
-        s(rawTransaction.unlockTime, "unlockTime");
-    }
-
-    void serialize(WalletTypes::RawCoinbaseTransaction &rawCoinbaseTransaction, ISerializer &s)
-    {
-        s(rawCoinbaseTransaction.keyOutputs, "outputs");
-        s(rawCoinbaseTransaction.hash, "hash");
-        s(rawCoinbaseTransaction.transactionPublicKey, "txPublicKey");
-        s(rawCoinbaseTransaction.unlockTime, "unlockTime");
-    }
-
-    void serialize(WalletTypes::KeyOutput &keyOutput, ISerializer &s)
-    {
-        s(keyOutput.key, "key");
-        s(keyOutput.amount, "amount");
-    }
-
-    void serialize(WalletTypes::TopBlock &topBlock, ISerializer &s)
-    {
-        s(topBlock.hash, "hash");
-        s(topBlock.height, "height");
-    }
-
-    namespace
-    {
-        template<typename Command>
-        RpcServer::HandlerFunction
-            jsonMethod(bool (RpcServer::*handler)(typename Command::request const &, typename Command::response &))
+        if (!hasMember(*body, "method"))
         {
-            return [handler](RpcServer *obj, const HttpRequest &request, HttpResponse &response) {
-                boost::value_initialized<typename Command::request> req;
-                boost::value_initialized<typename Command::response> res;
-
-                if (!loadFromJson(static_cast<typename Command::request &>(req), request.getBody()))
-                {
-                    return false;
-                }
-
-                bool result = (obj->*handler)(req, res);
-                for (const auto &cors_domain : obj->getCorsDomains())
-                {
-                    response.addHeader("Access-Control-Allow-Origin", cors_domain);
-                    response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-                    response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-                }
-                response.addHeader("Content-Type", "application/json");
-                response.setBody(storeToJson(res.data()));
-                return result;
-            };
+            failRequest(400, "Missing JSON parameter: 'method'", res);
+            return;
         }
 
-    } // namespace
+        const auto method = getStringFromJSON(*body, "method");
 
-    std::unordered_map<std::string, RpcServer::RpcHandler<RpcServer::HandlerFunction>> RpcServer::s_handlers = {
-        // old json handlers - remove me in 2019
-        {"/getinfo", {jsonMethod<COMMAND_RPC_GET_INFO>(&RpcServer::on_get_info), true}},
-        {"/getheight", {jsonMethod<COMMAND_RPC_GET_HEIGHT>(&RpcServer::on_get_height), true}},
-        {"/feeinfo", {jsonMethod<COMMAND_RPC_GET_FEE_ADDRESS>(&RpcServer::on_get_fee_info), true}},
-        {"/getpeers", {jsonMethod<COMMAND_RPC_GET_PEERS>(&RpcServer::on_get_peers), true}},
-
-        // new json handlers
-        {"/info", {jsonMethod<COMMAND_RPC_GET_INFO>(&RpcServer::on_get_info), true}},
-        {"/height", {jsonMethod<COMMAND_RPC_GET_HEIGHT>(&RpcServer::on_get_height), true}},
-        {"/fee", {jsonMethod<COMMAND_RPC_GET_FEE_ADDRESS>(&RpcServer::on_get_fee_info), true}},
-        {"/peers", {jsonMethod<COMMAND_RPC_GET_PEERS>(&RpcServer::on_get_peers), true}},
-
-        {"/gettransactions", {jsonMethod<COMMAND_RPC_GET_TRANSACTIONS>(&RpcServer::on_get_transactions), false}},
-        {"/sendrawtransaction", {jsonMethod<COMMAND_RPC_SEND_RAW_TX>(&RpcServer::on_send_raw_tx), false}},
-
-        {"/getblocks", {jsonMethod<COMMAND_RPC_GET_BLOCKS_FAST>(&RpcServer::on_get_blocks), false}},
-        {"/queryblocks", {jsonMethod<COMMAND_RPC_QUERY_BLOCKS>(&RpcServer::on_query_blocks), false}},
-        {"/queryblockslite", {jsonMethod<COMMAND_RPC_QUERY_BLOCKS_LITE>(&RpcServer::on_query_blocks_lite), false}},
-        {"/queryblocksdetailed",
-         {jsonMethod<COMMAND_RPC_QUERY_BLOCKS_DETAILED>(&RpcServer::on_query_blocks_detailed), false}},
-        {"/getwalletsyncdata",
-         {jsonMethod<COMMAND_RPC_GET_WALLET_SYNC_DATA>(&RpcServer::on_get_wallet_sync_data), false}},
-        {"/get_o_indexes", {jsonMethod<COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES>(&RpcServer::on_get_indexes), false}},
-        {"/getrandom_outs",
-         {jsonMethod<COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS>(&RpcServer::on_get_random_outs), false}},
-        {"/get_pool_changes", {jsonMethod<COMMAND_RPC_GET_POOL_CHANGES>(&RpcServer::onGetPoolChanges), false}},
-        {"/get_pool_changes_lite",
-         {jsonMethod<COMMAND_RPC_GET_POOL_CHANGES_LITE>(&RpcServer::onGetPoolChangesLite), false}},
-        {"/get_block_details_by_height",
-         {jsonMethod<COMMAND_RPC_GET_BLOCK_DETAILS_BY_HEIGHT>(&RpcServer::onGetBlockDetailsByHeight), false}},
-        {"/get_blocks_details_by_heights",
-         {jsonMethod<COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HEIGHTS>(&RpcServer::onGetBlocksDetailsByHeights), false}},
-        {"/get_blocks_details_by_hashes",
-         {jsonMethod<COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HASHES>(&RpcServer::onGetBlocksDetailsByHashes), false}},
-        {"/get_blocks_hashes_by_timestamps",
-         {jsonMethod<COMMAND_RPC_GET_BLOCKS_HASHES_BY_TIMESTAMPS>(&RpcServer::onGetBlocksHashesByTimestamps), false}},
-        {"/get_transaction_details_by_hashes",
-         {jsonMethod<COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES>(&RpcServer::onGetTransactionDetailsByHashes),
-          false}},
-        {"/get_transaction_hashes_by_payment_id",
-         {jsonMethod<COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID>(&RpcServer::onGetTransactionHashesByPaymentId),
-          false}},
-        {"/get_global_indexes_for_range",
-         {jsonMethod<COMMAND_RPC_GET_GLOBAL_INDEXES_FOR_RANGE>(&RpcServer::onGetGlobalIndexesForRange), false}},
-        {"/get_transactions_status",
-         {jsonMethod<COMMAND_RPC_GET_TRANSACTIONS_STATUS>(&RpcServer::onGetTransactionsStatus), false}},
-
-        // json rpc
-        {"/json_rpc",
-         {std::bind(
-              &RpcServer::processJsonRpcRequest,
-              std::placeholders::_1,
-              std::placeholders::_2,
-              std::placeholders::_3),
-          true}}};
-
-    RpcServer::RpcServer(
-        System::Dispatcher &dispatcher,
-        std::shared_ptr<Logging::ILogger> log,
-        Core &c,
-        NodeServer &p2p,
-        ICryptoNoteProtocolHandler &protocol,
-        const bool BlockExplorerDetailed,
-        const bool Mining):
-        HttpServer(dispatcher, log),
-        logger(log, "RpcServer"),
-        m_core(c),
-        m_p2p(p2p),
-        m_protocol(protocol),
-        m_blockExplorerDetailed(BlockExplorerDetailed),
-        m_Mining(Mining)
-    {
-    }
-
-    void RpcServer::processRequest(const HttpRequest &request, HttpResponse &response)
-    {
-        auto url = request.getUrl();
-        if (url.find(".bin") == std::string::npos)
+        if (method == "getblocktemplate")
         {
-            logger(TRACE) << "RPC request came: \n" << request << std::endl;
+            router(&RpcServer::getBlockTemplate, RpcMode::MiningEnabled, bodyRequired)(req, res);
+        }
+        else if (method == "submitblock")
+        {
+            router(&RpcServer::submitBlock, RpcMode::MiningEnabled, bodyRequired)(req, res);
+        }
+        else if (method == "getblockcount")
+        {
+            router(&RpcServer::getBlockCount, RpcMode::Default, bodyNotRequired)(req, res);
+        }
+        else if (method == "getlastblockheader")
+        {
+            router(&RpcServer::getLastBlockHeader, RpcMode::Default, bodyNotRequired)(req, res);
+        }
+        else if (method == "getblockheaderbyhash")
+        {
+            router(&RpcServer::getBlockHeaderByHash, RpcMode::Default, bodyRequired)(req, res);
+        }
+        else if (method == "getblockheaderbyheight")
+        {
+            router(&RpcServer::getBlockHeaderByHeight, RpcMode::Default, bodyRequired)(req, res);
+        }
+        else if (method == "f_blocks_list_json")
+        {
+            router(&RpcServer::getBlocksByHeight, RpcMode::BlockExplorerEnabled, bodyRequired)(req, res);
+        }
+        else if (method == "f_block_json")
+        {
+            router(&RpcServer::getBlockDetailsByHash, RpcMode::BlockExplorerEnabled, bodyRequired)(req, res);
+        }
+        else if (method == "f_transaction_json")
+        {
+            router(&RpcServer::getTransactionDetailsByHash, RpcMode::BlockExplorerEnabled, bodyRequired)(req, res);
+        }
+        else if (method == "f_on_transactions_pool_json")
+        {
+            router(&RpcServer::getTransactionsInPool, RpcMode::BlockExplorerEnabled, bodyNotRequired)(req, res);
         }
         else
         {
-            logger(TRACE) << "RPC request came: " << url << std::endl;
+            res.status = 404;
         }
+    };
 
-        auto it = s_handlers.find(url);
-        if (it == s_handlers.end())
-        {
-            response.setStatus(HttpResponse::STATUS_404);
-            return;
-        }
+    /* Note: /json_rpc is exposed on both GET and POST */
+    m_server.Get("/json_rpc", jsonRpc)
+            .Get("/info", router(&RpcServer::info, RpcMode::Default, bodyNotRequired))
+            .Get("/fee", router(&RpcServer::fee, RpcMode::Default, bodyNotRequired))
+            .Get("/height", router(&RpcServer::height, RpcMode::Default, bodyNotRequired))
+            .Get("/peers", router(&RpcServer::peers, RpcMode::Default, bodyNotRequired))
 
-        if (!it->second.allowBusyCore && !isCoreReady())
-        {
-            response.setStatus(HttpResponse::STATUS_500);
-            response.setBody("Core is busy");
-            return;
-        }
+            .Post("/json_rpc", jsonRpc)
+            .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Default, bodyRequired))
+            .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Default, bodyRequired))
+            .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Default, bodyRequired))
+            .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Default, bodyRequired))
+            .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Default, bodyRequired))
+            .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Default, bodyRequired))
+            .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Default, bodyRequired))
+            .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::AllMethodsEnabled, bodyRequired))
+            .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Default, bodyRequired))
+            .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Default, bodyRequired))
 
-        it->second.handler(this, request, response);
+            /* Matches everything */
+            /* NOTE: Not passing through middleware */
+            .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
+}
+
+RpcServer::~RpcServer()
+{
+    stop();
+}
+
+void RpcServer::start()
+{
+    m_serverThread = std::thread(&RpcServer::listen, this);
+}
+
+void RpcServer::listen()
+{
+    const auto listenError = m_server.listen(m_host, m_port);
+
+    if (listenError != httplib::SUCCESS)
+    {
+        std::cout << WarningMsg("Failed to start RPC server: ")
+                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+        exit(1);
+    }
+}
+
+void RpcServer::stop()
+{
+    m_server.stop();
+
+    if (m_serverThread.joinable())
+    {
+        m_serverThread.join();
+    }
+}
+
+std::tuple<std::string, uint16_t> RpcServer::getConnectionInfo()
+{
+    return {m_host, m_port};
+}
+
+std::optional<rapidjson::Document> RpcServer::getJsonBody(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const bool bodyRequired)
+{
+    rapidjson::Document jsonBody;
+
+    if (!bodyRequired)
+    {
+        /* Some compilers are stupid and can't figure out just `return jsonBody`
+         * and we can't construct a std::optional(jsonBody) since the copy
+         * constructor is deleted, so we need to std::move */
+        return std::optional<rapidjson::Document>(std::move(jsonBody));
     }
 
-    bool RpcServer::processJsonRpcRequest(const HttpRequest &request, HttpResponse &response)
+    if (jsonBody.Parse(req.body.c_str()).HasParseError())
     {
-        using namespace JsonRpc;
+        std::stringstream stream;
 
-        for (const auto &cors_domain : m_cors_domains)
+        if (!req.body.empty())
         {
-            response.addHeader("Access-Control-Allow-Origin", cors_domain);
-            response.addHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-            response.addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-        }
-        response.addHeader("Content-Type", "application/json");
+            stream << "Warning: received body is not JSON encoded!\n"
+                   << "Key/value parameters are NOT supported.\n"
+                   << "Body:\n" << req.body;
 
-        JsonRpcRequest jsonRequest;
-        JsonRpcResponse jsonResponse;
-
-        try
-        {
-            logger(TRACE) << "JSON-RPC request: " << request.getBody();
-            jsonRequest.parseRequest(request.getBody());
-            jsonResponse.setId(jsonRequest.getId()); // copy id
-
-            static std::unordered_map<std::string, RpcServer::RpcHandler<JsonMemberMethod>> jsonRpcHandlers = {
-                {"f_blocks_list_json", {makeMemberMethod(&RpcServer::f_on_blocks_list_json), false}},
-                {"f_block_json", {makeMemberMethod(&RpcServer::f_on_block_json), false}},
-                {"f_transaction_json", {makeMemberMethod(&RpcServer::f_on_transaction_json), false}},
-                {"f_on_transactions_pool_json", {makeMemberMethod(&RpcServer::f_on_transactions_pool_json), false}},
-                {"getblockcount", {makeMemberMethod(&RpcServer::on_getblockcount), true}},
-                {"on_getblockhash", {makeMemberMethod(&RpcServer::on_getblockhash), false}},
-                {"getblocktemplate", {makeMemberMethod(&RpcServer::on_getblocktemplate), false}},
-                {"getcurrencyid", {makeMemberMethod(&RpcServer::on_get_currency_id), true}},
-                {"submitblock", {makeMemberMethod(&RpcServer::on_submitblock), false}},
-                {"getlastblockheader", {makeMemberMethod(&RpcServer::on_get_last_block_header), false}},
-                {"getblockheaderbyhash", {makeMemberMethod(&RpcServer::on_get_block_header_by_hash), false}},
-                {"getblockheaderbyheight", {makeMemberMethod(&RpcServer::on_get_block_header_by_height), false}}};
-
-            auto it = jsonRpcHandlers.find(jsonRequest.getMethod());
-            if (it == jsonRpcHandlers.end())
-            {
-                throw JsonRpcError(JsonRpc::errMethodNotFound);
-            }
-
-            if (!it->second.allowBusyCore && !isCoreReady())
-            {
-                throw JsonRpcError(CORE_RPC_ERROR_CODE_CORE_BUSY, "Core is busy");
-            }
-
-            it->second.handler(this, jsonRequest, jsonResponse);
-        }
-        catch (const JsonRpcError &err)
-        {
-            jsonResponse.setError(err);
-        }
-        catch (const std::exception &e)
-        {
-            jsonResponse.setError(JsonRpcError(JsonRpc::errInternalError, e.what()));
+            Logger::logger.log(
+                stream.str(),
+                Logger::INFO,
+                { Logger::DAEMON_RPC }
+            );
         }
 
-        response.setBody(jsonResponse.getBody());
-        logger(TRACE) << "JSON-RPC response: " << jsonResponse.getBody();
-        return true;
+        stream << "Failed to parse request body as JSON";
+
+        failRequest(400, stream.str(), res);
+
+        return std::nullopt;
     }
 
-    bool RpcServer::setFeeAddress(const std::string fee_address)
+    return std::optional<rapidjson::Document>(std::move(jsonBody));
+}
+
+void RpcServer::middleware(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const RpcMode routePermissions,
+    const bool bodyRequired,
+    std::function<std::tuple<Error, uint16_t>(
+        const httplib::Request &req,
+        httplib::Response &res,
+        const rapidjson::Document &body)> handler)
+{
+    Logger::logger.log(
+        "Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
+        Logger::DEBUG,
+        { Logger::DAEMON_RPC }
+    );
+
+    if (m_corsHeader != "")
     {
-        m_fee_address = fee_address;
-        return true;
+        res.set_header("Access-Control-Allow-Origin", m_corsHeader);
     }
 
-    bool RpcServer::setFeeAmount(const uint32_t fee_amount)
+    res.set_header("Content-Type", "application/json");
+    
+    const auto jsonBody = getJsonBody(req, res, bodyRequired);
+
+    if (!jsonBody)
     {
-        m_fee_amount = fee_amount;
-        return true;
+        return;
     }
 
-    bool RpcServer::enableCors(const std::vector<std::string> domains)
+    /* If this route requires higher permissions than we have enabled, then
+     * reject the request */
+    if (routePermissions > m_rpcMode)
     {
-        m_cors_domains = domains;
-        return true;
+        std::stringstream stream;
+
+        stream << "You do not have permission to access this method. Please "
+                  "relaunch your daemon with the --enable-blockexplorer";
+
+        if (routePermissions == RpcMode::AllMethodsEnabled)
+        {
+            stream << "-detailed";
+        }
+
+        stream << " command line option to access this method.";
+
+        failRequest(403, stream.str(), res);
+
+        return;
     }
 
-    std::vector<std::string> RpcServer::getCorsDomains()
+    try
     {
-        return m_cors_domains;
+        const auto [error, statusCode] = handler(req, res, *jsonBody);
+
+        if (error)
+        {
+            rapidjson::StringBuffer sb;
+            rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+            writer.StartObject();
+
+            writer.Key("errorCode");
+            writer.Uint(error.getErrorCode());
+
+            writer.Key("errorMessage");
+            writer.String(error.getErrorMessage());
+
+            writer.EndObject();
+
+            res.body = sb.GetString();
+            res.status = 400;
+        }
+        else
+        {
+            res.status = statusCode;
+        }
+
+        return;
+    }
+    catch (const std::invalid_argument &e)
+    {
+        Logger::logger.log(
+            "Caught JSON exception, likely missing required json parameter: " + std::string(e.what()),
+            Logger::FATAL,
+            { Logger::DAEMON_RPC }
+        );
+
+        failRequest(400, e.what(), res);
+    }
+    catch (const std::exception &e)
+    {
+        std::stringstream error;
+
+        error << "Caught unexpected exception: " << e.what() << " while processing "
+              << req.path << " request for User-Agent: " << req.get_header_value("User-Agent");
+
+        Logger::logger.log(
+            error.str(),
+            Logger::FATAL,
+            { Logger::DAEMON_RPC }
+        );
+
+        if (req.body != "")
+        {
+            Logger::logger.log(
+                "Body: " + req.body,
+                Logger::FATAL,
+                { Logger::DAEMON_RPC }
+            );
+        }
+
+        failRequest(500, "Internal server error: " + std::string(e.what()), res);
+    }
+}
+
+void RpcServer::failRequest(uint16_t statusCode, std::string body, httplib::Response &res)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("status");
+    writer.String("Failed");
+
+    writer.Key("error");
+    writer.String(body);
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+    res.status = statusCode;
+}
+
+void RpcServer::failJsonRpcRequest(
+    const int64_t errorCode,
+    const std::string errorMessage,
+    httplib::Response &res)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+    {
+        writer.Key("jsonrpc");
+        writer.String("2.0");
+
+        writer.Key("error");
+        writer.StartObject();
+        {
+            writer.Key("message");
+            writer.String(errorMessage);
+
+            writer.Key("code");
+            writer.Int64(errorCode);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    res.body = sb.GetString();
+    res.status = 200;
+}
+
+void RpcServer::handleOptions(const httplib::Request &req, httplib::Response &res) const
+{
+    Logger::logger.log(
+        "Incoming " + req.method + " request: " + req.path,
+        Logger::DEBUG,
+        { Logger::DAEMON_RPC }
+    );
+
+    std::string supported = "OPTIONS, GET, POST";
+
+    if (m_corsHeader == "")
+    {
+        supported = "";
     }
 
-    bool RpcServer::isCoreReady()
+    if (req.has_header("Access-Control-Request-Method"))
     {
-        return m_p2p.get_payload_object().isSynchronized();
+        res.set_header("Access-Control-Allow-Methods", supported);
+    }
+    else
+    {
+        res.set_header("Allow", supported);
     }
 
-    bool RpcServer::on_get_blocks(
-        const COMMAND_RPC_GET_BLOCKS_FAST::request &req,
-        COMMAND_RPC_GET_BLOCKS_FAST::response &res)
+    if (m_corsHeader != "")
     {
-        // TODO code duplication see InProcessNode::doGetNewBlocks()
-        if (req.block_ids.empty())
-        {
-            res.status = "Failed";
-            return false;
-        }
-
-        if (req.block_ids.back() != m_core.getBlockHashByIndex(0))
-        {
-            res.status = "Failed";
-            return false;
-        }
-
-        uint32_t blockCount = COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT;
-
-        /* Allow the requested block count to be specified in the
-           request if it's greater than 0 and less than the configured
-           maximum */
-        if (req.blockCount > 0 && req.blockCount < blockCount)
-        {
-            blockCount = req.blockCount;
-        }
-
-        uint32_t totalBlockCount;
-        uint32_t startBlockIndex;
-        std::vector<Crypto::Hash> supplement = m_core.findBlockchainSupplement(
-            req.block_ids, blockCount, totalBlockCount, startBlockIndex);
-
-        res.current_height = totalBlockCount;
-        res.start_height = startBlockIndex;
-
-        std::vector<Crypto::Hash> missedHashes;
-        m_core.getBlocks(supplement, res.blocks, missedHashes);
-        assert(missedHashes.empty());
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
+        res.set_header("Access-Control-Allow-Origin", m_corsHeader);
+        res.set_header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     }
 
-    bool RpcServer::on_query_blocks(
-        const COMMAND_RPC_QUERY_BLOCKS::request &req,
-        COMMAND_RPC_QUERY_BLOCKS::response &res)
+    res.status = 200;
+}
+
+std::tuple<Error, uint16_t> RpcServer::info(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    const uint64_t height = m_core->getTopBlockIndex() + 1;
+    const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
+    const auto blockDetails = m_core->getBlockDetails(height - 1);
+    const uint64_t difficulty = m_core->getDifficultyForNextBlock();
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("height");
+    writer.Uint64(height);
+
+    writer.Key("difficulty");
+    writer.Uint64(difficulty);
+
+    writer.Key("tx_count");
+    /* Transaction count without coinbase transactions - one per block, so subtract height */
+    writer.Uint64(m_core->getBlockchainTransactionCount() - height);
+
+    writer.Key("tx_pool_size");
+    writer.Uint64(m_core->getPoolTransactionCount());
+
+    writer.Key("alt_blocks_count");
+    writer.Uint64(m_core->getAlternativeBlockCount());
+
+    uint64_t total_conn = m_p2p->get_connections_count();
+    uint64_t outgoing_connections_count = m_p2p->get_outgoing_connections_count();
+
+    writer.Key("outgoing_connections_count");
+    writer.Uint64(outgoing_connections_count);
+
+    writer.Key("incoming_connections_count");
+    writer.Uint64(total_conn - outgoing_connections_count);
+
+    writer.Key("white_peerlist_size");
+    writer.Uint64(m_p2p->getPeerlistManager().get_white_peers_count());
+
+    writer.Key("grey_peerlist_size");
+    writer.Uint64(m_p2p->getPeerlistManager().get_gray_peers_count());
+
+    writer.Key("last_known_block_index");
+    writer.Uint64(std::max(1u, m_syncManager->getObservedHeight()) - 1);
+
+    writer.Key("network_height");
+    writer.Uint64(networkHeight);
+
+    writer.Key("upgrade_heights");
+    writer.StartArray();
     {
-        uint32_t startIndex;
-        uint32_t currentIndex;
-        uint32_t fullOffset;
-
-        if (!m_core.queryBlocks(req.block_ids, req.timestamp, startIndex, currentIndex, fullOffset, res.items))
+        for (const uint64_t height : CryptoNote::parameters::FORK_HEIGHTS)
         {
-            res.status = "Failed to perform query";
-            return false;
+            writer.Uint64(height);
         }
-
-        res.start_height = startIndex + 1;
-        res.current_height = currentIndex + 1;
-        res.full_offset = fullOffset;
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
     }
+    writer.EndArray();
 
-    bool RpcServer::on_query_blocks_lite(
-        const COMMAND_RPC_QUERY_BLOCKS_LITE::request &req,
-        COMMAND_RPC_QUERY_BLOCKS_LITE::response &res)
+    writer.Key("supported_height");
+    writer.Uint64(CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
+        ? 0
+        : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX]);
+
+    writer.Key("hashrate");
+    writer.Uint64(round(difficulty / CryptoNote::parameters::DIFFICULTY_TARGET));
+
+    writer.Key("synced");
+    writer.Bool(height == networkHeight);
+
+    writer.Key("major_version");
+    writer.Uint64(blockDetails.majorVersion);
+
+    writer.Key("minor_version");
+    writer.Uint64(blockDetails.minorVersion);
+
+    writer.Key("version");
+    writer.String(PROJECT_VERSION);
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.Key("start_time");
+    writer.Uint64(m_core->getStartTime());
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::fee(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("address");
+    writer.String(m_feeAddress);
+
+    writer.Key("amount");
+    writer.Uint64(m_feeAmount);
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::height(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("height");
+    writer.Uint64(m_core->getTopBlockIndex() + 1);
+
+    writer.Key("network_height");
+    writer.Uint64(std::max(1u, m_syncManager->getBlockchainHeight()));
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::peers(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    std::list<PeerlistEntry> peers_white;
+    std::list<PeerlistEntry> peers_gray;
+
+    m_p2p->getPeerlistManager().get_peerlist_full(peers_gray, peers_white);
+
+    writer.Key("peers");
+    writer.StartArray();
     {
-        uint32_t startIndex;
-        uint32_t currentIndex;
-        uint32_t fullOffset;
-        if (!m_core.queryBlocksLite(req.blockIds, req.timestamp, startIndex, currentIndex, fullOffset, res.items))
-        {
-            res.status = "Failed to perform query";
-            return false;
-        }
-
-        res.startHeight = startIndex;
-        res.currentHeight = currentIndex;
-        res.fullOffset = fullOffset;
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::on_query_blocks_detailed(
-        const COMMAND_RPC_QUERY_BLOCKS_DETAILED::request &req,
-        COMMAND_RPC_QUERY_BLOCKS_DETAILED::response &res)
-    {
-        /* Check if enable-blockexplorer-detailed is enabled */
-        if (!m_blockExplorerDetailed)
-        {
-            return false;
-        }
-
-        uint64_t startIndex;
-        uint64_t currentIndex;
-        uint64_t fullOffset;
-
-        if (!m_core.queryBlocksDetailed(
-                req.blockIds, req.timestamp, startIndex, currentIndex, fullOffset, res.blocks, req.blockCount))
-        {
-            res.status = "Failed to perform query";
-            return false;
-        }
-
-        res.startHeight = startIndex;
-        res.currentHeight = currentIndex;
-        res.fullOffset = fullOffset;
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::on_get_wallet_sync_data(
-        const COMMAND_RPC_GET_WALLET_SYNC_DATA::request &req,
-        COMMAND_RPC_GET_WALLET_SYNC_DATA::response &res)
-    {
-        const bool success = m_core.getWalletSyncData(
-            req.blockIds,
-            req.startHeight,
-            req.startTimestamp,
-            req.blockCount,
-            req.skipCoinbaseTransactions,
-            res.items,
-            res.topBlock);
-
-        if (!success)
-        {
-            res.status = "Failed to perform query";
-            return false;
-        }
-
-        res.synced = res.items.empty();
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::onGetTransactionsStatus(
-        const COMMAND_RPC_GET_TRANSACTIONS_STATUS::request &req,
-        COMMAND_RPC_GET_TRANSACTIONS_STATUS::response &res)
-    {
-        if (!m_core.getTransactionsStatus(
-                req.transactionHashes, res.transactionsInPool, res.transactionsInBlock, res.transactionsUnknown))
-        {
-            res.status = "Failed to perform query";
-            return false;
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::on_get_indexes(
-        const COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::request &req,
-        COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES::response &res)
-    {
-        std::vector<uint32_t> outputIndexes;
-        if (!m_core.getTransactionGlobalIndexes(req.txid, outputIndexes))
-        {
-            res.status = "Failed";
-            return true;
-        }
-
-        res.o_indexes.assign(outputIndexes.begin(), outputIndexes.end());
-        res.status = CORE_RPC_STATUS_OK;
-        logger(TRACE) << "COMMAND_RPC_GET_TX_GLOBAL_OUTPUTS_INDEXES: [" << res.o_indexes.size() << "]";
-        return true;
-    }
-
-    bool RpcServer::onGetGlobalIndexesForRange(
-        const COMMAND_RPC_GET_GLOBAL_INDEXES_FOR_RANGE::request &req,
-        COMMAND_RPC_GET_GLOBAL_INDEXES_FOR_RANGE::response &res)
-    {
-        if (!m_core.getGlobalIndexesForRange(req.startHeight, req.endHeight, res.indexes))
-        {
-            res.status = "Failed";
-            return true;
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::on_get_random_outs(
-        const COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::request &req,
-        COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS::response &res)
-    {
-        res.status = "Failed";
-
-        for (uint64_t amount : req.amounts)
-        {
-            std::vector<uint32_t> globalIndexes;
-            std::vector<Crypto::PublicKey> publicKeys;
-            if (!m_core.getRandomOutputs(amount, static_cast<uint16_t>(req.outs_count), globalIndexes, publicKeys))
-            {
-                return true;
-            }
-
-            if (globalIndexes.size() != req.outs_count)
-            {
-                logger(ERROR)
-                    << "Failed to get enough matching outputs for amount " << amount << " ("
-                    << Utilities::formatAmount(amount) << "). Requested outputs: " << req.outs_count
-                    << ", found outputs: " << globalIndexes.size()
-                    << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
-                    << std::endl
-                    << "Note: If you are a public node operator, you can safely ignore this message. "
-                    << "It is only relevant to the user sending the transaction.";
-            }
-
-            assert(globalIndexes.size() == publicKeys.size());
-            res.outs.push_back({amount, {}});
-            for (size_t i = 0; i < globalIndexes.size(); ++i)
-            {
-                res.outs.back().outs.push_back({globalIndexes[i], publicKeys[i]});
-            }
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-
-        std::stringstream ss;
-
-        std::for_each(res.outs.begin(), res.outs.end(), [&](auto &ofa) {
-            ss << "[" << ofa.amount << "]:";
-
-            assert(ofa.outs.size() && "internal error: ofa.outs.size() is empty");
-
-            std::for_each(ofa.outs.begin(), ofa.outs.end(), [&](auto &oe) { ss << oe.global_amount_index << " "; });
-            ss << ENDL;
-        });
-        std::string s = ss.str();
-        logger(TRACE) << "COMMAND_RPC_GET_RANDOM_OUTPUTS_FOR_AMOUNTS: " << ENDL << s;
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetPoolChanges(
-        const COMMAND_RPC_GET_POOL_CHANGES::request &req,
-        COMMAND_RPC_GET_POOL_CHANGES::response &rsp)
-    {
-        rsp.status = CORE_RPC_STATUS_OK;
-        rsp.isTailBlockActual =
-            m_core.getPoolChanges(req.tailBlockId, req.knownTxsIds, rsp.addedTxs, rsp.deletedTxsIds);
-
-        return true;
-    }
-
-    bool RpcServer::onGetPoolChangesLite(
-        const COMMAND_RPC_GET_POOL_CHANGES_LITE::request &req,
-        COMMAND_RPC_GET_POOL_CHANGES_LITE::response &rsp)
-    {
-        rsp.status = CORE_RPC_STATUS_OK;
-        rsp.isTailBlockActual =
-            m_core.getPoolChangesLite(req.tailBlockId, req.knownTxsIds, rsp.addedTxs, rsp.deletedTxsIds);
-
-        return true;
-    }
-
-    bool RpcServer::onGetBlocksDetailsByHeights(
-        const COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HEIGHTS::request &req,
-        COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HEIGHTS::response &rsp)
-    {
-        try
-        {
-            std::vector<BlockDetails> blockDetails;
-            for (const uint32_t &height : req.blockHeights)
-            {
-                blockDetails.push_back(m_core.getBlockDetails(height));
-            }
-
-            rsp.blocks = std::move(blockDetails);
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetBlocksDetailsByHashes(
-        const COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HASHES::request &req,
-        COMMAND_RPC_GET_BLOCKS_DETAILS_BY_HASHES::response &rsp)
-    {
-        try
-        {
-            std::vector<BlockDetails> blockDetails;
-            for (const Crypto::Hash &hash : req.blockHashes)
-            {
-                blockDetails.push_back(m_core.getBlockDetails(hash));
-            }
-
-            rsp.blocks = std::move(blockDetails);
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetBlockDetailsByHeight(
-        const COMMAND_RPC_GET_BLOCK_DETAILS_BY_HEIGHT::request &req,
-        COMMAND_RPC_GET_BLOCK_DETAILS_BY_HEIGHT::response &rsp)
-    {
-        try
-        {
-            BlockDetails blockDetails = m_core.getBlockDetails(req.blockHeight);
-            rsp.block = blockDetails;
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetBlocksHashesByTimestamps(
-        const COMMAND_RPC_GET_BLOCKS_HASHES_BY_TIMESTAMPS::request &req,
-        COMMAND_RPC_GET_BLOCKS_HASHES_BY_TIMESTAMPS::response &rsp)
-    {
-        try
-        {
-            auto blockHashes = m_core.getBlockHashesByTimestamps(req.timestampBegin, req.secondsCount);
-            rsp.blockHashes = std::move(blockHashes);
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetTransactionDetailsByHashes(
-        const COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::request &req,
-        COMMAND_RPC_GET_TRANSACTION_DETAILS_BY_HASHES::response &rsp)
-    {
-        try
-        {
-            std::vector<TransactionDetails> transactionDetails;
-            transactionDetails.reserve(req.transactionHashes.size());
-
-            for (const auto &hash : req.transactionHashes)
-            {
-                transactionDetails.push_back(m_core.getTransactionDetails(hash));
-            }
-
-            rsp.transactions = std::move(transactionDetails);
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::onGetTransactionHashesByPaymentId(
-        const COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::request &req,
-        COMMAND_RPC_GET_TRANSACTION_HASHES_BY_PAYMENT_ID::response &rsp)
-    {
-        try
-        {
-            rsp.transactionHashes = m_core.getTransactionHashesByPaymentId(req.paymentId);
-        }
-        catch (std::system_error &e)
-        {
-            rsp.status = e.what();
-            return false;
-        }
-        catch (std::exception &e)
-        {
-            rsp.status = "Error: " + std::string(e.what());
-            return false;
-        }
-
-        rsp.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    //
-    // JSON handlers
-    //
-
-    bool RpcServer::on_get_info(const COMMAND_RPC_GET_INFO::request &req, COMMAND_RPC_GET_INFO::response &res)
-    {
-        res.height = m_core.getTopBlockIndex() + 1;
-        res.difficulty = m_core.getDifficultyForNextBlock();
-        res.tx_count = m_core.getBlockchainTransactionCount() - res.height; // without coinbase
-        res.tx_pool_size = m_core.getPoolTransactionCount();
-        res.alt_blocks_count = m_core.getAlternativeBlockCount();
-        uint64_t total_conn = m_p2p.get_connections_count();
-        res.outgoing_connections_count = m_p2p.get_outgoing_connections_count();
-        res.incoming_connections_count = total_conn - res.outgoing_connections_count;
-        res.white_peerlist_size = m_p2p.getPeerlistManager().get_white_peers_count();
-        res.grey_peerlist_size = m_p2p.getPeerlistManager().get_gray_peers_count();
-        res.last_known_block_index = std::max(static_cast<uint32_t>(1), m_protocol.getObservedHeight()) - 1;
-        res.network_height = std::max(static_cast<uint32_t>(1), m_protocol.getBlockchainHeight());
-        res.upgrade_heights = CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
-                                  ? std::vector<uint64_t>()
-                                  : std::vector<uint64_t>(
-                                      CryptoNote::parameters::FORK_HEIGHTS,
-                                      CryptoNote::parameters::FORK_HEIGHTS + CryptoNote::parameters::FORK_HEIGHTS_SIZE);
-        res.supported_height = CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
-                                   ? 0
-                                   : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX];
-        res.hashrate = (uint32_t)round(res.difficulty / CryptoNote::parameters::DIFFICULTY_TARGET);
-        res.synced = ((uint64_t)res.height == (uint64_t)res.network_height);
-        res.major_version = m_core.getBlockDetails(m_core.getTopBlockIndex()).majorVersion;
-        res.minor_version = m_core.getBlockDetails(m_core.getTopBlockIndex()).minorVersion;
-        res.version = PROJECT_VERSION;
-        res.status = CORE_RPC_STATUS_OK;
-        res.start_time = (uint64_t)m_core.getStartTime();
-        return true;
-    }
-
-    bool RpcServer::on_get_height(const COMMAND_RPC_GET_HEIGHT::request &req, COMMAND_RPC_GET_HEIGHT::response &res)
-    {
-        res.height = m_core.getTopBlockIndex() + 1;
-        res.network_height = std::max(static_cast<uint32_t>(1), m_protocol.getBlockchainHeight());
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_get_transactions(
-        const COMMAND_RPC_GET_TRANSACTIONS::request &req,
-        COMMAND_RPC_GET_TRANSACTIONS::response &res)
-    {
-        std::vector<Hash> vh;
-        for (const auto &tx_hex_str : req.txs_hashes)
-        {
-            BinaryArray b;
-            if (!fromHex(tx_hex_str, b))
-            {
-                res.status = "Failed to parse hex representation of transaction hash";
-                return true;
-            }
-
-            if (b.size() != sizeof(Hash))
-            {
-                res.status = "Failed, size of data mismatch";
-            }
-
-            vh.push_back(*reinterpret_cast<const Hash *>(b.data()));
-        }
-
-        std::vector<Hash> missed_txs;
-        std::vector<BinaryArray> txs;
-        m_core.getTransactions(vh, txs, missed_txs);
-
-        for (auto &tx : txs)
-        {
-            res.txs_as_hex.push_back(toHex(tx));
-        }
-
-        for (const auto &miss_tx : missed_txs)
-        {
-            res.missed_tx.push_back(Common::podToHex(miss_tx));
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_send_raw_tx(const COMMAND_RPC_SEND_RAW_TX::request &req, COMMAND_RPC_SEND_RAW_TX::response &res)
-    {
-        std::vector<BinaryArray> transactions(1);
-        if (!fromHex(req.tx_as_hex, transactions.back()))
-        {
-            logger(INFO) << "[on_send_raw_tx]: Failed to parse tx from hexbuff: " << req.tx_as_hex;
-            res.status = "Failed";
-            res.error = "Failed to parse transaction from hex buffer";
-            return true;
-        }
-
-        Crypto::Hash transactionHash = Crypto::cn_fast_hash(transactions.back().data(), transactions.back().size());
-        logger(DEBUGGING) << "transaction " << transactionHash << " came in on_send_raw_tx";
-
-        const auto [success, error] = m_core.addTransactionToPool(transactions.back());
-        if (!success)
-        {
-            logger(DEBUGGING) << "[on_send_raw_tx]: tx verification failed";
-            res.status = "Failed";
-            res.error = error;
-            return true;
-        }
-
-        m_protocol.relayTransactions(transactions);
-        // TODO: make sure that tx has reached other nodes here, probably wait to receive reflections from other nodes
-        res.status = CORE_RPC_STATUS_OK;
-        res.error = CORE_RPC_ERROR_EMPTY;
-        return true;
-    }
-
-    bool RpcServer::on_get_fee_info(
-        const COMMAND_RPC_GET_FEE_ADDRESS::request &req,
-        COMMAND_RPC_GET_FEE_ADDRESS::response &res)
-    {
-        if (m_fee_address.empty())
-        {
-            res.status = CORE_RPC_STATUS_OK;
-            return false;
-        }
-
-        res.address = m_fee_address;
-        res.amount = m_fee_amount;
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_get_peers(const COMMAND_RPC_GET_PEERS::request &req, COMMAND_RPC_GET_PEERS::response &res)
-    {
-        std::list<PeerlistEntry> peers_white;
-        std::list<PeerlistEntry> peers_gray;
-
-        m_p2p.getPeerlistManager().get_peerlist_full(peers_gray, peers_white);
-
         for (const auto &peer : peers_white)
         {
             std::stringstream stream;
             stream << peer.adr;
-            res.peers.push_back(stream.str());
+            writer.String(stream.str());
         }
+    }
+    writer.EndArray();
 
+    writer.Key("peers_gray");
+    writer.StartArray();
+    {
         for (const auto &peer : peers_gray)
         {
             std::stringstream stream;
             stream << peer.adr;
-            res.gray_peers.push_back(stream.str());
+            writer.String(stream.str());
         }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
     }
+    writer.EndArray();
 
-    //------------------------------------------------------------------------------------------------------------------------------
-    // JSON RPC methods
-    //------------------------------------------------------------------------------------------------------------------------------
-    bool RpcServer::f_on_blocks_list_json(
-        const F_COMMAND_RPC_GET_BLOCKS_LIST::request &req,
-        F_COMMAND_RPC_GET_BLOCKS_LIST::response &res)
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::sendTransaction(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    std::vector<uint8_t> transaction;
+
+    const std::string rawData = getStringFromJSON(body, "tx_as_hex");
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    if (!Common::fromHex(rawData, transaction))
     {
-        // check if blockchain explorer RPC is enabled
-        if (m_core.getCurrency().isBlockexplorer() == false)
-        {
-            return false;
-        }
+        writer.Key("status");
+        writer.String("Failed");
 
-        if (m_core.getTopBlockIndex() + 1 <= req.height)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT,
-                                         std::string("To big height: ") + std::to_string(req.height)
-                                             + ", current blockchain height = "
-                                             + std::to_string(m_core.getTopBlockIndex())};
-        }
-
-        uint32_t print_blocks_count = 30;
-        uint32_t last_height = static_cast<uint32_t>(req.height - print_blocks_count);
-        if (req.height <= print_blocks_count)
-        {
-            last_height = 0;
-        }
-
-        for (uint32_t i = static_cast<uint32_t>(req.height); i >= last_height; i--)
-        {
-            Hash block_hash = m_core.getBlockHashByIndex(static_cast<uint32_t>(i));
-            if (!m_core.hasBlock(block_hash))
-            {
-                throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                             "Internal error: can't get block by height. Height = " + std::to_string(i)
-                                                 + '.'};
-            }
-            BlockTemplate blk = m_core.getBlockByHash(block_hash);
-            BlockDetails blkDetails = m_core.getBlockDetails(block_hash);
-
-            f_block_short_response block_short;
-            block_short.cumul_size = blkDetails.blockSize;
-            block_short.timestamp = blk.timestamp;
-            block_short.difficulty = blkDetails.difficulty;
-            block_short.height = i;
-            block_short.hash = Common::podToHex(block_hash);
-            block_short.tx_count = blk.transactionHashes.size() + 1;
-
-            res.blocks.push_back(block_short);
-
-            if (i == 0)
-            {
-                break;
-            }
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
+        writer.Key("error");
+        writer.String("Failed to parse transaction from hex buffer");
     }
-
-    bool RpcServer::f_on_block_json(
-        const F_COMMAND_RPC_GET_BLOCK_DETAILS::request &req,
-        F_COMMAND_RPC_GET_BLOCK_DETAILS::response &res)
+    else
     {
-        // check if blockchain explorer RPC is enabled
-        if (m_core.getCurrency().isBlockexplorer() == false)
+        Crypto::Hash transactionHash = Crypto::cn_fast_hash(transaction.data(), transaction.size());
+
+        writer.Key("transactionHash");
+        writer.String(Common::podToHex(transactionHash));
+
+        std::stringstream stream;
+
+        stream << "Attempting to add transaction " << transactionHash << " from /sendrawtransaction to pool";
+
+        Logger::logger.log(
+            stream.str(),
+            Logger::DEBUG,
+            { Logger::DAEMON_RPC }
+        );
+
+        const auto [success, error] = m_core->addTransactionToPool(transaction);
+
+        if (!success)
         {
-            // NOTE I think this should set a log error
-            return false;
-        }
+            /* Empty stream */
+            std::stringstream().swap(stream);
 
-        Hash hash;
+            stream << "Failed to add transaction " << transactionHash << " from /sendrawtransaction to pool: " << error;
 
-        try
-        {
-            uint32_t height = boost::lexical_cast<uint32_t>(req.hash);
-            hash = m_core.getBlockHashByIndex(height);
-        }
-        catch (boost::bad_lexical_cast &)
-        {
-            if (!parse_hash256(req.hash, hash))
-            {
-                throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM,
-                                             "Failed to parse hex representation of block hash. Hex = " + req.hash
-                                                 + '.'};
-            }
-        }
+            Logger::logger.log(
+                stream.str(),
+                Logger::INFO,
+                { Logger::DAEMON_RPC }
+            );
 
-        if (!m_core.hasBlock(hash))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                         "Internal error: can't get block by hash. Hash = " + req.hash + '.'};
-        }
-        BlockTemplate blk = m_core.getBlockByHash(hash);
-        BlockDetails blkDetails = m_core.getBlockDetails(hash);
+            writer.Key("status");
+            writer.String("Failed");
 
-        if (blk.baseTransaction.inputs.front().type() != typeid(BaseInput))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                         "Internal error: coinbase transaction in the block has the wrong type"};
-        }
-
-        block_header_response block_header;
-        res.block.height = boost::get<BaseInput>(blk.baseTransaction.inputs.front()).blockIndex;
-        fill_block_header_response(blk, false, res.block.height, hash, block_header);
-
-        res.block.major_version = block_header.major_version;
-        res.block.minor_version = block_header.minor_version;
-        res.block.timestamp = block_header.timestamp;
-        res.block.prev_hash = block_header.prev_hash;
-        res.block.nonce = block_header.nonce;
-        res.block.hash = Common::podToHex(hash);
-        res.block.depth = m_core.getTopBlockIndex() - res.block.height;
-        res.block.difficulty = m_core.getBlockDifficulty(res.block.height);
-        res.block.transactionsCumulativeSize = blkDetails.transactionsCumulativeSize;
-        res.block.alreadyGeneratedCoins = std::to_string(blkDetails.alreadyGeneratedCoins);
-        res.block.alreadyGeneratedTransactions = blkDetails.alreadyGeneratedTransactions;
-        res.block.reward = block_header.reward;
-        res.block.sizeMedian = blkDetails.sizeMedian;
-        res.block.blockSize = blkDetails.blockSize;
-        res.block.orphan_status = blkDetails.isAlternative;
-
-        uint64_t maxReward = 0;
-        uint64_t currentReward = 0;
-        int64_t emissionChange = 0;
-
-        if (maxReward)
-        {
-        }
-        if (currentReward)
-        {
-        }
-        if (emissionChange)
-        {
-        }
-
-        uint64_t blockGrantedFullRewardZone =
-            m_core.getCurrency().blockGrantedFullRewardZoneByBlockVersion(block_header.major_version);
-        res.block.effectiveSizeMedian = std::max(res.block.sizeMedian, blockGrantedFullRewardZone);
-
-        res.block.baseReward = blkDetails.baseReward;
-        res.block.penalty = blkDetails.penalty;
-
-        // Base transaction adding
-        f_transaction_short_response transaction_short;
-        transaction_short.hash = Common::podToHex(getObjectHash(blk.baseTransaction));
-        transaction_short.fee = 0;
-        transaction_short.amount_out = getOutputAmount(blk.baseTransaction);
-        transaction_short.size = getObjectBinarySize(blk.baseTransaction);
-        res.block.transactions.push_back(transaction_short);
-
-        std::vector<Crypto::Hash> missed_txs;
-        std::vector<BinaryArray> txs;
-        m_core.getTransactions(blk.transactionHashes, txs, missed_txs);
-
-        res.block.totalFeeAmount = 0;
-
-        for (const BinaryArray &ba : txs)
-        {
-            Transaction tx;
-            if (!fromBinaryArray(tx, ba))
-            {
-                throw std::runtime_error("Couldn't deserialize transaction");
-            }
-            f_transaction_short_response transaction_short;
-            uint64_t amount_in = getInputAmount(tx);
-            uint64_t amount_out = getOutputAmount(tx);
-
-            transaction_short.hash = Common::podToHex(getObjectHash(tx));
-            transaction_short.fee = amount_in - amount_out;
-            transaction_short.amount_out = amount_out;
-            transaction_short.size = getObjectBinarySize(tx);
-            res.block.transactions.push_back(transaction_short);
-
-            res.block.totalFeeAmount += transaction_short.fee;
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::f_on_transaction_json(
-        const F_COMMAND_RPC_GET_TRANSACTION_DETAILS::request &req,
-        F_COMMAND_RPC_GET_TRANSACTION_DETAILS::response &res)
-    {
-        // check if blockchain explorer RPC is enabled
-        if (m_core.getCurrency().isBlockexplorer() == false)
-        {
-            return false;
-        }
-
-        Hash hash;
-
-        if (!parse_hash256(req.hash, hash))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM,
-                                         "Failed to parse hex representation of transaction hash. Hex = " + req.hash
-                                             + '.'};
-        }
-
-        std::vector<Crypto::Hash> tx_ids;
-        tx_ids.push_back(hash);
-
-        std::vector<Crypto::Hash> missed_txs;
-        std::vector<BinaryArray> txs;
-        m_core.getTransactions(tx_ids, txs, missed_txs);
-
-        if (1 == txs.size())
-        {
-            Transaction transaction;
-            if (!fromBinaryArray(transaction, txs.front()))
-            {
-                throw std::runtime_error("Couldn't deserialize transaction");
-            }
-            res.tx = transaction;
+            writer.Key("error");
+            writer.String(error);
         }
         else
         {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM,
-                                         "transaction wasn't found. Hash = " + req.hash + '.'};
-        }
-        TransactionDetails transactionDetails = m_core.getTransactionDetails(hash);
+            m_syncManager->relayTransactions({transaction});
 
-        Crypto::Hash blockHash;
-        if (transactionDetails.inBlockchain)
+            writer.Key("status");
+            writer.String("OK");
+
+            writer.Key("error");
+            writer.String("");
+
+        }
+    }
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+    
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    const uint64_t numOutputs = getUint64FromJSON(body, "outs_count");
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("outs");
+
+    writer.StartArray();
+    {
+        for (const auto &jsonAmount : getArrayFromJSON(body, "amounts"))
         {
-            uint32_t blockHeight = transactionDetails.blockIndex;
-            if (!blockHeight)
+            writer.StartObject();
+
+            const uint64_t amount = jsonAmount.GetUint64();
+
+            std::vector<uint32_t> globalIndexes;
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            const auto [success, error] = m_core->getRandomOutputs(
+                amount, static_cast<uint16_t>(numOutputs), globalIndexes, publicKeys
+            );
+
+            if (!success)
             {
-                throw JsonRpc::JsonRpcError {
-                    CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                    "Internal error: can't get transaction by hash. Hash = " + Common::podToHex(hash) + '.'};
+                return {Error(CANT_GET_FAKE_OUTPUTS, error), 200};
             }
-            blockHash = m_core.getBlockHashByIndex(blockHeight);
-            BlockTemplate blk = m_core.getBlockByHash(blockHash);
-            BlockDetails blkDetails = m_core.getBlockDetails(blockHash);
 
-            f_block_short_response block_short;
-
-            block_short.difficulty = blkDetails.difficulty;
-            block_short.cumul_size = blkDetails.blockSize;
-            block_short.timestamp = blk.timestamp;
-            block_short.height = blockHeight;
-            block_short.hash = Common::podToHex(blockHash);
-            block_short.tx_count = blk.transactionHashes.size() + 1;
-            res.block = block_short;
-        }
-
-        uint64_t amount_in = getInputAmount(res.tx);
-        uint64_t amount_out = getOutputAmount(res.tx);
-
-        res.txDetails.hash = Common::podToHex(getObjectHash(res.tx));
-        res.txDetails.fee = amount_in - amount_out;
-        if (amount_in == 0)
-        {
-            res.txDetails.fee = 0;
-        }
-        res.txDetails.amount_out = amount_out;
-        res.txDetails.size = getObjectBinarySize(res.tx);
-
-        uint64_t mixin;
-        if (!f_getMixin(res.tx, mixin))
-        {
-            return false;
-        }
-        res.txDetails.mixin = mixin;
-
-        Crypto::Hash paymentId;
-        if (CryptoNote::getPaymentIdFromTxExtra(res.tx.extra, paymentId))
-        {
-            res.txDetails.paymentId = Common::podToHex(paymentId);
-        }
-        else
-        {
-            res.txDetails.paymentId = "";
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::f_on_transactions_pool_json(
-        const F_COMMAND_RPC_GET_POOL::request &req,
-        F_COMMAND_RPC_GET_POOL::response &res)
-    {
-        // check if blockchain explorer RPC is enabled
-        if (m_core.getCurrency().isBlockexplorer() == false)
-        {
-            return false;
-        }
-
-        auto pool = m_core.getPoolTransactions();
-        for (const Transaction tx : pool)
-        {
-            f_transaction_short_response transaction_short;
-            uint64_t amount_in = getInputAmount(tx);
-            uint64_t amount_out = getOutputAmount(tx);
-
-            transaction_short.hash = Common::podToHex(getObjectHash(tx));
-            transaction_short.fee = amount_in - amount_out;
-            transaction_short.amount_out = amount_out;
-            transaction_short.size = getObjectBinarySize(tx);
-            res.transactions.push_back(transaction_short);
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::f_getMixin(const Transaction &transaction, uint64_t &mixin)
-    {
-        mixin = 0;
-        for (const TransactionInput &txin : transaction.inputs)
-        {
-            if (txin.type() != typeid(KeyInput))
+            if (globalIndexes.size() != numOutputs)
             {
-                continue;
+                std::stringstream stream;
+
+                stream << "Failed to get enough matching outputs for amount " << amount << " ("
+                       << Utilities::formatAmount(amount) << "). Requested outputs: " << numOutputs
+                       << ", found outputs: " << globalIndexes.size()
+                       << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
+                       << std::endl
+                       << "Note: If you are a public node operator, you can safely ignore this message. "
+                       << "It is only relevant to the user sending the transaction.";
+
+                return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 200};
             }
-            uint64_t currentMixin = boost::get<KeyInput>(txin).outputIndexes.size();
-            if (currentMixin > mixin)
+
+            writer.Key("amount");
+            writer.Uint64(amount);
+
+            writer.Key("outs");
+            writer.StartArray();
             {
-                mixin = currentMixin;
-            }
-        }
-        return true;
-    }
-
-    bool RpcServer::on_getblockcount(
-        const COMMAND_RPC_GETBLOCKCOUNT::request &req,
-        COMMAND_RPC_GETBLOCKCOUNT::response &res)
-    {
-        res.count = m_core.getTopBlockIndex() + 1;
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_getblockhash(
-        const COMMAND_RPC_GETBLOCKHASH::request &req,
-        COMMAND_RPC_GETBLOCKHASH::response &res)
-    {
-        if (req.size() != 1)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM, "Wrong parameters, expected height"};
-        }
-
-        uint32_t h = static_cast<uint32_t>(req[0]);
-        Crypto::Hash blockId = m_core.getBlockHashByIndex(h - 1);
-        if (blockId == Constants::NULL_HASH)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT,
-                                         std::string("Too big height: ") + std::to_string(h)
-                                             + ", current blockchain height = "
-                                             + std::to_string(m_core.getTopBlockIndex() + 1)};
-        }
-
-        res = Common::podToHex(blockId);
-        return true;
-    }
-
-    namespace
-    {
-        uint64_t slow_memmem(void *start_buff, size_t buflen, void *pat, size_t patlen)
-        {
-            void *buf = start_buff;
-            void *end = (char *)buf + buflen - patlen;
-            while ((buf = memchr(buf, ((char *)pat)[0], buflen)))
-            {
-                if (buf > end)
+                for (size_t i = 0; i < globalIndexes.size(); i++)
                 {
-                    return 0;
+                    writer.StartObject();
+                    {
+                        writer.Key("global_amount_index");
+                        writer.Uint64(globalIndexes[i]);
+
+                        writer.Key("out_key");
+                        writer.String(Common::podToHex(publicKeys[i]));
+                    }
+                    writer.EndObject();
                 }
-                if (memcmp(buf, pat, patlen) == 0)
+            }
+            writer.EndArray();
+
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    std::vector<Crypto::Hash> blockHashCheckpoints;
+
+    if (hasMember(body, "blockHashCheckpoints"))
+    {
+        for (const auto &jsonHash : getArrayFromJSON(body, "blockHashCheckpoints"))
+        {
+            std::string hashStr = jsonHash.GetString();
+
+            Crypto::Hash hash;
+            Common::podFromHex(hashStr, hash);
+
+            blockHashCheckpoints.push_back(hash);
+        }
+    }
+
+    const uint64_t startHeight = hasMember(body, "startHeight")
+        ? getUint64FromJSON(body, "startHeight")
+        : 0;
+
+    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+        ? getUint64FromJSON(body, "startTimestamp")
+        : 0;
+
+    const uint64_t blockCount = hasMember(body, "blockCount")
+        ? getUint64FromJSON(body, "blockCount")
+        : 100;
+
+    const bool skipCoinbaseTransactions = hasMember(body, "skipCoinbaseTransactions")
+        ? getBoolFromJSON(body, "skipCoinbaseTransactions")
+        : false;
+
+    std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
+    std::optional<WalletTypes::TopBlock> topBlockInfo;
+
+    const bool success = m_core->getWalletSyncData(
+        blockHashCheckpoints,
+        startHeight,
+        startTimestamp,
+        blockCount,
+        skipCoinbaseTransactions,
+        walletBlocks,
+        topBlockInfo
+    );
+
+    if (!success)
+    {
+        return {SUCCESS, 500};
+    }
+
+    writer.Key("items");
+    writer.StartArray();
+    {
+        for (const auto &block : walletBlocks)
+        {
+            writer.StartObject();
+
+            if (block.coinbaseTransaction)
+            {
+                writer.Key("coinbaseTX");
+                writer.StartObject();
                 {
-                    return (char *)buf - (char *)start_buff;
+                    writer.Key("outputs");
+                    writer.StartArray();
+                    {
+                        for (const auto &output : block.coinbaseTransaction->keyOutputs)
+                        {
+                            writer.StartObject();
+                            {
+                                writer.Key("key");
+                                writer.String(Common::podToHex(output.key));
+
+                                writer.Key("amount");
+                                writer.Uint64(output.amount);
+                            }
+                            writer.EndObject();
+                        }
+                    }
+                    writer.EndArray();
+
+                    writer.Key("hash");
+                    writer.String(Common::podToHex(block.coinbaseTransaction->hash));
+
+                    writer.Key("txPublicKey");
+                    writer.String(Common::podToHex(block.coinbaseTransaction->transactionPublicKey));
+
+                    writer.Key("unlockTime");
+                    writer.Uint64(block.coinbaseTransaction->unlockTime);
                 }
-                buf = (char *)buf + 1;
-            }
-            return 0;
-        }
-    } // namespace
-
-    bool RpcServer::on_getblocktemplate(
-        const COMMAND_RPC_GETBLOCKTEMPLATE::request &req,
-        COMMAND_RPC_GETBLOCKTEMPLATE::response &res)
-    {
-        /* Check if enable-mining is enabled */
-        if (!m_Mining)
-        {
-            return false;
-        }
-
-        if (req.reserve_size > TX_EXTRA_NONCE_MAX_COUNT)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_TOO_BIG_RESERVE_SIZE, "To big reserved size, maximum 255"};
-        }
-
-        AccountPublicAddress acc;
-
-        if (!req.wallet_address.size() || !m_core.getCurrency().parseAccountAddressString(req.wallet_address, acc))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_WALLET_ADDRESS, "Failed to parse wallet address"};
-        }
-
-        BlockTemplate blockTemplate = boost::value_initialized<BlockTemplate>();
-        CryptoNote::BinaryArray blob_reserve;
-        blob_reserve.resize(req.reserve_size, 0);
-
-        if (!m_core.getBlockTemplate(blockTemplate, acc, blob_reserve, res.difficulty, res.height))
-        {
-            logger(ERROR) << "Failed to create block template";
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                         "Internal error: failed to create block template"};
-        }
-
-        BinaryArray block_blob = toBinaryArray(blockTemplate);
-        PublicKey tx_pub_key = CryptoNote::getTransactionPublicKeyFromExtra(blockTemplate.baseTransaction.extra);
-        if (tx_pub_key == Constants::NULL_PUBLIC_KEY)
-        {
-            logger(ERROR) << "Failed to find tx pub key in coinbase extra";
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                         "Internal error: failed to find tx pub key in coinbase extra"};
-        }
-
-        if (0 < req.reserve_size)
-        {
-            res.reserved_offset =
-                slow_memmem((void *)block_blob.data(), block_blob.size(), &tx_pub_key, sizeof(tx_pub_key));
-            if (!res.reserved_offset)
-            {
-                logger(ERROR) << "Failed to find tx pub key in blockblob";
-                throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                             "Internal error: failed to create block template"};
-            }
-            res.reserved_offset += sizeof(tx_pub_key) + 3; // 3 bytes: tag for TX_EXTRA_TAG_PUBKEY(1 byte), tag for
-                                                           // TX_EXTRA_NONCE(1 byte), counter in TX_EXTRA_NONCE(1 byte)
-            if (res.reserved_offset + req.reserve_size > block_blob.size())
-            {
-                logger(ERROR) << "Failed to calculate offset for reserved bytes";
-                throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                             "Internal error: failed to create block template"};
-            }
-        }
-        else
-        {
-            res.reserved_offset = 0;
-        }
-
-        res.blocktemplate_blob = toHex(block_blob);
-        res.status = CORE_RPC_STATUS_OK;
-
-        return true;
-    }
-
-    bool RpcServer::on_get_currency_id(
-        const COMMAND_RPC_GET_CURRENCY_ID::request & /*req*/,
-        COMMAND_RPC_GET_CURRENCY_ID::response &res)
-    {
-        Hash genesisBlockHash = m_core.getCurrency().genesisBlockHash();
-        res.currency_id_blob = Common::podToHex(genesisBlockHash);
-        return true;
-    }
-
-    bool RpcServer::on_submitblock(const COMMAND_RPC_SUBMITBLOCK::request &req, COMMAND_RPC_SUBMITBLOCK::response &res)
-    {
-        /* Check if enable-mining is enabled */
-        if (!m_Mining)
-        {
-            return false;
-        }
-
-        if (req.size() != 1)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM, "Wrong param"};
-        }
-
-        BinaryArray blockblob;
-        if (!fromHex(req[0], blockblob))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_BLOCKBLOB, "Wrong block blob"};
-        }
-
-        auto blockToSend = blockblob;
-        auto submitResult = m_core.submitBlock(std::move(blockblob));
-        if (submitResult != error::AddBlockErrorCondition::BLOCK_ADDED)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_BLOCK_NOT_ACCEPTED, "Block not accepted"};
-        }
-
-        if (submitResult == error::AddBlockErrorCode::ADDED_TO_MAIN
-            || submitResult == error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED)
-        {
-            NOTIFY_NEW_BLOCK::request newBlockMessage;
-            newBlockMessage.block = prepareRawBlockLegacy(std::move(blockToSend));
-            newBlockMessage.hop = 0;
-            newBlockMessage.current_blockchain_height =
-                m_core.getTopBlockIndex() + 1; //+1 because previous version of core sent m_blocks.size()
-
-            m_protocol.relayBlock(newBlockMessage);
-        }
-
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    RawBlockLegacy RpcServer::prepareRawBlockLegacy(BinaryArray &&blockBlob)
-    {
-        BlockTemplate blockTemplate;
-        bool result = fromBinaryArray(blockTemplate, blockBlob);
-        if (result)
-        {
-        }
-        assert(result);
-
-        RawBlockLegacy rawBlock;
-        rawBlock.blockTemplate = std::move(blockBlob);
-
-        if (blockTemplate.transactionHashes.empty())
-        {
-            return rawBlock;
-        }
-
-        rawBlock.transactions.reserve(blockTemplate.transactionHashes.size());
-        std::vector<Crypto::Hash> missedTransactions;
-        m_core.getTransactions(blockTemplate.transactionHashes, rawBlock.transactions, missedTransactions);
-        assert(missedTransactions.empty());
-
-        return rawBlock;
-    }
-
-    namespace
-    {
-        uint64_t get_block_reward(const BlockTemplate &blk)
-        {
-            uint64_t reward = 0;
-            for (const TransactionOutput &out : blk.baseTransaction.outputs)
-            {
-                reward += out.amount;
+                writer.EndObject();
             }
 
-            return reward;
-        }
-
-    } // namespace
-
-    void RpcServer::fill_block_header_response(
-        const BlockTemplate &blk,
-        bool orphan_status,
-        uint32_t index,
-        const Hash &hash,
-        block_header_response &response)
-    {
-        response.major_version = blk.majorVersion;
-        response.minor_version = blk.minorVersion;
-        response.timestamp = blk.timestamp;
-        response.prev_hash = Common::podToHex(blk.previousBlockHash);
-        response.nonce = blk.nonce;
-        response.orphan_status = orphan_status;
-        response.height = index;
-        response.depth = m_core.getTopBlockIndex() - index;
-        response.hash = Common::podToHex(hash);
-        response.difficulty = m_core.getBlockDifficulty(index);
-        response.reward = get_block_reward(blk);
-        BlockDetails blkDetails = m_core.getBlockDetails(hash);
-        response.num_txes = static_cast<uint32_t>(blkDetails.transactions.size());
-        response.block_size = blkDetails.blockSize;
-    }
-
-    bool RpcServer::on_get_last_block_header(
-        const COMMAND_RPC_GET_LAST_BLOCK_HEADER::request &req,
-        COMMAND_RPC_GET_LAST_BLOCK_HEADER::response &res)
-    {
-        auto topBlock = m_core.getBlockByHash(m_core.getTopBlockHash());
-        fill_block_header_response(
-            topBlock, false, m_core.getTopBlockIndex(), m_core.getTopBlockHash(), res.block_header);
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_get_block_header_by_hash(
-        const COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::request &req,
-        COMMAND_RPC_GET_BLOCK_HEADER_BY_HASH::response &res)
-    {
-        Hash blockHash;
-        if (!parse_hash256(req.hash, blockHash))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_WRONG_PARAM,
-                                         "Failed to parse hex representation of block hash. Hex = " + req.hash + '.'};
-        }
-
-        if (!m_core.hasBlock(blockHash))
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_INTERNAL_ERROR,
-                                         "Internal error: can't get block by hash. Hash = " + req.hash + '.'};
-        }
-
-        auto block = m_core.getBlockByHash(blockHash);
-        CachedBlock cachedBlock(block);
-        assert(block.baseTransaction.inputs.front().type() != typeid(BaseInput));
-
-        fill_block_header_response(
-            block, false, cachedBlock.getBlockIndex(), cachedBlock.getBlockHash(), res.block_header);
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_get_block_header_by_height(
-        const COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::request &req,
-        COMMAND_RPC_GET_BLOCK_HEADER_BY_HEIGHT::response &res)
-    {
-        if (m_core.getTopBlockIndex() < req.height)
-        {
-            throw JsonRpc::JsonRpcError {CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT,
-                                         std::string("To big height: ") + std::to_string(req.height)
-                                             + ", current blockchain height = "
-                                             + std::to_string(m_core.getTopBlockIndex())};
-        }
-
-        uint32_t index = static_cast<uint32_t>(req.height);
-        auto block = m_core.getBlockByIndex(index);
-        CachedBlock cachedBlock(block);
-        assert(cachedBlock.getBlockIndex() == req.height);
-        fill_block_header_response(block, false, index, cachedBlock.getBlockHash(), res.block_header);
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
-    }
-
-    bool RpcServer::on_get_block_headers_range(
-        const COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request &req,
-        COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response &res,
-        JsonRpc::JsonRpcError &error_resp)
-    {
-        // TODO: change usage to jsonRpcHandlers?
-        const uint64_t bc_height = m_core.get_current_blockchain_height();
-        if (req.start_height > bc_height || req.end_height >= bc_height || req.start_height > req.end_height)
-        {
-            error_resp.code = CORE_RPC_ERROR_CODE_TOO_BIG_HEIGHT;
-            error_resp.message = "Invalid start/end heights.";
-            return false;
-        }
-
-        for (uint32_t h = static_cast<uint32_t>(req.start_height); h <= static_cast<uint32_t>(req.end_height); ++h)
-        {
-            Crypto::Hash block_hash = m_core.getBlockHashByIndex(h);
-            CryptoNote::BlockTemplate blk = m_core.getBlockByHash(block_hash);
-
-            res.headers.push_back(block_header_response());
-            fill_block_header_response(blk, false, h, block_hash, res.headers.back());
-
-            // TODO: Error handling like in monero?
-            /*block blk;
-            bool have_block = m_core.get_block_by_hash(block_hash, blk);
-            if (!have_block)
+            writer.Key("transactions");
+            writer.StartArray();
             {
-                error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-                error_resp.message = "Internal error: can't get block by height. Height = " +
-            boost::lexical_cast<std::string>(h) + ". Hash = " + epee::string_tools::pod_to_hex(block_hash) + '.'; return
-            false;
+                for (const auto &transaction : block.transactions)
+                {
+                    writer.StartObject();
+                    {
+                        writer.Key("outputs");
+                        writer.StartArray();
+                        {
+                            for (const auto &output : transaction.keyOutputs)
+                            {
+                                writer.StartObject();
+                                {
+                                    writer.Key("key");
+                                    writer.String(Common::podToHex(output.key));
+
+                                    writer.Key("amount");
+                                    writer.Uint64(output.amount);
+                                }
+                                writer.EndObject();
+                            }
+                        }
+                        writer.EndArray();
+
+                        writer.Key("hash");
+                        writer.String(Common::podToHex(transaction.hash));
+
+                        writer.Key("txPublicKey");
+                        writer.String(Common::podToHex(transaction.transactionPublicKey));
+
+                        writer.Key("unlockTime");
+                        writer.Uint64(transaction.unlockTime);
+
+                        writer.Key("paymentID");
+                        writer.String(transaction.paymentID);
+
+                        writer.Key("inputs");
+                        writer.StartArray();
+                        {
+                            for (const auto &input : transaction.keyInputs)
+                            {
+                                writer.StartObject();
+                                {
+                                    writer.Key("amount");
+                                    writer.Uint64(input.amount);
+
+                                    writer.Key("key_offsets");
+                                    writer.StartArray();
+                                    {
+                                        for (const auto &offset : input.outputIndexes)
+                                        {
+                                            writer.Uint64(offset);
+                                        }
+                                    }
+                                    writer.EndArray();
+
+                                    writer.Key("k_image");
+                                    writer.String(Common::podToHex(input.keyImage));
+                                }
+                                writer.EndObject();
+                            }
+                        }
+                        writer.EndArray();
+                    }
+                    writer.EndObject();
+                }
             }
-            if (blk.miner_tx.vin.size() != 1 || blk.miner_tx.vin.front().type() != typeid(txin_gen))
-            {
-                error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-                error_resp.message = "Internal error: coinbase transaction in the block has the wrong type";
-                return false;
-            }
-            uint64_t block_height = boost::get<txin_gen>(blk.miner_tx.vin.front()).height;
-            if (block_height != h)
-            {
-                error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-                error_resp.message = "Internal error: coinbase transaction in the block has the wrong height";
-                return false;
-            }
-            res.headers.push_back(block_header_response());
-            bool response_filled = fill_block_header_response(blk, false, block_height, block_hash, res.headers.back());
-            if (!response_filled)
-            {
-                error_resp.code = CORE_RPC_ERROR_CODE_INTERNAL_ERROR;
-                error_resp.message = "Internal error: can't produce valid response.";
-                return false;
-            }*/
-        }
+            writer.EndArray();
 
-        res.status = CORE_RPC_STATUS_OK;
-        return true;
+            writer.Key("blockHeight");
+            writer.Uint64(block.blockHeight);
+
+            writer.Key("blockHash");
+            writer.String(Common::podToHex(block.blockHash));
+
+            writer.Key("blockTimestamp");
+            writer.Uint64(block.blockTimestamp);
+
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    if (topBlockInfo)
+    {
+        writer.Key("topBlock");
+        writer.StartObject();
+        {
+            writer.Key("hash");
+            writer.String(Common::podToHex(topBlockInfo->hash));
+
+            writer.Key("height");
+            writer.Uint64(topBlockInfo->height);
+        }
+        writer.EndObject();
     }
 
-} // namespace CryptoNote
+    writer.Key("synced");
+    writer.Bool(walletBlocks.empty());
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const uint64_t startHeight = getUint64FromJSON(body, "startHeight");
+    const uint64_t endHeight = getUint64FromJSON(body, "endHeight");
+
+    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> indexes;
+
+    const bool success = m_core->getGlobalIndexesForRange(startHeight, endHeight, indexes);
+
+    writer.StartObject();
+
+    if (!success)
+    {
+        writer.Key("status");
+        writer.String("Failed");
+
+        res.body = sb.GetString();
+
+        return {SUCCESS, 500};
+    }
+
+    writer.Key("indexes");
+
+    writer.StartArray();
+    {
+        for (const auto [hash, globalIndexes] : indexes)
+        {
+            writer.StartObject();
+
+            writer.Key("key");
+            writer.String(Common::podToHex(hash));
+            
+            writer.Key("value");
+            writer.StartArray();
+            {
+                for (const auto index : globalIndexes)
+                {
+                    writer.Uint64(index);
+                }
+            }
+            writer.EndArray();
+
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+
+    writer.StartObject();
+
+    const uint64_t reserveSize = getUint64FromJSON(params, "reserve_size");
+
+    if (reserveSize > 255)
+    {
+        failJsonRpcRequest(
+            -3,
+            "Too big reserved size, maximum allowed is 255",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    const std::string address = getStringFromJSON(params, "wallet_address");
+
+    Error addressError = validateAddresses({address}, false);
+
+    if (addressError)
+    {
+        failJsonRpcRequest(
+            -4,
+            addressError.getErrorMessage(),
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
+
+    CryptoNote::BlockTemplate blockTemplate;
+
+    std::vector<uint8_t> blobReserve;
+    blobReserve.resize(reserveSize, 0);
+
+    uint64_t difficulty;
+    uint32_t height;
+
+    const auto [success, error] = m_core->getBlockTemplate(
+        blockTemplate, publicViewKey, publicSpendKey, blobReserve, difficulty, height
+    );
+
+    if (!success)
+    {
+        failJsonRpcRequest(
+            -5,
+            "Failed to create block template: " + error,
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    std::vector<uint8_t> blockBlob = CryptoNote::toBinaryArray(blockTemplate);
+
+    const auto transactionPublicKey = Utilities::getTransactionPublicKeyFromExtra(
+        blockTemplate.baseTransaction.extra
+    );
+
+    uint64_t reservedOffset = 0;
+
+    if (reserveSize > 0)
+    {
+        /* Find where in the block blob the transaction public key is */
+        const auto it = std::search(
+            blockBlob.begin(),
+            blockBlob.end(),
+            std::begin(transactionPublicKey.data),
+            std::end(transactionPublicKey.data)
+        );
+
+        /* The reserved offset is past the transactionPublicKey, then past
+         * the extra nonce tags */
+        reservedOffset = (it - blockBlob.begin()) + sizeof(transactionPublicKey) + 3;
+
+        if (reservedOffset + reserveSize > blockBlob.size())
+        {
+            failJsonRpcRequest(
+                -5,
+                "Internal error: failed to create block template, not enough space for reserved bytes",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+    }
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("height");
+        writer.Uint(height);
+
+        writer.Key("difficulty");
+        writer.Uint64(difficulty);
+
+        writer.Key("reserved_offset");
+        writer.Uint64(reservedOffset);
+
+        writer.Key("blocktemplate_blob");
+        writer.String(Common::toHex(blockBlob));
+
+        writer.Key("status");
+        writer.String("OK");
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::submitBlock(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getArrayFromJSON(body, "params");
+
+    if (params.Size() != 1)
+    {
+        failJsonRpcRequest(
+            -1,
+            "You must submit one and only one block blob! (Found " + std::to_string(params.Size()) + ")",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    const std::string blockBlob = getStringFromJSONString(params[0]);
+
+    std::vector<uint8_t> rawBlob;
+
+    if (!Common::fromHex(blockBlob, rawBlob))
+    {
+        failJsonRpcRequest(
+            -6,
+            "Submitted block blob is not hex!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    const auto submitResult = m_core->submitBlock(rawBlob);
+
+    if (submitResult != CryptoNote::error::AddBlockErrorCondition::BLOCK_ADDED)
+    {
+        failJsonRpcRequest(
+            -7,
+            "Block not accepted",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    if (submitResult == CryptoNote::error::AddBlockErrorCode::ADDED_TO_MAIN
+        || submitResult == CryptoNote::error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED)
+    {
+        CryptoNote::NOTIFY_NEW_BLOCK::request newBlockMessage;
+
+        CryptoNote::BlockTemplate blockTemplate;
+        CryptoNote::fromBinaryArray(blockTemplate, rawBlob);
+        newBlockMessage.block = CryptoNote::RawBlockLegacy(rawBlob, blockTemplate, m_core);
+        newBlockMessage.hop = 0;
+        newBlockMessage.current_blockchain_height = m_core->getTopBlockIndex() + 1;
+
+        m_syncManager->relayBlock(newBlockMessage);
+    }
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlockCount(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("count");
+        writer.Uint64(m_core->getTopBlockIndex() + 1);
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto height = m_core->getTopBlockIndex();
+    const auto hash = m_core->getBlockHashByIndex(height);
+    const auto topBlock = m_core->getBlockByHash(hash);
+    const auto outputs = topBlock.baseTransaction.outputs;
+    const auto extraDetails = m_core->getBlockDetails(hash);
+
+    const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
+        [](const auto acc, const auto out) {
+            return acc + out.amount;
+        }
+    );
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("block_header");
+        writer.StartObject();
+        {
+            writer.Key("major_version");
+            writer.Uint64(topBlock.majorVersion);
+
+            writer.Key("minor_version");
+            writer.Uint64(topBlock.minorVersion);
+
+            writer.Key("timestamp");
+            writer.Uint64(topBlock.timestamp);
+
+            writer.Key("prev_hash");
+            writer.String(Common::podToHex(topBlock.previousBlockHash));
+
+            writer.Key("nonce");
+            writer.Uint64(topBlock.nonce);
+
+            writer.Key("orphan_status");
+            writer.Bool(extraDetails.isAlternative);
+
+            writer.Key("height");
+            writer.Uint64(height);
+
+            writer.Key("depth");
+            writer.Uint64(0);
+
+            writer.Key("hash");
+            writer.String(Common::podToHex(hash));
+
+            writer.Key("difficulty");
+            writer.Uint64(m_core->getBlockDifficulty(height));
+
+            writer.Key("reward");
+            writer.Uint64(reward);
+
+            writer.Key("num_txes");
+            writer.Uint64(extraDetails.transactions.size());
+
+            writer.Key("block_size");
+            writer.Uint64(extraDetails.blockSize);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHash(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+    const auto hashStr = getStringFromJSON(params, "hash");
+    const auto topHeight = m_core->getTopBlockIndex();
+
+    Crypto::Hash hash;
+
+    if (!Common::podFromHex(hashStr, hash))
+    {
+        failJsonRpcRequest(
+            -1,
+            "Block hash specified is not a valid hex!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    CryptoNote::BlockTemplate block;
+
+    try
+    {
+        block = m_core->getBlockByHash(hash);
+    }
+    catch (const std::runtime_error &)
+    {
+        failJsonRpcRequest(
+            -5,
+            "Block hash specified does not exist!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    CryptoNote::CachedBlock cachedBlock(block);
+
+    const auto height = cachedBlock.getBlockIndex();
+    const auto outputs = block.baseTransaction.outputs;
+    const auto extraDetails = m_core->getBlockDetails(hash);
+
+    const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
+        [](const auto acc, const auto out) {
+            return acc + out.amount;
+        }
+    );
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("block_header");
+        writer.StartObject();
+        {
+            writer.Key("major_version");
+            writer.Uint64(block.majorVersion);
+
+            writer.Key("minor_version");
+            writer.Uint64(block.minorVersion);
+
+            writer.Key("timestamp");
+            writer.Uint64(block.timestamp);
+
+            writer.Key("prev_hash");
+            writer.String(Common::podToHex(block.previousBlockHash));
+
+            writer.Key("nonce");
+            writer.Uint64(block.nonce);
+
+            writer.Key("orphan_status");
+            writer.Bool(extraDetails.isAlternative);
+
+            writer.Key("height");
+            writer.Uint64(height);
+
+            writer.Key("depth");
+            writer.Uint64(topHeight - height);
+
+            writer.Key("hash");
+            writer.String(Common::podToHex(hash));
+
+            writer.Key("difficulty");
+            writer.Uint64(m_core->getBlockDifficulty(height));
+
+            writer.Key("reward");
+            writer.Uint64(reward);
+
+            writer.Key("num_txes");
+            writer.Uint64(extraDetails.transactions.size());
+
+            writer.Key("block_size");
+            writer.Uint64(extraDetails.blockSize);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHeight(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+    const auto height = getUint64FromJSON(params, "height");
+    const auto topHeight = m_core->getTopBlockIndex();
+
+    if (height > topHeight)
+    {
+        failJsonRpcRequest(
+            -2,
+            "Requested block header for a height that is higher than the current "
+            "blockchain height! Current height: " + std::to_string(topHeight),
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    const auto hash = m_core->getBlockHashByIndex(height);
+    const auto block = m_core->getBlockByHash(hash);
+
+    const auto outputs = block.baseTransaction.outputs;
+    const auto extraDetails = m_core->getBlockDetails(hash);
+
+    const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
+        [](const auto acc, const auto out) {
+            return acc + out.amount;
+        }
+    );
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("block_header");
+        writer.StartObject();
+        {
+            writer.Key("major_version");
+            writer.Uint64(block.majorVersion);
+
+            writer.Key("minor_version");
+            writer.Uint64(block.minorVersion);
+
+            writer.Key("timestamp");
+            writer.Uint64(block.timestamp);
+
+            writer.Key("prev_hash");
+            writer.String(Common::podToHex(block.previousBlockHash));
+
+            writer.Key("nonce");
+            writer.Uint64(block.nonce);
+
+            writer.Key("orphan_status");
+            writer.Bool(extraDetails.isAlternative);
+
+            writer.Key("height");
+            writer.Uint64(height);
+
+            writer.Key("depth");
+            writer.Uint64(topHeight - height);
+
+            writer.Key("hash");
+            writer.String(Common::podToHex(hash));
+
+            writer.Key("difficulty");
+            writer.Uint64(m_core->getBlockDifficulty(height));
+
+            writer.Key("reward");
+            writer.Uint64(reward);
+
+            writer.Key("num_txes");
+            writer.Uint64(extraDetails.transactions.size());
+
+            writer.Key("block_size");
+            writer.Uint64(extraDetails.blockSize);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlocksByHeight(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+    const auto height = getUint64FromJSON(params, "height");
+    const auto topHeight = m_core->getTopBlockIndex();
+
+    if (height > topHeight)
+    {
+        failJsonRpcRequest(
+            -2,
+            "Requested block header for a height that is higher than the current "
+            "blockchain height! Current height: " + std::to_string(topHeight),
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        const uint64_t MAX_BLOCKS_COUNT = 30;
+        const uint64_t startHeight = height < MAX_BLOCKS_COUNT ? 0 : height - MAX_BLOCKS_COUNT;
+
+        writer.Key("blocks");
+        writer.StartArray();
+        {
+            for (uint64_t i = height; i >= startHeight; i--)
+            {
+                writer.StartObject();
+
+                const auto hash = m_core->getBlockHashByIndex(i);
+                const auto block = m_core->getBlockByHash(hash);
+                const auto extraDetails = m_core->getBlockDetails(hash);
+
+                writer.Key("cumul_size");
+                writer.Uint64(extraDetails.blockSize);
+
+                writer.Key("difficulty");
+                writer.Uint64(extraDetails.difficulty);
+
+                writer.Key("hash");
+                writer.String(Common::podToHex(hash));
+
+                writer.Key("height");
+                writer.Uint64(i);
+
+                writer.Key("timestamp");
+                writer.Uint64(block.timestamp);
+
+                /* Plus one for coinbase tx */
+                writer.Key("tx_count");
+                writer.Uint64(block.transactionHashes.size() + 1);
+
+                writer.EndObject();
+            }
+        }
+        writer.EndArray();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+    const auto hashStr = getStringFromJSON(params, "hash");
+    const auto topHeight = m_core->getTopBlockIndex();
+
+    Crypto::Hash hash;
+
+    /* Hash parameter can be both a hash string, and a number... because cryptonote.. */
+    try
+    {
+        uint64_t height = std::stoull(hashStr);
+
+        hash = m_core->getBlockHashByIndex(height - 1);
+
+        if (hash == Constants::NULL_HASH)
+        {
+            failJsonRpcRequest(
+                -2,
+                "Requested hash for a height that is higher than the current "
+                "blockchain height! Current height: " + std::to_string(topHeight),
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+    }
+    catch (const std::invalid_argument &)
+    {
+        if (!Common::podFromHex(hashStr, hash))
+        {
+            failJsonRpcRequest(
+                -1,
+                "Block hash specified is not a valid hex!",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+    }
+
+    const auto block = m_core->getBlockByHash(hash);
+    const auto extraDetails = m_core->getBlockDetails(hash);
+    const auto height = CryptoNote::CachedBlock(block).getBlockIndex();
+    const auto outputs = block.baseTransaction.outputs;
+
+    const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
+        [](const auto acc, const auto out) {
+            return acc + out.amount;
+        }
+    );
+
+    const uint64_t blockSizeMedian = std::max(
+        extraDetails.sizeMedian,
+        static_cast<uint64_t>(
+            m_core->getCurrency().blockGrantedFullRewardZoneByBlockVersion(block.majorVersion)
+        )
+    );
+
+    std::vector<Crypto::Hash> ignore;
+    std::vector<std::vector<uint8_t>> transactions;
+
+    m_core->getTransactions(block.transactionHashes, transactions, ignore);
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("block");
+        writer.StartObject();
+        {
+            writer.Key("major_version");
+            writer.Uint64(block.majorVersion);
+
+            writer.Key("minor_version");
+            writer.Uint64(block.minorVersion);
+
+            writer.Key("timestamp");
+            writer.Uint64(block.timestamp);
+
+            writer.Key("prev_hash");
+            writer.String(Common::podToHex(block.previousBlockHash));
+
+            writer.Key("nonce");
+            writer.Uint64(block.nonce);
+
+            writer.Key("orphan_status");
+            writer.Bool(extraDetails.isAlternative);
+
+            writer.Key("height");
+            writer.Uint64(height);
+
+            writer.Key("depth");
+            writer.Uint64(topHeight - height);
+
+            writer.Key("hash");
+            writer.String(Common::podToHex(hash));
+
+            writer.Key("difficulty");
+            writer.Uint64(m_core->getBlockDifficulty(height));
+
+            writer.Key("reward");
+            writer.Uint64(reward);
+
+            writer.Key("blockSize");
+            writer.Uint64(extraDetails.blockSize);
+
+            writer.Key("transactionsCumulativeSize");
+            writer.Uint64(extraDetails.transactionsCumulativeSize);
+
+            writer.Key("alreadyGeneratedCoins");
+            writer.String(std::to_string(extraDetails.alreadyGeneratedCoins));
+
+            writer.Key("alreadyGeneratedTransactions");
+            writer.Uint64(extraDetails.alreadyGeneratedTransactions);
+
+            writer.Key("sizeMedian");
+            writer.Uint64(extraDetails.sizeMedian);
+
+            writer.Key("baseReward");
+            writer.Uint64(extraDetails.baseReward);
+
+            writer.Key("penalty");
+            writer.Double(extraDetails.penalty);
+
+            writer.Key("effectiveSizeMedian");
+            writer.Uint64(blockSizeMedian);
+
+            uint64_t totalFee = 0;
+
+            writer.Key("transactions");
+            writer.StartArray();
+            {
+                /* Coinbase transaction */
+                writer.StartObject();
+                {
+                    const auto txOutputs = block.baseTransaction.outputs;
+
+                    const uint64_t outputAmount = std::accumulate(txOutputs.begin(), txOutputs.end(), 0ull,
+                        [](const auto acc, const auto out) {
+                            return acc + out.amount;
+                        }
+                    );
+
+                    writer.Key("hash");
+                    writer.String(Common::podToHex(getObjectHash(block.baseTransaction)));
+
+                    writer.Key("fee");
+                    writer.Uint64(0);
+
+                    writer.Key("amount_out");
+                    writer.Uint64(outputAmount);
+
+                    writer.Key("size");
+                    writer.Uint64(getObjectBinarySize(block.baseTransaction));
+                }
+                writer.EndObject();
+
+                for (const std::vector<uint8_t> rawTX : transactions)
+                {
+                    writer.StartObject();
+                    {
+                        CryptoNote::Transaction tx;
+
+                        fromBinaryArray(tx, rawTX);
+
+                        const uint64_t outputAmount = std::accumulate(tx.outputs.begin(), tx.outputs.end(), 0ull,
+                            [](const auto acc, const auto out) {
+                                return acc + out.amount;
+                            }
+                        );
+
+                        const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
+                            [](const auto acc, const auto in) {
+                                if (in.type() == typeid(CryptoNote::KeyInput))
+                                {
+                                    return acc + boost::get<CryptoNote::KeyInput>(in).amount;
+                                }
+
+                                return acc;
+                            }
+                        );
+
+                        const uint64_t fee = inputAmount - outputAmount;
+
+                        writer.Key("hash");
+                        writer.String(Common::podToHex(getObjectHash(tx)));
+
+                        writer.Key("fee");
+                        writer.Uint64(fee);
+
+                        writer.Key("amount_out");
+                        writer.Uint64(outputAmount);
+
+                        writer.Key("size");
+                        writer.Uint64(getObjectBinarySize(tx));
+
+                        totalFee += fee;
+                    }
+                    writer.EndObject();
+                }
+            }
+            writer.EndArray();
+
+            writer.Key("totalFeeAmount");
+            writer.Uint64(totalFee);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    const auto params = getObjectFromJSON(body, "params");
+    const auto hashStr = getStringFromJSON(params, "hash");
+
+    Crypto::Hash hash;
+
+    if (!Common::podFromHex(hashStr, hash))
+    {
+        failJsonRpcRequest(
+            -1,
+            "Block hash specified is not a valid hex!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    std::vector<Crypto::Hash> ignore;
+    std::vector<std::vector<uint8_t>> rawTXs;
+    std::vector<Crypto::Hash> hashes { hash };
+
+    m_core->getTransactions(hashes, rawTXs, ignore);
+
+    if (rawTXs.size() != 1)
+    {
+        failJsonRpcRequest(
+            -1,
+            "Block hash specified does not exist!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    CryptoNote::Transaction transaction;
+    CryptoNote::TransactionDetails txDetails = m_core->getTransactionDetails(hash);
+
+    const uint64_t blockHeight = txDetails.blockIndex;
+    const auto blockHash = m_core->getBlockHashByIndex(blockHeight);
+    const auto block = m_core->getBlockByHash(blockHash);
+    const auto extraDetails = m_core->getBlockDetails(blockHash);
+
+    fromBinaryArray(transaction, rawTXs[0]);
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("block");
+        writer.StartObject();
+        {
+            writer.Key("cumul_size");
+            writer.Uint64(extraDetails.blockSize);
+
+            writer.Key("difficulty");
+            writer.Uint64(extraDetails.difficulty);
+
+            writer.Key("hash");
+            writer.String(Common::podToHex(blockHash));
+
+            writer.Key("height");
+            writer.Uint64(blockHeight);
+
+            writer.Key("timestamp");
+            writer.Uint64(block.timestamp);
+
+            /* Plus one for coinbase tx */
+            writer.Key("tx_count");
+            writer.Uint64(block.transactionHashes.size() + 1);
+        }
+        writer.EndObject();
+
+        writer.Key("tx");
+        writer.StartObject();
+        {
+            writer.Key("extra");
+            writer.String(Common::podToHex(transaction.extra));
+
+            writer.Key("unlock_time");
+            writer.Uint64(transaction.unlockTime);
+
+            writer.Key("version");
+            writer.Uint64(transaction.version);
+
+            writer.Key("vin");
+            writer.StartArray();
+            {
+                for (const auto input : transaction.inputs)
+                {
+                    const auto type = input.type() == typeid(CryptoNote::BaseInput)
+                        ? "ff"
+                        : "02";
+
+                    writer.StartObject();
+                    {
+                        writer.Key("type");
+                        writer.String(type);
+
+                        writer.Key("value");
+                        writer.StartObject();
+                        {
+                            if (input.type() == typeid(CryptoNote::BaseInput))
+                            {
+                                writer.Key("height");
+                                writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
+                            }
+                            else
+                            {
+                                const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+
+                                writer.Key("k_image");
+                                writer.String(Common::podToHex(keyInput.keyImage));
+
+                                writer.Key("amount");
+                                writer.Uint64(keyInput.amount);
+
+                                writer.Key("key_offsets");
+                                writer.StartArray();
+                                {
+                                    for (const auto index : keyInput.outputIndexes)
+                                    {
+                                        writer.Uint(index);
+                                    }
+                                }
+                                writer.EndArray();
+                            }
+                        }
+                        writer.EndObject();
+                    }
+                    writer.EndObject();
+                }
+            }
+            writer.EndArray();
+
+            writer.Key("vout");
+            writer.StartArray();
+            {
+                for (const auto output : transaction.outputs)
+                {
+                    writer.StartObject();
+                    {
+                        writer.Key("amount");
+                        writer.Uint64(output.amount);
+
+                        writer.Key("target");
+                        writer.StartObject();
+                        {
+                            writer.Key("data");
+                            writer.StartObject();
+                            {
+                                writer.Key("key");
+                                writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
+                            }
+                            writer.EndObject();
+
+                            writer.Key("type");
+                            writer.String("02");
+                        }
+                        writer.EndObject();
+                    }
+                    writer.EndObject();
+                }
+            }
+            writer.EndArray();
+        }
+        writer.EndObject();
+
+        writer.Key("txDetails");
+        writer.StartObject();
+        {
+            writer.Key("hash");
+            writer.String(Common::podToHex(txDetails.hash));
+
+            writer.Key("amount_out");
+            writer.Uint64(txDetails.totalOutputsAmount);
+
+            writer.Key("fee");
+            writer.Uint64(txDetails.fee);
+
+            writer.Key("mixin");
+            writer.Uint64(txDetails.mixin);
+
+            writer.Key("paymentId");
+            if (txDetails.paymentId == Constants::NULL_HASH)
+            {
+                writer.String("");
+            }
+            else
+            {
+                writer.String(Common::podToHex(txDetails.paymentId));
+            }
+
+            writer.Key("size");
+            writer.Uint64(txDetails.size);
+        }
+        writer.EndObject();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    writer.Key("jsonrpc");
+    writer.String("2.0");
+
+    writer.Key("result");
+    writer.StartObject();
+    {
+        writer.Key("status");
+        writer.String("OK");
+
+        writer.Key("transactions");
+        writer.StartArray();
+        {
+            for (const auto tx : m_core->getPoolTransactions())
+            {
+                writer.StartObject();
+
+                const uint64_t outputAmount = std::accumulate(tx.outputs.begin(), tx.outputs.end(), 0ull,
+                    [](const auto acc, const auto out) {
+                        return acc + out.amount;
+                    }
+                );
+
+                const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
+                    [](const auto acc, const auto in) {
+                        if (in.type() == typeid(CryptoNote::KeyInput))
+                        {
+                            return acc + boost::get<CryptoNote::KeyInput>(in).amount;
+                        }
+
+                        return acc;
+                    }
+                );
+
+                const uint64_t fee = inputAmount - outputAmount;
+
+                writer.Key("hash");
+                writer.String(Common::podToHex(getObjectHash(tx)));
+
+                writer.Key("fee");
+                writer.Uint64(fee);
+
+                writer.Key("amount_out");
+                writer.Uint64(outputAmount);
+
+                writer.Key("size");
+                writer.Uint64(getObjectBinarySize(tx));
+
+                writer.EndObject();
+            }
+        }
+        writer.EndArray();
+    }
+    writer.EndObject();
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    uint64_t timestamp = 0;
+
+    if (hasMember(body, "timestamp"))
+    {
+        timestamp = getUint64FromJSON(body, "timestamp");
+    }
+
+    std::vector<Crypto::Hash> knownBlockHashes;
+
+    if (hasMember(body, "blockIds"))
+    {
+        for (const auto &hashStrJson : getArrayFromJSON(body, "blockIds"))
+        {
+            Crypto::Hash hash;
+
+            if (!Common::podFromHex(getStringFromJSONString(hashStrJson), hash))
+            {
+                failRequest(400, "Block hash specified is not a valid hex string!", res);
+                return {SUCCESS, 400};
+            }
+
+            knownBlockHashes.push_back(hash);
+        }
+    }
+
+    uint32_t startHeight;
+    uint32_t currentHeight;
+    uint32_t fullOffset;
+
+    std::vector<CryptoNote::BlockShortInfo> blocks;
+
+    if (!m_core->queryBlocksLite(knownBlockHashes, timestamp, startHeight, currentHeight, fullOffset, blocks))
+    {
+        failRequest(500, "Internal error: failed to queryblockslite", res);
+        return {SUCCESS, 500};
+    }
+
+    writer.StartObject();
+
+    writer.Key("fullOffset");
+    writer.Uint64(fullOffset);
+
+    writer.Key("currentHeight");
+    writer.Uint64(currentHeight);
+
+    writer.Key("startHeight");
+    writer.Uint64(startHeight);
+
+    writer.Key("items");
+    writer.StartArray();
+    {
+        for (const auto block : blocks)
+        {
+            writer.StartObject();
+            {
+                writer.Key("blockShortInfo.block");
+                writer.StartArray();
+                {
+                    for (const auto c : block.block)
+                    {
+                        writer.Uint64(c);
+                    }
+                }
+                writer.EndArray();
+
+                writer.Key("blockShortInfo.blockId");
+                writer.String(Common::podToHex(block.blockId));
+
+                writer.Key("blockShortInfo.txPrefixes");
+                writer.StartArray();
+                {
+                    for (const auto prefix : block.txPrefixes)
+                    {
+                        writer.StartObject();
+                        {
+                            writer.Key("transactionPrefixInfo.txHash");
+                            writer.String(Common::podToHex(prefix.txHash));
+
+                            writer.Key("transactionPrefixInfo.txPrefix");
+                            writer.StartObject();
+                            {
+                                writer.Key("extra");
+                                writer.String(Common::podToHex(prefix.txPrefix.extra));
+
+                                writer.Key("unlock_time");
+                                writer.Uint64(prefix.txPrefix.unlockTime);
+
+                                writer.Key("version");
+                                writer.Uint64(prefix.txPrefix.version);
+
+                                writer.Key("vin");
+                                writer.StartArray();
+                                {
+                                    for (const auto input : prefix.txPrefix.inputs)
+                                    {
+                                        const auto type = input.type() == typeid(CryptoNote::BaseInput)
+                                            ? "ff"
+                                            : "02";
+
+                                        writer.StartObject();
+                                        {
+                                            writer.Key("type");
+                                            writer.String(type);
+
+                                            writer.Key("value");
+                                            writer.StartObject();
+                                            {
+                                                if (input.type() == typeid(CryptoNote::BaseInput))
+                                                {
+                                                    writer.Key("height");
+                                                    writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
+                                                }
+                                                else
+                                                {
+                                                    const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+
+                                                    writer.Key("k_image");
+                                                    writer.String(Common::podToHex(keyInput.keyImage));
+
+                                                    writer.Key("amount");
+                                                    writer.Uint64(keyInput.amount);
+
+                                                    writer.Key("key_offsets");
+                                                    writer.StartArray();
+                                                    {
+                                                        for (const auto index : keyInput.outputIndexes)
+                                                        {
+                                                            writer.Uint(index);
+                                                        }
+                                                    }
+                                                    writer.EndArray();
+                                                }
+                                            }
+                                            writer.EndObject();
+                                        }
+                                        writer.EndObject();
+                                    }
+                                }
+                                writer.EndArray();
+
+                                writer.Key("vout");
+                                writer.StartArray();
+                                {
+                                    for (const auto output : prefix.txPrefix.outputs)
+                                    {
+                                        writer.StartObject();
+                                        {
+                                            writer.Key("amount");
+                                            writer.Uint64(output.amount);
+
+                                            writer.Key("target");
+                                            writer.StartObject();
+                                            {
+                                                writer.Key("data");
+                                                writer.StartObject();
+                                                {
+                                                    writer.Key("key");
+                                                    writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
+                                                }
+                                                writer.EndObject();
+
+                                                writer.Key("type");
+                                                writer.String("02");
+                                            }
+                                            writer.EndObject();
+                                        }
+                                        writer.EndObject();
+                                    }
+                                }
+                                writer.EndArray();
+                            }
+                            writer.EndObject();
+                        }
+                        writer.EndObject();
+                    }
+                }
+                writer.EndArray();
+            }
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getTransactionsStatus(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    std::unordered_set<Crypto::Hash> transactionHashes;
+
+    for (const auto &hashStr : getArrayFromJSON(body, "transactionHashes"))
+    {
+        Crypto::Hash hash;
+
+        if (!Common::podFromHex(getStringFromJSONString(hashStr), hash))
+        {
+            failRequest(400, "Transaction hash specified is not a valid hex string!", res);
+            return {SUCCESS, 400};
+        }
+
+        transactionHashes.insert(hash);
+    }
+
+    std::unordered_set<Crypto::Hash> transactionsInPool;
+    std::unordered_set<Crypto::Hash> transactionsInBlock;
+    std::unordered_set<Crypto::Hash> transactionsUnknown;
+
+    const bool success = m_core->getTransactionsStatus(
+        transactionHashes, transactionsInPool, transactionsInBlock, transactionsUnknown
+    );
+
+    if (!success)
+    {
+        failRequest(500, "Internal error: failed to getTransactionsStatus", res);
+        return {SUCCESS, 500};
+    }
+
+    writer.StartObject();
+
+    writer.Key("transactionsInBlock");
+    writer.StartArray();
+    {
+        for (const auto &hash : transactionsInBlock)
+        {
+            writer.String(Common::podToHex(hash));
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("transactionsInPool");
+    writer.StartArray();
+    {
+        for (const auto &hash : transactionsInPool)
+        {
+            writer.String(Common::podToHex(hash));
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("transactionsUnknown");
+    writer.StartArray();
+    {
+        for (const auto &hash : transactionsUnknown)
+        {
+            writer.String(Common::podToHex(hash));
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    Crypto::Hash lastBlockHash; 
+
+    if (!Common::podFromHex(getStringFromJSON(body, "tailBlockId"), lastBlockHash))
+    {
+        failRequest(400, "tailBlockId specified is not a valid hex string!", res);
+        return {SUCCESS, 400};
+    }
+
+    std::vector<Crypto::Hash> knownHashes;
+
+    for (const auto &hashStr : getArrayFromJSON(body, "knownTxsIds"))
+    {
+        Crypto::Hash hash;
+
+        if (!Common::podFromHex(getStringFromJSONString(hashStr), hash))
+        {
+            failRequest(400, "Transaction hash specified is not a valid hex string!", res);
+            return {SUCCESS, 400};
+        }
+
+        knownHashes.push_back(hash);
+    }
+
+    std::vector<CryptoNote::TransactionPrefixInfo> addedTransactions;
+    std::vector<Crypto::Hash> deletedTransactions;
+
+    const bool atTopOfChain = m_core->getPoolChangesLite(
+        lastBlockHash, knownHashes, addedTransactions, deletedTransactions
+    );
+
+    writer.StartObject();
+
+    writer.Key("addedTxs");
+    writer.StartArray();
+    {
+        for (const auto prefix: addedTransactions)
+        {
+            writer.StartObject();
+            {
+                writer.Key("transactionPrefixInfo.txHash");
+                writer.String(Common::podToHex(prefix.txHash));
+
+                writer.Key("transactionPrefixInfo.txPrefix");
+                writer.StartObject();
+                {
+                    writer.Key("extra");
+                    writer.String(Common::podToHex(prefix.txPrefix.extra));
+
+                    writer.Key("unlock_time");
+                    writer.Uint64(prefix.txPrefix.unlockTime);
+
+                    writer.Key("version");
+                    writer.Uint64(prefix.txPrefix.version);
+
+                    writer.Key("vin");
+                    writer.StartArray();
+                    {
+                        for (const auto input : prefix.txPrefix.inputs)
+                        {
+                            const auto type = input.type() == typeid(CryptoNote::BaseInput)
+                                ? "ff"
+                                : "02";
+
+                            writer.StartObject();
+                            {
+                                writer.Key("type");
+                                writer.String(type);
+
+                                writer.Key("value");
+                                writer.StartObject();
+                                {
+                                    if (input.type() == typeid(CryptoNote::BaseInput))
+                                    {
+                                        writer.Key("height");
+                                        writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
+                                    }
+                                    else
+                                    {
+                                        const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+
+                                        writer.Key("k_image");
+                                        writer.String(Common::podToHex(keyInput.keyImage));
+
+                                        writer.Key("amount");
+                                        writer.Uint64(keyInput.amount);
+
+                                        writer.Key("key_offsets");
+                                        writer.StartArray();
+                                        {
+                                            for (const auto index : keyInput.outputIndexes)
+                                            {
+                                                writer.Uint(index);
+                                            }
+                                        }
+                                        writer.EndArray();
+                                    }
+                                }
+                                writer.EndObject();
+                            }
+                            writer.EndObject();
+                        }
+                    }
+                    writer.EndArray();
+
+                    writer.Key("vout");
+                    writer.StartArray();
+                    {
+                        for (const auto output : prefix.txPrefix.outputs)
+                        {
+                            writer.StartObject();
+                            {
+                                writer.Key("amount");
+                                writer.Uint64(output.amount);
+
+                                writer.Key("target");
+                                writer.StartObject();
+                                {
+                                    writer.Key("data");
+                                    writer.StartObject();
+                                    {
+                                        writer.Key("key");
+                                        writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
+                                    }
+                                    writer.EndObject();
+
+                                    writer.Key("type");
+                                    writer.String("02");
+                                }
+                                writer.EndObject();
+                            }
+                            writer.EndObject();
+                        }
+                    }
+                    writer.EndArray();
+                }
+                writer.EndObject();
+            }
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("deletedTxsIds");
+    writer.StartArray();
+    {
+        for (const auto hash : deletedTransactions)
+        {
+            writer.String(Common::podToHex(hash));
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("isTailBlockActual");
+    writer.Bool(atTopOfChain);
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    uint64_t timestamp = 0;
+
+    if (hasMember(body, "timestamp"))
+    {
+        timestamp = getUint64FromJSON(body, "timestamp");
+    }
+
+    std::vector<Crypto::Hash> knownBlockHashes;
+
+    if (hasMember(body, "blockIds"))
+    {
+        for (const auto &hashStrJson : getArrayFromJSON(body, "blockIds"))
+        {
+            Crypto::Hash hash;
+
+            if (!Common::podFromHex(getStringFromJSONString(hashStrJson), hash))
+            {
+                failRequest(400, "Block hash specified is not a valid hex string!", res);
+                return {SUCCESS, 400};
+            }
+
+            knownBlockHashes.push_back(hash);
+        }
+    }
+
+    uint64_t startHeight;
+    uint64_t currentHeight;
+    uint64_t fullOffset;
+
+    uint64_t blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+
+    if (hasMember(body, "blockCount"))
+    {
+        blockCount = getUint64FromJSON(body, "blockCount");
+    }
+
+    std::vector<CryptoNote::BlockDetails> blocks;
+
+    if (!m_core->queryBlocksDetailed(knownBlockHashes, timestamp, startHeight, currentHeight, fullOffset, blocks, blockCount))
+    {
+        failRequest(500, "Internal error: failed to queryblockslite", res);
+        return {SUCCESS, 500};
+    }
+
+    writer.StartObject();
+
+    writer.Key("fullOffset");
+    writer.Uint64(fullOffset);
+
+    writer.Key("currentHeight");
+    writer.Uint64(currentHeight);
+
+    writer.Key("startHeight");
+    writer.Uint64(startHeight);
+
+    writer.Key("blocks");
+    writer.StartArray();
+    {
+        for (const auto block : blocks)
+        {
+            writer.StartObject();
+            {
+                writer.Key("major_version");
+                writer.Uint64(block.majorVersion);
+
+                writer.Key("minor_version");
+                writer.Uint64(block.minorVersion);
+
+                writer.Key("timestamp");
+                writer.Uint64(block.timestamp);
+
+                writer.Key("prevBlockHash");
+                writer.String(Common::podToHex(block.prevBlockHash));
+
+                writer.Key("index");
+                writer.Uint64(block.index);
+
+                writer.Key("hash");
+                writer.String(Common::podToHex(block.hash));
+
+                writer.Key("difficulty");
+                writer.Uint64(block.difficulty);
+
+                writer.Key("reward");
+                writer.Uint64(block.reward);
+
+                writer.Key("blockSize");
+                writer.Uint64(block.blockSize);
+
+                writer.Key("alreadyGeneratedCoins");
+                writer.String(std::to_string(block.alreadyGeneratedCoins));
+
+                writer.Key("alreadyGeneratedTransactions");
+                writer.Uint64(block.alreadyGeneratedTransactions);
+
+                writer.Key("sizeMedian");
+                writer.Uint64(block.sizeMedian);
+
+                writer.Key("baseReward");
+                writer.Uint64(block.baseReward);
+
+                writer.Key("nonce");
+                writer.Uint64(block.nonce);
+
+                writer.Key("totalFeeAmount");
+                writer.Uint64(block.totalFeeAmount);
+
+                writer.Key("transactionsCumulativeSize");
+                writer.Uint64(block.transactionsCumulativeSize);
+
+                writer.Key("transactions");
+                writer.StartArray();
+                {
+                    for (const auto &tx : block.transactions)
+                    {
+                        writer.StartObject();
+                        {
+                            writer.Key("blockHash");
+                            writer.String(Common::podToHex(block.hash));
+
+                            writer.Key("blockIndex");
+                            writer.Uint64(block.index);
+
+                            writer.Key("extra");
+                            writer.StartObject();
+                            {
+                                writer.Key("nonce");
+                                writer.StartArray();
+                                {
+                                    for (const auto c : tx.extra.nonce)
+                                    {
+                                        writer.Uint64(c);
+                                    }
+                                }
+                                writer.EndArray();
+
+                                writer.Key("publicKey");
+                                writer.String(Common::podToHex(tx.extra.publicKey));
+
+                                writer.Key("raw");
+                                writer.String(Common::toHex(tx.extra.raw));
+                            }
+                            writer.EndObject();
+
+                            writer.Key("fee");
+                            writer.Uint64(tx.fee);
+
+                            writer.Key("hash");
+                            writer.String(Common::podToHex(tx.hash));
+
+                            writer.Key("inBlockchain");
+                            writer.Bool(tx.inBlockchain);
+
+                            writer.Key("inputs");
+                            writer.StartArray();
+                            {
+                                for (const auto &input : tx.inputs)
+                                {
+                                    const auto type = input.type() == typeid(CryptoNote::BaseInput)
+                                        ? "ff"
+                                        : "02";
+
+                                    writer.StartObject();
+                                    {
+                                        writer.Key("type");
+                                        writer.String(type);
+
+                                        writer.Key("data");
+                                        writer.StartObject();
+                                        {
+                                            if (input.type() == typeid(CryptoNote::BaseInputDetails))
+                                            {
+                                                const auto in = boost::get<CryptoNote::BaseInputDetails>(input);
+
+                                                writer.Key("amount");
+                                                writer.Uint64(in.amount);
+
+                                                writer.Key("input");
+                                                writer.StartObject();
+                                                {
+                                                    writer.Key("height");
+                                                    writer.Uint64(in.input.blockIndex);
+                                                }
+                                                writer.EndObject();
+                                            }
+                                            else
+                                            {
+                                                const auto in = boost::get<CryptoNote::KeyInputDetails>(input);
+
+                                                writer.Key("input");
+                                                writer.StartObject();
+                                                {
+                                                    writer.Key("amount");
+                                                    writer.Uint64(in.input.amount);
+
+                                                    writer.Key("k_image");
+                                                    writer.String(Common::podToHex(in.input.keyImage));
+
+                                                    writer.Key("key_offsets");
+                                                    writer.StartArray();
+                                                    {
+                                                        for (const auto index : in.input.outputIndexes)
+                                                        {
+                                                            writer.Uint(index);
+                                                        }
+                                                    }
+                                                    writer.EndArray();
+
+                                                }
+                                                writer.EndObject();
+
+                                                writer.Key("mixin");
+                                                writer.Uint64(in.mixin);
+
+                                                writer.Key("output");
+                                                writer.StartObject();
+                                                {
+                                                    writer.Key("transactionHash");
+                                                    writer.String(Common::podToHex(in.output.transactionHash));
+
+                                                    writer.Key("number");
+                                                    writer.Uint64(in.output.number);
+                                                }
+                                                writer.EndObject();
+                                            }
+                                        }
+                                        writer.EndObject();
+                                    }
+                                    writer.EndObject();
+                                }
+                            }
+                            writer.EndArray();
+
+                            writer.Key("mixin");
+                            writer.Uint64(tx.mixin);
+
+                            writer.Key("outputs");
+                            writer.StartArray();
+                            {
+                                for (const auto &output : tx.outputs)
+                                {
+                                    writer.StartObject();
+                                    {
+                                        writer.Key("globalIndex");
+                                        writer.Uint64(output.globalIndex);
+
+                                        writer.Key("output");
+                                        writer.StartObject();
+                                        {
+                                            writer.Key("amount");
+                                            writer.Uint64(output.output.amount);
+
+                                            writer.Key("target");
+                                            writer.StartObject();
+                                            {
+                                                writer.Key("data");
+                                                writer.StartObject();
+                                                {
+                                                    writer.Key("key");
+                                                    writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.output.target).key));
+                                                }
+                                                writer.EndObject();
+
+                                                writer.Key("type");
+                                                writer.String("02");
+                                            }
+                                            writer.EndObject();
+                                        }
+                                        writer.EndObject();
+                                    }
+                                    writer.EndObject();
+                                }
+                            }
+                            writer.EndArray();
+
+                            writer.Key("paymentId");
+                            writer.String(Common::podToHex(tx.paymentId));
+
+                            writer.Key("signatures");
+                            writer.StartArray();
+                            {
+                                int i = 0;
+
+                                for (const auto &sigs : tx.signatures)
+                                {
+                                    for (const auto &sig : sigs)
+                                    {
+                                        writer.StartObject();
+                                        {
+                                            writer.Key("first");
+                                            writer.Uint64(i);
+
+                                            writer.Key("second");
+                                            writer.String(Common::podToHex(sig));
+                                        }
+                                        writer.EndObject();
+                                    }
+
+                                    i++;
+                                }
+                            }
+                            writer.EndArray();
+
+                            writer.Key("signaturesSize");
+                            writer.Uint64(tx.signatures.size());
+
+                            writer.Key("size");
+                            writer.Uint64(tx.size);
+
+                            writer.Key("timestamp");
+                            writer.Uint64(tx.timestamp);
+
+                            writer.Key("totalInputsAmount");
+                            writer.Uint64(tx.totalInputsAmount);
+
+                            writer.Key("totalOutputsAmount");
+                            writer.Uint64(tx.totalOutputsAmount);
+
+                            writer.Key("unlockTime");
+                            writer.Uint64(tx.unlockTime);
+                        }
+                        writer.EndObject();
+                    }
+                }
+                writer.EndArray();
+            }
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+/* Deprecated. Use getGlobalIndexes instead. */
+std::tuple<Error, uint16_t> RpcServer::getGlobalIndexesDeprecated(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    Crypto::Hash hash;
+
+    if (!Common::podFromHex(getStringFromJSON(body, "txid"), hash))
+    {
+        failRequest(400, "txid specified is not a valid hex string!", res);
+        return {SUCCESS, 400};
+    }
+
+    std::vector<uint32_t> indexes;
+
+    const bool success = m_core->getTransactionGlobalIndexes(hash, indexes);
+
+    if (!success)
+    {
+        failRequest(500, "Internal error: Failed to getTransactionGlobalIndexes", res);
+        return {SUCCESS, 500};
+    }
+
+    writer.StartObject();
+
+    writer.Key("o_indexes");
+
+    writer.StartArray();
+    {
+        for (const auto &index : indexes)
+        {
+            writer.Uint64(index);
+        }
+    }
+    writer.EndArray();
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+
+    std::vector<Crypto::Hash> blockHashCheckpoints;
+
+    if (hasMember(body, "blockHashCheckpoints"))
+    {
+        for (const auto &jsonHash : getArrayFromJSON(body, "blockHashCheckpoints"))
+        {
+            std::string hashStr = jsonHash.GetString();
+
+            Crypto::Hash hash;
+            Common::podFromHex(hashStr, hash);
+
+            blockHashCheckpoints.push_back(hash);
+        }
+    }
+
+    const uint64_t startHeight = hasMember(body, "startHeight")
+        ? getUint64FromJSON(body, "startHeight")
+        : 0;
+
+    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+        ? getUint64FromJSON(body, "startTimestamp")
+        : 0;
+
+    const uint64_t blockCount = hasMember(body, "blockCount")
+        ? getUint64FromJSON(body, "blockCount")
+        : 100;
+
+    const bool skipCoinbaseTransactions = hasMember(body, "skipCoinbaseTransactions")
+        ? getBoolFromJSON(body, "skipCoinbaseTransactions")
+        : false;
+
+    std::vector<CryptoNote::RawBlock> blocks;
+    std::optional<WalletTypes::TopBlock> topBlockInfo;
+
+    const bool success = m_core->getRawBlocks(
+        blockHashCheckpoints,
+        startHeight,
+        startTimestamp,
+        blockCount,
+        skipCoinbaseTransactions,
+        blocks,
+        topBlockInfo
+    );
+
+    if (!success)
+    {
+        return {SUCCESS, 500};
+    }
+
+    writer.Key("items");
+    writer.StartArray();
+    {
+        for (const auto &block : blocks)
+        {
+            writer.StartObject();
+
+            writer.Key("block");
+            writer.String(Common::toHex(block.block));
+
+            writer.Key("transactions");
+            writer.StartArray();
+            for (const auto &transaction : block.transactions)
+            {
+                writer.String(Common::toHex(transaction));
+            }
+            writer.EndArray();
+
+            writer.EndObject();
+        }
+    }
+    writer.EndArray();
+
+    if (topBlockInfo)
+    {
+        writer.Key("topBlock");
+        writer.StartObject();
+        {
+            writer.Key("hash");
+            writer.String(Common::podToHex(topBlockInfo->hash));
+
+            writer.Key("height");
+            writer.Uint64(topBlockInfo->height);
+        }
+        writer.EndObject();
+    }
+
+    writer.Key("synced");
+    writer.Bool(blocks.empty());
+
+    writer.Key("status");
+    writer.String("OK");
+
+    writer.EndObject();
+
+    res.body = sb.GetString();
+
+    return {SUCCESS, 200};
+}
+
