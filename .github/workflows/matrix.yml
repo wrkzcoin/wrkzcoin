@@ -120,30 +120,24 @@ jobs:
           cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds
           echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
 
-      # Upload to AMZ Release
-      - name: Upload to AMZ Release
-        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin' && matrix.deployable
-        uses: aws-actions/configure-aws-credentials@v1
-        env:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
-          asset_name: ${{ steps.before_deploy.outputs.file_name }}
-          asset_content_type: application/gzip
-
       # Upload to AMZ
-      - name: Upload To AMZ Artifacts
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        run: |
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
-        env:
+        with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          name: ${{ steps.before_deploy.outputs.file_name }}
-          path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+      - name: Upload S3
+        run: |
+          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/}
 
   # Mac builds on Catalina VM
   macos_build:
@@ -209,31 +203,24 @@ jobs:
           cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds
           echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
 
-
-      # Upload to AMZ Release
-      - name: Upload to AMZ Release
-        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
-        uses: aws-actions/configure-aws-credentials@v1
-        env:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
-          asset_name: ${{ steps.before_deploy.outputs.file_name }}
-          asset_content_type: application/gzip
-
       # Upload to AMZ
-      - name: Upload To AMZ Artifacts
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        run: |
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
-        env:
+        with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          name: ${{ steps.before_deploy.outputs.file_name }}
-          path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+      - name: Upload S3
+        run: |
+          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
 
   # Windows Builds on Windows Server 2019
   windows_build:
@@ -295,28 +282,21 @@ jobs:
           cp wrkzcoin-${TAG}-${LABEL}.zip builds
           echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.zip
 
-
-      # Upload to AMZ Release
-      - name: Upload to AMZ Release
-        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
-        uses: aws-actions/configure-aws-credentials@v1
-        env:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}
-          asset_name: ${{ steps.before_deploy.outputs.file_name }}
-          asset_content_type: application/zip
-
       # Upload to AMZ
-      - name: Upload To AMZ Artifacts
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        run: |
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
-        env:
+        with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
-        with:
-          name: ${{ steps.before_deploy.outputs.file_name }}
-          path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}
+      - name: Upload S3
+        run: |
+          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
