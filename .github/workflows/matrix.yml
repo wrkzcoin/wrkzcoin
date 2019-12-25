@@ -138,7 +138,7 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/}
+          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
 
   # Mac builds on Catalina VM
   macos_build:
@@ -222,7 +222,7 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
+          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
 
   # Windows Builds on Windows Server 2019
   windows_build:
@@ -302,4 +302,4 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
+          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
