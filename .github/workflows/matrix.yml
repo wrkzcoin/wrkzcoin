@@ -1,5 +1,14 @@
 name: Build
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  schedule:
+    - cron: '30 3 * * 0'
+
+env:
+  TAG: ${{ github.ref }}
 
 jobs:
   # Common Build matrix for builds on Ubuntu VM
@@ -23,7 +32,7 @@ jobs:
             cc: gcc-8
             cxx: g++-8
             label: linux
-            deployable: false
+            deployable: true
           - build_name: 'Ubuntu Clang 6'
             cc: clang-6.0
             cxx: clang++-6.0
@@ -31,7 +40,7 @@ jobs:
             deployable: false
           - build_name: 'aarch64'
             label: aarch64
-            deployable: false
+            deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
@@ -91,6 +100,48 @@ jobs:
           cd build/src
           ./cryptotest
 
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          if [[ "${LABEL}" != "aarch64" ]]; then strip ${TARGETS}; fi
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp ${TARGETS} wrkzcoin-${TAG}/
+          cp ../../LICENSE wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+
+      # Upload to AMZ Release
+      - name: Upload to AMZ Release
+        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin' && matrix.deployable
+        uses: jakejarvis/s3-sync-action@master
+        env:
+          AWS_S3_BUCKET: 'wrkzcoin'
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+          asset_name: ${{ steps.before_deploy.outputs.file_name }}
+          asset_content_type: application/gzip
+
+      # Upload to GH Actions Artifacts
+      - name: Upload To AMZ Artifacts
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          name: ${{ steps.before_deploy.outputs.file_name }}
+          path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
@@ -135,6 +186,49 @@ jobs:
           cd build/src
           ./cryptotest
 
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          strip ${TARGETS}
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp ${TARGETS} wrkzcoin-${TAG}/
+          cp ../../LICENSE wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+
+
+      # Upload to AMZ Release
+      - name: Upload to AMZ Release
+        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
+        uses: jakejarvis/s3-sync-action@master
+        env:
+          AWS_S3_BUCKET: 'wrkzcoin'
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+          asset_name: ${{ steps.before_deploy.outputs.file_name }}
+          asset_content_type: application/gzip
+
+      # Upload to GH Actions Artifacts
+      - name: Upload To AMZ Artifacts
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          name: ${{ steps.before_deploy.outputs.file_name }}
+          path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
+
   # Windows Builds on Windows Server 2019
   windows_build:
     name: Windows
@@ -175,3 +269,45 @@ jobs:
         run: |
           cd build/src/Release
           ./cryptotest.exe
+
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        shell: bash
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src/Release
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp *.exe wrkzcoin-${TAG}/
+          cp ../../../LICENSE wrkzcoin-${TAG}/
+          7z a wrkzcoin-${TAG}-${LABEL}.zip wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.zip builds
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.zip
+
+
+      # Upload to AMZ Release
+      - name: Upload to AMZ Release
+        if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
+        uses: jakejarvis/s3-sync-action@master
+        env:
+          AWS_S3_BUCKET: 'wrkzcoin'
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}
+          asset_name: ${{ steps.before_deploy.outputs.file_name }}
+          asset_content_type: application/zip
+
+      # Upload to GH Actions Artifacts
+      - name: Upload To AMZ Artifacts
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          name: ${{ steps.before_deploy.outputs.file_name }}
+          path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}

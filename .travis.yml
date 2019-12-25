@@ -89,7 +89,7 @@ script:
 before_deploy:
 - if [[ "${TRAVIS_TAG}" == "" ]]; then export TRAVIS_TAG=${TRAVIS_COMMIT} ; fi
 - cd src
-- TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api"
+- TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
 - ${STRIP} ${TARGETS}
 - rm -rf wrkzcoin-${TRAVIS_TAG}
 - mkdir wrkzcoin-${TRAVIS_TAG}
