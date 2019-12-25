@@ -123,21 +123,24 @@ jobs:
       # Upload to AMZ Release
       - name: Upload to AMZ Release
         if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin' && matrix.deployable
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
         env:
-          AWS_S3_BUCKET: 'wrkzcoin'
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
           asset_name: ${{ steps.before_deploy.outputs.file_name }}
           asset_content_type: application/gzip
 
-      # Upload to GH Actions Artifacts
+      # Upload to AMZ
       - name: Upload To AMZ Artifacts
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
+        env:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           name: ${{ steps.before_deploy.outputs.file_name }}
           path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
@@ -210,21 +213,24 @@ jobs:
       # Upload to AMZ Release
       - name: Upload to AMZ Release
         if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
         env:
-          AWS_S3_BUCKET: 'wrkzcoin'
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
           asset_name: ${{ steps.before_deploy.outputs.file_name }}
           asset_content_type: application/gzip
 
-      # Upload to GH Actions Artifacts
+      # Upload to AMZ
       - name: Upload To AMZ Artifacts
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
+        env:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           name: ${{ steps.before_deploy.outputs.file_name }}
           path: ./build/src/${{ steps.before_deploy.outputs.file_name }}
@@ -293,21 +299,24 @@ jobs:
       # Upload to AMZ Release
       - name: Upload to AMZ Release
         if: github.event_name == 'release' && github.repository == 'wrkzcoin/wrkzcoin'
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
         env:
-          AWS_S3_BUCKET: 'wrkzcoin'
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}
           asset_name: ${{ steps.before_deploy.outputs.file_name }}
           asset_content_type: application/zip
 
-      # Upload to GH Actions Artifacts
+      # Upload to AMZ
       - name: Upload To AMZ Artifacts
-        uses: jakejarvis/s3-sync-action@master
+        uses: aws-actions/configure-aws-credentials@v1
+        env:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
         with:
           name: ${{ steps.before_deploy.outputs.file_name }}
           path: ./build/src/Release/${{ steps.before_deploy.outputs.file_name }}
