@@ -127,6 +127,7 @@ jobs:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         run: |
+          export PATH=$HOME/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
@@ -137,7 +138,7 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/}
+          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/}
 
   # Mac builds on Catalina VM
   macos_build:
@@ -210,6 +211,7 @@ jobs:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         run: |
+          export PATH=$HOME/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
@@ -220,7 +222,7 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
+          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
 
   # Windows Builds on Windows Server 2019
   windows_build:
@@ -299,4 +301,4 @@ jobs:
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
         run: |
-          aws s3 cp ./build/src/Release/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
+          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/
