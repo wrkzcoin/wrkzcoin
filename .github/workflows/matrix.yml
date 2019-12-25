@@ -291,6 +291,7 @@ jobs:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         run: |
+          set PATH="%PATH%;%USERPROFILE%\\.local\\bin\\"
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
