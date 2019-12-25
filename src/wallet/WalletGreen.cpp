@@ -1810,7 +1810,11 @@ namespace CryptoNote
                         0,
                         [](const uint64_t accumulator, const auto output) { return accumulator + output.amounts.size(); });
 
-                    const std::string paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(extra));
+                    std::string paymentID = "";
+                    if (extra != "")
+                    {
+                        paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(extra));
+                    }
 
                     const size_t transactionSize = Utilities::estimateTransactionSize(
                         mixIn,
