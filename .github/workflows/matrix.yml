@@ -251,7 +251,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DCMAKE_BUILD_TYPE=Release -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL"
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DOPENSSL_ROOT_DIR="C:\Strawberry\c\"
 
       # Build for Windows
       - name: Build
