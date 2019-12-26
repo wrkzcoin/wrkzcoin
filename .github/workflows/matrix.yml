@@ -126,8 +126,9 @@ jobs:
         with:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
         run: |
-          export PATH=$HOME/.local/bin:$PATH
+          export PATH=~/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
@@ -210,10 +211,11 @@ jobs:
         with:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
         run: |
+          export PATH=~/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
-          export PATH=~/.local/bin:$PATH
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -221,8 +223,9 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
+        shell: bash
         run: |
-          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
+          ~/.local/bin/aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
 
   # Windows Builds on Windows Server 2019
   windows_build:
@@ -290,8 +293,9 @@ jobs:
         with:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
         run: |
-          set PATH="%PATH%;%USERPROFILE%\.local\bin"
+          export PATH=~/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
@@ -301,5 +305,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
       - name: Upload S3
+        shell: bash
         run: |
-          aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
+          ~/.local/bin/aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
