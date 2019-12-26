@@ -211,9 +211,9 @@ jobs:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         run: |
-          export PATH=$HOME/.local/bin:$PATH
           pip install --user pipx
           pipx install awscli
+          export PATH=~/.local/bin:$PATH
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -291,7 +291,7 @@ jobs:
           python-version: 3.7 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         run: |
-          export PATH=$HOME/.local/bin:$PATH
+          set PATH="%PATH%;%USERPROFILE%\.local\bin"
           pip install --user pipx
           pipx install awscli
       - name: Configure AWS Credentials
