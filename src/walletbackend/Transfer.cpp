@@ -1458,12 +1458,7 @@ namespace SendTransaction
         const uint64_t height,
         const CryptoNote::Transaction tx)
     {
-        bool isFusion = false;
-
-        if (expectedFee.feePerByte == 0)
-        {
-            isFusion = true;
-        }
+        const bool isFusion = expectedFee.isFixedFee && expectedFee.fixedFee == 0;
 
         if ((height <= CryptoNote::parameters::MINIMUM_FEE_V1_HEIGHT + 1) && !isFusion)
         {
