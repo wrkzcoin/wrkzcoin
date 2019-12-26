@@ -1,11 +1,17 @@
-#### Master Build Status
-[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=master)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/1frq0rdw651lipac/branch/master?svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin/branch/master)
+# WrkzCoin
 
+![Download Count](https://img.shields.io/github/downloads/wrkzcoin/wrkzcoin/total.svg?include_prereleases)
+![Open Issue Count](https://img.shields.io/github/issues/wrkzcoin/wrkzcoin)
+![License](https://img.shields.io/github/license/wrkzcoin/wrkzcoin)
+![Version](https://img.shields.io/github/v/release/wrkzcoin/wrkzcoin?include_prereleases)
 
-#### Development Build Status
-[![Build Status](https://travis-ci.org/wrkzcoin/wrkzcoin.svg?branch=dev)](https://travis-ci.org/wrkzcoin/wrkzcoin) [![Build status](https://ci.appveyor.com/api/projects/status/1frq0rdw651lipac/branch/dev?svg=true)](https://ci.appveyor.com/project/wrkzdev/wrkzcoin/branch/dev)
+### Master Build Status
 
+![Master Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=master)
 
+### Development Build Status
+
+![Development Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=development)
 
 ### Installing
 

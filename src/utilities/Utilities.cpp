@@ -271,7 +271,7 @@ namespace Utilities
         const size_t OUTPUT_TAG_SIZE = sizeof(uint8_t);
         const size_t PUBLIC_KEY_SIZE = sizeof(Crypto::PublicKey);
         const size_t TRANSACTION_VERSION_SIZE = sizeof(uint8_t);
-        const size_t TRANSACTION_UNLOCK_TIME_SIZE = sizeof(uint64_t);
+        const size_t TRANSACTION_UNLOCK_TIME_SIZE = sizeof(uint64_t) + 2; // varint
         const size_t EXTRA_DATA_SIZE = extraDataSize > 0 ? extraDataSize + 4 : 0;
         const size_t PAYMENT_ID_SIZE = havePaymentID ? 34 : 0;
 
@@ -290,7 +290,7 @@ namespace Utilities
                                + SIGNATURE_SIZE
                                + GLOBAL_INDEXES_VECTOR_SIZE_SIZE
                                + GLOBAL_INDEXES_INITIAL_VALUE_SIZE
-                               + mixin * (GLOBAL_INDEXES_DIFFERENCE_SIZE + SIGNATURE_SIZE);
+                               + mixin * SIGNATURE_SIZE;
 
         const size_t inputsSize = inputSize * numInputs;
 

@@ -1,5 +1,14 @@
 name: Build
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  schedule:
+    - cron: '30 3 * * 0'
+
+env:
+  TAG: ${{ github.ref }}
 
 jobs:
   # Common Build matrix for builds on Ubuntu VM
@@ -23,7 +32,7 @@ jobs:
             cc: gcc-8
             cxx: g++-8
             label: linux
-            deployable: false
+            deployable: true
           - build_name: 'Ubuntu Clang 6'
             cc: clang-6.0
             cxx: clang++-6.0
@@ -31,7 +40,7 @@ jobs:
             deployable: false
           - build_name: 'aarch64'
             label: aarch64
-            deployable: false
+            deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
@@ -91,6 +100,47 @@ jobs:
           cd build/src
           ./cryptotest
 
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          if [[ "${LABEL}" != "aarch64" ]]; then strip ${TARGETS}; fi
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp ${TARGETS} wrkzcoin-${TAG}/
+          cp ../../LICENSE wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+
+      # Upload to AMZ
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
+        run: |
+          export PATH=~/.local/bin:$PATH
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+      - name: Upload S3
+        run: |
+          aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
+
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
@@ -135,6 +185,48 @@ jobs:
           cd build/src
           ./cryptotest
 
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          strip ${TARGETS}
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp ${TARGETS} wrkzcoin-${TAG}/
+          cp ../../LICENSE wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+
+      # Upload to AMZ
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
+        run: |
+          export PATH=~/.local/bin:$PATH
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+      - name: Upload S3
+        shell: bash
+        run: |
+          ~/.local/bin/aws s3 cp ./build/src/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
+
   # Windows Builds on Windows Server 2019
   windows_build:
     name: Windows
@@ -159,7 +251,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DOPENSSL_ROOT_DIR="C:\Strawberry\c\"
 
       # Build for Windows
       - name: Build
@@ -175,3 +267,44 @@ jobs:
         run: |
           cd build/src/Release
           ./cryptotest.exe
+
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        shell: bash
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "${TAG:5:4}" == "tags" ]]; then export TAG=${TAG:10}; else export TAG=${COMMIT_SHA}; fi
+          cd build/src/Release
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp *.exe wrkzcoin-${TAG}/
+          cp ../../../LICENSE wrkzcoin-${TAG}/
+          7z a wrkzcoin-${TAG}-${LABEL}.zip wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${TAG}-${LABEL}.zip builds/
+          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.zip
+
+      # Upload to AMZ
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7 # Or other version
+      - name: Install awscli via pipx # Isolates dependencies
+        shell: bash
+        run: |
+          export PATH=~/.local/bin:$PATH
+          pip install --user pipx
+          pipx install awscli
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+      - name: Upload S3
+        shell: bash
+        run: |
+          ~/.local/bin/aws s3 cp ./build/src/Release/builds/${{ steps.before_deploy.outputs.file_name }} s3://wrkzcoin/wrkzcoin/${{ steps.before_deploy.outputs.file_name }}
