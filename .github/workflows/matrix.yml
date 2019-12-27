@@ -273,15 +273,13 @@ jobs:
           cp wrkzcoin-${DATE_WITH_TIME}-${TAG}-${LABEL}.zip builds/
           echo ::set-output name=file_name::wrkzcoin-${DATE_WITH_TIME}-${TAG}-${LABEL}.zip
 
-      # Upload to FTP
-      - name: FTP-Deploy-Action
-        uses: SamKirkland/FTP-Deploy-Action@2.0.0
-        env:
-          FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
-          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          METHOD: ${{ secrets.FTP_METHOD }}
-          PORT: ${{ secrets.FTP_PORT }}
-          LOCAL_DIR: ./build/src/Release/builds
-          REMOTE_DIR: /wrkz-bin.bot.tips/cli
-          ARGS: --include-glob=*.zip --include-glob=*.tar.gz 
+      # Upload to remote server
+      - name: Upload using rsync
+        shell: bash
+        run: |
+          SSH_PATH="~/.ssh"
+          mkdir "$SSH_PATH"
+          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/deploy_key"
+          chmod 600 "$SSH_PATH/deploy_key"
+          rsync -q -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/deploy_key -o StrictHostKeyChecking=no" ./build/src/Release/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }}  
+
