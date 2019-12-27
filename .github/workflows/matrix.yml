@@ -126,10 +126,10 @@ jobs:
         shell: bash
         run: |
           SSH_PATH="~/.ssh"
-          mkdir "$SSH_PATH"
-          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/deploy_key"
-          chmod 600 "$SSH_PATH/deploy_key"
-          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/deploy_key -o StrictHostKeyChecking=no" ./build/src/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }} 
+          mkdir -p "$SSH_PATH"
+          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/my_deploy_key"
+          chmod 600 "$SSH_PATH/my_deploy_key"
+          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/my_deploy_key -o StrictHostKeyChecking=no" ./build/src/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }} 
 
   # Mac builds on Catalina VM
   macos_build:
@@ -201,10 +201,10 @@ jobs:
         shell: bash
         run: |
           SSH_PATH="~/.ssh"
-          mkdir "$SSH_PATH"
-          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/deploy_key"
-          chmod 600 "$SSH_PATH/deploy_key"
-          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/deploy_key -o StrictHostKeyChecking=no" ./build/src/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }} 
+          mkdir -p "$SSH_PATH"
+          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/my_deploy_key"
+          chmod 600 "$SSH_PATH/my_deploy_key"
+          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/my_deploy_key -o StrictHostKeyChecking=no" ./build/src/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }} 
 
   # Windows Builds on Windows Server 2019
   windows_build:
@@ -272,7 +272,7 @@ jobs:
         shell: bash
         run: |
           SSH_PATH="~/.ssh"
-          mkdir "$SSH_PATH"
-          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/deploy_key"
-          chmod 600 "$SSH_PATH/deploy_key"
-          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/deploy_key -o StrictHostKeyChecking=no" ./build/src/Release/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }}  
+          mkdir -p "$SSH_PATH"
+          echo "${{ secrets.FTP_DEPLOY_KEY }}" > "$SSH_PATH/my_deploy_key"
+          chmod 600 "$SSH_PATH/my_deploy_key"
+          rsync -aq -e "ssh -p ${{ secrets.FTP_PORT }} -i $SSH_PATH/my_deploy_key -o StrictHostKeyChecking=no" ./build/src/Release/builds/ ${{ secrets.FTP_USERNAME }}@${{ secrets.FTP_SERVER }}:${{ secrets.FTP_PATH }}  
