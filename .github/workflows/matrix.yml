@@ -131,6 +131,7 @@ jobs:
           METHOD: ${{ secrets.FTP_METHOD }}
           PORT: ${{ secrets.FTP_PORT }}
           LOCAL_DIR: ./build/src/builds
+          REMOTE_DIR: /wrkz-bin.bot.tips/cli
           ARGS: --include-glob=*.zip --include-glob=*.tar.gz 
 
   # Mac builds on Catalina VM
@@ -208,6 +209,7 @@ jobs:
           METHOD: ${{ secrets.FTP_METHOD }}
           PORT: ${{ secrets.FTP_PORT }}
           LOCAL_DIR: ./build/src/builds
+          REMOTE_DIR: /wrkz-bin.bot.tips/cli
           ARGS: --include-glob=*.zip --include-glob=*.tar.gz 
 
   # Windows Builds on Windows Server 2019
@@ -281,4 +283,5 @@ jobs:
           METHOD: ${{ secrets.FTP_METHOD }}
           PORT: ${{ secrets.FTP_PORT }}
           LOCAL_DIR: ./build/src/Release/builds
+          REMOTE_DIR: /wrkz-bin.bot.tips/cli
           ARGS: --include-glob=*.zip --include-glob=*.tar.gz 
