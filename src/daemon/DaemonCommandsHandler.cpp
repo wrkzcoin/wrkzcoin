@@ -403,6 +403,8 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
         CryptoNote::CachedTransaction ctx(tx);
 
         std::cout << InformationMsg("Hash: ") << SuccessMsg(ctx.getTransactionHash())
+                  << InformationMsg(", Size: ") << SuccessMsg(Utilities::prettyPrintBytes(ctx.getTransactionBinaryArray().size()))
+                  << InformationMsg(", Fee: ") << SuccessMsg(Utilities::formatAmount(ctx.getTransactionFee()))
                   << InformationMsg(", Fusion: ");
 
         if (ctx.getTransactionFee() == 0)
