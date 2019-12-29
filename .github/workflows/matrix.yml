@@ -321,7 +321,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DOPENSSL_ROOT_DIR="C:\Strawberry\c\"
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default
 
       # Build for Windows
       - name: Build
@@ -413,4 +413,3 @@ jobs:
             export PATH=$MINGW64_PATH:$PATH
           fi
           curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
-
