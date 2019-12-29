@@ -114,10 +114,10 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
           cp ../../LICENSE wrkzcoin-${TAG}/
-          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${LABEL}.tar.gz wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
+          cp wrkzcoin-${LABEL}.tar.gz builds/
           echo ::set-output name=file_name::wrkzcoin-${LABEL}.tar.gz
 
       # Upload to S3
@@ -233,10 +233,10 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
           cp ../../LICENSE wrkzcoin-${TAG}/
-          tar cvfz wrkzcoin-${TAG}-${LABEL}.tar.gz wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${LABEL}.tar.gz wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
+          cp wrkzcoin-${LABEL}.tar.gz builds/
           echo ::set-output name=file_name::wrkzcoin-${LABEL}.tar.gz
 
       # Upload to S3
@@ -348,10 +348,10 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp *.exe wrkzcoin-${TAG}/
           cp ../../../LICENSE wrkzcoin-${TAG}/
-          7z a wrkzcoin-${TAG}-${LABEL}.zip wrkzcoin-${TAG}/
+          7z a wrkzcoin-${LABEL}.zip wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${TAG}-${LABEL}.zip builds/
+          cp wrkzcoin-${LABEL}.zip builds/
           echo ::set-output name=file_name::wrkzcoin-${LABEL}.zip
 
       # Upload to S3
