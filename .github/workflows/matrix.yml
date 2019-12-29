@@ -483,6 +483,7 @@ jobs:
           pip install --user pipx awscli-plugin-endpoint
       - name: S3 Upload
         env:
+          MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
           BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
@@ -520,6 +521,7 @@ jobs:
             aws configure set aws_secret_access_key null
             aws configure set default.region null
           fi
-          if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "macOS" ]; then
-            curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
+          if [ "$RUNNER_OS" == "Windows" ]; then
+            export PATH=$MINGW64_PATH:$PATH
           fi
+          curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
