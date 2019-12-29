@@ -261,7 +261,6 @@ endif ()
 set(OPENSSL_USE_STATIC_LIBS ON)
 ## On MSVC, we need to link the RT/MT libraries
 if (MSVC)
-    set(CMAKE_FIND_LIBRARY_SUFFIXES .lib .dll.a .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
     set(OPENSSL_MSVC_STATIC_RT ON)
 endif ()
 
