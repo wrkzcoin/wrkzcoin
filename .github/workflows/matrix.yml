@@ -118,7 +118,7 @@ jobs:
           rm -rf builds
           mkdir builds
           cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
-          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}.tar.gz
 
       # Upload to S3
       - name: Set up Python
@@ -237,7 +237,7 @@ jobs:
           rm -rf builds
           mkdir builds
           cp wrkzcoin-${TAG}-${LABEL}.tar.gz builds/
-          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.tar.gz
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}.tar.gz
 
       # Upload to S3
       - name: Set up Python
@@ -352,7 +352,7 @@ jobs:
           rm -rf builds
           mkdir builds
           cp wrkzcoin-${TAG}-${LABEL}.zip builds/
-          echo ::set-output name=file_name::wrkzcoin-${TAG}-${LABEL}.zip
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}.zip
 
       # Upload to S3
       - name: Set up Python
