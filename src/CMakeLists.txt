@@ -163,25 +163,13 @@ target_link_libraries(WalletUpgrader Utilities WalletBackend Common)
 target_link_libraries(zedwallet++ WalletBackend)
 
 if (OPENSSL_FOUND)
-  # Depend on OpenSSL via imported targets if supported by the running
-  # version of CMake.  This allows our dependents to get our dependencies
-  # transitively.
-  if(NOT CMAKE_VERSION VERSION_LESS 3.4)
-    target_link_libraries(miner OpenSSL::SSL OpenSSL::Crypto)
-    target_link_libraries(Nigel OpenSSL::SSL OpenSSL::Crypto)
-    target_link_libraries(WalletApi OpenSSL::SSL OpenSSL::Crypto)
-    target_link_libraries(zedwallet++ OpenSSL::SSL OpenSSL::Crypto)
-    target_link_libraries(WalletService OpenSSL::SSL OpenSSL::Crypto)
-    target_link_libraries(Wrkzd OpenSSL::SSL OpenSSL::Crypto)
-  else()
-    target_link_libraries(miner ${OPENSSL_LIBRARIES})
-    target_link_libraries(Nigel ${OPENSSL_LIBRARIES})
-    target_link_libraries(WalletApi ${OPENSSL_LIBRARIES})
-    target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
-    target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
-    target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
-    include_directories(${OPENSSL_INCLUDE_DIR})
-  endif()
+  target_link_libraries(miner ${OPENSSL_LIBRARIES})
+  target_link_libraries(Nigel ${OPENSSL_LIBRARIES})
+  target_link_libraries(WalletApi ${OPENSSL_LIBRARIES})
+  target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
+  target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
+  target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
+  include_directories(${OPENSSL_INCLUDE_DIR})
 endif ()
 
 # Add dependencies means we have to build the latter before we build the former
