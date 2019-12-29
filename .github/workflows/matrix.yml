@@ -151,9 +151,9 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.target }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
-          BUILD_CONTENT="$RUNNER_OS-${{ matrix.target }}-$SHA8 Size: $FILESIZE "$URL_FILE
+          BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
@@ -270,9 +270,9 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.target }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
-          BUILD_CONTENT="$RUNNER_OS-${{ matrix.target }}-$SHA8 Size: $FILESIZE "$URL_FILE
+          BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
@@ -385,9 +385,9 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.target }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
-          BUILD_CONTENT="$RUNNER_OS-${{ matrix.target }}-$SHA8 Size: $FILESIZE "$URL_FILE
+          BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
