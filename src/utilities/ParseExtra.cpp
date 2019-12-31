@@ -45,7 +45,7 @@ namespace Utilities
         bool seenPaymentID = false;
         bool seenMergedMiningTag = false;
 
-        for (auto it = extra.begin(); it <= extra.end(); it++)
+        for (auto it = extra.begin(); it < extra.end(); it++)
         {
             /* Nothing else to parse. */
             if (seenPubKey && seenPaymentID && seenMergedMiningTag && seenExtraData)
