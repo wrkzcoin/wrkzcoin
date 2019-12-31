@@ -64,6 +64,9 @@ bool PaymentGateService::init(int argc, char **argv)
     }
 
     logger->setMaxLevel(static_cast<Logging::Level>(config.serviceConfig.logLevel));
+    consoleLogger.setMaxLevel(static_cast<Logging::Level>(config.serviceConfig.logLevel));
+    fileLogger.setMaxLevel(static_cast<Logging::Level>(config.serviceConfig.logLevel));
+
     logger->setPattern("%D %T %L ");
     logger->addLogger(consoleLogger);
 
