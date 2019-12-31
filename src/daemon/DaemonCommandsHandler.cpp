@@ -403,7 +403,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Next Fork",             Utilities::get_fork_time(networkHeight, upgradeHeights)});
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
-    statusTable.push_back({"Version", PROJECT_VERSION});
+    statusTable.push_back({"Version", PROJECT_VERSION_LONG});
 
     size_t longestValue = 0;
     size_t longestDescription = 0;
