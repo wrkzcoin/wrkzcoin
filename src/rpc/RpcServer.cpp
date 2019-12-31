@@ -2308,7 +2308,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
                             writer.StartObject();
                             {
                                 writer.Key("extra");
-                                writer.String(Common::podToHex(prefix.txPrefix.extra));
+                                writer.String(Common::toHex(prefix.txPrefix.extra));
 
                                 writer.Key("unlock_time");
                                 writer.Uint64(prefix.txPrefix.unlockTime);
@@ -2552,7 +2552,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
                 writer.StartObject();
                 {
                     writer.Key("extra");
-                    writer.String(Common::podToHex(prefix.txPrefix.extra));
+                    writer.String(Common::toHex(prefix.txPrefix.extra));
 
                     writer.Key("unlock_time");
                     writer.Uint64(prefix.txPrefix.unlockTime);
