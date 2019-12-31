@@ -27,6 +27,7 @@
 #include <system/Timer.h>
 #include <system_error>
 #include <thread>
+#include <version.h>
 
 #ifndef AUTO_VAL_INIT
 #define AUTO_VAL_INIT(n) boost::value_initialized<decltype(n)>()
@@ -294,7 +295,7 @@ namespace CryptoNote
         CryptoNote::COMMAND_RPC_GET_INFO::request getInfoReq = AUTO_VAL_INIT(getInfoReq);
         CryptoNote::COMMAND_RPC_GET_INFO::response getInfoResp = AUTO_VAL_INIT(getInfoResp);
 
-        ec = jsonCommand("/info", getInfoReq, getInfoResp);
+        ec = jsonCommand("/info", "GET", getInfoReq, getInfoResp);
         if (!ec)
         {
             // a quirk to let wallets work with previous versions daemons.
@@ -351,7 +352,7 @@ namespace CryptoNote
         CryptoNote::COMMAND_RPC_GET_FEE_ADDRESS::request ireq = AUTO_VAL_INIT(ireq);
         CryptoNote::COMMAND_RPC_GET_FEE_ADDRESS::response iresp = AUTO_VAL_INIT(iresp);
 
-        std::error_code ec = jsonCommand("/fee", ireq, iresp);
+        std::error_code ec = jsonCommand("/fee", "GET", ireq, iresp);
 
         if (ec || iresp.status != CORE_RPC_STATUS_OK)
         {
@@ -621,7 +622,7 @@ namespace CryptoNote
         COMMAND_RPC_SEND_RAW_TX::response rsp;
         req.tx_as_hex = toHex(toBinaryArray(transaction));
         m_logger(TRACE) << "NodeRpcProxy::doRelayTransaction, tx hex " << req.tx_as_hex;
-        return jsonCommand("/sendrawtransaction", req, rsp);
+        return jsonCommand("/sendrawtransaction", "POST", req, rsp);
     }
 
     std::error_code NodeRpcProxy::doGetRandomOutsByAmounts(
@@ -635,7 +636,7 @@ namespace CryptoNote
         req.outs_count = outsCount;
 
         m_logger(TRACE) << "Send getrandom_outs request";
-        std::error_code ec = jsonCommand("/getrandom_outs", req, rsp);
+        std::error_code ec = jsonCommand("/getrandom_outs", "POST", req, rsp);
         if (!ec)
         {
             m_logger(TRACE) << "getrandom_outs complete";
@@ -658,7 +659,7 @@ namespace CryptoNote
         req.txid = transactionHash;
 
         m_logger(TRACE) << "Send get_o_indexes request, transaction " << req.txid;
-        std::error_code ec = jsonCommand("/get_o_indexes", req, rsp);
+        std::error_code ec = jsonCommand("/get_o_indexes", "POST", req, rsp);
         if (!ec)
         {
             m_logger(TRACE) << "get_o_indexes complete";
@@ -689,7 +690,7 @@ namespace CryptoNote
 
         m_logger(TRACE) << "Send get_global_indexes_for_range request";
 
-        std::error_code ec = jsonCommand("/get_global_indexes_for_range", req, rsp);
+        std::error_code ec = jsonCommand("/get_global_indexes_for_range", "POST", req, rsp);
 
         if (!ec)
         {
@@ -718,7 +719,7 @@ namespace CryptoNote
 
         m_logger(TRACE) << "Send get_transactions_status request";
 
-        std::error_code ec = jsonCommand("/get_transactions_status", req, rsp);
+        std::error_code ec = jsonCommand("/get_transactions_status", "POST", req, rsp);
 
         if (!ec)
         {
@@ -749,7 +750,7 @@ namespace CryptoNote
         req.timestamp = timestamp;
 
         m_logger(TRACE) << "Send queryblockslite request, timestamp " << req.timestamp;
-        std::error_code ec = jsonCommand("/queryblockslite", req, rsp);
+        std::error_code ec = jsonCommand("/queryblockslite", "POST", req, rsp);
         if (ec)
         {
             m_logger(TRACE) << "queryblockslite failed: " << ec << ", " << ec.message();
@@ -806,7 +807,7 @@ namespace CryptoNote
         m_logger(TRACE) << "Send getwalletsyncdata request, start timestamp: " << req.startTimestamp
                         << ", start height: " << req.startHeight;
 
-        std::error_code ec = jsonCommand("/getwalletsyncdata", req, rsp);
+        std::error_code ec = jsonCommand("/getwalletsyncdata", "POST", req, rsp);
         if (ec)
         {
             m_logger(TRACE) << "getwalletsyncdata failed: " << ec << ", " << ec.message();
@@ -834,7 +835,7 @@ namespace CryptoNote
         req.knownTxsIds = knownPoolTxIds;
 
         m_logger(TRACE) << "Send get_pool_changes_lite request, tailBlockId " << req.tailBlockId;
-        std::error_code ec = jsonCommand("/get_pool_changes_lite", req, rsp);
+        std::error_code ec = jsonCommand("/get_pool_changes_lite", "POST", req, rsp);
 
         if (ec)
         {
@@ -945,7 +946,7 @@ namespace CryptoNote
     }
 
     template<typename Request, typename Response>
-    std::error_code NodeRpcProxy::jsonCommand(const std::string &url, const Request &req, Response &res)
+    std::error_code NodeRpcProxy::jsonCommand(const std::string &url, const std::string &method, const Request &req, Response &res)
     {
         std::error_code ec;
 
@@ -953,7 +954,7 @@ namespace CryptoNote
         {
             m_logger(TRACE) << "Send " << url << " JSON request";
             EventLock eventLock(*m_httpEvent);
-            invokeJsonCommand(*m_httpClient, url, req, res);
+            invokeJsonCommand(*m_httpClient, url, method, req, res);
             ec = interpretResponseStatus(res.status);
         }
         catch (const ConnectException &)
@@ -996,6 +997,13 @@ namespace CryptoNote
             HttpResponse httpRes;
 
             httpReq.addHeader("Content-Type", "application/json");
+
+            std::stringstream userAgent;
+
+            userAgent << "NodeRpcProxy/" << PROJECT_VERSION_LONG;
+
+            httpReq.addHeader("User-Agent", userAgent.str());
+
             httpReq.setUrl("/json_rpc");
             httpReq.setBody(jsReq.getBody());
 

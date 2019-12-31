@@ -216,7 +216,7 @@ namespace CryptoNote
         std::error_code binaryCommand(const std::string &url, const Request &req, Response &res);
 
         template<typename Request, typename Response>
-        std::error_code jsonCommand(const std::string &url, const Request &req, Response &res);
+        std::error_code jsonCommand(const std::string &url, const std::string &method, const Request &req, Response &res);
 
         template<typename Request, typename Response>
         std::error_code jsonRpcCommand(const std::string &method, const Request &req, Response &res);

@@ -33,7 +33,7 @@ namespace CryptoNote
       private:
         friend class HttpParser;
 
-        std::string method;
+        std::string method = "POST";
 
         std::string url;
 
