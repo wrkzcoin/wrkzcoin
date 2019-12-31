@@ -28,6 +28,8 @@ namespace CryptoNote
 
         void setBody(const std::string &b);
 
+        void setMethod(const std::string &value);
+
         void setUrl(const std::string &uri);
 
       private:
