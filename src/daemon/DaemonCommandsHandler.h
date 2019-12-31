@@ -27,7 +27,8 @@ class DaemonCommandsHandler
         CryptoNote::Core &core,
         CryptoNote::NodeServer &srv,
         std::shared_ptr<Logging::LoggerManager> log,
-        RpcServer *prpc_server);
+        const std::string ip,
+        const uint32_t port);
 
     bool start_handling()
     {
@@ -48,6 +49,8 @@ class DaemonCommandsHandler
     CryptoNote::Core &m_core;
 
     CryptoNote::NodeServer &m_srv;
+
+    httplib::Client m_rpcServer;
 
     Logging::LoggerRef logger;
 
@@ -76,6 +79,4 @@ class DaemonCommandsHandler
     bool print_pool_sh(const std::vector<std::string> &args);
 
     bool status(const std::vector<std::string> &args);
-
-    httplib::Client m_rpcServer;
 };

@@ -447,7 +447,6 @@ int main(int argc, char *argv[])
         );
 
         cprotocol->set_p2p_endpoint(&(*p2psrv));
-        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, &rpcServer);
         logger(INFO) << "Initializing p2p server...";
         if (!p2psrv->init(netNodeConfig))
         {
@@ -457,15 +456,28 @@ int main(int argc, char *argv[])
 
         logger(INFO) << "P2p server initialized OK";
 
-        if (!config.noConsole)
-        {
-            dch.start_handling();
-        }
-
         // Fire up the RPC Server
         logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
 
         rpcServer.start();
+
+        /* Get the RPC IP address and port we are bound to */
+        auto [ip, port] = rpcServer.getConnectionInfo();
+
+        /* If we bound the RPC to 0.0.0.0, we can't reach that with a
+           standard HTTP client from anywhere. Instead, let's use the
+           localhost IP address to reach ourselves */
+        if (ip == "0.0.0.0")
+        {
+            ip = "127.0.0.1";
+        }
+
+        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port);
+
+        if (!config.noConsole)
+        {
+            dch.start_handling();
+        }
 
         Tools::SignalHandler::install([&dch] {
             dch.exit({});

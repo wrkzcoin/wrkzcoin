@@ -54,12 +54,13 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     CryptoNote::Core &core,
     CryptoNote::NodeServer &srv,
     std::shared_ptr<Logging::LoggerManager> log,
-    RpcServer *prpc_server):
+    const std::string ip,
+    const uint32_t port):
     m_core(core),
     m_srv(srv),
     logger(log, "daemon"),
     m_logManager(log),
-    m_rpcServer(std::get<0>(prpc_server->getConnectionInfo()).c_str(), std::get<1>(prpc_server->getConnectionInfo()))
+    m_rpcServer(ip.c_str(), port)
 {
     m_consoleHandler.setHandler(
         "?",
