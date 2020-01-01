@@ -2837,7 +2837,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
                             {
                                 for (const auto &input : tx.inputs)
                                 {
-                                    const auto type = input.type() == typeid(CryptoNote::BaseInput)
+                                    const auto type = input.type() == typeid(CryptoNote::BaseInputDetails)
                                         ? "ff"
                                         : "02";
 
