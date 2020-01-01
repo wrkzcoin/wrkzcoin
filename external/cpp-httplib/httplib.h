@@ -123,7 +123,7 @@ enum SocketError
     INVALID_FLAGS = 4,
     DNS_FAIL = 5,
     OUT_OF_MEMORY = 6,
-    INVALID_SERVICE = 7, 
+    INVALID_SERVICE = 7,
     ARE_NOT_ROOT = 8,
     NOT_A_SOCKET = 9,
     ADDRESS_IN_USE = 10,
@@ -335,7 +335,7 @@ public:
     std::shared_ptr<Response> Options(const std::string &path);
     std::shared_ptr<Response> Options(const std::string &path, const Headers& headers);
 
-    bool send(Request& req, Response& res);
+    bool send(Request& req, Response& res, const bool isRetry = false);
 
 protected:
     bool process_request(Stream& strm, Request& req, Response& res, bool& connection_close);
@@ -2446,33 +2446,41 @@ inline bool Client::read_response_line(Stream& strm, Response& res)
     return true;
 }
 
-inline bool Client::send(Request& req, Response& res)
+inline bool Client::send(Request& req, Response& res, const bool isRetry)
 {
-    /* TODO: Might be possible to block slightly less of the critical path.
-       I'm too tired to think it through right now. */
-    std::scoped_lock lock(request_mutex);
-
-    if (req.path.empty()) {
+    if (req.path.empty())
+    {
         return false;
     }
 
-    auto sock = create_client_socket();
+    {
+        std::scoped_lock lock(request_mutex);
 
-    if (sock == INVALID_SOCKET) {
-        return false;
+        auto sock = create_client_socket();
+
+        if (sock == INVALID_SOCKET)
+        {
+            return false;
+        }
+
+        if (read_socket(sock, req, res))
+        {
+            return true;
+        }
     }
-
-    bool success = read_socket(sock, req, res);
 
     /* Failed to send - possibly connection closed due to timeout. Invalidate
        the socket so we make a new one on next request.*/
-    if (!success)
+    opened_connection_ = INVALID_SOCKET;
+
+    /* If the request failed, it's possible the socket timed out,
+       let's give it one more try to make sure */
+    if (!isRetry)
     {
-        opened_connection_ = INVALID_SOCKET;
-        return false;
+        return send(req, res, true);
     }
 
-    return true;
+    return false;
 }
 
 inline bool Client::write_request(Stream& strm, Request& req)
