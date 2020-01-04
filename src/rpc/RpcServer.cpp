@@ -246,7 +246,7 @@ void RpcServer::middleware(
         const rapidjson::Document &body)> handler)
 {
     Logger::logger.log(
-        "Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
+        "[" + req.get_header_value("REMOTE_ADDR") + "] Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
         Logger::DEBUG,
         { Logger::DAEMON_RPC }
     );
@@ -257,7 +257,7 @@ void RpcServer::middleware(
     }
 
     res.set_header("Content-Type", "application/json");
-    
+
     const auto jsonBody = getJsonBody(req, res, bodyRequired);
 
     if (!jsonBody)
@@ -705,7 +705,7 @@ std::tuple<Error, uint16_t> RpcServer::sendTransaction(
     writer.EndObject();
 
     res.body = sb.GetString();
-    
+
     return {SUCCESS, 200};
 }
 
@@ -1043,7 +1043,7 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
 
             writer.Key("key");
             writer.String(Common::podToHex(hash));
-            
+
             writer.Key("value");
             writer.StartArray();
             {
@@ -2506,7 +2506,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
     rapidjson::StringBuffer sb;
     rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
 
-    Crypto::Hash lastBlockHash; 
+    Crypto::Hash lastBlockHash;
 
     if (!Common::podFromHex(getStringFromJSON(body, "tailBlockId"), lastBlockHash))
     {
