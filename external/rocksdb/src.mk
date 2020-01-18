@@ -124,7 +124,6 @@ LIB_SOURCES =                                                   \
   table/block_based/partitioned_filter_block.cc                 \
   table/block_based/uncompression_dict_reader.cc                \
   table/block_fetcher.cc                             		\
-  table/bloom_block.cc                               		\
   table/cuckoo/cuckoo_table_builder.cc                          \
   table/cuckoo/cuckoo_table_factory.cc                          \
   table/cuckoo/cuckoo_table_reader.cc                           \
@@ -134,6 +133,7 @@ LIB_SOURCES =                                                   \
   table/merging_iterator.cc                                     \
   table/meta_blocks.cc                                          \
   table/persistent_cache_helper.cc                              \
+  table/plain/plain_table_bloom.cc                              \
   table/plain/plain_table_builder.cc                            \
   table/plain/plain_table_factory.cc                            \
   table/plain/plain_table_index.cc                              \
@@ -476,6 +476,8 @@ JNI_NATIVE_SOURCES =                                          \
   java/rocksjni/snapshot.cc                                   \
   java/rocksjni/sst_file_manager.cc                           \
   java/rocksjni/sst_file_writerjni.cc                         \
+  java/rocksjni/sst_file_readerjni.cc                         \
+  java/rocksjni/sst_file_reader_iterator.cc                   \
   java/rocksjni/statistics.cc                                 \
   java/rocksjni/statisticsjni.cc                              \
   java/rocksjni/table.cc                                      \

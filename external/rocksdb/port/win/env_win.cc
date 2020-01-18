@@ -35,7 +35,6 @@
 
 #include <rpc.h>  // for uuid generation
 #include <windows.h>
-#include <winioctl.h>
 #include <shlwapi.h>
 #include "strsafe.h"
 

@@ -265,6 +265,9 @@ class BlockBasedTable : public TableReader {
   Rep* rep_;
   explicit BlockBasedTable(Rep* rep, BlockCacheTracer* const block_cache_tracer)
       : rep_(rep), block_cache_tracer_(block_cache_tracer) {}
+  // No copying allowed
+  explicit BlockBasedTable(const TableReader&) = delete;
+  void operator=(const TableReader&) = delete;
 
  private:
   friend class MockedBlockBasedTable;
@@ -458,12 +461,13 @@ class BlockBasedTable : public TableReader {
   void DumpKeyValue(const Slice& key, const Slice& value,
                     WritableFile* out_file);
 
-  // No copying allowed
-  explicit BlockBasedTable(const TableReader&) = delete;
-  void operator=(const TableReader&) = delete;
+  // A cumulative data block file read in MultiGet lower than this size will
+  // use a stack buffer
+  static constexpr size_t kMultiGetReadStackBufSize = 8192;
 
   friend class PartitionedFilterBlockReader;
   friend class PartitionedFilterBlockTest;
+  friend class DBBasicTest_MultiGetIOBufferOverrun_Test;
 };
 
 // Maitaning state of a two-level iteration on a partitioned index structure.
@@ -616,8 +620,7 @@ class BlockBasedTableIterator : public InternalIteratorBase<TValue> {
                           const SliceTransform* prefix_extractor,
                           BlockType block_type, TableReaderCaller caller,
                           size_t compaction_readahead_size = 0)
-      : InternalIteratorBase<TValue>(false),
-        table_(table),
+      : table_(table),
         read_options_(read_options),
         icomp_(icomp),
         user_comparator_(icomp.user_comparator()),
