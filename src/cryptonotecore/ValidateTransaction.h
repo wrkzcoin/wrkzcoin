@@ -16,7 +16,7 @@
 #include <cryptonotecore/IBlockchainCache.h>
 #include <utilities/ThreadPool.h>
 
-struct TransactionValidationResult 
+struct TransactionValidationResult
 {
     /* A programmatic error code of the result */
     std::error_code errorCode;
@@ -78,6 +78,8 @@ class ValidateTransaction
 
         bool validateTransactionInputsExpensive();
 
+        void setTransactionValidationResult(const std::error_code &error_code, const std::string &error_message = "");
+
         /////////////////////////
         /* PRIVATE MEMBER VARS */
         /////////////////////////
@@ -105,4 +107,6 @@ class ValidateTransaction
         uint64_t m_sumOfInputs = 0;
 
         Utilities::ThreadPool<bool> &m_threadPool;
+
+        std::mutex m_mutex;
 };

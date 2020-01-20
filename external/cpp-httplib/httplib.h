@@ -56,6 +56,7 @@ typedef int socket_t;
 #define INVALID_SOCKET (-1)
 #endif //_WIN32
 
+#include <atomic>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -112,6 +113,23 @@ struct ci {
 } // namespace detail
 
 enum class HttpVersion { v1_0 = 0, v1_1 };
+
+enum SocketError
+{
+    SUCCESS = 0,
+    UNKNOWN_ERROR = 1,
+    BAD_HOST = 2,
+    TMP_DNS_FAIL = 3,
+    INVALID_FLAGS = 4,
+    DNS_FAIL = 5,
+    OUT_OF_MEMORY = 6,
+    INVALID_SERVICE = 7,
+    ARE_NOT_ROOT = 8,
+    NOT_A_SOCKET = 9,
+    ADDRESS_IN_USE = 10,
+    NO_INTERNET = 11,
+    TOO_MANY_CONNECTIONS = 12,
+};
 
 typedef std::multimap<std::string, std::string, detail::ci>  Headers;
 
@@ -239,10 +257,10 @@ public:
 
     void set_keep_alive_max_count(size_t count);
 
-    int bind_to_any_port(const std::string &host, int socket_flags = 0);
+    std::tuple<int, SocketError> bind_to_any_port(const std::string &host, int socket_flags = 0);
     bool listen_after_bind();
 
-    bool listen(const std::string &host, int port, int socket_flags = 0);
+    SocketError listen(const std::string &host, int port, int socket_flags = 0);
 
     bool is_running() const;
     void stop();
@@ -251,12 +269,13 @@ protected:
     bool process_request(Stream& strm, bool last_connection, bool& connection_close);
 
     size_t keep_alive_max_count_;
+    std::atomic<bool> m_shouldStop = false;
 
 private:
     typedef std::vector<std::pair<std::regex, Handler>> Handlers;
 
-    socket_t create_server_socket(const char* host, int port, int socket_flags) const;
-    int bind_internal(const char* host, int port, int socket_flags);
+    std::tuple<socket_t, SocketError> create_server_socket(const char* host, int port, int socket_flags) const;
+    std::tuple<int, SocketError> bind_internal(const char* host, int port, int socket_flags);
     bool listen_internal();
 
     bool routing(Request& req, Response& res);
@@ -316,7 +335,7 @@ public:
     std::shared_ptr<Response> Options(const std::string &path);
     std::shared_ptr<Response> Options(const std::string &path, const Headers& headers);
 
-    bool send(Request& req, Response& res);
+    bool send(Request& req, Response& res, const bool isRetry = false);
 
 protected:
     bool process_request(Stream& strm, Request& req, Response& res, bool& connection_close);
@@ -481,6 +500,69 @@ private:
     std::string glowable_buffer_;
 };
 
+inline std::string getSocketErrorMessage(SocketError error)
+{
+    switch (error)
+    {
+        case SUCCESS:
+        {
+            return "The operation completed successfully.";
+        }
+        case UNKNOWN_ERROR:
+        {
+            return "Unknown socket error.";
+        }
+        case BAD_HOST:
+        {
+            return "The host specified is invalid in some way.";
+        }
+        case TMP_DNS_FAIL:
+        {
+            return "The DNS server is temporarily down, please try again.";
+        }
+        case INVALID_FLAGS:
+        {
+            return "An invalid argument was given to the socket setup.";
+        }
+        case DNS_FAIL:
+        {
+            return "The DNS server is down.";
+        }
+        case OUT_OF_MEMORY:
+        {
+            return "Not enough memory to open socket.";
+        }
+        case INVALID_SERVICE:
+        {
+            return "Invalid protocol for this socket.";
+        }
+        case ARE_NOT_ROOT:
+        {
+            return "Root/administrator permisions are required to open this socket.";
+        }
+        case NOT_A_SOCKET:
+        {
+            return "The file descriptor does not appear to be a socket.";
+        }
+        case ADDRESS_IN_USE:
+        {
+            return "The host and port specified are already in use.";
+        }
+        case NO_INTERNET:
+        {
+            return "You appear to have no internet connection.";
+        }
+        case TOO_MANY_CONNECTIONS:
+        {
+            return "Too many socket connections are open already.";
+        }
+        default:
+        {
+            throw std::runtime_error("Programmer error @ getSocketErrorMessage");
+        }
+    }
+}
+
 inline int close_socket(socket_t sock)
 {
 #ifdef _WIN32
@@ -532,11 +614,36 @@ inline bool wait_until_socket_is_ready(socket_t sock, time_t sec, time_t usec)
 }
 
 template <typename T>
-inline bool read_socket(socket_t sock, size_t keep_alive_max_count, T callback, bool close)
+inline bool read_socket(
+    socket_t sock,
+    size_t keep_alive_max_count,
+    T callback,
+    bool close,
+    std::atomic<bool> &shouldStop,
+    bool keepAliveForever = false)
 {
     bool ret = false;
 
-    if (keep_alive_max_count > 0) {
+    if (keepAliveForever)
+    {
+        while (detail::select_read(sock,
+                                   CPPHTTPLIB_KEEPALIVE_TIMEOUT_SECOND,
+                                   CPPHTTPLIB_KEEPALIVE_TIMEOUT_USECOND) > 0
+            && !shouldStop)
+        {
+            SocketStream strm(sock);
+
+            bool closeConnection = false;
+
+            ret = callback(strm, false, closeConnection);
+
+            if (!ret || closeConnection)
+            {
+                break;
+            }
+        }
+    }
+    else if (keep_alive_max_count > 0) {
         auto count = keep_alive_max_count;
         while (count > 0 &&
                detail::select_read(sock,
@@ -577,7 +684,7 @@ inline int shutdown_socket(socket_t sock)
 }
 
 template <typename Fn>
-socket_t create_socket(const char* host, int port, Fn fn, int socket_flags = 0)
+std::tuple<socket_t, SocketError> create_socket(const char* host, int port, Fn fn, int socket_flags = 0)
 {
 #ifdef _WIN32
 #define SO_SYNCHRONOUS_NONALERT 0x20
@@ -599,9 +706,106 @@ socket_t create_socket(const char* host, int port, Fn fn, int socket_flags = 0)
 
     auto service = std::to_string(port);
 
-    if (getaddrinfo(host, service.c_str(), &hints, &result)) {
-        return INVALID_SOCKET;
+    int getAddrInfoError = getaddrinfo(host, service.c_str(), &hints, &result);
+
+    if (getAddrInfoError != 0)
+    {
+        #ifdef WIN32
+        switch(WSAGetLastError())
+        {
+            case WSATRY_AGAIN:
+            {
+                return { INVALID_SOCKET, TMP_DNS_FAIL };
+            }
+            case WSAEINVAL:
+            {
+                return { INVALID_SOCKET, INVALID_FLAGS };
+            }
+            case WSANO_RECOVERY:
+            {
+                return { INVALID_SOCKET, DNS_FAIL };
+            }
+            case WSAEAFNOSUPPORT:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case WSA_NOT_ENOUGH_MEMORY:
+            {
+                return { INVALID_SOCKET, OUT_OF_MEMORY };
+            }
+            case WSAHOST_NOT_FOUND:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case WSATYPE_NOT_FOUND:
+            {
+                return { INVALID_SOCKET, INVALID_SERVICE };
+            }
+            case WSAESOCKTNOSUPPORT:
+            {
+                return { INVALID_SOCKET, INVALID_FLAGS };
+            }
+            default:
+            {
+                return { INVALID_SOCKET, UNKNOWN_ERROR };
+            }
+        }
+        #else
+        switch(getAddrInfoError)
+        {
+            case EAI_ADDRFAMILY:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case EAI_AGAIN:
+            {
+                return { INVALID_SOCKET, TMP_DNS_FAIL };
+            }
+            case EAI_BADFLAGS:
+            {
+                return { INVALID_SOCKET, INVALID_FLAGS };
+            }
+            case EAI_FAIL:
+            {
+                return { INVALID_SOCKET, DNS_FAIL };
+            }
+            case EAI_FAMILY:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case EAI_MEMORY:
+            {
+                return { INVALID_SOCKET, OUT_OF_MEMORY };
+            }
+            case EAI_NODATA:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case EAI_NONAME:
+            {
+                return { INVALID_SOCKET, BAD_HOST };
+            }
+            case EAI_SERVICE:
+            {
+                return { INVALID_SOCKET, INVALID_SERVICE };
+            }
+            case EAI_SOCKTYPE:
+            {
+                return { INVALID_SOCKET, INVALID_FLAGS };
+            }
+            case EAI_SYSTEM:
+            {
+                return { INVALID_SOCKET, UNKNOWN_ERROR };
+            }
+            default:
+            {
+                return { INVALID_SOCKET, UNKNOWN_ERROR };
+            }
+        }
+        #endif
     }
+
+    SocketError error;
 
     for (auto rp = result; rp; rp = rp->ai_next) {
        // Create a socket
@@ -611,16 +815,19 @@ socket_t create_socket(const char* host, int port, Fn fn, int socket_flags = 0)
        }
 
        // bind or connect
-       if (fn(sock, *rp)) {
+       error = fn(sock, *rp);
+
+       if (error == SUCCESS) {
           freeaddrinfo(result);
-          return sock;
+          return { sock, SUCCESS };
        }
 
        close_socket(sock);
     }
 
     freeaddrinfo(result);
-    return INVALID_SOCKET;
+
+    return { INVALID_SOCKET, error };
 }
 
 inline void set_nonblocking(socket_t sock, bool nonblocking)
@@ -1610,7 +1817,7 @@ inline void Server::set_keep_alive_max_count(size_t count)
     keep_alive_max_count_ = count;
 }
 
-inline int Server::bind_to_any_port(const std::string &host, int socket_flags)
+inline std::tuple<int, SocketError> Server::bind_to_any_port(const std::string &host, int socket_flags)
 {
     return bind_internal(host.c_str(), 0, socket_flags);
 }
@@ -1619,11 +1826,18 @@ inline bool Server::listen_after_bind() {
     return listen_internal();
 }
 
-inline bool Server::listen(const std::string &host, int port, int socket_flags)
+inline SocketError Server::listen(const std::string &host, int port, int socket_flags)
 {
-    if (bind_internal(host.c_str(), port, socket_flags) < 0)
-        return false;
-    return listen_internal();
+    const auto [port_, error] = bind_internal(host.c_str(), port, socket_flags);
+
+    if (port_ < 0)
+    {
+        return error;
+    }
+
+    const bool success = listen_internal();
+
+    return success ? SUCCESS : UNKNOWN_ERROR;
 }
 
 inline bool Server::is_running() const
@@ -1635,6 +1849,7 @@ inline void Server::stop()
 {
     if (is_running_) {
         assert(svr_sock_ != INVALID_SOCKET);
+        m_shouldStop = true;
         auto sock = svr_sock_;
         svr_sock_ = INVALID_SOCKET;
         detail::shutdown_socket(sock);
@@ -1769,46 +1984,201 @@ inline bool Server::handle_file_request(Request& req, Response& res)
     return false;
 }
 
-inline socket_t Server::create_server_socket(const char* host, int port, int socket_flags) const
+inline std::tuple<socket_t, SocketError> Server::create_server_socket(const char* host, int port, int socket_flags) const
 {
     return detail::create_socket(host, port,
-        [](socket_t sock, struct addrinfo& ai) -> bool {
-            if (::bind(sock, ai.ai_addr, ai.ai_addrlen)) {
-                  return false;
+        [](socket_t sock, struct addrinfo& ai) -> SocketError {
+            #ifdef _WIN32
+            const char yes = 1;
+            #else
+            const int yes = 1;
+            #endif
+
+            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+                return UNKNOWN_ERROR;
             }
-            if (::listen(sock, 5)) { // Listen through 5 channels
-                return false;
+
+            const auto bindError = ::bind(sock, ai.ai_addr, ai.ai_addrlen);
+
+            if (bindError != 0) {
+                #ifdef _WIN32
+                switch(WSAGetLastError())
+                {
+                    case WSANOTINITIALISED:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                    case WSAENETDOWN:
+                    {
+                        return NO_INTERNET;
+                    }
+                    case WSAEACCES:
+                    {
+                        return INVALID_FLAGS;
+                    }
+                    case WSAEADDRINUSE:
+                    {
+                        return ADDRESS_IN_USE;
+                    }
+                    case WSAEADDRNOTAVAIL:
+                    {
+                        return BAD_HOST;
+                    }
+                    case WSAEFAULT:
+                    {
+                        return INVALID_FLAGS;
+                    }
+                    case EINPROGRESS:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                    case WSAEINVAL:
+                    {
+                        return INVALID_FLAGS;
+                    }
+                    case WSAENOBUFS:
+                    {
+                        return TOO_MANY_CONNECTIONS;
+                    }
+                    case WSAENOTSOCK:
+                    {
+                        return NOT_A_SOCKET;
+                    }
+                    default:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                }
+                #else
+                switch (errno)
+                {
+                    case EACCES:
+                    {
+                        return ARE_NOT_ROOT;
+                    }
+                    case EADDRINUSE:
+                    {
+                        return ADDRESS_IN_USE;
+                    }
+                    case EBADF:
+                    {
+                        return NOT_A_SOCKET;
+                    }
+                    case EINVAL:
+                    {
+                        return BAD_HOST;
+                    }
+                    case ENOTSOCK:
+                    {
+                        return NOT_A_SOCKET;
+                    }
+                    default:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                }
+                #endif
             }
-            return true;
+
+            const auto listenError = ::listen(sock, 100);
+
+            if (listenError != 0) {
+                #ifdef _WIN32
+                switch(WSAGetLastError())
+                {
+                    case WSANOTINITIALISED:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                    case WSAENETDOWN:
+                    {
+                        return NO_INTERNET;
+                    }
+                    case WSAEADDRINUSE:
+                    {
+                        return ADDRESS_IN_USE;
+                    }
+                    case EINPROGRESS:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                    case WSAEINVAL:
+                    {
+                        return INVALID_FLAGS;
+                    }
+                    case WSAEISCONN:
+                    {
+                        return INVALID_FLAGS;
+                    }
+                    case WSAEMFILE:
+                    case WSAENOBUFS:
+                    {
+                        return TOO_MANY_CONNECTIONS;
+                    }
+                    case WSAENOTSOCK:
+                    case WSAEOPNOTSUPP:
+                    {
+                        return NOT_A_SOCKET;
+                    }
+                    default:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                }
+                #else
+                switch (errno)
+                {
+                    case EADDRINUSE:
+                    {
+                        return ADDRESS_IN_USE;
+                    }
+                    case EBADF:
+                    case EOPNOTSUPP:
+                    case ENOTSOCK:
+                    {
+                        return NOT_A_SOCKET;
+                    }
+                    default:
+                    {
+                        return UNKNOWN_ERROR;
+                    }
+                }
+                #endif
+            }
+
+            return SUCCESS;
         }, socket_flags);
 }
 
-inline int Server::bind_internal(const char* host, int port, int socket_flags)
+inline std::tuple<int, SocketError> Server::bind_internal(const char* host, int port, int socket_flags)
 {
     if (!is_valid()) {
-        return -1;
+        return { -1, UNKNOWN_ERROR };
     }
 
-    svr_sock_ = create_server_socket(host, port, socket_flags);
+    auto [sock, error] = create_server_socket(host, port, socket_flags);
+
+    svr_sock_ = sock;
+
     if (svr_sock_ == INVALID_SOCKET) {
-        return -1;
+        return { -1, error };
     }
 
     if (port == 0) {
         struct sockaddr_storage address;
         socklen_t len = sizeof(address);
         if (getsockname(svr_sock_, reinterpret_cast<struct sockaddr *>(&address), &len) == -1) {
-            return -1;
+            return { -1, UNKNOWN_ERROR };
         }
         if (address.ss_family == AF_INET) {
-          return ntohs(reinterpret_cast<struct sockaddr_in*>(&address)->sin_port);
+          return { ntohs(reinterpret_cast<struct sockaddr_in*>(&address)->sin_port), SUCCESS };
         } else if (address.ss_family == AF_INET6) {
-          return ntohs(reinterpret_cast<struct sockaddr_in6*>(&address)->sin6_port);
+          return { ntohs(reinterpret_cast<struct sockaddr_in6*>(&address)->sin6_port), SUCCESS };
         } else {
-          return -1;
+          return { -1, BAD_HOST };
         }
     } else {
-        return port;
+        return { port, SUCCESS };
     }
 }
 
@@ -1995,7 +2365,9 @@ inline bool Server::read_socket(socket_t sock)
         [this](Stream& strm, bool last_connection, bool& connection_close) {
             return process_request(strm, last_connection, connection_close);
         },
-        close);
+        close,
+        m_shouldStop,
+        true);
 }
 
 // HTTP client implementation
@@ -2025,8 +2397,8 @@ inline socket_t Client::create_client_socket()
         return opened_connection_;
     }
 
-    auto conn = detail::create_socket(host_.c_str(), port_,
-        [=](socket_t sock, struct addrinfo& ai) -> bool {
+    auto [conn, err] = detail::create_socket(host_.c_str(), port_,
+        [=](socket_t sock, struct addrinfo& ai) -> SocketError {
             detail::set_nonblocking(sock, true);
 
             auto ret = connect(sock, ai.ai_addr, ai.ai_addrlen);
@@ -2034,12 +2406,12 @@ inline socket_t Client::create_client_socket()
                 if (detail::is_connection_error() ||
                     !detail::wait_until_socket_is_ready(sock, timeout_sec_, 0)) {
                     detail::close_socket(sock);
-                    return false;
+                    return UNKNOWN_ERROR;
                 }
             }
 
             detail::set_nonblocking(sock, false);
-            return true;
+            return SUCCESS;
         });
 
     /* For some reason, reusing the connection fails when using SSL. Possibly
@@ -2074,33 +2446,41 @@ inline bool Client::read_response_line(Stream& strm, Response& res)
     return true;
 }
 
-inline bool Client::send(Request& req, Response& res)
+inline bool Client::send(Request& req, Response& res, const bool isRetry)
 {
-    /* TODO: Might be possible to block slightly less of the critical path.
-       I'm too tired to think it through right now. */
-    std::scoped_lock lock(request_mutex);
-
-    if (req.path.empty()) {
+    if (req.path.empty())
+    {
         return false;
     }
 
-    auto sock = create_client_socket();
+    {
+        std::scoped_lock lock(request_mutex);
 
-    if (sock == INVALID_SOCKET) {
-        return false;
+        auto sock = create_client_socket();
+
+        if (sock == INVALID_SOCKET)
+        {
+            return false;
+        }
+
+        if (read_socket(sock, req, res))
+        {
+            return true;
+        }
     }
-
-    bool success = read_socket(sock, req, res);
 
     /* Failed to send - possibly connection closed due to timeout. Invalidate
        the socket so we make a new one on next request.*/
-    if (!success)
+    opened_connection_ = INVALID_SOCKET;
+
+    /* If the request failed, it's possible the socket timed out,
+       let's give it one more try to make sure */
+    if (!isRetry)
     {
-        opened_connection_ = INVALID_SOCKET;
-        return false;
+        return send(req, res, true);
     }
 
-    return true;
+    return false;
 }
 
 inline bool Client::write_request(Stream& strm, Request& req)
@@ -2196,13 +2576,17 @@ inline bool Client::read_socket(socket_t sock, Request& req, Response& res)
 {
     bool close = false;
 
+    std::atomic<bool> shouldStop = false;
+
     return detail::read_socket(
         sock,
         0,
         [&](Stream& strm, bool /*last_connection*/, bool& connection_close) {
             return process_request(strm, req, res, connection_close);
         },
-        close);
+        close,
+        shouldStop,
+        false);
 }
 
 inline bool Client::is_ssl() const
@@ -2357,7 +2741,9 @@ inline bool read_socket_ssl(
     SSL_CTX* ctx, std::mutex& ctx_mutex,
     U SSL_connect_or_accept, V setup,
     T callback,
-    bool close)
+    bool close,
+    std::atomic<bool> &shouldStop,
+    bool keepAliveForever = false)
 {
     SSL* ssl = nullptr;
     {
@@ -2378,7 +2764,26 @@ inline bool read_socket_ssl(
 
     bool ret = false;
 
-    if (keep_alive_max_count > 0) {
+    if (keepAliveForever)
+    {
+        while (detail::select_read(sock,
+                                   CPPHTTPLIB_KEEPALIVE_TIMEOUT_SECOND,
+                                   CPPHTTPLIB_KEEPALIVE_TIMEOUT_USECOND) > 0
+            && !shouldStop)
+        {
+            SSLSocketStream strm(sock, ssl);
+
+            bool closeConnection = false;
+
+            ret = callback(strm, false, closeConnection);
+
+            if (!ret || closeConnection)
+            {
+                break;
+            }
+        }
+    }
+    else if (keep_alive_max_count > 0) {
         auto count = keep_alive_max_count;
         while (count > 0 &&
                detail::select_read(sock,
@@ -2505,7 +2910,9 @@ inline bool SSLServer::read_socket(socket_t sock)
         [this](Stream& strm, bool last_connection, bool& connection_close) {
             return process_request(strm, last_connection, connection_close);
         },
-        close);
+        close,
+        m_shouldStop,
+        true);
 }
 
 // SSL HTTP client implementation
@@ -2536,6 +2943,8 @@ inline bool SSLClient::read_socket(socket_t sock, Request& req, Response& res)
 {
     bool close = false;
 
+    std::atomic<bool> shouldStop = false;
+
     return is_valid() && detail::read_socket_ssl(
         sock, 0,
         ctx_, ctx_mutex_,
@@ -2546,7 +2955,9 @@ inline bool SSLClient::read_socket(socket_t sock, Request& req, Response& res)
         [&](Stream& strm, bool /*last_connection*/, bool& connection_close) {
             return process_request(strm, req, res, connection_close);
         },
-        close);
+        close,
+        shouldStop,
+        false);
 }
 #endif
 

@@ -63,7 +63,7 @@ class Nigel
         const std::vector<Crypto::Hash> blockHashCheckpoints,
         const uint64_t startHeight,
         const uint64_t startTimestamp,
-        const bool skipCoinbaseTransactions) const;
+        const bool skipCoinbaseTransactions);
 
     /* Returns a bool on success or not */
     bool getTransactionsStatus(
@@ -229,4 +229,7 @@ class Nigel
 
     /* If the daemon is SSL */
     bool m_daemonSSL = false;
+
+    /* Whether we should use /getrawblocks instead of /getwalletsyncdata */
+    bool m_useRawBlocks = true;
 };

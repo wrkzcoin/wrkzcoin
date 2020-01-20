@@ -160,7 +160,7 @@ namespace DaemonConfig
 #ifdef ENABLE_ZSTD_COMPRESSION
             ("db-enable-compression",
              "Enable database compression",
-             cxxopts::value<bool>(config.enableDbCompression)->default_value("true"))
+             cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
 #endif
                 ("db-max-open-files",
                  "Number of files that can be used by the database at one time",

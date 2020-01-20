@@ -367,7 +367,7 @@ jobs:
         run: |
           export PATH=~/.local/bin:$PATH
           pip install --user pipx
-          pipx install awscli
+          pip install --user pipx awscli
           pip install --user pipx awscli-plugin-endpoint
       - name: S3 Upload
         env:

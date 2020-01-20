@@ -19,6 +19,7 @@ namespace Logger
         FATAL = 1,
         DISABLED = 0,
     };
+
     enum LogCategory
     {
         SYNC,
@@ -26,6 +27,7 @@ namespace Logger
         FILESYSTEM,
         SAVE,
         DAEMON,
+        DAEMON_RPC,
         DATABASE,
     };
 

@@ -1323,4 +1323,74 @@ namespace CryptoNote
         };
     };
 
+    static inline void serialize(COMMAND_RPC_GET_BLOCKS_FAST::response &response, ISerializer &s)
+    {
+        KV_MEMBER(response.blocks)
+        KV_MEMBER(response.start_height)
+        KV_MEMBER(response.current_height)
+        KV_MEMBER(response.status)
+    }
+
+    inline void serialize(BlockFullInfo &blockFullInfo, ISerializer &s)
+    {
+        KV_MEMBER(blockFullInfo.block_id);
+        KV_MEMBER(blockFullInfo.block);
+        s(blockFullInfo.transactions, "txs");
+    }
+
+    inline void serialize(TransactionPrefixInfo &transactionPrefixInfo, ISerializer &s)
+    {
+        KV_MEMBER(transactionPrefixInfo.txHash);
+        KV_MEMBER(transactionPrefixInfo.txPrefix);
+    }
+
+    inline void serialize(BlockShortInfo &blockShortInfo, ISerializer &s)
+    {
+        KV_MEMBER(blockShortInfo.blockId);
+        KV_MEMBER(blockShortInfo.block);
+        KV_MEMBER(blockShortInfo.txPrefixes);
+    }
+
+    inline void serialize(WalletTypes::WalletBlockInfo &walletBlockInfo, ISerializer &s)
+    {
+        if (walletBlockInfo.coinbaseTransaction)
+        {
+            s(*(walletBlockInfo.coinbaseTransaction), "coinbaseTX");
+        }
+
+        s(walletBlockInfo.transactions, "transactions");
+        s(walletBlockInfo.blockHeight, "blockHeight");
+        s(walletBlockInfo.blockHash, "blockHash");
+        s(walletBlockInfo.blockTimestamp, "blockTimestamp");
+    }
+
+    inline void serialize(WalletTypes::RawTransaction &rawTransaction, ISerializer &s)
+    {
+        s(rawTransaction.keyInputs, "inputs");
+        s(rawTransaction.paymentID, "paymentID");
+        s(rawTransaction.keyOutputs, "outputs");
+        s(rawTransaction.hash, "hash");
+        s(rawTransaction.transactionPublicKey, "txPublicKey");
+        s(rawTransaction.unlockTime, "unlockTime");
+    }
+
+    inline void serialize(WalletTypes::RawCoinbaseTransaction &rawCoinbaseTransaction, ISerializer &s)
+    {
+        s(rawCoinbaseTransaction.keyOutputs, "outputs");
+        s(rawCoinbaseTransaction.hash, "hash");
+        s(rawCoinbaseTransaction.transactionPublicKey, "txPublicKey");
+        s(rawCoinbaseTransaction.unlockTime, "unlockTime");
+    }
+
+    inline void serialize(WalletTypes::KeyOutput &keyOutput, ISerializer &s)
+    {
+        s(keyOutput.key, "key");
+        s(keyOutput.amount, "amount");
+    }
+
+    inline void serialize(WalletTypes::TopBlock &topBlock, ISerializer &s)
+    {
+        s(topBlock.hash, "hash");
+        s(topBlock.height, "height");
+    }
 } // namespace CryptoNote

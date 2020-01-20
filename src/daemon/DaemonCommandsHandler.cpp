@@ -4,6 +4,7 @@
 // Please see the included LICENSE file for more information.
 
 #include "version.h"
+#include "JsonHelper.h"
 
 #include <boost/format.hpp>
 #include <cryptonotecore/Core.h>
@@ -53,12 +54,13 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     CryptoNote::Core &core,
     CryptoNote::NodeServer &srv,
     std::shared_ptr<Logging::LoggerManager> log,
-    CryptoNote::RpcServer *prpc_server):
+    const std::string ip,
+    const uint32_t port):
     m_core(core),
     m_srv(srv),
     logger(log, "daemon"),
     m_logManager(log),
-    m_prpc_server(prpc_server)
+    m_rpcServer(ip.c_str(), port)
 {
     m_consoleHandler.setHandler(
         "?",
@@ -80,10 +82,6 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "print_cn",
         std::bind(&DaemonCommandsHandler::print_cn, this, std::placeholders::_1),
         "Print connections");
-    m_consoleHandler.setHandler(
-        "print_bc",
-        std::bind(&DaemonCommandsHandler::print_bc, this, std::placeholders::_1),
-        "Print blockchain info in a given blocks range, print_bc <begin_height> [<end_height>]");
     m_consoleHandler.setHandler(
         "print_block",
         std::bind(&DaemonCommandsHandler::print_block, this, std::placeholders::_1),
@@ -156,86 +154,6 @@ bool DaemonCommandsHandler::print_pl(const std::vector<std::string> &args)
 bool DaemonCommandsHandler::print_cn(const std::vector<std::string> &args)
 {
     m_srv.get_payload_object().log_connections();
-    return true;
-}
-
-//--------------------------------------------------------------------------------
-bool DaemonCommandsHandler::print_bc(const std::vector<std::string> &args)
-{
-    if (!args.size())
-    {
-        std::cout << "need block index parameter" << ENDL;
-        return false;
-    }
-
-    uint32_t start_index = 0;
-    uint32_t end_index = 0;
-    uint32_t end_block_parametr = m_core.getTopBlockIndex();
-
-    if (!Common::fromString(args[0], start_index))
-    {
-        std::cout << "wrong starter block index parameter" << ENDL;
-        return false;
-    }
-
-    if (args.size() > 1 && !Common::fromString(args[1], end_index))
-    {
-        std::cout << "wrong end block index parameter" << ENDL;
-        return false;
-    }
-
-    if (end_index == 0)
-    {
-        end_index = start_index;
-    }
-
-    if (end_index > end_block_parametr)
-    {
-        std::cout << "end block index parameter shouldn't be greater than " << end_block_parametr << ENDL;
-        return false;
-    }
-
-    if (end_index < start_index)
-    {
-        std::cout << "end block index should be greater than or equal to starter block index" << ENDL;
-        return false;
-    }
-
-    CryptoNote::COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::request req;
-    CryptoNote::COMMAND_RPC_GET_BLOCK_HEADERS_RANGE::response res;
-    CryptoNote::JsonRpc::JsonRpcError error_resp;
-
-    req.start_height = start_index;
-    req.end_height = end_index;
-
-    // TODO: implement m_is_rpc handling like in monero?
-    if (!m_prpc_server->on_get_block_headers_range(req, res, error_resp) || res.status != CORE_RPC_STATUS_OK)
-    {
-        // TODO res.status handling
-        std::cout << "Response status not CORE_RPC_STATUS_OK" << ENDL;
-        return false;
-    }
-
-    const CryptoNote::Currency &currency = m_core.getCurrency();
-
-    bool first = true;
-    for (CryptoNote::block_header_response &header : res.headers)
-    {
-        if (!first)
-        {
-            std::cout << ENDL;
-            first = false;
-        }
-
-        std::cout << "height: " << header.height << ", timestamp: " << header.timestamp
-                  << ", difficulty: " << header.difficulty << ", size: " << header.block_size
-                  << ", transactions: " << header.num_txes << ENDL
-                  << "major version: " << unsigned(header.major_version)
-                  << ", minor version: " << unsigned(header.minor_version) << ENDL << "block id: " << header.hash
-                  << ", previous block id: " << header.prev_hash << ENDL << "difficulty: " << header.difficulty
-                  << ", nonce: " << header.nonce << ", reward: " << currency.formatAmount(header.reward) << ENDL;
-    }
-
     return true;
 }
 
@@ -431,16 +349,23 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    CryptoNote::COMMAND_RPC_GET_INFO::request ireq;
-    CryptoNote::COMMAND_RPC_GET_INFO::response iresp;
+    auto res = m_rpcServer.Get("/info");
 
-    if (!m_prpc_server->on_get_info(ireq, iresp) || iresp.status != CORE_RPC_STATUS_OK)
+    if (!res || res->status != 200)
     {
         std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
         return false;
     }
 
-    const std::time_t uptime = std::time(nullptr) - iresp.start_time;
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
+        return false;
+    }
+
+    const std::time_t uptime = std::time(nullptr) - getUint64FromJSON(resp, "start_time");
 
     const uint64_t seconds = uptime;
     const uint64_t minutes = seconds / 60;
@@ -452,23 +377,33 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
                                 + std::to_string(minutes % 60) + "m "
                                 + std::to_string(seconds % 60) + "s";
 
-    const auto forkStatus = Utilities::get_fork_status(iresp.network_height, iresp.upgrade_heights, iresp.supported_height);
+    const uint64_t height = getUint64FromJSON(resp, "height");
+    const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");
+    const uint64_t supportedHeight = getUint64FromJSON(resp, "supported_height");
+    std::vector<uint64_t> upgradeHeights;
+
+    for (const auto &height : getArrayFromJSON(resp, "upgrade_heights"))
+    {
+        upgradeHeights.push_back(height.GetUint64());
+    }
+
+    const auto forkStatus = Utilities::get_fork_status(networkHeight, upgradeHeights, supportedHeight);
 
     std::vector<std::tuple<std::string, std::string>> statusTable;
 
-    statusTable.push_back({"Local Height", std::to_string(iresp.height)});
-    statusTable.push_back({"Network Height", std::to_string(iresp.network_height)});
-    statusTable.push_back({"Percentage Synced", Utilities::get_sync_percentage(iresp.height, iresp.network_height) + "%"});
-    statusTable.push_back({"Network Hashrate", Utilities::get_mining_speed(iresp.hashrate)});
-    statusTable.push_back({"Block Version", "v" + std::to_string(iresp.major_version)});
-    statusTable.push_back({"Incoming Connections", std::to_string(iresp.incoming_connections_count)});
-    statusTable.push_back({"Outgoing Connections", std::to_string(iresp.outgoing_connections_count)});
-    statusTable.push_back({"Uptime", uptimeStr});
-    statusTable.push_back({"Fork Status", Utilities::get_update_status(forkStatus)});
-    statusTable.push_back({"Next Fork", Utilities::get_fork_time(iresp.network_height, iresp.upgrade_heights)});
+    statusTable.push_back({"Local Height",          std::to_string(height)});
+    statusTable.push_back({"Network Height",        std::to_string(networkHeight)});
+    statusTable.push_back({"Percentage Synced",     Utilities::get_sync_percentage(height, networkHeight) + "%"});
+    statusTable.push_back({"Network Hashrate",      Utilities::get_mining_speed(getUint64FromJSON(resp, "hashrate"))});
+    statusTable.push_back({"Block Version",         "v" + std::to_string(getUint64FromJSON(resp, "major_version"))});
+    statusTable.push_back({"Incoming Connections",  std::to_string(getUint64FromJSON(resp, "incoming_connections_count"))});
+    statusTable.push_back({"Outgoing Connections",  std::to_string(getUint64FromJSON(resp, "outgoing_connections_count"))});
+    statusTable.push_back({"Uptime",                uptimeStr});
+    statusTable.push_back({"Fork Status",           Utilities::get_update_status(forkStatus)});
+    statusTable.push_back({"Next Fork",             Utilities::get_fork_time(networkHeight, upgradeHeights)});
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
-    statusTable.push_back({"Version", PROJECT_VERSION});
+    statusTable.push_back({"Version", PROJECT_VERSION_LONG});
 
     size_t longestValue = 0;
     size_t longestDescription = 0;
@@ -506,7 +441,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 
     if (forkStatus == Utilities::OutOfDate)
     {
-        std::cout << WarningMsg(Utilities::get_upgrade_info(iresp.supported_height, iresp.upgrade_heights)) << std::endl;
+        std::cout << WarningMsg(Utilities::get_upgrade_info(supportedHeight, upgradeHeights)) << std::endl;
     }
 
     return true;

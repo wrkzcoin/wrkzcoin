@@ -17,6 +17,13 @@ typedef rapidjson::GenericValue<rapidjson::UTF8<char>, rapidjson::MemoryPoolAllo
 
 static const std::string kTypeNames[] = {"Null", "False", "True", "Object", "Array", "String", "Number"};
 
+template<typename T> bool hasMember(const T &j, const std::string &key)
+{
+    auto val = j.FindMember(key);
+
+    return val != j.MemberEnd();
+}
+
 template<typename T> const rapidjson::Value &getJsonValue(const T &j, const std::string &key)
 {
     auto val = j.FindMember(key);

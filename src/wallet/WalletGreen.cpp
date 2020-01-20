@@ -1375,41 +1375,11 @@ namespace CryptoNote
         }
     }
 
-    CryptoNote::BlockDetails WalletGreen::getBlock(const uint64_t blockHeight)
-    {
-        CryptoNote::BlockDetails block;
-
-        if (m_node.getLastKnownBlockHeight() == 0)
-        {
-            return block;
-        }
-
-        std::promise<std::error_code> errorPromise;
-
-        auto e = errorPromise.get_future();
-
-        auto callback = [&errorPromise](std::error_code e) { errorPromise.set_value(e); };
-
-        m_node.getBlock(blockHeight, block, callback);
-
-        e.get();
-
-        return block;
-    }
-
     uint64_t WalletGreen::scanHeightToTimestamp(const uint64_t scanHeight)
     {
         if (scanHeight == 0)
         {
             return 0;
-        }
-
-        /* Get the block timestamp from the node if the node has it */
-        uint64_t timestamp = static_cast<uint64_t>(getBlock(scanHeight).timestamp);
-
-        if (timestamp != 0)
-        {
-            return timestamp;
         }
 
         /* Get the amount of seconds since the blockchain launched */
@@ -1420,7 +1390,7 @@ namespace CryptoNote
         secondsSinceLaunch *= 0.95;
 
         /* Get the genesis block timestamp and add the time since launch */
-        timestamp = CryptoNote::parameters::GENESIS_BLOCK_TIMESTAMP + secondsSinceLaunch;
+        const uint64_t timestamp = CryptoNote::parameters::GENESIS_BLOCK_TIMESTAMP + secondsSinceLaunch;
 
         /* Timestamp in the future */
         if (timestamp >= static_cast<uint64_t>(std::time(nullptr)))

@@ -77,17 +77,6 @@ namespace CryptoNote
 
         virtual void getFeeInfo() override;
 
-        virtual void getBlockHashesByTimestamps(
-            uint64_t timestampBegin,
-            size_t secondsCount,
-            std::vector<Crypto::Hash> &blockHashes,
-            const Callback &callback) override;
-
-        virtual void getTransactionHashesByPaymentId(
-            const Crypto::Hash &paymentId,
-            std::vector<Crypto::Hash> &transactionHashes,
-            const Callback &callback) override;
-
         virtual BlockHeaderInfo getLastLocalBlockHeaderInfo() const override;
 
         virtual void relayTransaction(const CryptoNote::Transaction &transaction, const Callback &callback) override;
@@ -136,23 +125,6 @@ namespace CryptoNote
             bool &isBcActual,
             std::vector<std::unique_ptr<ITransactionReader>> &newTxs,
             std::vector<Crypto::Hash> &deletedTxIds,
-            const Callback &callback) override;
-
-        virtual void getBlocks(
-            const std::vector<uint32_t> &blockHeights,
-            std::vector<std::vector<BlockDetails>> &blocks,
-            const Callback &callback) override;
-
-        virtual void getBlocks(
-            const std::vector<Crypto::Hash> &blockHashes,
-            std::vector<BlockDetails> &blocks,
-            const Callback &callback) override;
-
-        virtual void getBlock(const uint32_t blockHeight, BlockDetails &block, const Callback &callback) override;
-
-        virtual void getTransactions(
-            const std::vector<Crypto::Hash> &transactionHashes,
-            std::vector<TransactionDetails> &transactions,
             const Callback &callback) override;
 
         virtual void isSynchronized(bool &syncStatus, const Callback &callback) override;
@@ -238,30 +210,13 @@ namespace CryptoNote
             std::vector<std::unique_ptr<ITransactionReader>> &newTxs,
             std::vector<Crypto::Hash> &deletedTxIds);
 
-        std::error_code doGetBlocksByHeight(
-            const std::vector<uint32_t> &blockHeights,
-            std::vector<std::vector<BlockDetails>> &blocks);
-
-        std::error_code
-            doGetBlocksByHash(const std::vector<Crypto::Hash> &blockHashes, std::vector<BlockDetails> &blocks);
-
-        std::error_code doGetBlock(const uint32_t blockHeight, BlockDetails &block);
-
-        std::error_code doGetTransactionHashesByPaymentId(
-            const Crypto::Hash &paymentId,
-            std::vector<Crypto::Hash> &transactionHashes);
-
-        std::error_code doGetTransactions(
-            const std::vector<Crypto::Hash> &transactionHashes,
-            std::vector<TransactionDetails> &transactions);
-
         void scheduleRequest(std::function<std::error_code()> &&procedure, const Callback &callback);
 
         template<typename Request, typename Response>
         std::error_code binaryCommand(const std::string &url, const Request &req, Response &res);
 
         template<typename Request, typename Response>
-        std::error_code jsonCommand(const std::string &url, const Request &req, Response &res);
+        std::error_code jsonCommand(const std::string &url, const std::string &method, const Request &req, Response &res);
 
         template<typename Request, typename Response>
         std::error_code jsonRpcCommand(const std::string &method, const Request &req, Response &res);

@@ -231,7 +231,7 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
         // don't compress l0 & l1
         fOptions.compression_per_level[i] = (i < 2 ? rocksdb::kNoCompression : compressionLevel);
     }
-    // bottom most use lz4hc
+    // bottom most use kZSTD
     fOptions.bottommost_compression =
         config.getCompressionEnabled() ? rocksdb::kZSTD : rocksdb::kNoCompression;
 

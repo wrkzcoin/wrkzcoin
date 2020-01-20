@@ -28,12 +28,14 @@ namespace CryptoNote
 
         void setBody(const std::string &b);
 
+        void setMethod(const std::string &value);
+
         void setUrl(const std::string &uri);
 
       private:
         friend class HttpParser;
 
-        std::string method;
+        std::string method = "POST";
 
         std::string url;
 

@@ -66,23 +66,6 @@ namespace PaymentService
 
         virtual void getFeeInfo() override {}
 
-        virtual void getBlockHashesByTimestamps(
-            uint64_t timestampBegin,
-            size_t secondsCount,
-            std::vector<Crypto::Hash> &blockHashes,
-            const Callback &callback) override
-        {
-            callback(std::error_code());
-        }
-
-        virtual void getTransactionHashesByPaymentId(
-            const Crypto::Hash &paymentId,
-            std::vector<Crypto::Hash> &transactionHashes,
-            const Callback &callback) override
-        {
-            callback(std::error_code());
-        }
-
         virtual CryptoNote::BlockHeaderInfo getLastLocalBlockHeaderInfo() const override
         {
             return CryptoNote::BlockHeaderInfo();
@@ -158,32 +141,6 @@ namespace PaymentService
         {
             isBcActual = true;
             callback(std::error_code());
-        }
-
-        virtual void getBlocks(
-            const std::vector<uint32_t> &blockHeights,
-            std::vector<std::vector<CryptoNote::BlockDetails>> &blocks,
-            const Callback &callback) override
-        {
-        }
-
-        virtual void getBlocks(
-            const std::vector<Crypto::Hash> &blockHashes,
-            std::vector<CryptoNote::BlockDetails> &blocks,
-            const Callback &callback) override
-        {
-        }
-
-        virtual void
-            getBlock(const uint32_t blockHeight, CryptoNote::BlockDetails &block, const Callback &callback) override
-        {
-        }
-
-        virtual void getTransactions(
-            const std::vector<Crypto::Hash> &transactionHashes,
-            std::vector<CryptoNote::TransactionDetails> &transactions,
-            const Callback &callback) override
-        {
         }
 
         virtual void isSynchronized(bool &syncStatus, const Callback &callback) override {}

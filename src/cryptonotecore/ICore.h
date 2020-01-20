@@ -102,6 +102,15 @@ namespace CryptoNote
             std::vector<WalletTypes::WalletBlockInfo> &blocks,
             std::optional<WalletTypes::TopBlock> &topBlockInfo) const = 0;
 
+        virtual bool getRawBlocks(
+            const std::vector<Crypto::Hash> &knownBlockHashes,
+            const uint64_t startHeight,
+            const uint64_t startTimestamp,
+            const uint64_t blockCount,
+            const bool skipCoinbaseTransactions,
+            std::vector<RawBlock> &walletBlocks,
+            std::optional<WalletTypes::TopBlock> &topBlockInfo) const = 0;
+
         virtual bool getTransactionsStatus(
             std::unordered_set<Crypto::Hash> transactionHashes,
             std::unordered_set<Crypto::Hash> &transactionsInPool,
@@ -130,13 +139,13 @@ namespace CryptoNote
 
         virtual std::error_code addBlock(RawBlock &&rawBlock) = 0;
 
-        virtual std::error_code submitBlock(BinaryArray &&rawBlockTemplate) = 0;
+        virtual std::error_code submitBlock(const BinaryArray &rawBlockTemplate) = 0;
 
         virtual bool getTransactionGlobalIndexes(
             const Crypto::Hash &transactionHash,
             std::vector<uint32_t> &globalIndexes) const = 0;
 
-        virtual bool getRandomOutputs(
+        virtual std::tuple<bool, std::string> getRandomOutputs(
             uint64_t amount,
             uint16_t count,
             std::vector<uint32_t> &globalIndexes,
@@ -166,9 +175,10 @@ namespace CryptoNote
             std::vector<TransactionPrefixInfo> &addedTransactions,
             std::vector<Crypto::Hash> &deletedTransactions) const = 0;
 
-        virtual bool getBlockTemplate(
+        virtual std::tuple<bool, std::string> getBlockTemplate(
             BlockTemplate &b,
-            const AccountPublicAddress &adr,
+            const Crypto::PublicKey &publicViewKey,
+            const Crypto::PublicKey &publicSpendKey,
             const BinaryArray &extraNonce,
             uint64_t &difficulty,
             uint32_t &height) = 0;

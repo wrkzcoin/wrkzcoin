@@ -27,7 +27,8 @@ class DaemonCommandsHandler
         CryptoNote::Core &core,
         CryptoNote::NodeServer &srv,
         std::shared_ptr<Logging::LoggerManager> log,
-        CryptoNote::RpcServer *prpc_server);
+        const std::string ip,
+        const uint32_t port);
 
     bool start_handling()
     {
@@ -49,11 +50,11 @@ class DaemonCommandsHandler
 
     CryptoNote::NodeServer &m_srv;
 
+    httplib::Client m_rpcServer;
+
     Logging::LoggerRef logger;
 
     std::shared_ptr<Logging::LoggerManager> m_logManager;
-
-    CryptoNote::RpcServer *m_prpc_server;
 
     std::string get_commands_str();
 
@@ -65,17 +66,7 @@ class DaemonCommandsHandler
 
     bool print_pl(const std::vector<std::string> &args);
 
-    bool show_hr(const std::vector<std::string> &args);
-
-    bool hide_hr(const std::vector<std::string> &args);
-
-    bool print_bc_outs(const std::vector<std::string> &args);
-
     bool print_cn(const std::vector<std::string> &args);
-
-    bool print_bc(const std::vector<std::string> &args);
-
-    bool print_bci(const std::vector<std::string> &args);
 
     bool set_log(const std::vector<std::string> &args);
 
@@ -86,10 +77,6 @@ class DaemonCommandsHandler
     bool print_pool(const std::vector<std::string> &args);
 
     bool print_pool_sh(const std::vector<std::string> &args);
-
-    bool start_mining(const std::vector<std::string> &args);
-
-    bool stop_mining(const std::vector<std::string> &args);
 
     bool status(const std::vector<std::string> &args);
 };
