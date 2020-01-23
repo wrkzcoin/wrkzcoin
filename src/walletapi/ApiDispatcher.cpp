@@ -1479,7 +1479,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::getTransactionDetails(
             nlohmann::json j {{"transaction", tx}};
 
             /* Replace publicKey with address for ease of use */
-            for (auto &tx : j.at("transaction.transfers"))
+            for (auto &tx : j.at("transaction").at("transfers"))
             {
                 /* Get the spend key */
                 Crypto::PublicKey spendKey = tx.at("publicKey").get<Crypto::PublicKey>();
