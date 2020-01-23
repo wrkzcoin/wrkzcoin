@@ -777,6 +777,8 @@ bool WalletBackend::removePreparedTransaction(const Crypto::Hash &transactionHas
 std::tuple<Error, Crypto::Hash> WalletBackend::sendPreparedTransaction(
     const Crypto::Hash transactionHash)
 {
+    std::scoped_lock lock(m_transactionMutex);
+
     auto it = m_preparedTransactions.find(transactionHash);
 
     if (it == m_preparedTransactions.end())
@@ -811,6 +813,8 @@ std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBack
     const bool sendAll,
     const bool sendTransaction)
 {
+    std::scoped_lock lock(m_transactionMutex);
+
     const auto [error, hash, preparedTransaction] = SendTransaction::sendTransactionBasic(
         destination,
         amount,
@@ -841,6 +845,8 @@ std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBack
     const bool sendAll,
     const bool sendTransaction)
 {
+    std::scoped_lock lock(m_transactionMutex);
+
     const auto [error, hash, preparedTransaction] = SendTransaction::sendTransactionAdvanced(
         destinations,
         mixin,
@@ -866,6 +872,8 @@ std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBack
 
 std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
 {
+    std::scoped_lock lock(m_transactionMutex);
+
     return SendTransaction::sendFusionTransactionBasic(m_daemon, m_subWallets);
 }
 
@@ -875,6 +883,8 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
     const std::string destination,
     const std::vector<uint8_t> extraData)
 {
+    std::scoped_lock lock(m_transactionMutex);
+
     return SendTransaction::sendFusionTransactionAdvanced(
         mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets, extraData);
 }
