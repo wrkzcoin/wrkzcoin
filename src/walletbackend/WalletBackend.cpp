@@ -712,7 +712,7 @@ Error WalletBackend::save() const
    blockchain synchronizer first (Call save()) */
 Error WalletBackend::unsafeSave() const
 {
-    return WalletBackend::saveWalletJSONToDisk(toJSON(), m_filename, m_password);
+    return WalletBackend::saveWalletJSONToDisk(unsafeToJSON(), m_filename, m_password);
 }
 
 /* Get the balance for one subwallet (error, unlocked, locked) */
@@ -1254,6 +1254,11 @@ std::vector<std::tuple<std::string, uint64_t, uint64_t>> WalletBackend::getBalan
 }
 
 std::string WalletBackend::toJSON() const
+{
+    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this]() { return unsafeToJSON(); });
+}
+
+std::string WalletBackend::unsafeToJSON() const
 {
     StringBuffer sb;
     Writer<StringBuffer> writer(sb);

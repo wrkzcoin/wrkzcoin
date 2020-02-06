@@ -313,8 +313,9 @@ class WalletBackend
 
     Error unsafeSave() const;
 
-    void init();
+    std::string unsafeToJSON() const;
 
+    void init();
 
     //////////////////////////////
     /* Private member variables */

@@ -133,6 +133,10 @@ ApiDispatcher::ApiDispatcher(
             "/transactions/send/fusion/advanced",
             router(&ApiDispatcher::sendAdvancedFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
 
+        .Post(
+            "/export/json",
+            router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed))
+
         /* DELETE */
 
         /* Close the current wallet */
@@ -920,6 +924,30 @@ std::tuple<Error, uint16_t>
     res.set_content(j.dump(4) + "\n", "application/json");
 
     return {SUCCESS, 201};
+}
+
+std::tuple<Error, uint16_t>
+    ApiDispatcher::exportToJSON(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+{
+    const std::string path = getJsonValue<std::string>(body, "filename");
+
+    const std::string walletJSON = m_walletBackend->toJSON();
+
+    std::ofstream file(path);
+
+    if (!file)
+    {
+        const Error error = Error(
+            INVALID_WALLET_FILENAME,
+            std::string("Could not create file at path given. Error: ") + strerror(errno)
+        );
+
+        return {error, 400};
+    }
+
+    file << walletJSON << std::endl;
+
+    return {SUCCESS, 200};
 }
 
 /////////////////////
