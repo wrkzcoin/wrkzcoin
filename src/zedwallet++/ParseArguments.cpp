@@ -32,6 +32,8 @@ ZedConfig parseArguments(int argc, char **argv)
 
     unsigned int threads;
 
+    std::string logFilePath;
+
     options.add_options("Core")(
         "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
 
@@ -52,28 +54,36 @@ ZedConfig parseArguments(int argc, char **argv)
 #endif
         ;
 
-    options.add_options("Wallet")(
-        "w,wallet-file", "Open the wallet <file>", cxxopts::value<std::string>(config.walletFile), "<file>")
+    options.add_options("Wallet")
+        ("w,wallet-file",
+         "Open the wallet <file>",
+         cxxopts::value<std::string>(config.walletFile),
+         "<file>")
 
         ("p,password",
          "Use the password <pass> to open the wallet",
          cxxopts::value<std::string>(config.walletPass),
          "<pass>")
 
-            ("log-level",
-             "Specify log level",
-             cxxopts::value<int>(logLevel)->default_value(std::to_string(config.logLevel)),
-             "#")
+        ("log-level",
+         "Specify log level",
+         cxxopts::value<int>(logLevel)->default_value(std::to_string(config.logLevel)),
+         "#")
 
-                ("threads",
-                 "Specify number of wallet sync threads",
-                 cxxopts::value<unsigned int>(threads)->default_value(
-                     std::to_string(std::max(1u, std::thread::hardware_concurrency()))),
-                 "#")
+        ("log-file",
+         "Specify filepath to log to. Logging to file is disabled by default",
+         cxxopts::value<std::string>(logFilePath),
+         "<file>")
 
-                    ("scan-coinbase-transactions",
-                     "Scan miner/coinbase transactions",
-                     cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"));
+        ("threads",
+         "Specify number of wallet sync threads",
+         cxxopts::value<unsigned int>(threads)->default_value(
+         std::to_string(std::max(1u, std::thread::hardware_concurrency()))),
+         "#")
+
+        ("scan-coinbase-transactions",
+         "Scan miner/coinbase transactions",
+         cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"));
 
     try
     {
@@ -110,6 +120,22 @@ ZedConfig parseArguments(int argc, char **argv)
     else
     {
         config.logLevel = static_cast<Logger::LogLevel>(logLevel);
+    }
+
+    if (logFilePath != "")
+    {
+        config.loggingFilePath = logFilePath;
+
+        std::ofstream logFile(logFilePath, std::ios_base::app);
+
+        if (!logFile)
+        {
+            std::cout << "Failed to open log file. Please ensure you specified "
+                      << "a valid filepath and have permissions to create files "
+                      << "in this directory. Error: " << strerror(errno) << std::endl;
+
+            exit(1);
+        }
     }
 
     if (threads == 0)
