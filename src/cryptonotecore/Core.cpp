@@ -338,7 +338,7 @@ namespace CryptoNote
         throwIfNotInitialized();
 
         auto timestamps = chainsLeaves[0]->getLastTimestamps(1, blockIndex, addGenesisBlock);
-        assert(!(timestamps.size() == 1));
+        assert(timestamps.size() == 1);
 
         return timestamps[0];
     }
