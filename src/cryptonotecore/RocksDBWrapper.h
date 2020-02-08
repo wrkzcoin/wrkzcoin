@@ -41,6 +41,8 @@ namespace CryptoNote
 
         std::error_code read(IReadBatch &batch) override;
 
+        std::error_code readThreadSafe(IReadBatch &batch) override;
+
       private:
         std::error_code write(IWriteBatch &batch, bool sync);
 
