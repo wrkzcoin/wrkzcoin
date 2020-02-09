@@ -555,7 +555,8 @@ std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t, uint64_t> SubWal
     const bool takeFromAll,
     std::vector<Crypto::PublicKey> subWalletsToTakeFrom,
     const uint64_t mixin,
-    const uint64_t height) const
+    const uint64_t height,
+    const std::optional<uint64_t> optimizeTarget) const
 {
     /* Can't send transactions with a view wallet */
     throwIfViewWallet();
@@ -601,6 +602,14 @@ std::tuple<std::vector<WalletTypes::TxInputAndOwner>, uint64_t, uint64_t> SubWal
 
     for (const auto &walletAmount : availableInputs)
     {
+        /* If we have an optimize target, we don't make new inputs larger than
+         * the target. Therefore there is not point selecting inputs that are
+         * larger than the target. */ 
+        if (optimizeTarget && walletAmount.input.amount >= *optimizeTarget)
+        {
+            continue;
+        }
+
         /* Find out how many digits the amount has, i.e. 1337 has 4 digits,
            420 has 3 digits */
         int numberOfDigits = floor(log10(walletAmount.input.amount)) + 1;

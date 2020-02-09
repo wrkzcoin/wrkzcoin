@@ -166,7 +166,8 @@ class WalletBackend
         const uint64_t mixin,
         const std::vector<std::string> subWalletsToTakeFrom,
         const std::string destinationAddress,
-        const std::vector<uint8_t> extraData);
+        const std::vector<uint8_t> extraData,
+        const std::optional<uint64_t> optimizeTarget);
 
     /* Get the balance for one subwallet (error, unlocked, locked) */
     std::tuple<Error, uint64_t, uint64_t> getBalance(const std::string address) const;

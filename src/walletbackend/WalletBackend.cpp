@@ -881,12 +881,20 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
     const uint64_t mixin,
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string destination,
-    const std::vector<uint8_t> extraData)
+    const std::vector<uint8_t> extraData,
+    const std::optional<uint64_t> optimizeTarget)
 {
     std::scoped_lock lock(m_transactionMutex);
 
     return SendTransaction::sendFusionTransactionAdvanced(
-        mixin, subWalletsToTakeFrom, destination, m_daemon, m_subWallets, extraData);
+        mixin,
+        subWalletsToTakeFrom,
+        destination,
+        m_daemon,
+        m_subWallets,
+        extraData,
+        optimizeTarget
+    );
 }
 
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)

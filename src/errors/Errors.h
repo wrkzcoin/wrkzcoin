@@ -233,6 +233,10 @@ enum ErrorCode
      * it never existed, or because the wallet was restarted and the prepared
      * transaction state was lost */
     PREPARED_TRANSACTION_NOT_FOUND = 58,
+
+    /* The amount given does not have only a single significant digit - i.e.,
+     * it cannot be used directly as a transaction input/output amount */
+    AMOUNT_UGLY = 59,
 };
 
 class Error
