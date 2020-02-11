@@ -189,7 +189,7 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
@@ -328,7 +328,7 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
@@ -468,7 +468,7 @@ jobs:
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
           SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ matrix.build_name }}-${{ steps.before_deploy.outputs.file_name }}"
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "macOS" ]; then
