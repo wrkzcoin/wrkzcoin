@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 7 RocksDB', 'Ubuntu GCC 8 RocksDB', 'Ubuntu Clang 6 RocksDB', 'aarch64 RocksDB', 'Ubuntu GCC 7 LevelDB', 'Ubuntu GCC 8 LevelDB', 'Ubuntu Clang 6 LevelDB', 'aarch64 LevelDB']
+        build_name: ['Ubuntu GCC 7 RocksDB', 'Ubuntu GCC 8 RocksDB', 'Ubuntu Clang 6 RocksDB', 'aarch64 RocksDB', 'Ubuntu GCC 7 LevelDB', 'Ubuntu GCC 8 LevelDB', 'Ubuntu Clang 6 LevelDB']
         include:
           - build_name: 'Ubuntu GCC 7 RocksDB'
             package_name: 'gcc-7 g++-7'
@@ -58,9 +58,6 @@ jobs:
             cxx: clang++-6.0
             label: linux-clang-6-leveldb
             deployable: false
-          - build_name: 'aarch64 LevelDB'
-            label: aarch64-leveldb
-            deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
@@ -147,7 +144,7 @@ jobs:
           export TAG=${COMMIT_SHA::8}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          if [[ "${BIN_LABEL}" != "aarch64-rocksdb" ] && [ "${BIN_LABEL}" != "aarch64-leveldb" ]]; then strip ${TARGETS}; fi
+          if [[ "${BIN_LABEL}" != "aarch64-rocksdb" && "${BIN_LABEL}" != "aarch64-leveldb" ]]; then strip ${TARGETS}; fi
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
