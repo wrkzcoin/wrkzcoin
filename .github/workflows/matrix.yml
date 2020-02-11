@@ -147,7 +147,7 @@ jobs:
           export TAG=${COMMIT_SHA::8}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          if [[ "${BIN_LABEL}" != "aarch64-rocksdb" ] && [ "${BIN_LABEL}" != "aarch64-leveldb" ]]; then strip ${TARGETS}; fi
+          if [[ "${BIN_LABEL}" != "aarch64-rocksdb" && "${BIN_LABEL}" != "aarch64-leveldb" ]]; then strip ${TARGETS}; fi
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
