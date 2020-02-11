@@ -353,9 +353,22 @@ jobs:
   windows_build:
     name: Windows-2019
     runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add more compilers here if you need them
+        build_name: ['Windows RocksDB', 'Windows LevelDB']
+        include:
+          - build_name: 'Windows RocksDB'
+            label: windows-rocksdb
+            deployable: false
+          - build_name: 'Windows LevelDB'
+            label: windows-leveldb
+            deployable: false
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
       LABEL: windows-2019
+      BIN_LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v1
 
@@ -372,11 +385,19 @@ jobs:
         run: choco install openssl
 
       # Configure project with cmake
-      - name: Configure
+      - name: Configure RocksDB
+        if: endsWith(matrix.label, 'rocksdb')
         run: |
           mkdir build
           cd build
           cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default
+
+      - name: Configure LevelDB
+        if: endsWith(matrix.label, 'leveldb')
+        run: |
+          mkdir build
+          cd build
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DWITH_LEVELDB=true
 
       # Build for Windows
       - name: Build
@@ -406,11 +427,11 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp *.exe wrkzcoin-${TAG}/
           cp ../../../LICENSE wrkzcoin-${TAG}/
-          7z a wrkzcoin-${LABEL}.zip wrkzcoin-${TAG}/
+          7z a wrkzcoin-${BIN_LABEL}.zip wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${LABEL}.zip builds/
-          echo ::set-output name=file_name::wrkzcoin-${LABEL}.zip
+          cp wrkzcoin-${BIN_LABEL}.zip builds/
+          echo ::set-output name=file_name::wrkzcoin-${BIN_LABEL}.zip
 
       # Upload to S3
       - name: Set up Python
