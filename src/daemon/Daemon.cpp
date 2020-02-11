@@ -21,7 +21,11 @@
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
 #include "cryptonotecore/MainChainStorage.h"
+#if defined (USE_LEVELDB)
+#include "cryptonotecore/LevelDBWrapper.h"
+#else
 #include "cryptonotecore/RocksDBWrapper.h"
+#endif
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
@@ -363,8 +367,11 @@ int main(int argc, char *argv[])
         {
             throw std::runtime_error("Can't create directory: " + dbConfig.getDataDir());
         }
-
+#if defined (USE_LEVELDB)
+        LevelDBWrapper database(logManager);
+#else
         RocksDBWrapper database(logManager);
+#endif
         database.init(dbConfig);
         Tools::ScopeExit dbShutdownOnExit([&database]() { database.shutdown(); });
 

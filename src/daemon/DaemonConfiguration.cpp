@@ -157,11 +157,12 @@ namespace DaemonConfig
             "<ip:port>");
 
         options.add_options("Database")
-#ifdef ENABLE_ZSTD_COMPRESSION
+#if defined(ENABLE_ZSTD_COMPRESSION) && !defined(USE_LEVELDB)
             ("db-enable-compression",
              "Enable database compression",
              cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
 #endif
+#if !defined(USE_LEVELDB)
                 ("db-max-open-files",
                  "Number of files that can be used by the database at one time",
                  cxxopts::value<int>()->default_value(std::to_string(config.dbMaxOpenFiles)),
@@ -181,8 +182,9 @@ namespace DaemonConfig
                     "db-max-bytes-for-level-base",
                     "Size of the database max level base in megabytes (MB)",
                     cxxopts::value<int>()->default_value(std::to_string(config.dbMaxByteLevelSizeMB)),
-                    "#");
-
+                    "#")
+#endif
+                    ;
         options.add_options("Syncing")(
             "transaction-validation-threads",
             "Number of threads to use to validate a transaction's inputs in parallel",
@@ -488,7 +490,7 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
-#ifdef ENABLE_ZSTD_COMPRESSION
+#if defined(ENABLE_ZSTD_COMPRESSION) && !defined(USE_LEVELDB)
                 else if (cfgKey.compare("db-enable-compression") == 0)
                 {
                     config.enableDbCompression = cfgValue.at(0) == '1';
@@ -500,6 +502,7 @@ namespace DaemonConfig
                     config.noConsole = cfgValue.at(0) == '1';
                     updated = true;
                 }
+#if !defined(USE_LEVELDB)
                 else if (cfgKey.compare("db-max-open-files") == 0)
                 {
                     try
@@ -560,6 +563,7 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+#endif
                 else if (cfgKey.compare("allow-local-ip") == 0)
                 {
                     config.localIp = cfgValue.at(0) == '1';
@@ -762,7 +766,7 @@ namespace DaemonConfig
             config.logLevel = j["log-level"].GetInt();
         }
 
-#ifdef ENABLE_ZSTD_COMPRESSION
+#if defined(ENABLE_ZSTD_COMPRESSION) && !defined(USE_LEVELDB)
         if (j.HasMember("db-enable-compression"))
         {
             config.enableDbCompression = j["db-enable-compression"].GetBool();
@@ -773,7 +777,7 @@ namespace DaemonConfig
         {
             config.noConsole = j["no-console"].GetBool();
         }
-
+#if !defined(USE_LEVELDB)
         if (j.HasMember("db-max-open-files"))
         {
             config.dbMaxOpenFiles = j["db-max-open-files"].GetInt();
@@ -798,7 +802,7 @@ namespace DaemonConfig
         {
             config.dbMaxByteLevelSizeMB = j["db-max-bytes-for-level-base"].GetInt();
         }
-
+#endif
         if (j.HasMember("allow-local-ip"))
         {
             config.localIp = j["allow-local-ip"].GetBool();
@@ -921,14 +925,16 @@ namespace DaemonConfig
         j.AddMember("log-file", config.logFile, alloc);
         j.AddMember("log-level", config.logLevel, alloc);
         j.AddMember("no-console", config.noConsole, alloc);
-#ifdef ENABLE_ZSTD_COMPRESSION
+#if defined(ENABLE_ZSTD_COMPRESSION) && !defined(USE_LEVELDB)
         j.AddMember("db-enable-compression", config.enableDbCompression, alloc);
 #endif
+#if !defined(USE_LEVELDB)
         j.AddMember("db-max-open-files", config.dbMaxOpenFiles, alloc);
         j.AddMember("db-read-buffer-size", (config.dbReadCacheSizeMB), alloc);
         j.AddMember("db-threads", config.dbThreads, alloc);
         j.AddMember("db-write-buffer-size", (config.dbWriteBufferSizeMB), alloc);
         j.AddMember("db-max-bytes-for-level-base", (config.dbMaxByteLevelSizeMB), alloc);
+#endif
         j.AddMember("allow-local-ip", config.localIp, alloc);
         j.AddMember("hide-my-port", config.hideMyPort, alloc);
         j.AddMember("p2p-bind-ip", config.p2pInterface, alloc);

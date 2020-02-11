@@ -379,13 +379,19 @@ namespace CryptoNote
     const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT = 60 * 2 * 1000; // 2 minutes
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
-
+#if !defined(USE_LEVELDB)
     const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 256; // 256 MB
     const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 512; // 512 MB
     const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 64; // maximize files
     const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; // 8 DB IncreaseParallelism
     const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; // Additional tweak testing
-
+#else
+    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using
+    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using -> block_cache size
+    const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 128; // /using
+    const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; //  /not using
+    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; //  /not using
+#endif
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
     const std::string LICENSE_URL = "https://github.com/wrkzcoin/wrkzcoin/blob/master/LICENSE";
