@@ -92,6 +92,10 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
+        const uint64_t fee = daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+            ? CryptoNote::parameters::FUSION_FEE_V1
+            : 0;
+
         while (true)
         {
             /* Not got enough unspent inputs for a fusion tx - we're fully optimized. */
@@ -105,7 +109,12 @@ namespace SendTransaction
 
             std::vector<WalletTypes::TransactionDestination> destinations;
 
-            uint64_t amountToSplit = foundMoney;
+            if (fee >= foundMoney)
+            {
+                return {FULLY_OPTIMIZED, Crypto::Hash()};
+            }
+
+            uint64_t amountToSplit = foundMoney - fee;
 
             /* We have an optimize target, and enough money to make outputs
              * large enough for the target, lets attempt to make some outputs
@@ -113,14 +122,14 @@ namespace SendTransaction
             /* Disabled for now as this will cause the wallet to not create valid
              * fusion transactions as fusions are required to decompose as
              * efficiently as possible - i.e. 12345 -> 10000 + 2000 + 300 + 40 + 5 */
-            /* if (optimizeTarget && foundMoney >= *optimizeTarget) */
+            /* if (optimizeTarget && amountToSplit >= *optimizeTarget) */
             if (false)
             {
                 /* Max amount of optimizeTarget destinations we can make */
-                const uint64_t numTargets = foundMoney / *optimizeTarget;
+                const uint64_t numTargets = amountToSplit / *optimizeTarget;
 
                 /* Change remaining after making as many optimizeTarget destinations */
-                amountToSplit = foundMoney % *optimizeTarget;
+                amountToSplit = amountToSplit % *optimizeTarget;
 
                 WalletTypes::TransactionDestination destination;
 
@@ -198,7 +207,7 @@ namespace SendTransaction
 
         const uint64_t actualFee = sumTransactionFee(tx);
 
-        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(0), actualFee, daemon->networkBlockCount(), tx))
+        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(fee), actualFee, daemon->networkBlockCount(), tx))
         {
             return {UNEXPECTED_FEE, Crypto::Hash()};
         }
@@ -212,7 +221,7 @@ namespace SendTransaction
         }
 
         /* No fee or change with fusion */
-        const uint64_t fee(0), changeRequired(0);
+        const uint64_t changeRequired(0);
 
         /* Store the unconfirmed transaction, update our balance */
         storeSentTransaction(txHash, fee, paymentID, ourInputs, destination, changeRequired, subWallets);
