@@ -518,50 +518,6 @@ namespace PaymentService
         };
     };
 
-    struct SendFusionTransaction
-    {
-        struct Request
-        {
-            uint64_t threshold;
-
-            uint64_t anonymity;
-
-            std::vector<std::string> addresses;
-
-            std::string destinationAddress;
-
-            void serialize(CryptoNote::ISerializer &serializer, const WalletService &service);
-        };
-
-        struct Response
-        {
-            std::string transactionHash;
-
-            void serialize(CryptoNote::ISerializer &serializer);
-        };
-    };
-
-    struct EstimateFusion
-    {
-        struct Request
-        {
-            uint64_t threshold;
-
-            std::vector<std::string> addresses;
-
-            void serialize(CryptoNote::ISerializer &serializer);
-        };
-
-        struct Response
-        {
-            uint32_t fusionReadyCount;
-
-            uint32_t totalOutputCount;
-
-            void serialize(CryptoNote::ISerializer &serializer);
-        };
-    };
-
     struct CreateIntegratedAddress
     {
         struct Request

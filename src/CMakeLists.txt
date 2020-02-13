@@ -2,6 +2,9 @@
 add_definitions(-DSTATICLIB)
 
 # Add external libraries as include dirs, so we can do #include "httplib" for example
+if (WITH_LEVELDB)
+  include_directories(${CMAKE_SOURCE_DIR}/external/leveldb/include)
+endif ()
 include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
@@ -11,15 +14,22 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
+include_directories(${CMAKE_SOURCE_DIR}/external/snappy)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
 # can find the new file
-file(GLOB_RECURSE BlockchainExplorer blockchainexplorer/*)
 file(GLOB_RECURSE Common common/*)
 file(GLOB_RECURSE Config config/*)
 file(GLOB_RECURSE Crypto crypto/*)
 file(GLOB_RECURSE CryptoNoteCore cryptonotecore/* CryptoNoteConfig.h)
+if (WITH_LEVELDB)
+  message(STATUS "WITH_LEVELDB: Remove: RocksDBWrapper")
+  list(FILTER CryptoNoteCore EXCLUDE REGEX ".*RocksDBWrapper.*$")
+else ()
+  message(STATUS "WITH_LEVELDB: Remove: LevelDBWrapper")
+  list(FILTER CryptoNoteCore EXCLUDE REGEX ".*LevelDBWrapper.*$")
+endif ()
 file(GLOB_RECURSE CryptoNoteProtocol cryptonoteprotocol/*)
 file(GLOB_RECURSE CryptoTest cryptotest/*)
 file(GLOB_RECURSE Errors errors/*)
@@ -57,7 +67,6 @@ endif ()
 source_group("" FILES $${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
 
 # Define a group of files as a library to link against
-add_library(BlockchainExplorer STATIC ${BlockchainExplorer})
 add_library(Common STATIC ${Common})
 add_library(Config STATIC ${Config})
 add_library(Crypto STATIC ${Crypto})
@@ -134,9 +143,17 @@ elseif (UNIX)
 endif ()
 
 if (MSVC)
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb zstd Errors ${Boost_LIBRARIES})
+    if (WITH_LEVELDB)
+      target_link_libraries(Wrkzd System CryptoNoteCore leveldb snappy Errors ${Boost_LIBRARIES})
+    else ()
+      target_link_libraries(Wrkzd System CryptoNoteCore rocksdb zstd Errors ${Boost_LIBRARIES})
+    endif ()
 else ()
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib zstd Errors ${Boost_LIBRARIES})
+    if (WITH_LEVELDB)
+      target_link_libraries(Wrkzd System CryptoNoteCore leveldblib snappy Errors ${Boost_LIBRARIES})
+    else ()
+      target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib zstd Errors ${Boost_LIBRARIES})
+    endif ()
 endif ()
 
 # Add the dependencies we need

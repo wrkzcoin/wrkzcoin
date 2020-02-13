@@ -8,6 +8,9 @@
 
 #include <common/CryptoNoteTools.h>
 #include <config/CryptoNoteConfig.h>
+#include <cryptonotecore/CachedBlock.h>
+#include <cryptonotecore/Core.h>
+#include <CryptoNote.h>
 #include <errors/ValidateParameters.h>
 #include <utilities/Utilities.h>
 #include <version.h>
@@ -85,6 +88,7 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     m_isBlockchainCache = false;
     m_nodeFeeAddress = "";
     m_nodeFeeAmount = 0;
+    m_useRawBlocks = true;
 
     m_daemonHost = daemonHost;
     m_daemonPort = daemonPort;
@@ -113,7 +117,7 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
         const std::vector<Crypto::Hash> blockHashCheckpoints,
         const uint64_t startHeight,
         const uint64_t startTimestamp,
-        const bool skipCoinbaseTransactions) const
+        const bool skipCoinbaseTransactions)
 {
     Logger::logger.log("Fetching blocks from the daemon", Logger::DEBUG, {Logger::SYNC, Logger::DAEMON});
 
@@ -122,16 +126,72 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
               {"startTimestamp", startTimestamp},
               {"blockCount", m_blockCount.load()},
               {"skipCoinbaseTransactions", skipCoinbaseTransactions}};
+
+    const std::string endpoint = m_useRawBlocks ? "/getrawblocks" : "/getwalletsyncdata";
+
     Logger::logger.log(
-        "Sending /getwalletsyncdata request to daemon: " + j.dump(),
+        "Sending " + endpoint + " request to daemon: " + j.dump(),
         Logger::TRACE,
         { Logger::SYNC, Logger::DAEMON }
     );
 
-    auto res = m_nodeClient->Post("/getwalletsyncdata", m_requestHeaders, j.dump(), "application/json");
+    const auto res = m_nodeClient->Post(endpoint, m_requestHeaders, j.dump(), "application/json");
 
-    const auto parsedResponse = tryParseJSONResponse(res, "Failed to fetch blocks from daemon", [](const nlohmann::json j) {
-        const auto items = j.at("items").get<std::vector<WalletTypes::WalletBlockInfo>>();
+    /* Daemon doesn't support /getrawblocks, fall back to /getwalletsyncdata */
+    if (res && res->status == 404 && m_useRawBlocks)
+    {
+        m_useRawBlocks = false;
+
+        return getWalletSyncData(
+            blockHashCheckpoints,
+            startHeight,
+            startTimestamp,
+            skipCoinbaseTransactions
+        );
+    }
+
+    const auto parsedResponse = tryParseJSONResponse(
+        res,
+        "Failed to fetch blocks from daemon",
+        [this, skipCoinbaseTransactions](const nlohmann::json j) {
+
+        std::vector<WalletTypes::WalletBlockInfo> items;
+
+        if (m_useRawBlocks)
+        {
+            const auto rawBlocks = j.at("items").get<std::vector<CryptoNote::RawBlock>>();
+
+            for (const auto rawBlock : rawBlocks)
+            {
+                CryptoNote::BlockTemplate block;
+
+                fromBinaryArray(block, rawBlock.block);
+
+                WalletTypes::WalletBlockInfo walletBlock;
+
+                CryptoNote::CachedBlock cachedBlock(block);
+
+                walletBlock.blockHeight = cachedBlock.getBlockIndex();
+                walletBlock.blockHash = cachedBlock.getBlockHash();
+                walletBlock.blockTimestamp = block.timestamp;
+
+                if (!skipCoinbaseTransactions)
+                {
+                    walletBlock.coinbaseTransaction = CryptoNote::Core::getRawCoinbaseTransaction(block.baseTransaction);
+                }
+
+                for (const auto &transaction : rawBlock.transactions)
+                {
+                    walletBlock.transactions.push_back(CryptoNote::Core::getRawTransaction(transaction));
+                }
+
+                items.push_back(walletBlock);
+            }
+        }
+        else
+        {
+            items = j.at("items").get<std::vector<WalletTypes::WalletBlockInfo>>();
+        }
 
         std::optional<WalletTypes::TopBlock> topBlock;
 

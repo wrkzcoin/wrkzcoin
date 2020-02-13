@@ -116,7 +116,7 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
       moptions_.memtable_prefix_bloom_bits > 0) {
     bloom_filter_.reset(
         new DynamicBloom(&arena_, moptions_.memtable_prefix_bloom_bits,
-                         ioptions.bloom_locality, 6 /* hard coded 6 probes */,
+                         6 /* hard coded 6 probes */,
                          moptions_.memtable_huge_page_size, ioptions.info_log));
   }
 }
@@ -295,6 +295,9 @@ class MemTableIterator : public InternalIterator {
       iter_ = mem.table_->GetIterator(arena);
     }
   }
+  // No copying allowed
+  MemTableIterator(const MemTableIterator&) = delete;
+  void operator=(const MemTableIterator&) = delete;
 
   ~MemTableIterator() override {
 #ifndef NDEBUG
@@ -408,10 +411,6 @@ class MemTableIterator : public InternalIterator {
   bool valid_;
   bool arena_mode_;
   bool value_pinned_;
-
-  // No copying allowed
-  MemTableIterator(const MemTableIterator&);
-  void operator=(const MemTableIterator&);
 };
 
 InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
@@ -470,7 +469,7 @@ MemTable::MemTableStats MemTable::ApproximateStats(const Slice& start_ikey,
 bool MemTable::Add(SequenceNumber s, ValueType type,
                    const Slice& key, /* user key */
                    const Slice& value, bool allow_concurrent,
-                   MemTablePostProcessInfo* post_process_info) {
+                   MemTablePostProcessInfo* post_process_info, void** hint) {
   // Format of an entry is concatenation of:
   //  key_size     : varint32 of internal_key.size()
   //  key bytes    : char[internal_key.size()]
@@ -548,7 +547,9 @@ bool MemTable::Add(SequenceNumber s, ValueType type,
     assert(post_process_info == nullptr);
     UpdateFlushState();
   } else {
-    bool res = table->InsertKeyConcurrently(handle);
+    bool res = (hint == nullptr)
+                   ? table->InsertKeyConcurrently(handle)
+                   : table->InsertKeyWithHintConcurrently(handle, hint);
     if (UNLIKELY(!res)) {
       return res;
     }

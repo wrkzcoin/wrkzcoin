@@ -54,7 +54,7 @@ namespace CryptoNote
 
             for (const auto &rawBlock : rawBlocks)
             {
-                legacy.emplace_back(RawBlockLegacy {rawBlock.block, rawBlock.transactions});
+                legacy.emplace_back(rawBlock.block, rawBlock.transactions);
             }
 
             return legacy;
@@ -1255,7 +1255,12 @@ namespace CryptoNote
             if (peerHeight > m_blockchainHeight)
             {
                 m_blockchainHeight = peerHeight;
-                logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight;
+                /* Add percentage and local height info */
+                uint64_t currentHeight = get_current_blockchain_height();
+
+                logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight
+                                                             << " / Local: " << currentHeight
+                                                             << " (" << Utilities::get_sync_percentage(currentHeight, peerHeight) << "%)";
             }
         }
 

@@ -97,7 +97,8 @@ class SubWallets
         const bool takeFromAll,
         std::vector<Crypto::PublicKey> subWalletsToTakeFrom,
         const uint64_t mixin,
-        const uint64_t height) const;
+        const uint64_t height,
+        const std::optional<uint64_t> optimizeTarget) const;
 
     /* Get the owner of the key image, if any */
     std::tuple<bool, Crypto::PublicKey> getKeyImageOwner(const Crypto::KeyImage keyImage) const;

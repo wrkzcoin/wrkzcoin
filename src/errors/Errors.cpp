@@ -316,6 +316,11 @@ std::string Error::getErrorMessage() const
                    "Please re-prepare and re-send the transaction, ensuring you "
                    "specify the correct transaction hash.";
         }
+        case AMOUNT_UGLY:
+        {
+            return "The amount given does not have only a single significant digit. "
+                   "For example, 20000 or 100000 would be fine, but 20001 or 123456 would not.";
+        }
         /* No default case so the compiler warns us if we missed one */
     }
 

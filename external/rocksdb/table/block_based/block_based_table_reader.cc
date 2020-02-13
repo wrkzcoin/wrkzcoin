@@ -474,7 +474,7 @@ class PartitionIndexReader : public BlockBasedTable::IndexReaderCommon {
       return;
     }
     handle = biter.value().handle;
-    uint64_t last_off = handle.offset() + handle.size() + kBlockTrailerSize;
+    uint64_t last_off = handle.offset() + block_size(handle);
     uint64_t prefetch_len = last_off - prefetch_off;
     std::unique_ptr<FilePrefetchBuffer> prefetch_buffer;
     auto& file = rep->file;
@@ -2299,7 +2299,7 @@ void BlockBasedTable::RetrieveMultipleBlocks(
     }
 
     ReadRequest req;
-    req.len = handle.size() + kBlockTrailerSize;
+    req.len = block_size(handle);
     if (scratch == nullptr) {
       req.scratch = new char[req.len];
     } else {
@@ -2326,11 +2326,11 @@ void BlockBasedTable::RetrieveMultipleBlocks(
     ReadRequest& req = read_reqs[read_req_idx++];
     Status s = req.status;
     if (s.ok()) {
-      if (req.result.size() != handle.size() + kBlockTrailerSize) {
+      if (req.result.size() != req.len) {
         s = Status::Corruption("truncated block read from " +
                                rep_->file->file_name() + " offset " +
                                ToString(handle.offset()) + ", expected " +
-                               ToString(handle.size() + kBlockTrailerSize) +
+                               ToString(req.len) +
                                " bytes, got " + ToString(req.result.size()));
       }
     }
@@ -2368,36 +2368,45 @@ void BlockBasedTable::RetrieveMultipleBlocks(
         // MaybeReadBlockAndLoadToCache will insert into the block caches if
         // necessary. Since we're passing the raw block contents, it will
         // avoid looking up the block cache
-        s = MaybeReadBlockAndLoadToCache(nullptr, options, handle,
-              uncompression_dict, block_entry, BlockType::kData,
-              mget_iter->get_context, &lookup_data_block_context,
-              &raw_block_contents);
+        s = MaybeReadBlockAndLoadToCache(
+            nullptr, options, handle, uncompression_dict, block_entry,
+            BlockType::kData, mget_iter->get_context,
+            &lookup_data_block_context, &raw_block_contents);
+
+        // block_entry value could be null if no block cache is present, i.e
+        // BlockBasedTableOptions::no_block_cache is true and no compressed
+        // block cache is configured. In that case, fall
+        // through and set up the block explicitly
+        if (block_entry->GetValue() != nullptr) {
+          continue;
+        }
+      }
+
+      CompressionType compression_type =
+          raw_block_contents.get_compression_type();
+      BlockContents contents;
+      if (compression_type != kNoCompression) {
+        UncompressionContext context(compression_type);
+        UncompressionInfo info(context, uncompression_dict, compression_type);
+        s = UncompressBlockContents(info, req.result.data(), handle.size(),
+                                    &contents, footer.version(),
+                                    rep_->ioptions, memory_allocator);
       } else {
-        CompressionType compression_type =
-                raw_block_contents.get_compression_type();
-        BlockContents contents;
-        if (compression_type != kNoCompression) {
-          UncompressionContext context(compression_type);
-          UncompressionInfo info(context, uncompression_dict, compression_type);
-          s = UncompressBlockContents(info, req.result.data(), handle.size(),
-                    &contents, footer.version(), rep_->ioptions,
-                    memory_allocator);
+        if (scratch != nullptr) {
+          // If we used the scratch buffer, then the contents need to be
+          // copied to heap
+          Slice raw = Slice(req.result.data(), handle.size());
+          contents = BlockContents(
+              CopyBufferToHeap(GetMemoryAllocator(rep_->table_options), raw),
+              handle.size());
         } else {
-          if (scratch != nullptr) {
-            // If we used the scratch buffer, then the contents need to be
-            // copied to heap
-            Slice raw = Slice(req.result.data(), handle.size());
-            contents = BlockContents(CopyBufferToHeap(
-                  GetMemoryAllocator(rep_->table_options), raw),
-                  handle.size());
-          } else {
-            contents = std::move(raw_block_contents);
-          }
+          contents = std::move(raw_block_contents);
         }
-        if (s.ok()) {
-          (*results)[idx_in_batch].SetOwnedValue(new Block(std::move(contents),
-                global_seqno, read_amp_bytes_per_bit, ioptions.statistics));
-        }
+      }
+      if (s.ok()) {
+        (*results)[idx_in_batch].SetOwnedValue(
+            new Block(std::move(contents), global_seqno,
+                      read_amp_bytes_per_bit, ioptions.statistics));
       }
     }
     (*statuses)[idx_in_batch] = s;
@@ -2706,11 +2715,21 @@ void BlockBasedTableIterator<TBlockIter, TValue>::SeekImpl(
     // Index contains the first key of the block, and it's >= target.
     // We can defer reading the block.
     is_at_first_key_from_index_ = true;
+    // ResetDataIter() will invalidate block_iter_. Thus, there is no need to
+    // call CheckDataBlockWithinUpperBound() to check for iterate_upper_bound
+    // as that will be done later when the data block is actually read.
     ResetDataIter();
   } else {
     // Need to use the data block.
     if (!same_block) {
       InitDataBlock();
+    } else {
+      // When the user does a reseek, the iterate_upper_bound might have
+      // changed. CheckDataBlockWithinUpperBound() needs to be called
+      // explicitly if the reseek ends up in the same data block.
+      // If the reseek ends up in a different block, InitDataBlock() will do
+      // the iterator upper bound check.
+      CheckDataBlockWithinUpperBound();
     }
 
     if (target) {
@@ -2721,7 +2740,6 @@ void BlockBasedTableIterator<TBlockIter, TValue>::SeekImpl(
     FindKeyForward();
   }
 
-  CheckDataBlockWithinUpperBound();
   CheckOutOfBound();
 
   if (target) {
@@ -2868,8 +2886,7 @@ void BlockBasedTableIterator<TBlockIter, TValue>::InitDataBlock() {
             BlockBasedTable::kMinNumFileReadsToStartAutoReadahead) {
           if (!rep->file->use_direct_io() &&
               (data_block_handle.offset() +
-                   static_cast<size_t>(data_block_handle.size()) +
-                   kBlockTrailerSize >
+                   static_cast<size_t>(block_size(data_block_handle)) >
                readahead_limit_)) {
             // Buffered I/O
             // Discarding the return status of Prefetch calls intentionally, as
@@ -3367,7 +3384,6 @@ void BlockBasedTable::MultiGet(const ReadOptions& read_options,
     autovector<BlockHandle, MultiGetContext::MAX_BATCH_SIZE> block_handles;
     autovector<CachableEntry<Block>, MultiGetContext::MAX_BATCH_SIZE> results;
     autovector<Status, MultiGetContext::MAX_BATCH_SIZE> statuses;
-    static const size_t kMultiGetReadStackBufSize = 8192;
     char stack_buf[kMultiGetReadStackBufSize];
     std::unique_ptr<char[]> block_buf;
     {
@@ -3449,7 +3465,7 @@ void BlockBasedTable::MultiGet(const ReadOptions& read_options,
           block_handles.emplace_back(BlockHandle::NullBlockHandle());
         } else {
           block_handles.emplace_back(handle);
-          total_len += handle.size();
+          total_len += block_size(handle);
         }
       }
 
@@ -3737,8 +3753,12 @@ Status BlockBasedTable::VerifyChecksumInBlocks(
   size_t readahead_size = (read_options.readahead_size != 0)
                               ? read_options.readahead_size
                               : kMaxAutoReadaheadSize;
-  FilePrefetchBuffer prefetch_buffer(rep_->file.get(), readahead_size,
-                                     readahead_size);
+  // FilePrefetchBuffer doesn't work in mmap mode and readahead is not
+  // needed there.
+  FilePrefetchBuffer prefetch_buffer(
+      rep_->file.get(), readahead_size /* readadhead_size */,
+      readahead_size /* max_readahead_size */,
+      !rep_->ioptions.allow_mmap_reads /* enable */);
 
   for (index_iter->SeekToFirst(); index_iter->Valid(); index_iter->Next()) {
     s = index_iter->status();

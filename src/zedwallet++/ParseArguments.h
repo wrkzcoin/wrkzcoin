@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <config/CryptoNoteConfig.h>
 #include <logger/Logger.h>
 
@@ -28,7 +30,10 @@ struct ZedConfig
     std::string walletPass;
 
     /* Controls what level of messages to log */
-    Logger::LogLevel logLevel = Logger::DISABLED;
+    Logger::LogLevel logLevel = Logger::FATAL;
+
+    /* Optionally log to a file */
+    std::optional<std::string> loggingFilePath;
 
     /* Use SSL with daemon */
     bool ssl = false;

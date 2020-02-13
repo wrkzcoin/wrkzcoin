@@ -21,5 +21,8 @@ namespace CryptoNote
         virtual std::error_code write(IWriteBatch &batch) = 0;
 
         virtual std::error_code read(IReadBatch &batch) = 0;
+#if !defined (USE_LEVELDB)
+        virtual std::error_code readThreadSafe(IReadBatch &batch) = 0;
+#endif
     };
 } // namespace CryptoNote

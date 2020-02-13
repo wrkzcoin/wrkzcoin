@@ -188,6 +188,48 @@ std::error_code RocksDBWrapper::read(IReadBatch &batch)
     return std::error_code();
 }
 
+std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::runtime_error("Not initialized.");
+    }
+
+    rocksdb::ReadOptions readOptions;
+
+    std::vector<std::string> rawKeys(batch.getRawKeys());
+
+    std::vector<std::string> values(rawKeys.size());
+
+    std::vector<bool> resultStates;
+
+    int i = 0;
+
+    for (const std::string &key : rawKeys)
+    {
+        const rocksdb::Status status = db->Get(readOptions, rocksdb::Slice(key), &values[i]);
+
+        if (status.ok())
+        {
+            resultStates.push_back(true);
+        }
+        else
+        {
+            if (!status.IsNotFound())
+            {
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+
+            resultStates.push_back(false);
+        }
+
+        i++;
+    }
+
+    batch.submitRawResult(values, resultStates);
+    return std::error_code();
+}
+
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 {
     rocksdb::DBOptions dbOptions;
@@ -231,7 +273,7 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
         // don't compress l0 & l1
         fOptions.compression_per_level[i] = (i < 2 ? rocksdb::kNoCompression : compressionLevel);
     }
-    // bottom most use lz4hc
+    // bottom most use kZSTD
     fOptions.bottommost_compression =
         config.getCompressionEnabled() ? rocksdb::kZSTD : rocksdb::kNoCompression;
 

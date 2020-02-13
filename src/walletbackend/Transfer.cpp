@@ -28,7 +28,7 @@ namespace SendTransaction
            as the static constructors were used */
         const std::string defaultAddress = subWallets->getPrimaryAddress();
 
-        return sendFusionTransactionAdvanced(defaultMixin, {}, defaultAddress, daemon, subWallets, {});
+        return sendFusionTransactionAdvanced(defaultMixin, {}, defaultAddress, daemon, subWallets, {}, std::nullopt);
     }
 
     std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
@@ -37,7 +37,8 @@ namespace SendTransaction
         std::string destination,
         const std::shared_ptr<Nigel> daemon,
         const std::shared_ptr<SubWallets> subWallets,
-        const std::vector<uint8_t> extraData)
+        const std::vector<uint8_t> extraData,
+        const std::optional<uint64_t> optimizeTarget)
     {
         if (destination == "")
         {
@@ -45,8 +46,14 @@ namespace SendTransaction
         }
 
         /* Validate the transaction input parameters */
-        Error error =
-            validateFusionTransaction(mixin, addressesToTakeFrom, destination, subWallets, daemon->networkBlockCount());
+        Error error = validateFusionTransaction(
+            mixin,
+            addressesToTakeFrom,
+            destination,
+            subWallets,
+            daemon->networkBlockCount(),
+            optimizeTarget
+        );
 
         if (error)
         {
@@ -62,7 +69,12 @@ namespace SendTransaction
 
         /* Grab inputs for our fusion transaction */
         auto [ourInputs, maxFusionInputs, foundMoney] = subWallets->getFusionTransactionInputs(
-            takeFromAllSubWallets, subWalletsToTakeFrom, mixin, daemon->networkBlockCount());
+            takeFromAllSubWallets,
+            subWalletsToTakeFrom,
+            mixin,
+            daemon->networkBlockCount(),
+            optimizeTarget
+        );
 
         /* Mixin is too large to get enough outputs whilst remaining in the size
            and ratio constraints */
@@ -80,6 +92,10 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
+        const uint64_t fee = daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+            ? CryptoNote::parameters::FUSION_FEE_V1
+            : 0;
+
         while (true)
         {
             /* Not got enough unspent inputs for a fusion tx - we're fully optimized. */
@@ -93,8 +109,40 @@ namespace SendTransaction
 
             std::vector<WalletTypes::TransactionDestination> destinations;
 
+            if (fee >= foundMoney)
+            {
+                return {FULLY_OPTIMIZED, Crypto::Hash()};
+            }
+
+            uint64_t amountToSplit = foundMoney - fee;
+
+            /* We have an optimize target, and enough money to make outputs
+             * large enough for the target, lets attempt to make some outputs
+             * of that size. */
+            /* Disabled for now as this will cause the wallet to not create valid
+             * fusion transactions as fusions are required to decompose as
+             * efficiently as possible - i.e. 12345 -> 10000 + 2000 + 300 + 40 + 5 */
+            /* if (optimizeTarget && amountToSplit >= *optimizeTarget) */
+            if (false)
+            {
+                /* Max amount of optimizeTarget destinations we can make */
+                const uint64_t numTargets = amountToSplit / *optimizeTarget;
+
+                /* Change remaining after making as many optimizeTarget destinations */
+                amountToSplit = amountToSplit % *optimizeTarget;
+
+                WalletTypes::TransactionDestination destination;
+
+                destination.amount = *optimizeTarget;
+                destination.receiverPublicSpendKey = publicSpendKey;
+                destination.receiverPublicViewKey = publicViewKey;
+
+                /* Insert all optimizeTarget destination amounts */
+                destinations.insert(destinations.end(), numTargets, destination);
+            }
+
             /* Split transfer into denominations and create an output for each */
-            for (const auto denomination : splitAmountIntoDenominations(foundMoney))
+            for (const auto denomination : splitAmountIntoDenominations(amountToSplit))
             {
                 WalletTypes::TransactionDestination destination;
 
@@ -159,7 +207,7 @@ namespace SendTransaction
 
         const uint64_t actualFee = sumTransactionFee(tx);
 
-        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(0), actualFee, daemon->networkBlockCount(), tx))
+        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(fee), actualFee, daemon->networkBlockCount(), tx))
         {
             return {UNEXPECTED_FEE, Crypto::Hash()};
         }
@@ -173,7 +221,7 @@ namespace SendTransaction
         }
 
         /* No fee or change with fusion */
-        const uint64_t fee(0), changeRequired(0);
+        const uint64_t changeRequired(0);
 
         /* Store the unconfirmed transaction, update our balance */
         storeSentTransaction(txHash, fee, paymentID, ourInputs, destination, changeRequired, subWallets);
@@ -1390,7 +1438,6 @@ namespace SendTransaction
         if (setupTX.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             result.error = OUTPUT_DECOMPOSITION;
-
             return result;
         }
 

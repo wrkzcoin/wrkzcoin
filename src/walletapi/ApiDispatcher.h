@@ -168,6 +168,10 @@ class ApiDispatcher
     std::tuple<Error, uint16_t>
         sendAdvancedFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
+    /* Export wallet to file in JSON format */
+    std::tuple<Error, uint16_t>
+        exportToJSON(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+
     /////////////////////
     /* DELETE REQUESTS */
     /////////////////////

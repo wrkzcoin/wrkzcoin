@@ -21,7 +21,11 @@
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
 #include "cryptonotecore/MainChainStorage.h"
+#if defined (USE_LEVELDB)
+#include "cryptonotecore/LevelDBWrapper.h"
+#else
 #include "cryptonotecore/RocksDBWrapper.h"
+#endif
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
@@ -33,9 +37,11 @@
 #include <config/CliHeader.h>
 #include <config/CryptoNoteCheckpoints.h>
 #include <logging/LoggerManager.h>
+#include <logger/Logger.h>
 
 #if defined(WIN32)
 
+#undef ERROR
 #include <crtdbg.h>
 #include <io.h>
 
@@ -236,6 +242,46 @@ int main(int argc, char *argv[])
         // configure logging
         logManager->configure(buildLoggerConfiguration(cfgLogLevel, cfgLogFile.string()));
 
+        Logger::logger.setLogLevel(Logger::DEBUG);
+
+        /* New logger, for now just passing through messages to old logger */
+        Logger::logger.setLogCallback([&logger](
+                const std::string prettyMessage,
+                const std::string message,
+                const Logger::LogLevel level,
+                const std::vector<Logger::LogCategory> categories) {
+            Logging::Level oldLogLevel;
+            std::string logColour;
+
+            if (level == Logger::DEBUG)
+            {
+                oldLogLevel = Logging::DEBUGGING;
+                logColour = Logging::DEFAULT;
+            } 
+            else if (level == Logger::INFO)
+            {
+                oldLogLevel = Logging::INFO;
+                logColour = Logging::DEFAULT;
+            }
+            else if (level == Logger::WARNING)
+            {
+                oldLogLevel = Logging::WARNING;
+                logColour = Logging::RED;
+            }
+            else if (level == Logger::FATAL)
+            {
+                oldLogLevel = Logging::FATAL;
+                logColour = Logging::RED;
+            }
+            /* setLogCallback shouldn't get called if log level is DISABLED */
+            else
+            {
+                throw std::runtime_error("Programmer error @ setLogCallback in Daemon.cpp");
+            }
+
+            logger(oldLogLevel, logColour) << message;
+        });
+
         logger(INFO, BRIGHT_GREEN) << getProjectCLIHeader() << std::endl;
 
         logger(INFO) << "Program Working Directory: " << cwdPath;
@@ -321,8 +367,11 @@ int main(int argc, char *argv[])
         {
             throw std::runtime_error("Can't create directory: " + dbConfig.getDataDir());
         }
-
+#if defined (USE_LEVELDB)
+        LevelDBWrapper database(logManager);
+#else
         RocksDBWrapper database(logManager);
+#endif
         database.init(dbConfig);
         Tools::ScopeExit dbShutdownOnExit([&database]() { database.shutdown(); });
 
@@ -342,26 +391,71 @@ int main(int argc, char *argv[])
 
         std::unique_ptr<IMainChainStorage> tmainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
 
-        CryptoNote::Core ccore(
+        const auto ccore = std::make_shared<CryptoNote::Core>(
             currency,
             logManager,
             std::move(checkpoints),
             dispatcher,
             std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(database, logger.getLogger())),
             std::move(tmainChainStorage),
-            config.transactionValidationThreads);
+            config.transactionValidationThreads
+        );
 
-        ccore.load();
+        ccore->load();
+
         logger(INFO) << "Core initialized OK";
 
-        CryptoNote::CryptoNoteProtocolHandler cprotocol(currency, dispatcher, ccore, nullptr, logManager);
-        CryptoNote::NodeServer p2psrv(dispatcher, cprotocol, logManager);
-        CryptoNote::RpcServer rpcServer(dispatcher, logManager, ccore, p2psrv, cprotocol, config.enableBlockExplorerDetailed, config.enableMining);
+        const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
+            currency,
+            dispatcher,
+            *ccore,
+            nullptr,
+            logManager
+        );
 
-        cprotocol.set_p2p_endpoint(&p2psrv);
-        DaemonCommandsHandler dch(ccore, p2psrv, logManager, &rpcServer);
+        const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
+            dispatcher,
+            *cprotocol,
+            logManager
+        );
+
+        std::string corsDomain;
+
+        /* TODO: enable cors should not be a vector */
+        if (!config.enableCors.empty()) {
+            corsDomain = config.enableCors[0];
+        }
+
+        RpcMode rpcMode = RpcMode::Default;
+
+        if (config.enableBlockExplorerDetailed && config.enableMining)
+        {
+            rpcMode = RpcMode::AllMethodsEnabled;
+        }
+        else if (config.enableBlockExplorer)
+        {
+            rpcMode = RpcMode::BlockExplorerEnabled;
+        }
+        else if (config.enableMining)
+        {
+            rpcMode = RpcMode::MiningEnabled;
+        }
+
+        RpcServer rpcServer(
+            config.rpcPort,
+            config.rpcInterface,
+            corsDomain,
+            config.feeAddress,
+            config.feeAmount,
+            rpcMode,
+            ccore,
+            p2psrv,
+            cprotocol
+        );
+
+        cprotocol->set_p2p_endpoint(&(*p2psrv));
         logger(INFO) << "Initializing p2p server...";
-        if (!p2psrv.init(netNodeConfig))
+        if (!p2psrv->init(netNodeConfig))
         {
             logger(ERROR, BRIGHT_RED) << "Failed to initialize p2p server.";
             return 1;
@@ -369,18 +463,28 @@ int main(int argc, char *argv[])
 
         logger(INFO) << "P2p server initialized OK";
 
+        // Fire up the RPC Server
+        logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
+
+        rpcServer.start();
+
+        /* Get the RPC IP address and port we are bound to */
+        auto [ip, port] = rpcServer.getConnectionInfo();
+
+        /* If we bound the RPC to 0.0.0.0, we can't reach that with a
+           standard HTTP client from anywhere. Instead, let's use the
+           localhost IP address to reach ourselves */
+        if (ip == "0.0.0.0")
+        {
+            ip = "127.0.0.1";
+        }
+
+        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port);
+
         if (!config.noConsole)
         {
             dch.start_handling();
         }
-
-        // Fire up the RPC Server
-        logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
-        rpcServer.setFeeAddress(config.feeAddress);
-        rpcServer.setFeeAmount(config.feeAmount);
-        rpcServer.enableCors(config.enableCors);
-        rpcServer.start(config.rpcInterface, config.rpcPort);
-        logger(INFO) << "Core rpc server started ok";
 
         Tools::SignalHandler::install([&dch] {
             dch.exit({});
@@ -388,7 +492,7 @@ int main(int argc, char *argv[])
         });
 
         logger(INFO) << "Starting p2p net loop...";
-        p2psrv.run();
+        p2psrv->run();
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
@@ -399,10 +503,10 @@ int main(int argc, char *argv[])
 
         // deinitialize components
         logger(INFO) << "Deinitializing p2p...";
-        p2psrv.deinit();
+        p2psrv->deinit();
 
-        cprotocol.set_p2p_endpoint(nullptr);
-        ccore.save();
+        cprotocol->set_p2p_endpoint(nullptr);
+        ccore->save();
     }
     catch (const std::exception &e)
     {

@@ -27,7 +27,8 @@ Error validateFusionTransaction(
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string destinationAddress,
     const std::shared_ptr<SubWallets> subWallets,
-    const uint64_t currentHeight)
+    const uint64_t currentHeight,
+    const std::optional<uint64_t> optimizeTarget)
 {
     /* Validate the mixin */
     if (Error error = validateMixin(mixin, currentHeight); error != SUCCESS)
@@ -43,6 +44,11 @@ Error validateFusionTransaction(
 
     /* Verify the destination address is valid and exists in the subwallets */
     if (Error error = validateOurAddresses({destinationAddress}, subWallets); error != SUCCESS)
+    {
+        return error;
+    }
+
+    if (Error error = validateOptimizeTarget(optimizeTarget); error != SUCCESS)
     {
         return error;
     }
@@ -425,6 +431,30 @@ Error validateOurAddresses(const std::vector<std::string> addresses, const std::
                 "The address given (" + address + ") does not exist in the wallet container, but it is "
                     + "required to exist for this operation.");
         }
+    }
+
+    return SUCCESS;
+}
+
+Error validateOptimizeTarget(const std::optional<uint64_t> optimizeTarget)
+{
+    if (!optimizeTarget)
+    {
+        return SUCCESS;
+    }
+
+    const uint64_t target = *optimizeTarget;
+
+    const std::string strTarget = std::to_string(target);
+
+    /* Take the first digit of the target, convert to int. Multiply by 10 ^ target len - 1.
+     * This will give us the original value minus any non significant digits - 
+     * i.e. 23456 -> 20000 */
+    const uint64_t validTarget = (strTarget[0] - '0') * pow(10, strTarget.length() - 1);
+
+    if (target != validTarget)
+    {
+        return AMOUNT_UGLY;
     }
 
     return SUCCESS;

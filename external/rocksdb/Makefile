@@ -143,7 +143,7 @@ CFLAGS +=  -DHAVE_POWER8
 HAVE_POWER8=1
 endif
 
-ifeq (,$(shell $(CXX) -fsyntax-only -march=armv8-a+crc -xc /dev/null 2>&1))
+ifeq (,$(shell $(CXX) -fsyntax-only -march=armv8-a+crc+crypto -xc /dev/null 2>&1))
 CXXFLAGS += -march=armv8-a+crc+crypto
 CFLAGS += -march=armv8-a+crc+crypto
 ARMCRC_SOURCE=1
@@ -310,7 +310,7 @@ endif
 
 export GTEST_THROW_ON_FAILURE=1
 export GTEST_HAS_EXCEPTIONS=1
-GTEST_DIR = ./third-party/gtest-1.7.0/fused-src
+GTEST_DIR = ./third-party/gtest-1.8.1/fused-src
 # AIX: pre-defined system headers are surrounded by an extern "C" block
 ifeq ($(PLATFORM), OS_AIX)
 	PLATFORM_CCFLAGS += -I$(GTEST_DIR)
@@ -330,6 +330,11 @@ ifeq ($(USE_FOLLY_DISTRIBUTED_MUTEX),1)
 		PLATFORM_CCFLAGS += -isystem $(FOLLY_DIR)
 		PLATFORM_CXXFLAGS += -isystem $(FOLLY_DIR)
 	endif
+endif
+
+ifdef TEST_CACHE_LINE_SIZE
+  PLATFORM_CCFLAGS += -DTEST_CACHE_LINE_SIZE=$(TEST_CACHE_LINE_SIZE)
+  PLATFORM_CXXFLAGS += -DTEST_CACHE_LINE_SIZE=$(TEST_CACHE_LINE_SIZE)
 endif
 
 # This (the first rule) must depend on "all".

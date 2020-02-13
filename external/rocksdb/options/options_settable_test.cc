@@ -229,6 +229,7 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
                              "delete_obsolete_files_period_micros=4294967758;"
                              "WAL_ttl_seconds=4295008036;"
                              "WAL_size_limit_MB=4295036161;"
+                             "max_write_batch_group_size_bytes=1048576;"
                              "wal_dir=path/to/wal_dir;"
                              "db_write_buffer_size=2587;"
                              "max_subcompactions=64330;"
@@ -296,7 +297,8 @@ TEST_F(OptionsSettableTest, DBOptionsAllFieldsSettable) {
                              "seq_per_batch=false;"
                              "atomic_flush=false;"
                              "avoid_unnecessary_blocking_io=false;"
-                             "log_readahead_size=0",
+                             "log_readahead_size=0;"
+                             "write_dbid_to_manifest=false",
                              new_options));
 
   ASSERT_EQ(unset_bytes_base, NumUnsetBytes(new_options_ptr, sizeof(DBOptions),

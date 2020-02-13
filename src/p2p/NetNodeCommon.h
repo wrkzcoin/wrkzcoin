@@ -16,6 +16,8 @@ namespace CryptoNote
 
     struct IP2pEndpoint
     {
+        virtual ~IP2pEndpoint() {};
+
         virtual void relay_notify_to_all(
             int command,
             const BinaryArray &data_buff,
@@ -45,6 +47,8 @@ namespace CryptoNote
 
     struct p2p_endpoint_stub : public IP2pEndpoint
     {
+        ~p2p_endpoint_stub() {};
+
         virtual void relay_notify_to_all(
             int command,
             const BinaryArray &data_buff,

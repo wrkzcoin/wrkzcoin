@@ -236,8 +236,6 @@ namespace CryptoNote
             const uint64_t scanHeight,
             const bool newAddress);
 
-        CryptoNote::BlockDetails getBlock(const uint64_t blockHeight);
-
         uint64_t scanHeightToTimestamp(const uint64_t scanHeight);
 
         uint64_t getCurrentTimestampAdjusted();

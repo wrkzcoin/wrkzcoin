@@ -237,6 +237,10 @@ namespace CryptoNote
 
         const size_t FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 
+        const uint64_t FUSION_FEE_V1_HEIGHT = 864864;
+
+        const uint64_t FUSION_FEE_V1 = 10000;
+
         /* This sets the maximum number of fusion transactions that can be present in the pool
            at any given time. Incoming fusion transactions that attempt to exceed this limit
            will be rejected from the pool and will not be added. This mechanism is in place
@@ -277,11 +281,12 @@ namespace CryptoNote
             678500,   // 7
             777777,   // 8
             832000,   // 9
-            1000000,  // 10
+            864864,   // 10
+            1000000,  // 11
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 9;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 10;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -354,9 +359,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 8;
+    const uint8_t P2P_CURRENT_VERSION = 10;
 
-    const uint8_t P2P_MINIMUM_VERSION = 7;
+    const uint8_t P2P_MINIMUM_VERSION = 9;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -379,13 +384,19 @@ namespace CryptoNote
     const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT = 60 * 2 * 1000; // 2 minutes
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
-
+#if !defined(USE_LEVELDB)
     const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 256; // 256 MB
     const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 512; // 512 MB
     const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 64; // maximize files
     const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; // 8 DB IncreaseParallelism
     const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; // Additional tweak testing
-
+#else
+    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using
+    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using -> block_cache size
+    const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 128; // /using
+    const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; //  /not using
+    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; //  /not using
+#endif
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
     const std::string LICENSE_URL = "https://github.com/wrkzcoin/wrkzcoin/blob/master/LICENSE";
@@ -395,8 +406,8 @@ namespace CryptoNote
 
     const char *const SEED_NODES[] = {
         "139.99.47.188:17855",        // node-sg1.wrkz.work
-        "95.216.164.177:17855",       // myexplorer.wrkz.work
-        "5.9.65.105:17855",           // node-eu1.wrkz.work
+        "46.4.243.14:17855",          // myexplorer.wrkz.work
+        "116.202.108.68:17855",       // node-eu1.wrkz.work
         "5.172.219.174:17855"         // wrkz.stx.nl sniperviperman
     };
 } // namespace CryptoNote

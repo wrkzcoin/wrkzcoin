@@ -128,6 +128,10 @@ class DBImpl : public DB {
  public:
   DBImpl(const DBOptions& options, const std::string& dbname,
          const bool seq_per_batch = false, const bool batch_per_txn = true);
+  // No copying allowed
+  DBImpl(const DBImpl&) = delete;
+  void operator=(const DBImpl&) = delete;
+
   virtual ~DBImpl();
 
   // ---- Implementations of the DB interface ----
@@ -317,6 +321,8 @@ class DBImpl : public DB {
 
   virtual Status GetDbIdentity(std::string& identity) const override;
 
+  virtual Status GetDbIdentityFromIdentityFile(std::string* identity) const;
+
   ColumnFamilyHandle* DefaultColumnFamily() const override;
 
   ColumnFamilyHandle* PersistentStatsColumnFamily() const;
@@ -338,6 +344,7 @@ class DBImpl : public DB {
                               uint64_t* manifest_file_size,
                               bool flush_memtable = true) override;
   virtual Status GetSortedWalFiles(VectorLogPtr& files) override;
+  virtual Status GetCurrentWalFile(std::unique_ptr<LogFile>* current_log_file) override;
 
   virtual Status GetUpdatesSince(
       SequenceNumber seq_number, std::unique_ptr<TransactionLogIterator>* iter,
@@ -926,6 +933,7 @@ class DBImpl : public DB {
  protected:
   Env* const env_;
   const std::string dbname_;
+  std::string db_id_;
   std::unique_ptr<VersionSet> versions_;
   // Flag to check whether we allocated and own the info log file
   bool own_info_log_;
@@ -1558,10 +1566,6 @@ class DBImpl : public DB {
   Status CloseHelper();
 
   void WaitForBackgroundWork();
-
-  // No copying allowed
-  DBImpl(const DBImpl&);
-  void operator=(const DBImpl&);
 
   // Background threads call this function, which is just a wrapper around
   // the InstallSuperVersion() function. Background threads carry

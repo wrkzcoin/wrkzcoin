@@ -343,11 +343,11 @@ namespace PaymentService
         uint64_t fixedFee;
         double feePerByte;
 
-        if (!serializer(fixedFee, "fee"))
+        if (serializer(fixedFee, "fee"))
         {
             fee = WalletTypes::FeeType::FixedFee(fixedFee);
         }
-        else if (!serializer(feePerByte, "feePerByte"))
+        else if (serializer(feePerByte, "feePerByte"))
         {
             fee = WalletTypes::FeeType::FeePerByte(feePerByte);
         }
@@ -400,43 +400,6 @@ namespace PaymentService
     }
 
     void SendDelayedTransaction::Response::serialize(CryptoNote::ISerializer &serializer) {}
-
-    void SendFusionTransaction::Request::serialize(CryptoNote::ISerializer &serializer, const WalletService &service)
-    {
-        if (!serializer(threshold, "threshold"))
-        {
-            throw RequestSerializationError();
-        }
-
-        if (!serializer(anonymity, "anonymity"))
-        {
-            anonymity = service.getDefaultMixin();
-        }
-
-        serializer(addresses, "addresses");
-        serializer(destinationAddress, "destinationAddress");
-    }
-
-    void SendFusionTransaction::Response::serialize(CryptoNote::ISerializer &serializer)
-    {
-        serializer(transactionHash, "transactionHash");
-    }
-
-    void EstimateFusion::Request::serialize(CryptoNote::ISerializer &serializer)
-    {
-        if (!serializer(threshold, "threshold"))
-        {
-            throw RequestSerializationError();
-        }
-
-        serializer(addresses, "addresses");
-    }
-
-    void EstimateFusion::Response::serialize(CryptoNote::ISerializer &serializer)
-    {
-        serializer(fusionReadyCount, "fusionReadyCount");
-        serializer(totalOutputCount, "totalOutputCount");
-    }
 
     void CreateIntegratedAddress::Request::serialize(CryptoNote::ISerializer &serializer)
     {
