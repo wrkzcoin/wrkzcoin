@@ -42,7 +42,7 @@ bool optimizeRound(const std::shared_ptr<WalletBackend> walletBackend)
 
     int sentTransactions = 0;
 
-    const uint64_t initialBalance = walletBackend->getTotalUnlockedBalance();
+    uint64_t initialBalance = walletBackend->getTotalUnlockedBalance();
 
     /* Since input selection is random, lets let it fail a few times before
        failing the whole round */
@@ -73,6 +73,13 @@ bool optimizeRound(const std::shared_ptr<WalletBackend> walletBackend)
             std::cout << InformationMsg("Sent fusion transaction #") << InformationMsg(sentTransactions)
                       << SuccessMsg("\nHash: ") << SuccessMsg(hash) << "\n\n";
         }
+    }
+
+    if (std::get<2>(walletBackend->getSyncStatus()) > CryptoNote::parameters::FUSION_FEE_V1_HEIGHT)
+    {
+        /* Ensure we're waiting for the resulting balance after the fusion fee,
+         * or we'll loop forever. */
+        initialBalance -= sentTransactions * CryptoNote::parameters::FUSION_FEE_V1;
     }
 
     uint64_t currentBalance = walletBackend->getTotalUnlockedBalance();

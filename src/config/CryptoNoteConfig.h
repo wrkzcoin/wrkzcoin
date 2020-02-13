@@ -237,6 +237,10 @@ namespace CryptoNote
 
         const size_t FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 
+        const uint64_t FUSION_FEE_V1_HEIGHT = 888888;
+
+        const uint64_t FUSION_FEE_V1 = 10000;
+
         /* This sets the maximum number of fusion transactions that can be present in the pool
            at any given time. Incoming fusion transactions that attempt to exceed this limit
            will be rejected from the pool and will not be added. This mechanism is in place

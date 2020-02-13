@@ -364,6 +364,11 @@ namespace CryptoNote
             inputAmount += amount;
         }
 
+        if (height >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT)
+        {
+            inputAmount -= CryptoNote::parameters::FUSION_FEE_V1;
+        }
+
         std::vector<uint64_t> expectedOutputsAmounts;
         expectedOutputsAmounts.reserve(outputsAmounts.size());
         decomposeAmount(inputAmount, defaultFusionDustThreshold(height), expectedOutputsAmounts);
