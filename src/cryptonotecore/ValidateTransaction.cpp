@@ -95,7 +95,6 @@ TransactionValidationResult ValidateTransaction::validate()
     return m_validationResult;
 }
 
-/* Note: Does not set the .fee property */
 TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
 {
     /* Validate transaction isn't too big now that the median size has changed */
@@ -112,6 +111,12 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
 
     /* Validate transaction mixin is still in the valid range */
     if (!validateTransactionMixin())
+    {
+        return m_validationResult;
+    }
+
+    /* Validate transaction fee is still in the valid fee */
+    if (!validateTransactionFee())
     {
         return m_validationResult;
     }
