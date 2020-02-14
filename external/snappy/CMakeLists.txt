@@ -51,9 +51,6 @@ option(SNAPPY_REQUIRE_AVX2 "Target processors with AVX2 support." OFF)
 
 option(SNAPPY_INSTALL "Install Snappy's header and library" OFF)
 
-include(TestBigEndian)
-test_big_endian(SNAPPY_IS_BIG_ENDIAN)
-
 include(CheckIncludeFile)
 check_include_file("byteswap.h" HAVE_BYTESWAP_H)
 check_include_file("sys/endian.h" HAVE_SYS_ENDIAN_H)
