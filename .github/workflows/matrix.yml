@@ -224,14 +224,18 @@ jobs:
         build_name: ['OSX RocksDB', 'OSX LevelDB']
         include:
           - build_name: 'OSX RocksDB'
+            cc: /usr/local/opt/llvm@8/bin/clang
+            cxx: /usr/local/opt/llvm@8/bin/clang++
             label: osx-rocksdb
             deployable: false
           - build_name: 'OSX LevelDB'
+            cc: /usr/local/opt/llvm@8/bin/clang
+            cxx: /usr/local/opt/llvm@8/bin/clang++
             label: osx-leveldb
             deployable: false
     env:
-      CC: /usr/local/opt/llvm@8/bin/clang
-      CXX: /usr/local/opt/llvm@8/bin/clang++
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
@@ -446,7 +450,7 @@ jobs:
         run: |
           export PATH=~/.local/bin:$PATH
           pip install --user pipx
-          pip install --user pipx awscli
+          pipx install awscli
           pip install --user pipx awscli-plugin-endpoint
       - name: S3 Upload
         env:
