@@ -303,12 +303,6 @@ namespace CryptoNote
             FORK_HEIGHTS_SIZE == 0 || CURRENT_FORK_INDEX < FORK_HEIGHTS_SIZE,
             "CURRENT_FORK_INDEX out of range of FORK_HEIGHTS!");
 
-        const char CRYPTONOTE_BLOCKS_FILENAME[] = "blocks.wrkz.bin";
-
-        const char CRYPTONOTE_BLOCKINDEXES_FILENAME[] = "blockindexes.wrkz.bin";
-
-        const char CRYPTONOTE_POOLDATA_FILENAME[] = "poolstate.wrkz.bin";
-
         const char P2P_NET_DATA_FILENAME[] = "p2pstate.wrkz.bin";
 
         const char MINER_CONFIG_FILE_NAME[] = "miner_conf.wrkz.json";

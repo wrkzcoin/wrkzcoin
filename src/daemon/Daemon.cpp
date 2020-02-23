@@ -20,7 +20,6 @@
 #include "cryptonotecore/Currency.h"
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
-#include "cryptonotecore/MainChainStorage.h"
 #if defined (USE_LEVELDB)
 #include "cryptonotecore/LevelDBWrapper.h"
 #else
@@ -183,15 +182,14 @@ int main(int argc, char *argv[])
     {
         std::error_code ec;
 
-        std::vector<std::string> removablePaths = {
-            config.dataDirectory + "/" + CryptoNote::parameters::CRYPTONOTE_BLOCKS_FILENAME,
-            config.dataDirectory + "/" + CryptoNote::parameters::CRYPTONOTE_BLOCKINDEXES_FILENAME,
-            config.dataDirectory + "/" + CryptoNote::parameters::P2P_NET_DATA_FILENAME,
-            config.dataDirectory + "/DB"};
+        std::vector<fs::path> removablePaths = {
+             fs::path(config.dataDirectory) / CryptoNote::parameters::P2P_NET_DATA_FILENAME,
+             fs::path(config.dataDirectory) / "DB"
+         };
 
         for (const auto path : removablePaths)
         {
-            fs::remove_all(fs::path(path), ec);
+            fs::remove_all(path, ec);
 
             if (ec)
             {
@@ -312,19 +310,6 @@ int main(int argc, char *argv[])
             config.dbMaxByteLevelSizeMB,
             config.enableDbCompression);
 
-        /* If we were told to rewind the blockchain to a certain height
-           we will remove blocks until we're back at the height specified */
-        if (config.rewindToHeight > 0)
-        {
-            logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
-
-            std::unique_ptr<IMainChainStorage> mainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
-
-            mainChainStorage->rewindTo(config.rewindToHeight);
-
-            logger(INFO) << "Blockchain rewound to: " << config.rewindToHeight << std::endl;
-        }
-
         bool use_checkpoints = !config.checkPoints.empty();
         CryptoNote::Checkpoints checkpoints(logManager);
 
@@ -389,21 +374,29 @@ int main(int argc, char *argv[])
         System::Dispatcher dispatcher;
         logger(INFO) << "Initializing core...";
 
-        std::unique_ptr<IMainChainStorage> tmainChainStorage = createSwappedMainChainStorage(config.dataDirectory, currency);
-
         const auto ccore = std::make_shared<CryptoNote::Core>(
             currency,
             logManager,
             std::move(checkpoints),
             dispatcher,
             std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(database, logger.getLogger())),
-            std::move(tmainChainStorage),
             config.transactionValidationThreads
         );
 
         ccore->load();
 
         logger(INFO) << "Core initialized OK";
+
+        /* If we were told to rewind the blockchain to a certain height
+            we will remove blocks until we're back at the height specified */
+         if (config.rewindToHeight > 0)
+         {
+             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
+
+             ccore->rewind(config.rewindToHeight);
+
+             logger(INFO) << "Blockchain rewound to: " << config.rewindToHeight << std::endl;
+         }
 
         const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
             currency,
