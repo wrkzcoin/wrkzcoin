@@ -412,7 +412,7 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.6.8\x64\Scripts\ /p:Configuration=Release /m
+          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /m
 
       # Test the crypto
       - name: Test Crypto
