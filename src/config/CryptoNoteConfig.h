@@ -406,6 +406,7 @@ namespace CryptoNote
 
     const char *const SEED_NODES[] = {
         "139.99.47.188:17855",        // node-sg1.wrkz.work
-        "46.4.243.14:17855"          // myexplorer.wrkz.work
+        "46.4.243.14:17855",          // myexplorer.wrkz.work
+        "94.113.119.122:17855"        // publicnode.ydns.eu
     };
 } // namespace CryptoNote
