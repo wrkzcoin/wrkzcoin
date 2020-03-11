@@ -216,7 +216,7 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macOS-latest
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
@@ -224,18 +224,14 @@ jobs:
         build_name: ['OSX RocksDB', 'OSX LevelDB']
         include:
           - build_name: 'OSX RocksDB'
-            cc: /usr/local/opt/llvm@8/bin/clang
-            cxx: /usr/local/opt/llvm@8/bin/clang++
             label: osx-rocksdb
             deployable: false
           - build_name: 'OSX LevelDB'
-            cc: /usr/local/opt/llvm@8/bin/clang
-            cxx: /usr/local/opt/llvm@8/bin/clang++
             label: osx-leveldb
             deployable: false
     env:
-      CC: ${{ matrix.cc }}
-      CXX: ${{ matrix.cxx }}
+      CC: /usr/local/opt/llvm@8/bin/clang
+      CXX: /usr/local/opt/llvm@8/bin/clang++
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
@@ -244,6 +240,7 @@ jobs:
       # Fetch Dependencies
       - name: Dependencies
         run: |
+          brew uninstall llvm
           brew install --force boost llvm@8 ccache
           brew link --force llvm@8
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
