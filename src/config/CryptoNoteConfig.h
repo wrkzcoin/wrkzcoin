@@ -405,9 +405,8 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "139.99.47.188:17855",        // node-sg1.wrkz.work
-        "46.4.243.14:17855",          // myexplorer.wrkz.work
-        "116.202.108.68:17855",       // node-eu1.wrkz.work
-        "5.172.219.174:17855"         // wrkz.stx.nl sniperviperman
+        "88.198.107.18:17855",        // node-eu1.wrkz.work
+        "144.76.5.24:17855",          // myexplorer.wrkz.work
+        "94.113.119.122:17855"        // publicnode.ydns.eu
     };
 } // namespace CryptoNote

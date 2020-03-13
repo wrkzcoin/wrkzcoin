@@ -407,6 +407,8 @@ namespace CryptoNote
         void cutSegment(IBlockchainCache &segment, uint32_t startIndex);
 
         void switchMainChainStorage(uint32_t splitBlockIndex, IBlockchainCache &newChain);
+
+        std::mutex m_submitBlockMutex;
     };
 
 } // namespace CryptoNote

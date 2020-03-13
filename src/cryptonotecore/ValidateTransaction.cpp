@@ -115,6 +115,18 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
         return m_validationResult;
     }
 
+    /* Validate the transaction inputs are non empty, key images are valid, etc. */
+    if (!validateTransactionInputs())
+    {
+        return m_validationResult;
+    }
+
+    /* Validate transaction outputs are non zero, don't overflow, etc */
+    if (!validateTransactionOutputs())
+    {
+        return m_validationResult;
+    }
+
     /* Validate transaction fee is still in the valid fee */
     if (!validateTransactionFee())
     {

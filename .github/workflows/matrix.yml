@@ -216,7 +216,7 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macOS-latest
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
@@ -240,6 +240,7 @@ jobs:
       # Fetch Dependencies
       - name: Dependencies
         run: |
+          brew uninstall llvm
           brew install --force boost llvm@8 ccache
           brew link --force llvm@8
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
@@ -408,7 +409,7 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.6.8\x64\Scripts\ /p:Configuration=Release /m
+          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /m
 
       # Test the crypto
       - name: Test Crypto
@@ -446,7 +447,7 @@ jobs:
         run: |
           export PATH=~/.local/bin:$PATH
           pip install --user pipx
-          pip install --user pipx awscli
+          pipx install awscli
           pip install --user pipx awscli-plugin-endpoint
       - name: S3 Upload
         env:
@@ -471,7 +472,7 @@ jobs:
           OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
-          if [ "$RUNNER_OS" == "macOS" ]; then
+          if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
             ~/.local/bin/aws configure set default.region ${AWS_REGION}
@@ -491,6 +492,5 @@ jobs:
           if [ "$RUNNER_OS" == "Windows" ]; then
             export PATH=$MINGW64_PATH:$PATH
           fi
-          if [ "$RUNNER_OS" != "Windows" ]; then
-            curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
-          fi
+          curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
+
