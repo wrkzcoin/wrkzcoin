@@ -21,11 +21,8 @@
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
 #include "cryptonotecore/MainChainStorage.h"
-#if defined (USE_LEVELDB)
 #include "cryptonotecore/LevelDBWrapper.h"
-#else
 #include "cryptonotecore/RocksDBWrapper.h"
-#endif
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
@@ -257,7 +254,7 @@ int main(int argc, char *argv[])
             {
                 oldLogLevel = Logging::DEBUGGING;
                 logColour = Logging::DEFAULT;
-            } 
+            }
             else if (level == Logger::INFO)
             {
                 oldLogLevel = Logging::INFO;
@@ -302,15 +299,15 @@ int main(int argc, char *argv[])
         }
         CryptoNote::Currency currency = currencyBuilder.currency();
 
-        DataBaseConfig dbConfig;
-        dbConfig.init(
+        DataBaseConfig dbConfig(
             config.dataDirectory,
             config.dbThreads,
             config.dbMaxOpenFiles,
             config.dbWriteBufferSizeMB,
             config.dbReadCacheSizeMB,
-            config.dbMaxByteLevelSizeMB,
-            config.enableDbCompression);
+            config.dbMaxFileSizeMB,
+            config.enableDbCompression
+        );
 
         /* If we were told to rewind the blockchain to a certain height
            we will remove blocks until we're back at the height specified */
@@ -363,26 +360,33 @@ int main(int argc, char *argv[])
             config.seedNodes,
             config.p2pResetPeerstate);
 
-        if (!Tools::create_directories_if_necessary(dbConfig.getDataDir()))
+        if (!Tools::create_directories_if_necessary(dbConfig.dataDir))
         {
-            throw std::runtime_error("Can't create directory: " + dbConfig.getDataDir());
+            throw std::runtime_error("Can't create directory: " + dbConfig.dataDir);
         }
-#if defined (USE_LEVELDB)
-        LevelDBWrapper database(logManager);
-#else
-        RocksDBWrapper database(logManager);
-#endif
-        database.init(dbConfig);
-        Tools::ScopeExit dbShutdownOnExit([&database]() { database.shutdown(); });
 
-        if (!DatabaseBlockchainCache::checkDBSchemeVersion(database, logManager))
+        std::shared_ptr<IDataBase> database;
+
+        if (config.enableLevelDB)
+        {
+            database = std::make_shared<LevelDBWrapper>(logManager); 
+        }
+        else
+        {
+            database = std::make_shared<RocksDBWrapper>(logManager); 
+        }
+
+        database->init(dbConfig);
+        Tools::ScopeExit dbShutdownOnExit([&database]() { database->shutdown(); });
+
+        if (!DatabaseBlockchainCache::checkDBSchemeVersion(*database, logManager))
         {
             dbShutdownOnExit.cancel();
-            database.shutdown();
 
-            database.destroy(dbConfig);
+            database->shutdown();
+            database->destroy(dbConfig);
+            database->init(dbConfig);
 
-            database.init(dbConfig);
             dbShutdownOnExit.resume();
         }
 
@@ -396,7 +400,7 @@ int main(int argc, char *argv[])
             logManager,
             std::move(checkpoints),
             dispatcher,
-            std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(database, logger.getLogger())),
+            std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(*database, logger.getLogger())),
             std::move(tmainChainStorage),
             config.transactionValidationThreads
         );
@@ -479,7 +483,7 @@ int main(int argc, char *argv[])
             ip = "127.0.0.1";
         }
 
-        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port);
+        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
 
         if (!config.noConsole)
         {

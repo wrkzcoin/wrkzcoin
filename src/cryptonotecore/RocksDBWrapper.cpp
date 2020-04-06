@@ -233,16 +233,16 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 {
     rocksdb::DBOptions dbOptions;
-    dbOptions.IncreaseParallelism(config.getBackgroundThreadsCount());
+    dbOptions.IncreaseParallelism(config.backgroundThreadsCount);
     dbOptions.info_log_level = rocksdb::InfoLogLevel::WARN_LEVEL;
-    dbOptions.max_open_files = config.getMaxOpenFiles();
+    dbOptions.max_open_files = config.maxOpenFiles;
     // For spinning disk
     dbOptions.skip_stats_update_on_db_open = true;
     dbOptions.compaction_readahead_size  = 2 * 1024 * 1024;
     dbOptions.new_table_reader_for_compaction_inputs = true;
 
     rocksdb::ColumnFamilyOptions fOptions;
-    fOptions.write_buffer_size = static_cast<size_t>(config.getWriteBufferSize());
+    fOptions.write_buffer_size = static_cast<size_t>(config.writeBufferSize);
     // merge two memtables when flushing to L0
     fOptions.min_write_buffer_number_to_merge = 2;
     // this means we'll use 50% extra memory in the worst case, but will reduce
@@ -256,10 +256,10 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     fOptions.level0_slowdown_writes_trigger = 30;
     fOptions.level0_stop_writes_trigger = 40;
 
-    // make Level1 size equal to Level0 size, so that L0->L1 compactions are fast
-    fOptions.max_bytes_for_level_base = config.getMaxByteLevelSize();
     // doesn't really matter much, but we don't want to create too many files
-    fOptions.target_file_size_base = config.getMaxByteLevelSize() / 10;
+    fOptions.target_file_size_base = config.writeBufferSize / 10;
+    // make Level1 size equal to Level0 size, so that L0->L1 compactions are fast
+    fOptions.max_bytes_for_level_base = config.writeBufferSize;
     fOptions.num_levels = 10;
     fOptions.target_file_size_multiplier = 2;
     // level style compaction
@@ -267,18 +267,21 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 
     fOptions.compression_per_level.resize(fOptions.num_levels);
 
-    const auto compressionLevel = config.getCompressionEnabled() ? rocksdb::kZSTD : rocksdb::kNoCompression;
+    const auto compressionLevel = config.compressionEnabled
+        ? rocksdb::kZSTD
+        : rocksdb::kNoCompression;
+
     for (int i = 0; i < fOptions.num_levels; ++i)
     {
         // don't compress l0 & l1
         fOptions.compression_per_level[i] = (i < 2 ? rocksdb::kNoCompression : compressionLevel);
     }
+
     // bottom most use kZSTD
-    fOptions.bottommost_compression =
-        config.getCompressionEnabled() ? rocksdb::kZSTD : rocksdb::kNoCompression;
+    fOptions.bottommost_compression = compressionLevel;
 
     rocksdb::BlockBasedTableOptions tableOptions;
-    tableOptions.block_cache = rocksdb::NewLRUCache(config.getReadCacheSize());
+    tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize);
     std::shared_ptr<rocksdb::TableFactory> tfp(NewBlockBasedTableFactory(tableOptions));
     fOptions.table_factory = tfp;
 
@@ -287,5 +290,5 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 
 std::string RocksDBWrapper::getDataDir(const DataBaseConfig &config)
 {
-    return config.getDataDir() + '/' + DB_NAME;
+    return config.dataDir + '/' + DB_NAME;
 }
