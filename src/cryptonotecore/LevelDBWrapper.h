@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include "DataBaseConfig.h"
 #include "IDataBase.h"
 #include "leveldb/db.h"
 
@@ -31,15 +30,17 @@ namespace CryptoNote
 
         LevelDBWrapper &operator=(LevelDBWrapper &&) = delete;
 
-        void init(const DataBaseConfig &config);
+        void init(const DataBaseConfig &config) override;
 
-        void shutdown();
+        void shutdown() override;
 
-        void destroy(const DataBaseConfig &config); // Be careful with this method!
+        void destroy(const DataBaseConfig &config) override; // Be careful with this method!
 
         std::error_code write(IWriteBatch &batch) override;
 
         std::error_code read(IReadBatch &batch) override;
+
+        std::error_code readThreadSafe(IReadBatch &batch) override;
 
       private:
         std::error_code write(IWriteBatch &batch, bool sync);
