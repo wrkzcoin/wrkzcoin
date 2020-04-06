@@ -403,7 +403,7 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "88.198.107.18:17855",        // node-eu1.wrkz.work
+        "5.9.89.252:17855",           // node-eu1.wrkz.work
         "144.76.5.24:17855",          // myexplorer.wrkz.work
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
