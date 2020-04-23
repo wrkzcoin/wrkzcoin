@@ -119,9 +119,9 @@ union cn_slow_hash_state {
     do                                                                                                \
         if (variant == 2)                                                                             \
         {                                                                                             \
-            const __m128i chunk1 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10)));       \
+            const __m128i chunk1 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x30 : 0x10))));       \
             const __m128i chunk2 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20)));       \
-            const __m128i chunk3 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x30)));       \
+            const __m128i chunk3 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x10 : 0x30))));       \
             _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10)), _mm_add_epi64(chunk3, _b1)); \
             _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20)), _mm_add_epi64(chunk1, _b));  \
             _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x30)), _mm_add_epi64(chunk2, _a));  \
@@ -132,9 +132,9 @@ union cn_slow_hash_state {
     do                                                                                                    \
         if (variant == 2)                                                                                 \
         {                                                                                                 \
-            const uint64x2_t chunk1 = vld1q_u64(U64((base_ptr) + ((offset) ^ 0x10)));                     \
+            const uint64x2_t chunk1 = vld1q_u64(U64((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x30 : 0x10))));                     \
             const uint64x2_t chunk2 = vld1q_u64(U64((base_ptr) + ((offset) ^ 0x20)));                     \
-            const uint64x2_t chunk3 = vld1q_u64(U64((base_ptr) + ((offset) ^ 0x30)));                     \
+            const uint64x2_t chunk3 = vld1q_u64(U64((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x10 : 0x30))));                     \
             vst1q_u64(U64((base_ptr) + ((offset) ^ 0x10)), vaddq_u64(chunk3, vreinterpretq_u64_u8(_b1))); \
             vst1q_u64(U64((base_ptr) + ((offset) ^ 0x20)), vaddq_u64(chunk1, vreinterpretq_u64_u8(_b)));  \
             vst1q_u64(U64((base_ptr) + ((offset) ^ 0x30)), vaddq_u64(chunk2, vreinterpretq_u64_u8(_a)));  \
@@ -145,9 +145,9 @@ union cn_slow_hash_state {
     do                                                              \
         if (variant == 2)                                           \
         {                                                           \
-            uint64_t *chunk1 = U64((base_ptr) + ((offset) ^ 0x10)); \
+            uint64_t *chunk1 = U64((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x30 : 0x10))); \
             uint64_t *chunk2 = U64((base_ptr) + ((offset) ^ 0x20)); \
-            uint64_t *chunk3 = U64((base_ptr) + ((offset) ^ 0x30)); \
+            uint64_t *chunk3 = U64((base_ptr) + ((offset) ^ (lightFlag == 16 ? 0x10 : 0x30))); \
                                                                     \
             const uint64_t chunk1_old[2] = {chunk1[0], chunk1[1]};  \
                                                                     \

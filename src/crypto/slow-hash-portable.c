@@ -119,7 +119,11 @@ void cn_slow_hash(
 {
     uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
     uint32_t aes_rounds = (iterations / 2);
-    size_t lightFlag = (light ? 2 : 1);
+    size_t lightFlag = light == 0
+        ? 1
+        : light == 1
+            ? 2
+            : 16;
 
     uint8_t text[INIT_SIZE_BYTE];
     uint8_t a[AES_BLOCK_SIZE];

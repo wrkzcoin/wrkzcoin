@@ -30,7 +30,12 @@
 // Standard CryptoNight Turtle
 #define CN_TURTLE_PAGE_SIZE 262144
 #define CN_TURTLE_SCRATCHPAD 262144
-#define CN_TURTLE_ITERATIONS 131072
+#define CN_TURTLE_ITERATIONS 131072 
+
+// Standard CryptoNight UPX
+#define CN_UPX_PAGE_SIZE 131072
+#define CN_UPX_SCRATCHPAD 131072
+#define CN_UPX_ITERATIONS 32768
 
 // CryptoNight Soft Shell Definitions
 #define CN_SOFT_SHELL_MEMORY 262144 // This defines the lowest memory utilization for our curve
@@ -309,6 +314,20 @@ namespace Crypto
             CN_TURTLE_PAGE_SIZE,
             CN_TURTLE_SCRATCHPAD,
             CN_TURTLE_ITERATIONS);
+    }
+
+    inline void cn_upx(const void *data, size_t length, Hash &hash)
+    {
+        cn_slow_hash(
+            data,
+            length,
+            reinterpret_cast<char *>(&hash),
+            2,
+            2,
+            0,
+            CN_UPX_PAGE_SIZE,
+            CN_UPX_SCRATCHPAD,
+            CN_UPX_ITERATIONS);
     }
 
     // CryptoNight Soft Shell
