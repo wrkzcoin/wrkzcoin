@@ -115,15 +115,11 @@ void cn_slow_hash(
     int prehashed,
     uint32_t page_size,
     uint32_t scratchpad,
-    uint32_t iterations)
+    uint32_t iterations,
+    uint64_t mask)
 {
     uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
     uint32_t aes_rounds = (iterations / 2);
-    size_t lightFlag = light == 0
-        ? 1
-        : light == 1
-            ? 2
-            : 16;
 
     uint8_t text[INIT_SIZE_BYTE];
     uint8_t a[AES_BLOCK_SIZE];
@@ -183,11 +179,8 @@ void cn_slow_hash(
 
     for (i = 0; i < aes_rounds; i++)
     {
-#define MASK(div) ((uint32_t)(((page_size / AES_BLOCK_SIZE) / (div)-1) << 4))
-#define state_index(x, div) ((*(uint32_t *)x) & MASK(div))
-
         // Iteration 1
-        j = state_index(a, lightFlag);
+        j = a & mask;
         p = &long_state[j];
         aesb_single_round(p, p, a);
         copy_block(c1, p);
@@ -197,7 +190,7 @@ void cn_slow_hash(
         VARIANT1_1(p);
 
         // Iteration 2
-        j = state_index(c1, lightFlag);
+        j = c1 & mask;
         p = &long_state[j];
         copy_block(c, p);
 

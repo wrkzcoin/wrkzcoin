@@ -50,13 +50,12 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
  */
 #include <arm_neon.h>
 
-#define state_index(x, div) (((*((uint64_t *)x) >> 4) & (TOTALBLOCKS / (div)-1)) << 4)
 #define __mul()                                                      \
     __asm__("mul %0, %1, %2\n\t" : "=r"(lo) : "r"(c[0]), "r"(b[0])); \
     __asm__("umulh %0, %1, %2\n\t" : "=r"(hi) : "r"(c[0]), "r"(b[0]));
 
 #define pre_aes()                  \
-    j = state_index(a, lightFlag); \
+    j = a & mask;                  \
     _c = vld1q_u8(&hp_state[j]);   \
     _a = vld1q_u8((const uint8_t *)a);
 
@@ -65,7 +64,7 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
     vst1q_u8((uint8_t *)c, _c);               \
     vst1q_u8(&hp_state[j], veorq_u8(_b, _c)); \
     VARIANT1_1(&hp_state[j]);                 \
-    j = state_index(c, lightFlag);            \
+    j = c & mask;                             \
     p = U64(&hp_state[j]);                    \
     b[0] = p[0];                              \
     b[1] = p[1];                              \
@@ -265,11 +264,6 @@ void cn_slow_hash(
     uint32_t TOTALBLOCKS = (page_size / AES_BLOCK_SIZE);
     uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
     uint32_t aes_rounds = (iterations / 2);
-    size_t lightFlag = light == 0
-        ? 1
-        : light == 1
-            ? 2
-            : 16;
 
     RDATA_ALIGN16 uint8_t expandedKey[240];
 
@@ -511,11 +505,6 @@ void cn_slow_hash(
 {
     uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
     uint32_t aes_rounds = (iterations / 2);
-    size_t lightFlag = light == 0
-        ? 1
-        : light == 1
-            ? 2
-            : 16;
 
     uint8_t text[INIT_SIZE_BYTE];
     uint8_t a[AES_BLOCK_SIZE];
@@ -576,11 +565,8 @@ void cn_slow_hash(
 
     for (i = 0; i < aes_rounds; i++)
     {
-#define MASK(div) ((uint32_t)(((page_size / AES_BLOCK_SIZE) / (div)-1) << 4))
-#define state_index(x, div) ((*(uint32_t *)x) & MASK(div))
-
         // Iteration 1
-        j = state_index(a, lightFlag);
+        j = (*(uint32_t *)a) & mask;
         p = &long_state[j];
         aesb_single_round(p, p, a);
         copy_block(c1, p);
@@ -590,7 +576,7 @@ void cn_slow_hash(
         VARIANT1_1(p);
 
         // Iteration 2
-        j = state_index(c1, lightFlag);
+        j = (*(uint32_t *)c1) & mask;
         p = &long_state[j];
         copy_block(c, p);
 
