@@ -285,10 +285,11 @@ namespace CryptoNote
             832000,   // 9
             864864,   // 10
             1000000,  // 11
+            1250000,  // 12
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 10;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 11;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -363,9 +364,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 10;
+    const uint8_t P2P_CURRENT_VERSION = 11;
 
-    const uint8_t P2P_MINIMUM_VERSION = 9;
+    const uint8_t P2P_MINIMUM_VERSION = 10;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
