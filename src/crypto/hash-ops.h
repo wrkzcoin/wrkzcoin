@@ -69,7 +69,8 @@ void cn_slow_hash(
     int prehashed,
     uint32_t page_size,
     uint32_t scratchpad,
-    uint32_t iterations);
+    uint32_t iterations,
+    uint64_t mask);
 
 void hash_extra_blake(const void *data, size_t length, char *hash);
 
