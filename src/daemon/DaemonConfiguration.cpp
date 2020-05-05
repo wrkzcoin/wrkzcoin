@@ -96,7 +96,7 @@ namespace DaemonConfig
             "enable-cors",
             "Adds header 'Access-Control-Allow-Origin' to the RPC responses using the <domain>. Uses the value "
             "specified as the domain. Use * for all.",
-            cxxopts::value<std::vector<std::string>>(),
+            cxxopts::value<std::string>(),
             "<domain>")(
             "fee-address",
             "Sets the convenience charge <address> for light wallets that use the daemon",
@@ -411,7 +411,7 @@ namespace DaemonConfig
 
             if (cli.count("enable-cors") > 0)
             {
-                config.enableCors = cli["enable-cors"].as<std::vector<std::string>>();
+                config.enableCors = cli["enable-cors"].as<std::string>();
             }
 
             if (cli.count("fee-address") > 0)
@@ -473,7 +473,7 @@ namespace DaemonConfig
         std::vector<std::string> priorityNodes;
         std::vector<std::string> seedNodes;
         std::vector<std::string> peers;
-        std::vector<std::string> cors;
+        std::string cors;
         bool updated = false;
 
         for (std::string line; std::getline(data, line);)
@@ -680,7 +680,7 @@ namespace DaemonConfig
                 }
                 else if (cfgKey.compare("enable-cors") == 0)
                 {
-                    cors.push_back(cfgValue);
+                    cors = cfgValue;
                     config.enableCors = cors;
                     updated = true;
                 }
@@ -926,11 +926,7 @@ namespace DaemonConfig
 
         if (j.HasMember("enable-cors"))
         {
-            const Value &va = j["enable-cors"];
-            for (auto &v : va.GetArray())
-            {
-                config.enableCors.push_back(v.GetString());
-            }
+            config.enableCors = j["enable-cors"].GetString();
         }
 
         if (j.HasMember("fee-address"))
@@ -1012,15 +1008,7 @@ namespace DaemonConfig
             j.AddMember("seed-node", arr, alloc);
         }
 
-        {
-            Value arr(rapidjson::kArrayType);
-            for (auto v : config.enableCors)
-            {
-                arr.PushBack(Value().SetString(StringRef(v.c_str())), alloc);
-            }
-            j.AddMember("enable-cors", arr, alloc);
-        }
-
+        j.AddMember("enable-cors", config.enableCors, alloc);
         j.AddMember("enable-blockexplorer", config.enableBlockExplorer, alloc);
         j.AddMember("enable-blockexplorer-detailed", config.enableBlockExplorerDetailed, alloc);
         j.AddMember("enable-mining", config.enableMining, alloc);

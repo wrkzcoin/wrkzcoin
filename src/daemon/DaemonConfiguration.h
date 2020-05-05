@@ -72,7 +72,7 @@ namespace DaemonConfig
 
         std::vector<std::string> seedNodes;
 
-        std::vector<std::string> enableCors;
+        std::string enableCors;
 
         int logLevel;
 

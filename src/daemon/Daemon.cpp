@@ -423,13 +423,6 @@ int main(int argc, char *argv[])
             logManager
         );
 
-        std::string corsDomain;
-
-        /* TODO: enable cors should not be a vector */
-        if (!config.enableCors.empty()) {
-            corsDomain = config.enableCors[0];
-        }
-
         RpcMode rpcMode = RpcMode::Default;
 
         if (config.enableBlockExplorerDetailed && config.enableMining)
@@ -448,7 +441,7 @@ int main(int argc, char *argv[])
         RpcServer rpcServer(
             config.rpcPort,
             config.rpcInterface,
-            corsDomain,
+            config.enableCors,
             config.feeAddress,
             config.feeAmount,
             rpcMode,
