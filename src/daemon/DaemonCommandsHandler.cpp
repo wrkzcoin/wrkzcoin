@@ -55,12 +55,14 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     CryptoNote::NodeServer &srv,
     std::shared_ptr<Logging::LoggerManager> log,
     const std::string ip,
-    const uint32_t port):
+    const uint32_t port,
+    const DaemonConfig::DaemonConfiguration &config):
     m_core(core),
     m_srv(srv),
     logger(log, "daemon"),
     m_logManager(log),
-    m_rpcServer(ip.c_str(), port)
+    m_rpcServer(ip.c_str(), port),
+    m_config(config)
 {
     m_consoleHandler.setHandler(
         "?",
@@ -403,12 +405,8 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Next Fork",             Utilities::get_fork_time(networkHeight, upgradeHeights)});
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
-#if defined (USE_LEVELDB)
-    statusTable.push_back({"DB Engine",             "LevelDB"});
-#else
-    statusTable.push_back({"DB Engine",             "RocksDB"});
-#endif
-    statusTable.push_back({"Version", PROJECT_VERSION_LONG});
+    statusTable.push_back({"DB Engine",             m_config.enableLevelDB ? "LevelDB" : "RocksDB"});
+    statusTable.push_back({"Version", PROJECT_VERSION});
 
     size_t longestValue = 0;
     size_t longestDescription = 0;

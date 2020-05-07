@@ -33,20 +33,53 @@ void LevelDBWrapper::init(const DataBaseConfig &config)
     leveldb::DB* dbPtr;
 
     leveldb::Options dbOptions;
-#if defined(USE_LEVELDB)
-    logger(INFO) << "Daemon uses kSnappyCompression...";
-    dbOptions.compression = leveldb::kSnappyCompression;
-#else
-    logger(INFO) << "Daemon uses kNoCompression...";
-    dbOptions.compression = leveldb::kNoCompression;
-#endif
-    dbOptions.max_file_size = 1024 * 1024 * 1024; // 1024 MB
 
-    dbOptions.write_buffer_size =  static_cast<size_t>(config.getWriteBufferSize());
+    // From the LevelDB docs:
+    //
+    // Compress blocks using the specified compression algorithm.  This
+    // parameter can be changed dynamically.
+    //
+    // Default: kSnappyCompression, which gives lightweight but fast
+    // compression.
+    //
+    // Typical speeds of kSnappyCompression on an Intel(R) Core(TM)2 2.4GHz:
+    //    ~200-500MB/s compression
+    //    ~400-800MB/s decompression
+    // Note that these speeds are significantly faster than most
+    // persistent storage speeds, and therefore it is typically never
+    // worth switching to kNoCompression.  Even if the input data is
+    // incompressible, the kSnappyCompression implementation will
+    // efficiently detect that and will switch to uncompressed mode.
+    dbOptions.compression = config.compressionEnabled
+        ? leveldb::kSnappyCompression
+        : leveldb::kNoCompression;
 
-    dbOptions.max_open_files =  config.getMaxOpenFiles();
+    // Leveldb will write up to this amount of bytes to a file before
+    // switching to a new one.
+    // Most clients should leave this parameter alone.  However if your
+    // filesystem is more efficient with larger files, you could
+    // consider increasing the value.  The downside will be longer
+    // compactions and hence longer latency/performance hiccups.
+    // Another reason to increase this parameter might be when you are
+    // initially populating a large database.
+    dbOptions.max_file_size = config.maxFileSize;
 
-    dbOptions.block_cache =  leveldb::NewLRUCache(config.getReadCacheSize());
+    // Amount of data to build up in memory (backed by an unsorted log
+    // on disk) before converting to a sorted on-disk file.
+    //
+    // Larger values increase performance, especially during bulk loads.
+    // Up to two write buffers may be held in memory at the same time,
+    // so you may wish to adjust this parameter to control memory usage.
+    // Also, a larger write buffer will result in a longer recovery time
+    // the next time the database is opened.
+    dbOptions.write_buffer_size =  static_cast<size_t>(config.writeBufferSize);
+
+    // Number of open files that can be used by the DB.  You may need to
+    // increase this if your database has a large working set (budget
+    // one open file per 2MB of working set).
+    dbOptions.max_open_files = config.maxOpenFiles;
+
+    dbOptions.block_cache = leveldb::NewLRUCache(config.readCacheSize);
 
     if (state.load() != NOT_INITIALIZED)
     {
@@ -59,7 +92,7 @@ void LevelDBWrapper::init(const DataBaseConfig &config)
 
     logger(INFO) << "Opening DB in " << dataDir;
 
-    if (true == status.ok())
+    if (status.ok())
     {
         logger(INFO) << "DB opened in " << dataDir;
     }
@@ -203,7 +236,13 @@ std::error_code LevelDBWrapper::read(IReadBatch &batch)
     return std::error_code();
 }
 
+/* LevelDB is thread safe by default: https://github.com/google/leveldb/blob/master/doc/index.md#concurrency */
+std::error_code LevelDBWrapper::readThreadSafe(IReadBatch &batch)
+{
+    return read(batch);
+}
+
 std::string LevelDBWrapper::getDataDir(const DataBaseConfig &config)
 {
-    return config.getDataDir() + '/' + DB_NAME;
+    return config.dataDir + '/' + DB_NAME;
 }

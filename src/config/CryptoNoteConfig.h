@@ -261,7 +261,9 @@ namespace CryptoNote
 
         const uint32_t UPGRADE_HEIGHT_V6 = 600000; // Upgrade height for Chukwa switch.
 
-        const uint32_t UPGRADE_HEIGHT_CURRENT = UPGRADE_HEIGHT_V6;
+        const uint32_t UPGRADE_HEIGHT_V7 = 1000000; // Upgrade height for CN-UPX switch.
+
+        const uint32_t UPGRADE_HEIGHT_CURRENT = UPGRADE_HEIGHT_V7;
 
         const unsigned UPGRADE_VOTING_THRESHOLD = 90; // percent
         const uint32_t UPGRADE_VOTING_WINDOW = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY; // blocks
@@ -283,10 +285,11 @@ namespace CryptoNote
             832000,   // 9
             864864,   // 10
             1000000,  // 11
+            1250000,  // 12
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 10;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 11;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -328,6 +331,7 @@ namespace CryptoNote
     const uint8_t BLOCK_MAJOR_VERSION_4 = 4; /* UPGRADE_HEIGHT_V4 */
     const uint8_t BLOCK_MAJOR_VERSION_5 = 5; /* UPGRADE_HEIGHT_V5 */
     const uint8_t BLOCK_MAJOR_VERSION_6 = 6; /* UPGRADE_HEIGHT_V6 */
+    const uint8_t BLOCK_MAJOR_VERSION_7 = 7; /* UPGRADE_HEIGHT_V7 */
 
     const uint8_t BLOCK_MINOR_VERSION_0 = 0;
 
@@ -335,12 +339,13 @@ namespace CryptoNote
 
     const std::unordered_map<uint8_t, std::function<void(const void *data, size_t length, Crypto::Hash &hash)>>
         HASHING_ALGORITHMS_BY_BLOCK_VERSION = {
-            {BLOCK_MAJOR_VERSION_1, Crypto::cn_slow_hash_v0}, /* From zero */
-            {BLOCK_MAJOR_VERSION_2, Crypto::cn_slow_hash_v0}, /* UPGRADE_HEIGHT_V2 */
-            {BLOCK_MAJOR_VERSION_3, Crypto::cn_slow_hash_v0}, /* UPGRADE_HEIGHT_V3 */
-            {BLOCK_MAJOR_VERSION_4, Crypto::cn_lite_slow_hash_v1}, /* UPGRADE_HEIGHT_V4 */
+            {BLOCK_MAJOR_VERSION_1, Crypto::cn_slow_hash_v0},             /* From zero */
+            {BLOCK_MAJOR_VERSION_2, Crypto::cn_slow_hash_v0},             /* UPGRADE_HEIGHT_V2 */
+            {BLOCK_MAJOR_VERSION_3, Crypto::cn_slow_hash_v0},             /* UPGRADE_HEIGHT_V3 */
+            {BLOCK_MAJOR_VERSION_4, Crypto::cn_lite_slow_hash_v1},        /* UPGRADE_HEIGHT_V4 */
             {BLOCK_MAJOR_VERSION_5, Crypto::cn_turtle_lite_slow_hash_v2}, /* UPGRADE_HEIGHT_V5 */
-            {BLOCK_MAJOR_VERSION_6, Crypto::chukwa_slow_hash} /* UPGRADE_HEIGHT_V6 */
+            {BLOCK_MAJOR_VERSION_6, Crypto::chukwa_slow_hash},            /* UPGRADE_HEIGHT_V6 */
+            {BLOCK_MAJOR_VERSION_7, Crypto::cn_upx}                       /* UPGRADE_HEIGHT_V7 */
     };
 
     const size_t BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT = 10000; // by default, blocks ids count in synchronizing
@@ -359,9 +364,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 10;
+    const uint8_t P2P_CURRENT_VERSION = 11;
 
-    const uint8_t P2P_MINIMUM_VERSION = 9;
+    const uint8_t P2P_MINIMUM_VERSION = 10;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -384,19 +389,17 @@ namespace CryptoNote
     const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT = 60 * 2 * 1000; // 2 minutes
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
-#if !defined(USE_LEVELDB)
-    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 256; // 256 MB
-    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 512; // 512 MB
-    const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 64; // maximize files
-    const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; // 8 DB IncreaseParallelism
-    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; // Additional tweak testing
-#else
-    const uint64_t DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using
-    const uint64_t DATABASE_READ_BUFFER_MB_DEFAULT_SIZE = 64; // 64 MB /using -> block_cache size
-    const uint32_t DATABASE_DEFAULT_MAX_OPEN_FILES = 128; // /using
-    const uint16_t DATABASE_DEFAULT_BACKGROUND_THREADS_COUNT = 8; //  /not using
-    const uint64_t DATABASE_MAX_BYTES_FOR_LEVEL_BASE = 20 * DATABASE_WRITE_BUFFER_MB_DEFAULT_SIZE; //  /not using
-#endif
+
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 256; // 256 MB
+    const uint64_t ROCKSDB_READ_BUFFER_MB = 512; // 512 MB
+    const uint64_t ROCKSDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
+
+    const uint64_t LEVELDB_WRITE_BUFFER_MB = 64; // 64 MB
+    const uint64_t LEVELDB_READ_BUFFER_MB = 64; // 64 MB
+    const uint64_t LEVELDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
+
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
     const std::string LICENSE_URL = "https://github.com/wrkzcoin/wrkzcoin/blob/master/LICENSE";
@@ -405,8 +408,9 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "88.198.107.18:17855",        // node-eu1.wrkz.work
+        "176.9.99.123:17855",         // node-eu1.wrkz.work
         "144.76.5.24:17855",          // myexplorer.wrkz.work
-        "94.113.119.122:17855"        // publicnode.ydns.eu
+        "94.113.119.122:17855",       // publicnode.ydns.eu
+        "178.238.236.173:17855"       // wrkz.xyz
     };
 } // namespace CryptoNote

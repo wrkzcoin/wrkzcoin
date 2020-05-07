@@ -19,47 +19,27 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 7 RocksDB', 'Ubuntu GCC 8 RocksDB', 'Ubuntu Clang 6 RocksDB', 'aarch64 RocksDB', 'Ubuntu GCC 7 LevelDB', 'Ubuntu GCC 8 LevelDB', 'Ubuntu Clang 6 LevelDB', 'aarch64 LevelDB']
+        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64']
         include:
-          - build_name: 'Ubuntu GCC 7 RocksDB'
+          - build_name: 'Ubuntu GCC 7'
             package_name: 'gcc-7 g++-7'
             cc: gcc-7
             cxx: g++-7
-            label: linux-gcc-7-rocksdb
+            label: linux-gcc-7
             deployable: false
-          - build_name: 'Ubuntu GCC 8 RocksDB'
+          - build_name: 'Ubuntu GCC 8'
             package_name: 'gcc-8 g++-8'
             cc: gcc-8
             cxx: g++-8
-            label: linux-rocksdb
+            label: linux
             deployable: true
-          - build_name: 'Ubuntu Clang 6 RocksDB'
+          - build_name: 'Ubuntu Clang 6'
             cc: clang-6.0
             cxx: clang++-6.0
-            label: linux-clang-6-rocksdb
+            label: linux-clang-6
             deployable: false
-          - build_name: 'aarch64 RocksDB'
-            label: aarch64-rocksdb
-            deployable: true
-          - build_name: 'Ubuntu GCC 7 LevelDB'
-            package_name: 'gcc-7 g++-7'
-            cc: gcc-7
-            cxx: g++-7
-            label: linux-gcc-7-leveldb
-            deployable: false
-          - build_name: 'Ubuntu GCC 8 LevelDB'
-            package_name: 'gcc-8 g++-8'
-            cc: gcc-8
-            cxx: g++-8
-            label: linux-leveldb
-            deployable: true
-          - build_name: 'Ubuntu Clang 6 LevelDB'
-            cc: clang-6.0
-            cxx: clang++-6.0
-            label: linux-clang-6-leveldb
-            deployable: false
-          - build_name: 'aarch64 LevelDB'
-            label: aarch64-leveldb
+          - build_name: 'aarch64'
+            label: aarch64
             deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
@@ -69,7 +49,7 @@ jobs:
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB'
+        if: matrix.build_name != 'aarch64'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -84,33 +64,26 @@ jobs:
           path: .ccache
           key: ccache-${{ matrix.label }}
 
-      # Configure the project with cmake RocksDB
-      - name: Configure RocksDB
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB' && endsWith(matrix.label, 'rocksdb')
+      # Configure the project with cmake
+      - name: Configure
+        if: matrix.build_name != 'aarch64'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: |
           mkdir build && cd build
           cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
-      - name: Configure LevelDB
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB' && endsWith(matrix.label, 'leveldb')
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
-        run: |
-          mkdir build && cd build
-          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DWITH_LEVELDB=true ..
+
       # Build for linux
       - name: Build
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB'
+        if: matrix.build_name != 'aarch64'
         run: |
           cd build
           make -j2
 
       # Build for aarch64
-      - name: Prepare and Build (aarch64) RocksDB
-        if: matrix.build_name == 'aarch64 RocksDB' && endsWith(matrix.label, 'rocksdb')
+      - name: Prepare and Build (aarch64)
+        if: matrix.build_name == 'aarch64'
         run: |
           source scripts/prep-aarch64.sh
           mkdir build && cd build
@@ -119,20 +92,10 @@ jobs:
           cd src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
           ${STRIP} ${TARGETS}
-      # Build for aarch64
-      - name: Prepare and Build (aarch64) LevelDB
-        if: matrix.build_name == 'aarch64 LevelDB' && endsWith(matrix.label, 'leveldb')
-        run: |
-          source scripts/prep-aarch64.sh
-          mkdir build && cd build
-          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DWITH_LEVELDB=true ..
-          make -j2
-          cd src
-          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          ${STRIP} ${TARGETS}
+
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB'
+        if: matrix.build_name != 'aarch64'
         run: |
           cd build/src
           ./cryptotest
@@ -142,21 +105,20 @@ jobs:
         id: before_deploy
         env:
           COMMIT_SHA: ${{ github.sha }}
-          BIN_LABEL: ${{ matrix.label }}
         run: |
           export TAG=${COMMIT_SHA::8}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          if [[ "${BIN_LABEL}" != "aarch64-rocksdb" && "${BIN_LABEL}" != "aarch64-leveldb" ]]; then strip ${TARGETS}; fi
+          if [[ "${LABEL}" != "aarch64" ]]; then strip ${TARGETS}; fi
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
           cp ../../LICENSE wrkzcoin-${TAG}/
-          tar cvfz wrkzcoin-${BIN_LABEL}.tar.gz wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${LABEL}-${TAG}.tar.gz wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${BIN_LABEL}.tar.gz builds/
-          echo ::set-output name=file_name::wrkzcoin-${BIN_LABEL}.tar.gz
+          cp wrkzcoin-${LABEL}-${TAG}.tar.gz builds/
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.tar.gz
 
       # Upload to S3
       - name: Set up Python
@@ -217,18 +179,6 @@ jobs:
   macos_build:
     name: macOS
     runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Add more compilers here if you need them
-        build_name: ['OSX RocksDB', 'OSX LevelDB']
-        include:
-          - build_name: 'OSX RocksDB'
-            label: osx-rocksdb
-            deployable: false
-          - build_name: 'OSX LevelDB'
-            label: osx-leveldb
-            deployable: false
     env:
       CC: /usr/local/opt/llvm@8/bin/clang
       CXX: /usr/local/opt/llvm@8/bin/clang++
@@ -252,17 +202,10 @@ jobs:
           key: ccache-osx
 
       # Configure project with cmake
-      - name: Configure RocksDB
-        if: endsWith(matrix.label, 'rocksdb')
+      - name: Configure
         run: |
           mkdir build && cd build
           cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
-
-      - name: Configure LevelDB
-        if: endsWith(matrix.label, 'leveldb')
-        run: |
-          mkdir build && cd build
-          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DWITH_LEVELDB=true ..
 
       # Build for macOS
       - name: Build
@@ -272,7 +215,7 @@ jobs:
 
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64 RocksDB' && matrix.build_name != 'aarch64 LevelDB' 
+        if: matrix.build_name != 'aarch64'
         run: |
           cd build/src
           ./cryptotest
@@ -282,7 +225,6 @@ jobs:
         id: before_deploy
         env:
           COMMIT_SHA: ${{ github.sha }}
-          BIN_LABEL: ${{ matrix.label }}
         run: |
           export TAG=${COMMIT_SHA::8}
           cd build/src
@@ -292,11 +234,11 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
           cp ../../LICENSE wrkzcoin-${TAG}/
-          tar cvfz wrkzcoin-${BIN_LABEL}.tar.gz wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${LABEL}-${TAG}.tar.gz wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${BIN_LABEL}.tar.gz builds/
-          echo ::set-output name=file_name::wrkzcoin-${BIN_LABEL}.tar.gz
+          cp wrkzcoin-${LABEL}-${TAG}.tar.gz builds/
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.tar.gz
 
       # Upload to S3
       - name: Set up Python
@@ -355,24 +297,11 @@ jobs:
 
   # Windows Builds on Windows Server 2019
   windows_build:
-    name: Windows-2019
+    name: Windows
     runs-on: windows-2019
-    strategy:
-      fail-fast: false
-      matrix:
-        # Add more compilers here if you need them
-        build_name: ['Windows RocksDB', 'Windows LevelDB']
-        include:
-          - build_name: 'Windows RocksDB'
-            label: windows-rocksdb
-            deployable: false
-          - build_name: 'Windows LevelDB'
-            label: windows-leveldb
-            deployable: false
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
-      LABEL: windows-2019
-      BIN_LABEL: ${{ matrix.label }}
+      LABEL: windows
     steps:
       - uses: actions/checkout@v1
 
@@ -389,19 +318,11 @@ jobs:
         run: choco install openssl
 
       # Configure project with cmake
-      - name: Configure RocksDB
-        if: endsWith(matrix.label, 'rocksdb')
+      - name: Configure
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default
-
-      - name: Configure LevelDB
-        if: endsWith(matrix.label, 'leveldb')
-        run: |
-          mkdir build
-          cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DWITH_LEVELDB=true
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
 
       # Build for Windows
       - name: Build
@@ -409,7 +330,7 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /m
+          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /p:PlatformToolset=v141 /m
 
       # Test the crypto
       - name: Test Crypto
@@ -431,11 +352,11 @@ jobs:
           mkdir wrkzcoin-${TAG}
           cp *.exe wrkzcoin-${TAG}/
           cp ../../../LICENSE wrkzcoin-${TAG}/
-          7z a wrkzcoin-${BIN_LABEL}.zip wrkzcoin-${TAG}/
+          7z a wrkzcoin-${LABEL}-${TAG}.zip wrkzcoin-${TAG}/
           rm -rf builds
           mkdir builds
-          cp wrkzcoin-${BIN_LABEL}.zip builds/
-          echo ::set-output name=file_name::wrkzcoin-${BIN_LABEL}.zip
+          cp wrkzcoin-${LABEL}-${TAG}.zip builds/
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.zip
 
       # Upload to S3
       - name: Set up Python
@@ -493,4 +414,3 @@ jobs:
             export PATH=$MINGW64_PATH:$PATH
           fi
           curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
-
