@@ -145,26 +145,49 @@ union cn_slow_hash_state {
     do                                                              \
         if (variant == 2)                                           \
         {                                                           \
-            uint64_t *chunk1 = U64((base_ptr) + ((offset) ^ (light == 2 ? 0x30 : 0x10))); \
+            uint64_t *chunk1 = U64((base_ptr) + ((offset) ^ 0x10)); \
             uint64_t *chunk2 = U64((base_ptr) + ((offset) ^ 0x20)); \
-            uint64_t *chunk3 = U64((base_ptr) + ((offset) ^ (light == 2 ? 0x10 : 0x30))); \
-                                                                    \
-            const uint64_t chunk1_old[2] = {chunk1[0], chunk1[1]};  \
+            uint64_t *chunk3 = U64((base_ptr) + ((offset) ^ 0x30)); \
                                                                     \
             uint64_t b1[2];                                         \
             memcpy(b1, b + 16, 16);                                 \
-            chunk1[0] = chunk3[0] + b1[0];                          \
-            chunk1[1] = chunk3[1] + b1[1];                          \
                                                                     \
             uint64_t a0[2];                                         \
             memcpy(a0, a, 16);                                      \
-            chunk3[0] = chunk2[0] + a0[0];                          \
-            chunk3[1] = chunk2[1] + a0[1];                          \
                                                                     \
             uint64_t b0[2];                                         \
             memcpy(b0, b, 16);                                      \
-            chunk2[0] = chunk1_old[0] + b0[0];                      \
-            chunk2[1] = chunk1_old[1] + b0[1];                      \
+                                                                    \
+            const uint64_t chunk2_old[2] = {                        \
+                chunk2[0], chunk2[1]                                \
+            };                                                      \
+                                                                    \
+            if (light == 2)                                         \
+            {                                                       \
+                chunk1[0] = chunk1[0] + b1[0];                      \
+                chunk1[1] = chunk1[1] + b1[1];                      \
+                                                                    \
+                chunk2[0] = chunk3[0] + b0[0];                      \
+                chunk2[1] = chunk3[1] + b0[1];                      \
+                                                                    \
+                chunk3[0] = chunk2_old[0] + a0[0];                  \
+                chunk3[1] = chunk2_old[1] + a0[1];                  \
+            }                                                       \
+            else                                                    \
+            {                                                       \
+                const uint64_t chunk1_old[2] = {                    \
+                    chunk1[0], chunk1[1]                            \
+                };                                                  \
+                                                                    \
+                chunk1[0] = chunk3[0] + b1[0];                      \
+                chunk1[1] = chunk3[1] + b1[1];                      \
+                                                                    \
+                chunk2[0] = chunk1_old[0] + b0[0];                  \
+                chunk2[1] = chunk1_old[1] + b0[1];                  \
+                                                                    \
+                chunk3[0] = chunk2_old[0] + a0[0];                  \
+                chunk3[1] = chunk2_old[1] + a0[1];                  \
+            }                                                       \
         }                                                           \
     while (0)
 
