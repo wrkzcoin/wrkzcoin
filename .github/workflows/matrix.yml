@@ -14,7 +14,7 @@ jobs:
   # Common Build matrix for builds on Ubuntu VM
   ubuntu_build:
     name: ${{ matrix.build_name }}
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +45,7 @@ jobs:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       # Fetch Dependencies
       - name: Dependencies
@@ -122,9 +122,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |
@@ -185,7 +185,7 @@ jobs:
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       # Fetch Dependencies
       - name: Dependencies
@@ -242,9 +242,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |
@@ -298,12 +298,12 @@ jobs:
   # Windows Builds on Windows Server 2019
   windows_build:
     name: Windows
-    runs-on: windows-2019
+    runs-on: windows-latest
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
       LABEL: windows
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       - name: Setup clcache
         run: pip install clcache
@@ -330,7 +330,7 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /p:PlatformToolset=v141 /m
+          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
 
       # Test the crypto
       - name: Test Crypto
@@ -360,9 +360,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |
