@@ -24,27 +24,26 @@
 
 #if defined(__XOP__)
 # include <ammintrin.h>
-#endif
-
-#if defined(__AVX512F__)
-# define CRYPTOPP_AVX512_ROTATE 1
-# include <immintrin.h>
-#endif
-
-// C1189: error: This header is specific to ARM targets
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
-# include "adv_simd.h"
-# ifndef _M_ARM64
-#  include <arm_neon.h>
+# if defined(__GNUC__)
+#  include <x86intrin.h>
 # endif
 #endif
 
-#if (CRYPTOPP_ARM_ACLE_AVAILABLE)
+#if (CRYPTOPP_ARM_NEON_HEADER)
+# include "adv_simd.h"
+# include <arm_neon.h>
+#endif
+
+#if (CRYPTOPP_ARM_ACLE_HEADER)
 # include <stdint.h>
 # include <arm_acle.h>
 #endif
 
-#if defined(CRYPTOPP_POWER8_AVAILABLE)
+#if defined(_M_ARM64)
+# include "adv_simd.h"
+#endif
+
+#if (CRYPTOPP_POWER8_AVAILABLE)
 # include "adv_simd.h"
 # include "ppc_simd.h"
 #endif
@@ -67,7 +66,7 @@ using CryptoPP::vec_swap;  // SunCC
 #if defined(_MSC_VER) && !defined(_M_ARM64)
 inline uint64x2_t vld1q_dup_u64(const uint64_t* ptr)
 {
-	return vmovq_n_u64(*ptr);
+    return vmovq_n_u64(*ptr);
 }
 #endif
 
@@ -285,9 +284,9 @@ inline void SIMON128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
 
 // ***************************** IA-32 ***************************** //
 
-#if defined(CRYPTOPP_SSSE3_AVAILABLE)
+#if (CRYPTOPP_SSSE3_AVAILABLE)
 
-// Clang __m128i casts, http://bugs.llvm.org/show_bug.cgi?id=20670
+// Clang intrinsic casts, http://bugs.llvm.org/show_bug.cgi?id=20670
 #ifndef M128_CAST
 # define M128_CAST(x) ((__m128i *)(void *)(x))
 #endif
@@ -317,9 +316,7 @@ inline void Swap128(__m128i& a,__m128i& b)
 template <unsigned int R>
 inline __m128i RotateLeft64(const __m128i& val)
 {
-#if defined(CRYPTOPP_AVX512_ROTATE)
-    return _mm_rol_epi64(val, R);
-#elif defined(__XOP__)
+#if defined(__XOP__)
     return _mm_roti_epi64(val, R);
 #else
     return _mm_or_si128(
@@ -330,9 +327,7 @@ inline __m128i RotateLeft64(const __m128i& val)
 template <unsigned int R>
 inline __m128i RotateRight64(const __m128i& val)
 {
-#if defined(CRYPTOPP_AVX512_ROTATE)
-    return _mm_ror_epi64(val, R);
-#elif defined(__XOP__)
+#if defined(__XOP__)
     return _mm_roti_epi64(val, 64-R);
 #else
     return _mm_or_si128(
@@ -533,7 +528,7 @@ inline void SIMON128_Dec_6_Blocks(__m128i &block0, __m128i &block1,
 
 // ***************************** Power8 ***************************** //
 
-#if defined(CRYPTOPP_POWER8_AVAILABLE)
+#if (CRYPTOPP_POWER8_AVAILABLE)
 
 using CryptoPP::uint8x16_p;
 using CryptoPP::uint32x4_p;
@@ -541,6 +536,7 @@ using CryptoPP::uint64x2_p;
 
 using CryptoPP::VecAnd;
 using CryptoPP::VecXor;
+using CryptoPP::VecLoad;
 using CryptoPP::VecPermute;
 
 // Rotate left by bit count
@@ -581,16 +577,18 @@ inline void SIMON128_Enc_Block(uint32x4_p &block, const word64 *subkeys, unsigne
 
     for (int i = 0; i < static_cast<int>(rounds & ~1)-1; i += 2)
     {
-        const uint64x2_p rk1 = vec_splats((unsigned long long)subkeys[i]);
-        y1 = VecXor(VecXor(y1, SIMON128_f(x1)), rk1);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk1 = VecLoad(subkeys+i*2);
+        const uint64x2_p rk2 = VecLoad(subkeys+i*2+2);
 
-        const uint64x2_p rk2 = vec_splats((unsigned long long)subkeys[i+1]);
+        y1 = VecXor(VecXor(y1, SIMON128_f(x1)), rk1);
         x1 = VecXor(VecXor(x1, SIMON128_f(y1)), rk2);
     }
 
     if (rounds & 1)
     {
-        const uint64x2_p rk = vec_splats((unsigned long long)subkeys[rounds-1]);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk = VecLoad(subkeys+rounds*2-2);
         y1 = VecXor(VecXor(y1, SIMON128_f(x1)), rk);
         std::swap(x1, y1);
     }
@@ -672,12 +670,14 @@ inline void SIMON128_Enc_6_Blocks(uint32x4_p &block0, uint32x4_p &block1,
 
     for (int i = 0; i < static_cast<int>(rounds & ~1)-1; i += 2)
     {
-        const uint64x2_p rk1 = vec_splats((unsigned long long)subkeys[i]);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk1 = VecLoad(subkeys+i*2);
+        const uint64x2_p rk2 = VecLoad(subkeys+i*2+2);
+
         y1 = VecXor(VecXor(y1, SIMON128_f(x1)), rk1);
         y2 = VecXor(VecXor(y2, SIMON128_f(x2)), rk1);
         y3 = VecXor(VecXor(y3, SIMON128_f(x3)), rk1);
 
-        const uint64x2_p rk2 = vec_splats((unsigned long long)subkeys[i+1]);
         x1 = VecXor(VecXor(x1, SIMON128_f(y1)), rk2);
         x2 = VecXor(VecXor(x2, SIMON128_f(y2)), rk2);
         x3 = VecXor(VecXor(x3, SIMON128_f(y3)), rk2);
@@ -685,7 +685,9 @@ inline void SIMON128_Enc_6_Blocks(uint32x4_p &block0, uint32x4_p &block1,
 
     if (rounds & 1)
     {
-        const uint64x2_p rk = vec_splats((unsigned long long)subkeys[rounds-1]);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk = VecLoad(subkeys+rounds*2-2);
+
         y1 = VecXor(VecXor(y1, SIMON128_f(x1)), rk);
         y2 = VecXor(VecXor(y2, SIMON128_f(x2)), rk);
         y3 = VecXor(VecXor(y3, SIMON128_f(x3)), rk);
@@ -797,7 +799,7 @@ size_t SIMON128_Dec_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rou
 
 // ***************************** IA-32 ***************************** //
 
-#if defined(CRYPTOPP_SSSE3_AVAILABLE)
+#if (CRYPTOPP_SSSE3_AVAILABLE)
 size_t SIMON128_Enc_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {
@@ -815,7 +817,7 @@ size_t SIMON128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, size_t ro
 
 // ***************************** Power8 ***************************** //
 
-#if defined(CRYPTOPP_POWER8_AVAILABLE)
+#if (CRYPTOPP_POWER8_AVAILABLE)
 size_t SIMON128_Enc_AdvancedProcessBlocks_POWER8(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags)
 {

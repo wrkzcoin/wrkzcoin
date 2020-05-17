@@ -31,17 +31,18 @@
 # include <wmmintrin.h>
 #endif
 
-// C1189: error: This header is specific to ARM targets
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
+#if (CRYPTOPP_ARM_NEON_HEADER)
 # include "adv_simd.h"
-# ifndef _M_ARM64
-#  include <arm_neon.h>
-# endif
+# include <arm_neon.h>
 #endif
 
-#if (CRYPTOPP_ARM_ACLE_AVAILABLE)
+#if (CRYPTOPP_ARM_ACLE_HEADER)
 # include <stdint.h>
 # include <arm_acle.h>
+#endif
+
+#if defined(_M_ARM64)
+# include "adv_simd.h"
 #endif
 
 #if defined(CRYPTOPP_POWER8_AES_AVAILABLE)
@@ -58,7 +59,7 @@
 # define EXCEPTION_EXECUTE_HANDLER 1
 #endif
 
-// Clang __m128i casts, http://bugs.llvm.org/show_bug.cgi?id=20670
+// Clang intrinsic casts, http://bugs.llvm.org/show_bug.cgi?id=20670
 #define M128_CAST(x) ((__m128i *)(void *)(x))
 #define CONST_M128_CAST(x) ((const __m128i *)(const void *)(x))
 

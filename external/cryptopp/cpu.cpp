@@ -58,7 +58,7 @@ unsigned long int getauxval(unsigned long int) { return 0; }
 
 // Visual Studio 2008 and below is missing _xgetbv. See x64dll.asm for the body.
 #if defined(_MSC_VER) && _MSC_VER <= 1500 && defined(_M_X64)
-extern "C" unsigned long long __fastcall ExtendedControlRegister(unsigned int);
+extern "C" unsigned long long __fastcall XGETBV64(unsigned int);
 #endif
 
 ANONYMOUS_NAMESPACE_BEGIN
@@ -109,6 +109,8 @@ bool IsAppleMachineARMv8(unsigned int device, unsigned int version)
 
 bool IsAppleMachineARMv84(unsigned int device, unsigned int version)
 {
+    CRYPTOPP_UNUSED(device);
+    CRYPTOPP_UNUSED(version);
 	return false;
 }
 #endif  // __APPLE__
@@ -274,10 +276,14 @@ static inline bool IsIntel(const word32 output[4])
 
 static inline bool IsAMD(const word32 output[4])
 {
-	// This is the "AuthenticAMD" string. Some early K5's can return "AMDisbetter!"
-	return (output[1] /*EBX*/ == 0x68747541) &&
+	// This is the "AuthenticAMD" string.
+	return ((output[1] /*EBX*/ == 0x68747541) &&
 		(output[2] /*ECX*/ == 0x444D4163) &&
-		(output[3] /*EDX*/ == 0x69746E65);
+		(output[3] /*EDX*/ == 0x69746E65)) ||
+		// Some early K5's can return "AMDisbetter!"
+		((output[1] /*EBX*/ == 0x69444d41) &&
+		(output[2] /*ECX*/ == 0x74656273) &&
+		(output[3] /*EDX*/ == 0x21726574));
 }
 
 static inline bool IsHygon(const word32 output[4])
@@ -290,45 +296,55 @@ static inline bool IsHygon(const word32 output[4])
 
 static inline bool IsVIA(const word32 output[4])
 {
-	// This is the "CentaurHauls" string. Some non-PadLock's can return "VIA VIA VIA "
-	return (output[1] /*EBX*/ == 0x746e6543) &&
+	// This is the "CentaurHauls" string.
+	return ((output[1] /*EBX*/ == 0x746e6543) &&
 		(output[2] /*ECX*/ == 0x736c7561) &&
-		(output[3] /*EDX*/ == 0x48727561);
+		(output[3] /*EDX*/ == 0x48727561)) ||
+		// Some non-PadLock's return "VIA VIA VIA "
+		((output[1] /*EBX*/ == 0x32414956) &&
+		(output[2] /*ECX*/ == 0x32414956) &&
+		(output[3] /*EDX*/ == 0x32414956));
 }
 
 void DetectX86Features()
 {
-	// Coverity finding CID 171239...
+	// Coverity finding CID 171239. Initialize arrays.
 	word32 cpuid0[4]={0}, cpuid1[4]={0}, cpuid2[4]={0};
-	if (!CpuId(0, 0, cpuid0))
-		return;
-	if (!CpuId(1, 0, cpuid1))
-		return;
 
-	// cpuid1[2] & (1 << 27) is XSAVE/XRESTORE and signals OS support for SSE; use it to avoid probes.
-	// See http://github.com/weidai11/cryptopp/issues/511 and http://stackoverflow.com/a/22521619/608639
+#if defined(CRYPTOPP_DISABLE_ASM)
+	// Not available
+	goto done;
+#else
+	if (!CpuId(0, 0, cpuid0))
+		goto done;
+	if (!CpuId(1, 0, cpuid1))
+		goto done;
+#endif
+
+	// cpuid1[2] & (1 << 27) is XSAVE/XRESTORE and signals OS support for SSE;
+	// use it to avoid probes. See http://stackoverflow.com/a/22521619/608639
+	// and http://github.com/weidai11/cryptopp/issues/511.
 	if ((cpuid1[3] & (1 << 26)) != 0)
 		g_hasSSE2 = ((cpuid1[2] & (1 << 27)) != 0) || CPU_ProbeSSE2();
 
-	g_hasSSSE3 = g_hasSSE2 && ((cpuid1[2] & (1<< 9)) != 0);
-	g_hasSSE41 = g_hasSSE2 && ((cpuid1[2] & (1<<19)) != 0);
-	g_hasSSE42 = g_hasSSE2 && ((cpuid1[2] & (1<<20)) != 0);
-	g_hasAESNI = g_hasSSE2 && ((cpuid1[2] & (1<<25)) != 0);
-	g_hasCLMUL = g_hasSSE2 && ((cpuid1[2] & (1<< 1)) != 0);
+	if (g_hasSSE2 == false)
+		goto done;
+
+	g_hasSSSE3 = (cpuid1[2] & (1<< 9)) != 0;
+	g_hasSSE41 = (cpuid1[2] & (1<<19)) != 0;
+	g_hasSSE42 = (cpuid1[2] & (1<<20)) != 0;
+	g_hasAESNI = (cpuid1[2] & (1<<25)) != 0;
+	g_hasCLMUL = (cpuid1[2] & (1<< 1)) != 0;
 
 	// AVX is similar to SSE, but check both bits 27 (SSE) and 28 (AVX).
 	// https://software.intel.com/en-us/blogs/2011/04/14/is-avx-enabled
-	CRYPTOPP_CONSTANT(YMM_FLAG = (3 <<  1))
-	CRYPTOPP_CONSTANT(AVX_FLAG = (3 << 27))
+	CRYPTOPP_CONSTANT(YMM_FLAG = (3 <<  1));
+	CRYPTOPP_CONSTANT(AVX_FLAG = (3 << 27));
 	if ((cpuid1[2] & AVX_FLAG) == AVX_FLAG)
 	{
 
-// Unable to perform the necessary tests
-#if defined(CRYPTOPP_DISABLE_ASM)
-		g_hasAVX = false;
-
 // GCC 4.1/Binutils 2.17 cannot consume xgetbv
-#elif defined(__GNUC__) || (__SUNPRO_CC >= 0x5100) || defined(__BORLANDC__)
+#if defined(__GNUC__) || (__SUNPRO_CC >= 0x5100) || defined(__BORLANDC__)
 		// https://gcc.gnu.org/bugzilla/show_bug.cgi?id=71659 and
 		// http://www.agner.org/optimize/vectorclass/read.php?i=65
 		word32 a=0, d=0;
@@ -363,7 +379,7 @@ void DetectX86Features()
 
 // Visual Studio 2008 and below lack xgetbv
 #elif defined(_MSC_VER) && _MSC_VER <= 1500 && defined(_M_X64)
-		word64 xcr0 = ExtendedControlRegister(0);
+		word64 xcr0 = XGETBV64(0);
 		g_hasAVX = (xcr0 & YMM_FLAG) == YMM_FLAG;
 
 // Downlevel SunCC
@@ -379,11 +395,11 @@ void DetectX86Features()
 
 	if (IsIntel(cpuid0))
 	{
-		CRYPTOPP_CONSTANT(RDRAND_FLAG = (1 << 30))
-		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18))
-		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19))
-		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29))
-		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5))
+		CRYPTOPP_CONSTANT(RDRAND_FLAG = (1 << 30));
+		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18));
+		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19));
+		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29));
+		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5));
 
 		g_isP4 = ((cpuid1[0] >> 8) & 0xf) == 0xf;
 		g_cacheLineSize = 8 * GETBYTE(cpuid1[1], 1);
@@ -402,11 +418,11 @@ void DetectX86Features()
 	}
 	else if (IsAMD(cpuid0) || IsHygon(cpuid0))
 	{
-		CRYPTOPP_CONSTANT(RDRAND_FLAG = (1 << 30))
-		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18))
-		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19))
-		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29))
-		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5))
+		CRYPTOPP_CONSTANT(RDRAND_FLAG = (1 << 30));
+		CRYPTOPP_CONSTANT(RDSEED_FLAG = (1 << 18));
+		CRYPTOPP_CONSTANT(   ADX_FLAG = (1 << 19));
+		CRYPTOPP_CONSTANT(   SHA_FLAG = (1 << 29));
+		CRYPTOPP_CONSTANT(  AVX2_FLAG = (1 <<  5));
 
 		CpuId(0x80000005, 0, cpuid2);
 		g_cacheLineSize = GETBYTE(cpuid2[2], 0);
@@ -422,19 +438,39 @@ void DetectX86Features()
 				g_hasAVX2 = (cpuid2[1] /*EBX*/ & AVX2_FLAG) != 0;
 			}
 		}
+
+		// Unconditionally disable RDRAND and RDSEED on AMD cpu's with family 15h or 16h.
+		// See Crypto++ Issue 924, https://github.com/weidai11/cryptopp/issues/924,
+		// Clear RDRAND CPUID bit on AMD family 15h/16h, https://lore.kernel.org/patchwork/patch/1115413/,
+		// and AMD CPUID Specification, https://www.amd.com/system/files/TechDocs/25481.pdf
+		{
+			CRYPTOPP_CONSTANT(FAMILY_BASE_FLAG = (0x0f << 8));
+			CRYPTOPP_CONSTANT(FAMILY_EXT_FLAG = (0xff << 20));
+
+			word32 family = (cpuid1[0] & FAMILY_BASE_FLAG) >> 8;
+			if (family == 0xf)
+				family += (cpuid1[0] & FAMILY_EXT_FLAG) >> 20;
+			if (family == 0x15 || family == 0x16)
+			{
+				g_hasRDRAND = false;
+				g_hasRDSEED = false;
+			}
+		}
 	}
 	else if (IsVIA(cpuid0))
 	{
-		CRYPTOPP_CONSTANT( RNG_FLAGS = (0x3 << 2))
-		CRYPTOPP_CONSTANT( ACE_FLAGS = (0x3 << 6))
-		CRYPTOPP_CONSTANT(ACE2_FLAGS = (0x3 << 8))
-		CRYPTOPP_CONSTANT( PHE_FLAGS = (0x3 << 10))
-		CRYPTOPP_CONSTANT( PMM_FLAGS = (0x3 << 12))
+		// Two bits: available and enabled
+		CRYPTOPP_CONSTANT( RNG_FLAGS = (0x3 << 2));
+		CRYPTOPP_CONSTANT( ACE_FLAGS = (0x3 << 6));
+		CRYPTOPP_CONSTANT(ACE2_FLAGS = (0x3 << 8));
+		CRYPTOPP_CONSTANT( PHE_FLAGS = (0x3 << 10));
+		CRYPTOPP_CONSTANT( PMM_FLAGS = (0x3 << 12));
 
 		CpuId(0xC0000000, 0, cpuid2);
-		if (cpuid2[0] >= 0xC0000001)
+		word32 extendedFeatures = cpuid2[0];
+
+		if (extendedFeatures >= 0xC0000001)
 		{
-			// Extended features available
 			CpuId(0xC0000001, 0, cpuid2);
 			g_hasPadlockRNG  = (cpuid2[3] /*EDX*/ & RNG_FLAGS) == RNG_FLAGS;
 			g_hasPadlockACE  = (cpuid2[3] /*EDX*/ & ACE_FLAGS) == ACE_FLAGS;
@@ -442,7 +478,23 @@ void DetectX86Features()
 			g_hasPadlockPHE  = (cpuid2[3] /*EDX*/ & PHE_FLAGS) == PHE_FLAGS;
 			g_hasPadlockPMM  = (cpuid2[3] /*EDX*/ & PMM_FLAGS) == PMM_FLAGS;
 		}
+
+		if (extendedFeatures >= 0xC0000005)
+		{
+			CpuId(0xC0000005, 0, cpuid2);
+			g_cacheLineSize = GETBYTE(cpuid2[2] /*ECX*/, 0);
+		}
 	}
+
+done:
+
+#if defined(_SC_LEVEL1_DCACHE_LINESIZE)
+	// Glibc does not implement on some platforms. The runtime returns 0 instead of error.
+	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/posix/sysconf.c
+	int cacheLineSize = (int)sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+	if (g_cacheLineSize == 0 && cacheLineSize > 0)
+		g_cacheLineSize = cacheLineSize;
+#endif
 
 	if (g_cacheLineSize == 0)
 		g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
@@ -474,7 +526,7 @@ word32 CRYPTOPP_SECTION_INIT g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
 //   then *Probe* the cpu executing an instruction and an observe a SIGILL if unsupported.
 // The probes are in source files where compilation options like -march=armv8-a+crc make
 //   intrinsics available. They are expensive when compared to a standard OS feature query.
-//   Always perform the feature quesry first. For Linux see
+//   Always perform the feature query first. For Linux see
 //   http://sourceware.org/ml/libc-help/2017-08/msg00012.html
 // Avoid probes on Apple platforms because Apple's signal handling for SIGILLs appears broken.
 //   We are trying to figure out a way to feature test without probes. Also see
@@ -486,13 +538,14 @@ extern bool CPU_ProbeNEON();
 extern bool CPU_ProbeCRC32();
 extern bool CPU_ProbeAES();
 extern bool CPU_ProbeSHA1();
-extern bool CPU_ProbeSHA2();
+extern bool CPU_ProbeSHA256();
 extern bool CPU_ProbeSHA512();
 extern bool CPU_ProbeSHA3();
 extern bool CPU_ProbeSM3();
 extern bool CPU_ProbeSM4();
 extern bool CPU_ProbePMULL();
 
+// https://github.com/torvalds/linux/blob/master/arch/arm/include/uapi/asm/hwcap.h
 // https://github.com/torvalds/linux/blob/master/arch/arm64/include/uapi/asm/hwcap.h
 #ifndef HWCAP_ARMv7
 # define HWCAP_ARMv7 (1 << 29)
@@ -500,8 +553,8 @@ extern bool CPU_ProbePMULL();
 #ifndef HWCAP_ASIMD
 # define HWCAP_ASIMD (1 << 1)
 #endif
-#ifndef HWCAP_ARM_NEON
-# define HWCAP_ARM_NEON 4096
+#ifndef HWCAP_NEON
+# define HWCAP_NEON (1 << 12)
 #endif
 #ifndef HWCAP_CRC32
 # define HWCAP_CRC32 (1 << 7)
@@ -548,15 +601,13 @@ extern bool CPU_ProbePMULL();
 
 inline bool CPU_QueryARMv7()
 {
-#if defined(__aarch32__) || defined(__aarch64__)
-	// ARMv7 or above
-	return true;
-#elif defined(__ANDROID__) && defined(__arm__)
+#if defined(__ANDROID__) && defined(__arm__)
 	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM) != 0) &&
 		((android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_ARMv7) != 0))
 		return true;
 #elif defined(__linux__) && defined(__arm__)
-	if ((getauxval(AT_HWCAP) & HWCAP_ARMv7) != 0)
+	if ((getauxval(AT_HWCAP) & HWCAP_ARMv7) != 0 ||
+	    (getauxval(AT_HWCAP) & HWCAP_NEON) != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__arm__)
 	// Apple hardware is ARMv7 or above.
@@ -582,7 +633,7 @@ inline bool CPU_QueryNEON()
 	if ((getauxval(AT_HWCAP2) & HWCAP2_ASIMD) != 0)
 		return true;
 #elif defined(__linux__) && defined(__arm__)
-	if ((getauxval(AT_HWCAP) & HWCAP_ARM_NEON) != 0)
+	if ((getauxval(AT_HWCAP) & HWCAP_NEON) != 0)
 		return true;
 #elif defined(__APPLE__) && defined(__aarch64__)
 	// Core feature set for Aarch32 and Aarch64.
@@ -685,7 +736,7 @@ inline bool CPU_QuerySHA1()
 	return false;
 }
 
-inline bool CPU_QuerySHA2()
+inline bool CPU_QuerySHA256()
 {
 #if defined(__ANDROID__) && defined(__aarch64__)
 	if (((android_getCpuFamily() & ANDROID_CPU_FAMILY_ARM64) != 0) &&
@@ -819,19 +870,22 @@ void DetectArmFeatures()
 	g_hasPMULL = CPU_QueryPMULL() || CPU_ProbePMULL();
 	g_hasAES  = CPU_QueryAES() || CPU_ProbeAES();
 	g_hasSHA1 = CPU_QuerySHA1() || CPU_ProbeSHA1();
-	g_hasSHA2 = CPU_QuerySHA2() || CPU_ProbeSHA2();
+	g_hasSHA2 = CPU_QuerySHA256() || CPU_ProbeSHA256();
 	g_hasSHA512 = CPU_QuerySHA512(); // || CPU_ProbeSHA512();
 	g_hasSHA3 = CPU_QuerySHA3(); // || CPU_ProbeSHA3();
 	g_hasSM3 = CPU_QuerySM3(); // || CPU_ProbeSM3();
 	g_hasSM4 = CPU_QuerySM4(); // || CPU_ProbeSM4();
 
-#if defined(__linux__) && defined(_SC_LEVEL1_DCACHE_LINESIZE)
+#if defined(_SC_LEVEL1_DCACHE_LINESIZE)
 	// Glibc does not implement on some platforms. The runtime returns 0 instead of error.
 	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/posix/sysconf.c
-	int cacheLineSize = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+	int cacheLineSize = (int)sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 	if (cacheLineSize > 0)
 		g_cacheLineSize = cacheLineSize;
 #endif
+
+	if (g_cacheLineSize == 0)
+		g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
 
 	*const_cast<volatile bool*>(&g_ArmDetectionDone) = true;
 }
@@ -862,24 +916,6 @@ extern bool CPU_ProbeSHA256();
 extern bool CPU_ProbeSHA512();
 extern bool CPU_ProbeDARN();
 
-// Linux define values from 64-Bit ELF V2 ABI Specification.
-// http://openpowerfoundation.org/wp-content/uploads/resources/leabi/content/ch_preface.html
-#ifndef PPC_FEATURE_HAS_ALTIVEC
-# define PPC_FEATURE_HAS_ALTIVEC  0x10000000
-#endif
-#ifndef PPC_FEATURE_ARCH_2_06
-# define PPC_FEATURE_ARCH_2_06    0x00000100
-#endif
-#ifndef PPC_FEATURE2_ARCH_2_07
-# define PPC_FEATURE2_ARCH_2_07   0x80000000
-#endif
-#ifndef PPC_FEATURE2_ARCH_3_00
-# define PPC_FEATURE2_ARCH_3_00   0x00800000
-#endif
-#ifndef PPC_FEATURE2_VEC_CRYPTO
-# define PPC_FEATURE2_VEC_CRYPTO  0x02000000
-#endif
-
 // AIX defines. We used to just call __power_7_andup()
 // and friends but at Power9, too many compilers were
 // missing __power_9_andup(). Instead we switched to
@@ -901,7 +937,7 @@ extern bool CPU_ProbeDARN();
 // was available much earlier for other vendors.
 inline bool CPU_QueryAltivec()
 {
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE_HAS_ALTIVEC)
 	if ((getauxval(AT_HWCAP) & PPC_FEATURE_HAS_ALTIVEC) != 0)
 		return true;
 #elif defined(_AIX)
@@ -918,7 +954,7 @@ inline bool CPU_QueryAltivec()
 inline bool CPU_QueryPower7()
 {
 	// Power7 and ISA 2.06
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE_ARCH_2_06)
 	if ((getauxval(AT_HWCAP) & PPC_FEATURE_ARCH_2_06) != 0)
 		return true;
 #elif defined(_AIX)
@@ -931,7 +967,7 @@ inline bool CPU_QueryPower7()
 inline bool CPU_QueryPower8()
 {
 	// Power8 and ISA 2.07 provide in-core crypto.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_ARCH_2_07)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_ARCH_2_07) != 0)
 		return true;
 #elif defined(_AIX)
@@ -944,7 +980,7 @@ inline bool CPU_QueryPower8()
 inline bool CPU_QueryPower9()
 {
 	// Power9 and ISA 3.0.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_ARCH_3_00)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_ARCH_3_00) != 0)
 		return true;
 #elif defined(_AIX)
@@ -958,7 +994,7 @@ inline bool CPU_QueryAES()
 {
 	// Power8 and ISA 2.07 provide in-core crypto. Glibc
 	// 2.24 or higher is required for PPC_FEATURE2_VEC_CRYPTO.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_VEC_CRYPTO)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_VEC_CRYPTO) != 0)
 		return true;
 #elif defined(_AIX)
@@ -972,7 +1008,7 @@ inline bool CPU_QueryPMULL()
 {
 	// Power8 and ISA 2.07 provide in-core crypto. Glibc
 	// 2.24 or higher is required for PPC_FEATURE2_VEC_CRYPTO.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_VEC_CRYPTO)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_VEC_CRYPTO) != 0)
 		return true;
 #elif defined(_AIX)
@@ -986,7 +1022,7 @@ inline bool CPU_QuerySHA256()
 {
 	// Power8 and ISA 2.07 provide in-core crypto. Glibc
 	// 2.24 or higher is required for PPC_FEATURE2_VEC_CRYPTO.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_VEC_CRYPTO)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_VEC_CRYPTO) != 0)
 		return true;
 #elif defined(_AIX)
@@ -999,7 +1035,7 @@ inline bool CPU_QuerySHA512()
 {
 	// Power8 and ISA 2.07 provide in-core crypto. Glibc
 	// 2.24 or higher is required for PPC_FEATURE2_VEC_CRYPTO.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_VEC_CRYPTO)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_VEC_CRYPTO) != 0)
 		return true;
 #elif defined(_AIX)
@@ -1013,7 +1049,7 @@ inline bool CPU_QuerySHA512()
 inline bool CPU_QueryDARN()
 {
 	// Power9 and ISA 3.0 provide DARN.
-#if defined(__linux__)
+#if defined(__linux__) && defined(PPC_FEATURE2_ARCH_3_00)
 	if ((getauxval(AT_HWCAP2) & PPC_FEATURE2_ARCH_3_00) != 0)
 		return true;
 #elif defined(_AIX)
@@ -1042,13 +1078,16 @@ void DetectPowerpcFeatures()
 	int cacheLineSize = getsystemcfg(SC_L1C_DLS);
 	if (cacheLineSize > 0)
 		g_cacheLineSize = cacheLineSize;
-#elif defined(__linux__) && defined(_SC_LEVEL1_DCACHE_LINESIZE)
+#elif defined(_SC_LEVEL1_DCACHE_LINESIZE)
 	// Glibc does not implement on some platforms. The runtime returns 0 instead of error.
 	// https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/posix/sysconf.c
-	int cacheLineSize = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+	int cacheLineSize = (int)sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 	if (cacheLineSize > 0)
 		g_cacheLineSize = cacheLineSize;
 #endif
+
+	if (g_cacheLineSize == 0)
+		g_cacheLineSize = CRYPTOPP_L1_CACHE_LINE_SIZE;
 
 	*const_cast<volatile bool*>(&g_PowerpcDetectionDone) = true;
 }

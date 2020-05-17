@@ -13,7 +13,10 @@
 # See http://www.cryptopp.com/wiki/ARM_Embedded_(Command_Line) for details.
 # ====================================================================
 
-# set -eu
+# cryptest-embedded.sh may run this script without sourcing.
+if [ "$0" = "${BASH_SOURCE[0]}" ]; then
+    echo "setenv-embedded.sh is usually sourced, but not this time."
+fi
 
 # Unset old options
 
@@ -24,12 +27,12 @@ unset IS_ANDROID
 unset IS_ARM_EMBEDDED
 
 if [ -z "${ARM_EMBEDDED_TOOLCHAIN-}" ]; then
-	ARM_EMBEDDED_TOOLCHAIN="/usr/bin"
+    ARM_EMBEDDED_TOOLCHAIN="/usr/bin"
 fi
 
 if [ ! -d "$ARM_EMBEDDED_TOOLCHAIN" ]; then
-	echo "ARM_EMBEDDED_TOOLCHAIN is not valid"
-	[ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+    echo "ARM_EMBEDDED_TOOLCHAIN is not valid"
+    [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # Fedora
@@ -50,37 +53,37 @@ export RANLIB="$ARM_EMBEDDED_TOOLCHAIN/$TOOL_PREFIX-ranlib"
 # Test a few of the tools
 if [ ! -e "$CPP" ]; then
   echo "ERROR: CPP is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$CC" ]; then
   echo "ERROR: CC is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$CXX" ]; then
   echo "ERROR: CXX is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$AR" ]; then
   echo "ERROR: AR is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$AS" ]; then
   echo "ERROR: AS is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$RANLIB" ]; then
   echo "ERROR: RANLIB is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -e "$LD" ]; then
   echo "ERROR: LD is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # The Crypto++ Makefile uses these to disable host settings like
@@ -94,7 +97,7 @@ fi
 
 if [ ! -d "$ARM_EMBEDDED_SYSROOT" ]; then
   echo "ERROR: ARM_EMBEDDED_SYSROOT is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # Fix C++ header paths for Ubuntu
@@ -104,12 +107,12 @@ ARM_EMBEDDED_CXX_HEADERS="$ARM_EMBEDDED_SYSROOT/include/c++/$ARM_EMBEDDED_TOOLCH
 
 if [ ! -d "$ARM_EMBEDDED_CXX_HEADERS" ]; then
   echo "ERROR: ARM_EMBEDDED_CXX_HEADERS is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 if [ ! -d "$ARM_EMBEDDED_CXX_HEADERS/arm-linux-gnueabi" ]; then
   echo "ERROR: ARM_EMBEDDED_CXX_HEADERS is not valid"
-  [ "$0" = "$BASH_SOURCE" ] && exit 1 || return 1
+  [ "$0" = "${BASH_SOURCE[0]}" ] && exit 1 || return 1
 fi
 
 # Finally, the flags...
@@ -142,4 +145,4 @@ echo "shared object using 'HAS_SOLIB_VERSION=1 make -f GNUmakefile-cross'"
 echo "*******************************************************************************"
 echo
 
-[ "$0" = "$BASH_SOURCE" ] && exit 0 || return 0
+[ "$0" = "${BASH_SOURCE[0]}" ] && exit 0 || return 0
