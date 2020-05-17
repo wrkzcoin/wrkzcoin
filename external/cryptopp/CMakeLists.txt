@@ -603,7 +603,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU
         if (NOT CRYPTOPP_IA32_AES AND NOT DISABLE_AES)
           list(APPEND CRYPTOPP_COMPILE_OPTIONS "-DCRYPTOPP_DISABLE_AESNI")
         elseif (CRYPTOPP_IA32_AES AND NOT DISABLE_AES)
-          if (NOT "${LABEL}" STREQUAL "armv7hf" AND NOT "${LABEL}" STREQUAL "aarch64")
+          if (NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi" AND NOT "${LABEL}" STREQUAL "aarch64")
             set_source_files_properties(${SRC_DIR}/rijndael_simd.cpp PROPERTIES COMPILE_FLAGS "-msse4.1 -maes")
             set_source_files_properties(${SRC_DIR}/sm4_simd.cpp PROPERTIES COMPILE_FLAGS "-mssse3 -maes")
 	      else ()
