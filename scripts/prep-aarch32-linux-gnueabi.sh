@@ -34,8 +34,10 @@ fi
 
 # Set our environment variables to use the aarch32 compiler
 export CC=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
+export CPP=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-cpp
 export CXX=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-g++
-export RANLIB=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc-ranlib
+export RANLIB=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ranlib
+export AR=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ar
 export LD=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ld
 export MAKEDEPPROG=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
 export CUSTOM_TOOLCHAIN_FILE=../scripts/cross-aarch32-linux-gnueabi.cmake

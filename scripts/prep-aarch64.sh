@@ -34,8 +34,10 @@ fi
 
 # Set our environment variables to use the aarch64 compiler
 export CC=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc
+export CPP=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-cpp
 export CXX=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-g++
 export RANLIB=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-ranlib
+export AR=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-ar
 export LD=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-ld
 export MAKEDEPPROG=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc
 export CUSTOM_TOOLCHAIN_FILE=../scripts/cross-aarch64.cmake
