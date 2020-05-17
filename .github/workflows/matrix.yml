@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64', 'armv7hf']
+        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
           - build_name: 'Ubuntu GCC 7'
             package_name: 'gcc-7 g++-7'
@@ -41,8 +41,11 @@ jobs:
           - build_name: 'aarch64'
             label: aarch64
             deployable: true
-          - build_name: 'armv7hf'
-            label: armv7hf
+          - build_name: 'aarch32-linux-gnueabihf'
+            label: aarch32-linux-gnueabihf
+            deployable: true
+          - build_name: 'aarch32-linux-gnueabi'
+            label: aarch32-linux-gnueabi
             deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
@@ -50,14 +53,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # Run only armv7hf
-      - name: Run only armv7hf
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
-        run: exit 1
-
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -74,7 +72,7 @@ jobs:
 
       # Configure the project with cmake
       - name: Configure
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
@@ -84,21 +82,24 @@ jobs:
 
       # Build for linux
       - name: Build
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           cd build
           make -j2
 
       # Build for aarch64
-      - name: Prepare and Build (aarch64 / armv7hf)
-        if: matrix.build_name == 'aarch64' || matrix.build_name == 'armv7hf'
+      - name: Prepare and Build (aarch64 / aarch32)
+        if: matrix.build_name == 'aarch64' || matrix.build_name == 'aarch32-linux-gnueabihf' || matrix.build_name == 'aarch32-linux-gnueabi'
         run: |
           if [[ "${LABEL}" == "aarch64" ]]
           then
             source scripts/prep-aarch64.sh
-          elif [[ "${LABEL}" == "armv7hf" ]]
+          elif [[ "${LABEL}" == "aarch32-linux-gnueabihf" ]]
           then
-            source scripts/prep-aarch32.sh
+            source scripts/prep-aarch32-linux-gnueabihf.sh
+          elif [[ "${LABEL}" == "aarch32-linux-gnueabi" ]]
+          then
+            source scripts/prep-aarch32-linux-gnueabi.sh
           fi
           mkdir build && cd build
           cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
@@ -109,7 +110,7 @@ jobs:
 
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'aarch32-linux-gnueabihf'
         run: |
           cd build/src
           ./cryptotest
@@ -123,7 +124,7 @@ jobs:
           export TAG=${COMMIT_SHA::8}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          if [[ "${LABEL}" != "aarch64" &&  "${LABEL}" != "armv7hf" ]]; then strip ${TARGETS}; fi
+          if [[ "${LABEL}" != "aarch64" && "${LABEL}" != "aarch32-linux-gnueabi" && "${LABEL}" != "aarch32-linux-gnueabihf" ]]; then strip ${TARGETS}; fi
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
@@ -201,11 +202,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      # Run only armv7hf
-      - name: Run only armv7hf
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
-        run: exit 1
-
       # Fetch Dependencies
       - name: Dependencies
         run: |
@@ -234,7 +230,7 @@ jobs:
 
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'aarch32-linux-gnueabihf'
         run: |
           cd build/src
           ./cryptotest
@@ -323,11 +319,6 @@ jobs:
       LABEL: windows
     steps:
       - uses: actions/checkout@v2
-
-      # Run only armv7hf
-      - name: Run only armv7hf
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
-        run: exit 1
 
       - name: Setup clcache
         run: pip install clcache
