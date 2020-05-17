@@ -24,24 +24,23 @@
 
 #if defined(__XOP__)
 # include <ammintrin.h>
-#endif
-
-#if defined(__AVX512F__)
-# define CRYPTOPP_AVX512_ROTATE 1
-# include <immintrin.h>
-#endif
-
-// C1189: error: This header is specific to ARM targets
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
-# include "adv_simd.h"
-# ifndef _M_ARM64
-#  include <arm_neon.h>
+# if defined(__GNUC__)
+#  include <x86intrin.h>
 # endif
 #endif
 
-#if (CRYPTOPP_ARM_ACLE_AVAILABLE)
+#if (CRYPTOPP_ARM_NEON_HEADER)
+# include "adv_simd.h"
+# include <arm_neon.h>
+#endif
+
+#if (CRYPTOPP_ARM_ACLE_HEADER)
 # include <stdint.h>
 # include <arm_acle.h>
+#endif
+
+#if defined(_M_ARM64)
+# include "adv_simd.h"
 #endif
 
 #if defined(CRYPTOPP_POWER8_AVAILABLE)
@@ -66,7 +65,7 @@ using CryptoPP::word64;
 #if defined(_MSC_VER) && !defined(_M_ARM64)
 inline uint64x2_t vld1q_dup_u64(const uint64_t* ptr)
 {
-	return vmovq_n_u64(*ptr);
+    return vmovq_n_u64(*ptr);
 }
 #endif
 
@@ -262,7 +261,7 @@ inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
 
 #if defined(CRYPTOPP_SSSE3_AVAILABLE)
 
-// Clang __m128i casts, http://bugs.llvm.org/show_bug.cgi?id=20670
+// Clang intrinsic casts, http://bugs.llvm.org/show_bug.cgi?id=20670
 #ifndef M128_CAST
 # define M128_CAST(x) ((__m128i *)(void *)(x))
 #endif
@@ -281,9 +280,7 @@ inline void SPECK128_Dec_6_Blocks(uint64x2_t &block0, uint64x2_t &block1,
 template <unsigned int R>
 inline __m128i RotateLeft64(const __m128i& val)
 {
-#if defined(CRYPTOPP_AVX512_ROTATE)
-    return _mm_rol_epi64(val, R);
-#elif defined(__XOP__)
+#if defined(__XOP__)
     return _mm_roti_epi64(val, R);
 #else
     return _mm_or_si128(
@@ -294,9 +291,7 @@ inline __m128i RotateLeft64(const __m128i& val)
 template <unsigned int R>
 inline __m128i RotateRight64(const __m128i& val)
 {
-#if defined(CRYPTOPP_AVX512_ROTATE)
-    return _mm_ror_epi64(val, R);
-#elif defined(__XOP__)
+#if defined(__XOP__)
     return _mm_roti_epi64(val, 64-R);
 #else
     return _mm_or_si128(
@@ -475,6 +470,7 @@ using CryptoPP::uint64x2_p;
 using CryptoPP::VecAdd;
 using CryptoPP::VecSub;
 using CryptoPP::VecXor;
+using CryptoPP::VecLoad;
 using CryptoPP::VecPermute;
 
 // Rotate left by bit count
@@ -509,7 +505,8 @@ void SPECK128_Enc_Block(uint32x4_p &block, const word64 *subkeys, unsigned int r
 
     for (int i=0; i < static_cast<int>(rounds); ++i)
     {
-        const uint64x2_p rk = vec_splats((unsigned long long)subkeys[i]);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk = VecLoad(subkeys+i*2);
 
         x1 = RotateRight64<8>(x1);
         x1 = VecAdd(x1, y1);
@@ -590,7 +587,8 @@ void SPECK128_Enc_6_Blocks(uint32x4_p &block0, uint32x4_p &block1,
 
     for (int i=0; i < static_cast<int>(rounds); ++i)
     {
-        const uint64x2_p rk = vec_splats((unsigned long long)subkeys[i]);
+        // Round keys are pre-splated in forward direction
+        const uint64x2_p rk = VecLoad(subkeys+i*2);
 
         x1 = RotateRight64<8>(x1);
         x2 = RotateRight64<8>(x2);

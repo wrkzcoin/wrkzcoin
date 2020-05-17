@@ -46,13 +46,14 @@ const word64 mpoly = W64LIT(0x1fffffff1fffffff);  /* Poly key mask     */
 #ifdef __BORLANDC__
 #undef const
 #endif
+
 #if VMAC_BOOL_WORD128
-#ifdef __powerpc__
 // workaround GCC Bug 31690: ICE with const __uint128_t and C++ front-end
-#define m126				((word128(m62)<<64)|m64)
-#else
+# if defined(__powerpc__) && defined (CRYPTOPP_GCC_VERSION) && (CRYPTOPP_GCC_VERSION < 50300)
+#  define m126				((word128(m62)<<64)|m64)
+# else
 const word128 m126 = (word128(m62)<<64)|m64;		 /* 126-bit mask      */
-#endif
+# endif
 #endif
 
 ANONYMOUS_NAMESPACE_END
@@ -178,29 +179,37 @@ unsigned int VMAC_Base::OptimalDataAlignment() const
 #if CRYPTOPP_MSC_VERSION
 # pragma warning(disable: 4731)	// frame pointer register 'ebp' modified by inline assembly code
 #endif
-void
-#ifdef __GNUC__
-__attribute__ ((noinline))		// Intel Compiler 9.1 workaround
-#endif
-VMAC_Base::VHASH_Update_SSE2(const word64 *data, size_t blocksRemainingInWord64, int tagPart)
-{
-	CRYPTOPP_ASSERT(IsAlignedOn(m_polyState(),GetAlignmentOf<word64>()));
-	CRYPTOPP_ASSERT(IsAlignedOn(m_nhKey(),GetAlignmentOf<word64>()));
 
+CRYPTOPP_NOINLINE
+void VMAC_Base::VHASH_Update_SSE2(const word64 *data, size_t blocksRemainingInWord64, int tagPart)
+{
 	const word64 *nhK = m_nhKey();
 	word64 *polyS = (word64*)(void*)m_polyState();
 	word32 L1KeyLength = m_L1KeyLength;
 
-	// These are used in the ASM, but some analysis engines cnnot determine it.
-	CRYPTOPP_UNUSED(data); CRYPTOPP_UNUSED(tagPart); CRYPTOPP_UNUSED(L1KeyLength);
+	// These are used in the ASM, but some analysis services miss it.
+	CRYPTOPP_UNUSED(data); CRYPTOPP_UNUSED(tagPart);
+	CRYPTOPP_UNUSED(L1KeyLength);
 	CRYPTOPP_UNUSED(blocksRemainingInWord64);
 
+	// This inline ASM is tricky, and down right difficult when PIC is
+	// in effect. The ASM uses all the general purpose registers. When
+	// PIC is in effect, GCC uses EBX as a base register. Saving EBX with
+	// 'mov %%ebx, %0' and restoring EBX with 'mov %0, %%ebx' causes GCC
+	// to generate 'mov -0x40(%ebx), %ebx' for the restore. That obviously
+	// won't work. We can push and pop EBX, but then we have to be careful
+	// because GCC references %1 (L1KeyLength) relative to ESP, which is
+	// also used in the function and no longer accurate. Attempting to
+	// sidestep the issues with clobber lists results in "error: ‘asm’
+	// operand has impossible constraints", though we were able to tell
+	// GCC that ESP is dirty. The problems with GCC are the reason for the
+	// pushes and pops rather than the original moves.
 #ifdef __GNUC__
-	word32 temp;
 	__asm__ __volatile__
 	(
-	AS2(	mov		%%ebx, %0)
-	AS2(	mov		%1, %%ebx)
+	AS1(	push	%%ebx)
+	AS1(	push	%0)         // L1KeyLength
+	AS1(	pop 	%%ebx)
 	INTEL_NOPREFIX
 #else
 	#if defined(__INTEL_COMPILER)
@@ -420,10 +429,11 @@ VMAC_Base::VHASH_Update_SSE2(const word64 *data, size_t blocksRemainingInWord64,
 	AS1(	emms)
 #ifdef __GNUC__
 	ATT_PREFIX
-	AS2(	mov	%0, %%ebx)
-		: "=m" (temp)
-		: "m" (L1KeyLength), "c" (blocksRemainingInWord64), "S" (data), "D" (nhK+tagPart*2), "d" (m_isFirstBlock), "a" (polyS+tagPart*4)
-		: "memory", "cc"
+	AS1(	pop 	%%ebx)
+		:
+		: "m" (L1KeyLength), "c" (blocksRemainingInWord64), "S" (data),
+		  "D" (nhK+tagPart*2), "d" (m_isFirstBlock), "a" (polyS+tagPart*4)
+		: "esp", "memory", "cc"
 	);
 #endif
 }

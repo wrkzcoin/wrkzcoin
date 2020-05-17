@@ -12,6 +12,12 @@
 #include "smartptr.h"
 #include "stdcpp.h"
 
+#include "vmac.h"
+#include "hmac.h"
+#include "ttmac.h"
+#include "cmac.h"
+#include "dmac.h"
+
 #if CRYPTOPP_MSC_VERSION
 # pragma warning(disable: 4355)
 #endif
@@ -161,6 +167,9 @@ void Benchmark2(double t, double hertz)
 		BenchMarkByName<SymmetricCipher>("AES/CBC", 16);
 		BenchMarkByName<SymmetricCipher>("AES/CBC", 24);
 		BenchMarkByName<SymmetricCipher>("AES/CBC", 32);
+		BenchMarkByName<SymmetricCipher>("AES/XTS", 32);
+		BenchMarkByName<SymmetricCipher>("AES/XTS", 48);
+		BenchMarkByName<SymmetricCipher>("AES/XTS", 64);
 		BenchMarkByName<SymmetricCipher>("AES/OFB", 16);
 		BenchMarkByName<SymmetricCipher>("AES/CFB", 16);
 		BenchMarkByName<SymmetricCipher>("AES/ECB", 16);

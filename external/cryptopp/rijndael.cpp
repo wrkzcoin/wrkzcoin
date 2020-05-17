@@ -105,7 +105,7 @@ NAMESPACE_BEGIN(CryptoPP)
 # define CRYPTOPP_ALLOW_RIJNDAEL_UNALIGNED_DATA_ACCESS 1
 #endif
 
-// Clang __m128i casts
+// Clang intrinsic casts
 #define M128I_CAST(x) ((__m128i *)(void *)(x))
 #define CONST_M128I_CAST(x) ((const __m128i *)(const void *)(x))
 
@@ -299,7 +299,7 @@ void Rijndael::Base::FillDecTable()
 		word32 y = word32(fd(x))<<8 | word32(f9(x))<<16 | word32(fe(x))<<24;
 		Td[i] = word64(y | fb(x))<<32 | y | x;
 #else
-		word32 y = fb(x) | word32(fd(x))<<8 | word32(f9(x))<<16 | word32(fe(x))<<24;;
+		word32 y = fb(x) | word32(fd(x))<<8 | word32(f9(x))<<16 | word32(fe(x))<<24;
 		for (int j=0; j<4; j++)
 		{
 			Td[i+j*256] = y;
