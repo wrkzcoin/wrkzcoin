@@ -50,6 +50,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      # Run only armv7hf
+      - name: Run only armv7hf
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
+        run: exit 1
+
       # Fetch Dependencies
       - name: Dependencies
         if: matrix.build_name != 'aarch64' && matrix.build_name != 'armv7hf'
