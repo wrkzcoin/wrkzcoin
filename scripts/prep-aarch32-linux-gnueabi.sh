@@ -23,23 +23,23 @@ mkdir -p $TOOLCHAIN_DIR && cd $TOOLCHAIN_DIR
 # Check to see if we have the aarch32 compiler, if not download
 # the prebuilt binaries from a trusted source
 echo -n "Checking for arm-linux-gnueabi-gcc... "
-if [ ! -f $TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc ]; then
+if [ ! -f $TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc ]; then
   echo "Not found... Installing..."
-  wget https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu-a/8.2-2018.08/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi.tar.xz
-  tar xfv gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi.tar.xz >/dev/null
+  wget https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabi/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi.tar.xz
+  tar xfv gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi.tar.xz >/dev/null
   echo "arm-linux-gnueabi: Installed"
 else
   echo "Found"
 fi
 
 # Set our environment variables to use the aarch32 compiler
-export CC=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
-export CPP=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-cpp
-export CXX=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-g++
-export RANLIB=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ranlib
-export AR=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ar
-export LD=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-ld
-export MAKEDEPPROG=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
+export CC=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
+export CPP=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-cpp
+export CXX=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-g++
+export RANLIB=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-ranlib
+export AR=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-ar
+export LD=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-ld
+export MAKEDEPPROG=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-gcc
 export CUSTOM_TOOLCHAIN_FILE=../scripts/cross-aarch32-linux-gnueabi.cmake
 
 # Check to see if we have Boost 1.55 ready in our toolchain, if
@@ -53,7 +53,7 @@ if [ ! -f $TOOLCHAIN_DIR/boost_1_55_0/stage/lib/libboost_system.a ]; then
   echo -n "Bootstrapping Boost 1.55 build... "
   ./bootstrap.sh > /dev/null
   echo "Complete"
-  echo "using gcc : arm : ${TOOLCHAIN_DIR}/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-g++ ; " >> tools/build/v2/user-config.jam
+  echo "using gcc : arm : ${TOOLCHAIN_DIR}/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-g++ ; " >> tools/build/v2/user-config.jam
   echo -n "Building Boost 1.55... "
   ./b2 toolset=gcc-arm --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
   cd $TOOLCHAIN_DIR
@@ -86,7 +86,7 @@ export OPENSSL_ROOT_DIR=$TOOLCHAIN_DIR/openssl
 
 # Set an environment variable that contains our custom CMake toolchain
 # commands for our project and other env vars that we'll need
-export STRIP=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-strip
+export STRIP=$TOOLCHAIN_DIR/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-strip
 
 # Return to the path we started at
 cd $BASEDIR
