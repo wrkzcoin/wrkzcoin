@@ -51,7 +51,7 @@ if [ ! -f $TOOLCHAIN_DIR/boost_1_68_0/stage/lib/libboost_system.a ]; then
   echo -n "Bootstrapping Boost 1.68 build... "
   ./bootstrap.sh > /dev/null
   echo "Complete"
-  echo "using gcc : arm : ${TOOLCHAIN_DIR}/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-g++ ; " >> tools/build/v2/user-config.jam
+  echo "using gcc : arm : ${TOOLCHAIN_DIR}/gcc-arm-8.2-2018.08-x86_64-arm-linux-gnueabi/bin/arm-linux-gnueabi-g++ ; " >> tools/build/boost-build.jam
   echo -n "Building Boost 1.68... "
   ./b2 toolset=gcc-arm --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
   cd $TOOLCHAIN_DIR
