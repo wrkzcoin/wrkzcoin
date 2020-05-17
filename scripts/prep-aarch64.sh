@@ -40,19 +40,19 @@ export LD=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch6
 export MAKEDEPPROG=$TOOLCHAIN_DIR/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc
 export CUSTOM_TOOLCHAIN_FILE=../scripts/cross-aarch64.cmake
 
-# Check to see if we have Boost 1.68 ready in our toolchain, if
+# Check to see if we have Boost 1.55 ready in our toolchain, if
 # not we'll download and build it
-echo -n "Checking for Boost 1.68... "
-if [ ! -f $TOOLCHAIN_DIR/boost_1_68_0/stage/lib/libboost_system.a ]; then
+echo -n "Checking for Boost 1.55... "
+if [ ! -f $TOOLCHAIN_DIR/boost_1_55_0/stage/lib/libboost_system.a ]; then
   echo "Not found... Installing..."
-  wget http://sourceforge.net/projects/boost/files/boost/1.68.0/boost_1_68_0.tar.gz
-  tar zxvf boost_1_68_0.tar.gz >/dev/null
-  cd boost_1_68_0
-  echo -n "Bootstrapping Boost 1.68 build... "
+  wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
+  tar zxvf boost_1_55_0.tar.gz >/dev/null
+  cd boost_1_55_0
+  echo -n "Bootstrapping Boost 1.55 build... "
   ./bootstrap.sh > /dev/null
   echo "Complete"
-  echo "using gcc : aarch64 : ${TOOLCHAIN_DIR}/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-g++ ; " >> tools/build/boost-build.jam
-  echo -n "Building Boost 1.68... "
+  echo "using gcc : aarch64 : ${TOOLCHAIN_DIR}/gcc-arm-8.2-2018.08-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-g++ ; " >> tools/build/v2/user-config.jam
+  echo -n "Building Boost 1.55... "
   ./b2 toolset=gcc-aarch64 --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
   cd $TOOLCHAIN_DIR
   echo "Complete"
@@ -61,7 +61,7 @@ else
 fi
 
 # Set our environment variable to use the new Boost root
-export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_68_0
+export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_55_0
 
 # Check to see if we have OpenSSL ready in our toolchain, if
 # not we'll download and build it
