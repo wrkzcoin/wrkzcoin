@@ -130,6 +130,10 @@ namespace CryptoNote
 
         const uint64_t MAXIMUM_MIXIN_V4 = 3;
 
+        const uint64_t MINIMUM_MIXIN_V5 = 1;
+
+        const uint64_t MAXIMUM_MIXIN_V5 = 1;
+
         /* The heights to activate the mixin limits at */
         const uint32_t MIXIN_LIMITS_V1_HEIGHT = 10000;
 
@@ -138,6 +142,8 @@ namespace CryptoNote
         const uint32_t MIXIN_LIMITS_V3_HEIGHT = 430000;
 
         const uint32_t MIXIN_LIMITS_V4_HEIGHT = 658500;
+
+        const uint32_t MIXIN_LIMITS_V5_HEIGHT = 1000000;
 
         /* The mixin to use by default with zedwallet and turtle-service */
         /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -150,6 +156,8 @@ namespace CryptoNote
         const uint64_t DEFAULT_MIXIN_V3 = MINIMUM_MIXIN_V2;
 
         const uint64_t DEFAULT_MIXIN_V4 = MAXIMUM_MIXIN_V4;
+
+        const uint64_t DEFAULT_MIXIN_V5 = MAXIMUM_MIXIN_V5;
 
         const uint64_t DEFAULT_DUST_THRESHOLD = UINT64_C(10);
 
