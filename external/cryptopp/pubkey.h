@@ -682,6 +682,8 @@ class TF_VerifierImpl : public TF_ObjectImpl<TF_VerifierBase, SCHEME_OPTIONS, ty
 // ********************************************************
 
 /// \brief Mask generation function interface
+/// \sa P1363_KDF2, P1363_MGF1
+/// \since Crypto++ 2.0
 class CRYPTOPP_NO_VTABLE MaskGeneratingFunction
 {
 public:
@@ -711,10 +713,24 @@ public:
 CRYPTOPP_DLL void CRYPTOPP_API P1363_MGF1KDF2_Common(HashTransformation &hash, byte *output, size_t outputLength, const byte *input, size_t inputLength, const byte *derivationParams, size_t derivationParamsLength, bool mask, unsigned int counterStart);
 
 /// \brief P1363 mask generation function
+/// \sa P1363_KDF2, MaskGeneratingFunction
+/// \since Crypto++ 2.0
 class P1363_MGF1 : public MaskGeneratingFunction
 {
 public:
+	/// \brief The algorithm name
+	/// \returns the algorithm name
+	/// \details StaticAlgorithmName returns the algorithm's name as a static
+	///   member function.
 	CRYPTOPP_STATIC_CONSTEXPR const char* CRYPTOPP_API StaticAlgorithmName() {return "MGF1";}
+
+	/// \brief P1363 mask generation function
+	/// \param hash HashTransformation derived class
+	/// \param output the destination byte array
+	/// \param outputLength the size fo the the destination byte array
+	/// \param input the message to hash
+	/// \param inputLength the size of the message
+	/// \param mask flag indicating whether to apply the mask
 	void GenerateAndMask(HashTransformation &hash, byte *output, size_t outputLength, const byte *input, size_t inputLength, bool mask = true) const
 	{
 		P1363_MGF1KDF2_Common(hash, output, outputLength, input, inputLength, NULLPTR, 0, mask, 0);
@@ -725,10 +741,22 @@ public:
 
 /// \brief P1363 key derivation function
 /// \tparam H hash function used in the derivation
+/// \sa P1363_MGF1, KeyDerivationFunction, <A
+///  HREF="https://www.cryptopp.com/wiki/P1363_KDF2">P1363_KDF2</A>
+///  on the Crypto++ wiki
+/// \since Crypto++ 2.0
 template <class H>
 class P1363_KDF2
 {
 public:
+	/// \brief P1363 key derivation function
+	/// \param output the destination byte array
+	/// \param outputLength the size fo the the destination byte array
+	/// \param input the message to hash
+	/// \param inputLength the size of the message
+	/// \param derivationParams additional derivation parameters
+	/// \param derivationParamsLength the size of the additional derivation parameters
+	/// \details DeriveKey calls P1363_MGF1KDF2_Common
 	static void CRYPTOPP_API DeriveKey(byte *output, size_t outputLength, const byte *input, size_t inputLength, const byte *derivationParams, size_t derivationParamsLength)
 	{
 		H h;
@@ -770,7 +798,9 @@ public:
 		if (m_validationLevel > level)
 			return true;
 
+		CRYPTOPP_ASSERT(ValidateGroup(rng, level));
 		bool pass = ValidateGroup(rng, level);
+		CRYPTOPP_ASSERT(ValidateElement(level, GetSubgroupGenerator(), &GetBasePrecomputation()));
 		pass = pass && ValidateElement(level, GetSubgroupGenerator(), &GetBasePrecomputation());
 
 		m_validationLevel = pass ? level+1 : 0;
@@ -886,7 +916,7 @@ public:
 	/// \brief Retrieves the encoded element's size
 	/// \param reversible flag indicating the encoding format
 	/// \return encoded element's size, in bytes
-	/// \details The format of the encoded element varies by the underlyinhg type of the element and the
+	/// \details The format of the encoded element varies by the underlying type of the element and the
 	///   reversible flag. GetEncodedElementSize() must be implemented in a derived class.
 	/// \sa GetEncodedElementSize(), EncodeElement(), DecodeElement()
 	virtual unsigned int GetEncodedElementSize(bool reversible) const =0;
@@ -1215,14 +1245,21 @@ public:
 	// GeneratableCryptoMaterial
 	bool Validate(RandomNumberGenerator &rng, unsigned int level) const
 	{
+		CRYPTOPP_ASSERT(GetAbstractGroupParameters().Validate(rng, level));
 		bool pass = GetAbstractGroupParameters().Validate(rng, level);
 
 		const Integer &q = GetAbstractGroupParameters().GetSubgroupOrder();
 		const Integer &x = GetPrivateExponent();
 
+		CRYPTOPP_ASSERT(x.IsPositive());
+		CRYPTOPP_ASSERT(x < q);
 		pass = pass && x.IsPositive() && x < q;
+
 		if (level >= 1)
+		{
+			CRYPTOPP_ASSERT(Integer::Gcd(x, q) == Integer::One());
 			pass = pass && Integer::Gcd(x, q) == Integer::One();
+		}
 		return pass;
 	}
 
@@ -1305,7 +1342,9 @@ public:
 	// CryptoMaterial
 	bool Validate(RandomNumberGenerator &rng, unsigned int level) const
 	{
+		CRYPTOPP_ASSERT(GetAbstractGroupParameters().Validate(rng, level));
 		bool pass = GetAbstractGroupParameters().Validate(rng, level);
+		CRYPTOPP_ASSERT(GetAbstractGroupParameters().ValidateElement(level, this->GetPublicElement(), &GetPublicPrecomputation()));
 		pass = pass && GetAbstractGroupParameters().ValidateElement(level, this->GetPublicElement(), &GetPublicPrecomputation());
 		return pass;
 	}
@@ -1604,10 +1643,10 @@ public:
 		if (rng.CanIncorporateEntropy())
 			rng.IncorporateEntropy(representative, representative.size());
 
-		Integer k;
+		Integer k, ks;
+		const Integer& q = params.GetSubgroupOrder();
 		if (alg.IsDeterministic())
 		{
-			const Integer& q = params.GetSubgroupOrder();
 			const Integer& x = key.GetPrivateExponent();
 			const DeterministicSignatureAlgorithm& det = dynamic_cast<const DeterministicSignatureAlgorithm&>(alg);
 			k = det.GenerateRandom(x, q, e);
@@ -1617,8 +1656,15 @@ public:
 			k.Randomize(rng, 1, params.GetSubgroupOrder()-1);
 		}
 
+		// Due to timing attack on nonce length by Jancar
+		// https://github.com/weidai11/cryptopp/issues/869
+		ks = k + q;
+		if (ks.BitCount() == q.BitCount()) {
+			ks += q;
+		}
+
 		Integer r, s;
-		r = params.ConvertElementToInteger(params.ExponentiateBase(k));
+		r = params.ConvertElementToInteger(params.ExponentiateBase(ks));
 		alg.Sign(params, key.GetPrivateExponent(), k, e, r, s);
 
 		/*
@@ -1630,7 +1676,7 @@ public:
 		alg.Sign(params, key.GetPrivateExponent(), ma.m_k, e, r, s);
 		*/
 
-		size_t rLen = alg.RLen(params);
+		const size_t rLen = alg.RLen(params);
 		r.Encode(signature, rLen);
 		s.Encode(signature+rLen, alg.SLen(params));
 
@@ -1673,7 +1719,7 @@ public:
 		const DL_ElgamalLikeSignatureAlgorithm<T> &alg = this->GetSignatureAlgorithm();
 		const DL_GroupParameters<T> &params = this->GetAbstractGroupParameters();
 
-		size_t rLen = alg.RLen(params);
+		const size_t rLen = alg.RLen(params);
 		ma.m_semisignature.Assign(signature, rLen);
 		ma.m_s.Decode(signature+rLen, alg.SLen(params));
 

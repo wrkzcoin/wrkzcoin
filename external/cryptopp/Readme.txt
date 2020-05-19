@@ -1,5 +1,5 @@
 Crypto++: free C++ Class Library of Cryptographic Schemes
-Version 8.2 - APR/28/2019
+Version 8.3 - TBD
 
 Crypto++ Library is a free C++ class library of cryptographic schemes.
 Currently the library contains the following algorithms:
@@ -91,7 +91,7 @@ for any purpose without paying anyone, but see License.txt for the fine print.
 The following compilers are supported for this release. Please visit
 http://www.cryptopp.com the most up to date build instructions and porting notes.
 
-  * Visual Studio 2003 - 2017
+  * Visual Studio 2003 - 2019
   * GCC 3.3 - 9.0
   * Apple Clang 4.3 - 9.3
   * LLVM Clang 2.9 - 7.0
@@ -205,23 +205,29 @@ library in your programs to help avoid unwanted redirections.
 
 *** Side Channel Attacks ***
 
-Crypto++ attempts to resist side channel attacks using various remediations. We
-believe the library is mostly hardened but the remdiations may be incomplete. The
-first line of defense uses hardware instructions when possible for block ciphers,
-hashes and other primitives. Hardware acceleration remediates many timing attacks.
-The library also uses cache-aware algoirthms and access patterns to minimize leakage.
+Crypto++ attempts to resist side channel attacks using various remediations.
+The remdiations are applied as a best effort but are probably incomplete. They
+are incomplete due to cpu speculation bugs like Spectre, Meltdown, Foreshadow.
+The attacks target both cpu caches and internal buffers. Intel generally refers
+to internal buffer attacks as "Microarchitectural Data Sampling" (MDS).
 
-Some of the public key algorithms have branches and some of the branches depend on
-data that can be private or secret. The branching occurs in some field operations
-like exponentiation over integers and elliptic curves. The branching has been
-minimized but not completely eliminated.
+The library uses hardware instructions when possible for block ciphers, hashes
+and other operations. The hardware acceleration remediates some timing
+attacks. The library also uses cache-aware algoirthms and access patterns
+to minimize leakage cache evictions.
 
-Crypto++ does not enagage Specter remediations at this time. The GCC options for
-Specter are -mfunction-return=thunk and -mindirect-branch=thunk, and the library
-uses them during testing. If you want the Specter workarounds then add the GCC
-options to your CXXFLAGS when building the library.
+Some of the public key algorithms have branches and some of the branches depend
+on data that can be private or secret. The branching occurs in some field
+operations like exponentiation over integers and elliptic curves. The branching
+has been minimized but not completely eliminated.
 
-If you suspect or find an information leak then please report it.
+Crypto++ does not enagage Specter remediations at this time. The GCC options
+for Specter are -mfunction-return=thunk and -mindirect-branch=thunk, and the
+library uses them during testing. If you want the Specter workarounds then add
+the GCC options to your CXXFLAGS when building the library.
+
+To help resist attacks you should disable hyperthreading on cpus. If you
+suspect or find an information leak then please report it.
 
 *** Documentation and Support ***
 

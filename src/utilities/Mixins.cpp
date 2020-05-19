@@ -28,7 +28,13 @@ namespace Utilities
            was correct when the block was formed - i.e. if 0 mixin was allowed at
            block 100, but is no longer allowed - we should still validate block 100 */
 
-        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V4_HEIGHT)
+        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V5_HEIGHT)
+        {
+            minMixin = CryptoNote::parameters::MINIMUM_MIXIN_V5;
+            maxMixin = CryptoNote::parameters::MAXIMUM_MIXIN_V5;
+            defaultMixin = CryptoNote::parameters::DEFAULT_MIXIN_V5;
+        }
+        else if (height >= CryptoNote::parameters::MIXIN_LIMITS_V4_HEIGHT)
         {
             minMixin = CryptoNote::parameters::MINIMUM_MIXIN_V4;
             maxMixin = CryptoNote::parameters::MAXIMUM_MIXIN_V4;

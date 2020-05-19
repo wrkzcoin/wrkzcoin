@@ -130,6 +130,10 @@ namespace CryptoNote
 
         const uint64_t MAXIMUM_MIXIN_V4 = 3;
 
+        const uint64_t MINIMUM_MIXIN_V5 = 1;
+
+        const uint64_t MAXIMUM_MIXIN_V5 = 1;
+
         /* The heights to activate the mixin limits at */
         const uint32_t MIXIN_LIMITS_V1_HEIGHT = 10000;
 
@@ -138,6 +142,8 @@ namespace CryptoNote
         const uint32_t MIXIN_LIMITS_V3_HEIGHT = 430000;
 
         const uint32_t MIXIN_LIMITS_V4_HEIGHT = 658500;
+
+        const uint32_t MIXIN_LIMITS_V5_HEIGHT = 1000000;
 
         /* The mixin to use by default with zedwallet and turtle-service */
         /* DEFAULT_MIXIN_V0 is the mixin used before MIXIN_LIMITS_V1_HEIGHT is started */
@@ -150,6 +156,8 @@ namespace CryptoNote
         const uint64_t DEFAULT_MIXIN_V3 = MINIMUM_MIXIN_V2;
 
         const uint64_t DEFAULT_MIXIN_V4 = MAXIMUM_MIXIN_V4;
+
+        const uint64_t DEFAULT_MIXIN_V5 = MAXIMUM_MIXIN_V5;
 
         const uint64_t DEFAULT_DUST_THRESHOLD = UINT64_C(10);
 
@@ -364,9 +372,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 11;
+    const uint8_t P2P_CURRENT_VERSION = 12;
 
-    const uint8_t P2P_MINIMUM_VERSION = 10;
+    const uint8_t P2P_MINIMUM_VERSION = 11;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -408,8 +416,8 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "176.9.99.123:17855",         // node-eu1.wrkz.work
-        "144.76.5.24:17855",          // myexplorer.wrkz.work
+        "176.9.145.124:17855",        // myexplorer.wrkz.work
+        "51.15.243.43:17855",         // arm-node.wrkz.work
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };

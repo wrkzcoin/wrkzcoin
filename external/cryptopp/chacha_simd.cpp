@@ -46,14 +46,16 @@
 
 #if defined(__XOP__)
 # include <ammintrin.h>
+# if defined(__GNUC__)
+#  include <x86intrin.h>
+# endif
 #endif
 
-// C1189: error: This header is specific to ARM targets
-#if (CRYPTOPP_ARM_NEON_AVAILABLE) && !defined(_M_ARM64)
+#if (CRYPTOPP_ARM_NEON_HEADER)
 # include <arm_neon.h>
 #endif
 
-#if (CRYPTOPP_ARM_ACLE_AVAILABLE)
+#if (CRYPTOPP_ARM_ACLE_HEADER)
 # include <stdint.h>
 # include <arm_acle.h>
 #endif
@@ -209,7 +211,7 @@ inline __m128i RotateLeft<16>(const __m128i val)
 
 #if (CRYPTOPP_ALTIVEC_AVAILABLE)
 
-// ChaCha_OperateKeystream_POWER8 is optimized for POWER7. However, Altivec
+// ChaCha_OperateKeystream_POWER7 is optimized for POWER7. However, Altivec
 // is supported by using vec_ld and vec_st, and using a composite VecAdd
 // that supports 64-bit element adds. vec_ld and vec_st add significant
 // overhead when memory is not aligned. Despite the drawbacks Altivec
@@ -565,14 +567,10 @@ void ChaCha_OperateKeystream_NEON(const word32 *state, const byte* input, byte *
 
 void ChaCha_OperateKeystream_SSE2(const word32 *state, const byte* input, byte *output, unsigned int rounds)
 {
-    const __m128i* state_mm = reinterpret_cast<const __m128i*>(state);
-    const __m128i* input_mm = reinterpret_cast<const __m128i*>(input);
-    __m128i* output_mm = reinterpret_cast<__m128i*>(output);
-
-    const __m128i state0 = _mm_load_si128(state_mm + 0);
-    const __m128i state1 = _mm_load_si128(state_mm + 1);
-    const __m128i state2 = _mm_load_si128(state_mm + 2);
-    const __m128i state3 = _mm_load_si128(state_mm + 3);
+    const __m128i state0 = _mm_load_si128(reinterpret_cast<const __m128i*>(state+0*4));
+    const __m128i state1 = _mm_load_si128(reinterpret_cast<const __m128i*>(state+1*4));
+    const __m128i state2 = _mm_load_si128(reinterpret_cast<const __m128i*>(state+2*4));
+    const __m128i state3 = _mm_load_si128(reinterpret_cast<const __m128i*>(state+3*4));
 
     __m128i r0_0 = state0;
     __m128i r0_1 = state1;
@@ -772,62 +770,62 @@ void ChaCha_OperateKeystream_SSE2(const word32 *state, const byte* input, byte *
     r3_3 = _mm_add_epi32(r3_3, state3);
     r3_3 = _mm_add_epi64(r3_3, _mm_set_epi32(0, 0, 0, 3));
 
-    if (input_mm)
+    if (input)
     {
-        r0_0 = _mm_xor_si128(_mm_loadu_si128(input_mm + 0), r0_0);
-        r0_1 = _mm_xor_si128(_mm_loadu_si128(input_mm + 1), r0_1);
-        r0_2 = _mm_xor_si128(_mm_loadu_si128(input_mm + 2), r0_2);
-        r0_3 = _mm_xor_si128(_mm_loadu_si128(input_mm + 3), r0_3);
+        r0_0 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+0*16)), r0_0);
+        r0_1 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+1*16)), r0_1);
+        r0_2 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+2*16)), r0_2);
+        r0_3 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+3*16)), r0_3);
     }
 
-    _mm_storeu_si128(output_mm + 0, r0_0);
-    _mm_storeu_si128(output_mm + 1, r0_1);
-    _mm_storeu_si128(output_mm + 2, r0_2);
-    _mm_storeu_si128(output_mm + 3, r0_3);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+0*16), r0_0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+1*16), r0_1);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+2*16), r0_2);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+3*16), r0_3);
 
-    if (input_mm)
+    if (input)
     {
-        r1_0 = _mm_xor_si128(_mm_loadu_si128(input_mm + 4), r1_0);
-        r1_1 = _mm_xor_si128(_mm_loadu_si128(input_mm + 5), r1_1);
-        r1_2 = _mm_xor_si128(_mm_loadu_si128(input_mm + 6), r1_2);
-        r1_3 = _mm_xor_si128(_mm_loadu_si128(input_mm + 7), r1_3);
+        r1_0 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+4*16)), r1_0);
+        r1_1 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+5*16)), r1_1);
+        r1_2 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+6*16)), r1_2);
+        r1_3 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+7*16)), r1_3);
     }
 
-    _mm_storeu_si128(output_mm + 4, r1_0);
-    _mm_storeu_si128(output_mm + 5, r1_1);
-    _mm_storeu_si128(output_mm + 6, r1_2);
-    _mm_storeu_si128(output_mm + 7, r1_3);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+4*16), r1_0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+5*16), r1_1);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+6*16), r1_2);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+7*16), r1_3);
 
-    if (input_mm)
+    if (input)
     {
-        r2_0 = _mm_xor_si128(_mm_loadu_si128(input_mm + 8), r2_0);
-        r2_1 = _mm_xor_si128(_mm_loadu_si128(input_mm + 9), r2_1);
-        r2_2 = _mm_xor_si128(_mm_loadu_si128(input_mm + 10), r2_2);
-        r2_3 = _mm_xor_si128(_mm_loadu_si128(input_mm + 11), r2_3);
+        r2_0 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+ 8*16)), r2_0);
+        r2_1 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+ 9*16)), r2_1);
+        r2_2 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+10*16)), r2_2);
+        r2_3 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+11*16)), r2_3);
     }
 
-    _mm_storeu_si128(output_mm + 8, r2_0);
-    _mm_storeu_si128(output_mm + 9, r2_1);
-    _mm_storeu_si128(output_mm + 10, r2_2);
-    _mm_storeu_si128(output_mm + 11, r2_3);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+ 8*16), r2_0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+ 9*16), r2_1);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+10*16), r2_2);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+11*16), r2_3);
 
-    if (input_mm)
+    if (input)
     {
-        r3_0 = _mm_xor_si128(_mm_loadu_si128(input_mm + 12), r3_0);
-        r3_1 = _mm_xor_si128(_mm_loadu_si128(input_mm + 13), r3_1);
-        r3_2 = _mm_xor_si128(_mm_loadu_si128(input_mm + 14), r3_2);
-        r3_3 = _mm_xor_si128(_mm_loadu_si128(input_mm + 15), r3_3);
+        r3_0 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+12*16)), r3_0);
+        r3_1 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+13*16)), r3_1);
+        r3_2 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+14*16)), r3_2);
+        r3_3 = _mm_xor_si128(_mm_loadu_si128(reinterpret_cast<const __m128i*>(input+15*16)), r3_3);
     }
 
-    _mm_storeu_si128(output_mm + 12, r3_0);
-    _mm_storeu_si128(output_mm + 13, r3_1);
-    _mm_storeu_si128(output_mm + 14, r3_2);
-    _mm_storeu_si128(output_mm + 15, r3_3);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+12*16), r3_0);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+13*16), r3_1);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+14*16), r3_2);
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(output+15*16), r3_3);
 }
 
 #endif  // CRYPTOPP_SSE2_INTRIN_AVAILABLE
 
-#if (CRYPTOPP_POWER8_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE)
+#if (CRYPTOPP_POWER7_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE)
 
 // ChaCha_OperateKeystream_CORE will use either POWER7 or ALTIVEC,
 // depending on the flags used to compile this source file. The
@@ -1096,11 +1094,11 @@ inline void ChaCha_OperateKeystream_CORE(const word32 *state, const byte* input,
     VecStore32LE(output + 15*16, r3_3);
 }
 
-#endif  // CRYPTOPP_POWER8_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE
+#endif  // CRYPTOPP_POWER7_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE
 
-#if (CRYPTOPP_POWER8_AVAILABLE)
+#if (CRYPTOPP_POWER7_AVAILABLE)
 
-void ChaCha_OperateKeystream_POWER8(const word32 *state, const byte* input, byte *output, unsigned int rounds)
+void ChaCha_OperateKeystream_POWER7(const word32 *state, const byte* input, byte *output, unsigned int rounds)
 {
     ChaCha_OperateKeystream_CORE(state, input, output, rounds);
 }

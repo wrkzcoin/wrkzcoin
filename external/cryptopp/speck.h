@@ -92,7 +92,7 @@ struct SPECK_Base
 class CRYPTOPP_NO_VTABLE SPECK64 : public SPECK_Info<8, 12, 12, 16>, public BlockCipherDocumentation
 {
 public:
-    /// \brief SPECK block cipher transformation functions
+    /// \brief SPECK64 block cipher base implementation
     /// \details Provides implementation common to encryption and decryption
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Base : protected SPECK_Base<word32>, public BlockCipherImpl<SPECK_Info<8, 12, 12, 16> >
@@ -109,13 +109,18 @@ public:
 
         std::string AlgorithmProvider() const;
 
+        /// \brief Provides input and output data alignment for optimal performance.
+        /// \return the input data alignment that provides optimal performance
+        /// \sa GetAlignment() and OptimalBlockSize()
+        unsigned int OptimalDataAlignment() const;
+
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
     };
 
-    /// \brief Encryption transformation
-    /// \details Enc provides implementation for encryption transformation. All key
-    ///   sizes are supported.
+    /// \brief SPECK64 encryption transformation
+    /// \details Enc provides the encryption transformation.
+    ///  All key sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Enc : public Base
     {
@@ -126,9 +131,9 @@ public:
 #endif
     };
 
-    /// \brief Encryption transformation
-    /// \details Dec provides implementation for decryption transformation. All key
-    ///   sizes are supported.
+    /// \brief SPECK64 decryption transformation
+    /// \details Dec provides the decryption transformation.
+    ///  All key sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Dec : public Base
     {
@@ -155,7 +160,7 @@ public:
 class CRYPTOPP_NO_VTABLE SPECK128 : public SPECK_Info<16, 16, 16, 32>, public BlockCipherDocumentation
 {
 public:
-    /// \brief SPECK block cipher transformation functions
+    /// \brief SPECK128 block cipher base implementation
     /// \details Provides implementation common to encryption and decryption
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Base : protected SPECK_Base<word64>, public BlockCipherImpl<SPECK_Info<16, 16, 16, 32> >
@@ -172,13 +177,18 @@ public:
 
         std::string AlgorithmProvider() const;
 
+        /// \brief Provides input and output data alignment for optimal performance.
+        /// \return the input data alignment that provides optimal performance
+        /// \sa GetAlignment() and OptimalBlockSize()
+        unsigned int OptimalDataAlignment() const;
+
     protected:
         void UncheckedSetKey(const byte *userKey, unsigned int keyLength, const NameValuePairs &params);
     };
 
-    /// \brief Encryption transformation
-    /// \details Enc provides implementation for encryption transformation. All key
-    ///   sizes are supported.
+    /// \brief SPECK128 encryption transformation
+    /// \details Enc provides the encryption transformation.
+    ///  All key sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Enc : public Base
     {
@@ -189,9 +199,9 @@ public:
 #endif
     };
 
-    /// \brief Encryption transformation
-    /// \details Dec provides implementation for decryption transformation. All key
-    ///   sizes are supported.
+    /// \brief SPECK128 decryption transformation
+    /// \details Dec provides the decryption transformation.
+    ///  All key sizes are supported.
     /// \since Crypto++ 6.0
     class CRYPTOPP_NO_VTABLE Dec : public Base
     {

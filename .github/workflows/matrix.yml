@@ -14,12 +14,12 @@ jobs:
   # Common Build matrix for builds on Ubuntu VM
   ubuntu_build:
     name: ${{ matrix.build_name }}
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64']
+        build_name: ['Ubuntu GCC 7', 'Ubuntu GCC 8', 'Ubuntu Clang 6', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
           - build_name: 'Ubuntu GCC 7'
             package_name: 'gcc-7 g++-7'
@@ -41,15 +41,21 @@ jobs:
           - build_name: 'aarch64'
             label: aarch64
             deployable: true
+          - build_name: 'aarch32-linux-gnueabihf'
+            label: aarch32-linux-gnueabihf
+            deployable: true
+          - build_name: 'aarch32-linux-gnueabi'
+            label: aarch32-linux-gnueabi
+            deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -66,7 +72,7 @@ jobs:
 
       # Configure the project with cmake
       - name: Configure
-        if: matrix.build_name != 'aarch64'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
@@ -76,16 +82,25 @@ jobs:
 
       # Build for linux
       - name: Build
-        if: matrix.build_name != 'aarch64'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           cd build
           make -j2
 
       # Build for aarch64
-      - name: Prepare and Build (aarch64)
-        if: matrix.build_name == 'aarch64'
+      - name: Prepare and Build (aarch64 / aarch32)
+        if: matrix.build_name == 'aarch64' || matrix.build_name == 'aarch32-linux-gnueabihf' || matrix.build_name == 'aarch32-linux-gnueabi'
         run: |
-          source scripts/prep-aarch64.sh
+          if [[ "${LABEL}" == "aarch64" ]]
+          then
+            source scripts/prep-aarch64.sh
+          elif [[ "${LABEL}" == "aarch32-linux-gnueabihf" ]]
+          then
+            source scripts/prep-aarch32-linux-gnueabihf.sh
+          elif [[ "${LABEL}" == "aarch32-linux-gnueabi" ]]
+          then
+            source scripts/prep-aarch32-linux-gnueabi.sh
+          fi
           mkdir build && cd build
           cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
           make -j2
@@ -95,7 +110,7 @@ jobs:
 
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'aarch32-linux-gnueabihf'
         run: |
           cd build/src
           ./cryptotest
@@ -109,7 +124,7 @@ jobs:
           export TAG=${COMMIT_SHA::8}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
-          if [[ "${LABEL}" != "aarch64" ]]; then strip ${TARGETS}; fi
+          if [[ "${LABEL}" != "aarch64" && "${LABEL}" != "aarch32-linux-gnueabi" && "${LABEL}" != "aarch32-linux-gnueabihf" ]]; then strip ${TARGETS}; fi
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp ${TARGETS} wrkzcoin-${TAG}/
@@ -122,9 +137,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |
@@ -185,7 +200,7 @@ jobs:
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       # Fetch Dependencies
       - name: Dependencies
@@ -215,7 +230,7 @@ jobs:
 
       # Test the crypto
       - name: Test Crypto
-        if: matrix.build_name != 'aarch64'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'aarch32-linux-gnueabihf'
         run: |
           cd build/src
           ./cryptotest
@@ -242,9 +257,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |
@@ -298,12 +313,12 @@ jobs:
   # Windows Builds on Windows Server 2019
   windows_build:
     name: Windows
-    runs-on: windows-2019
+    runs-on: windows-latest
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
       LABEL: windows
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
 
       - name: Setup clcache
         run: pip install clcache
@@ -330,7 +345,7 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:CLToolPath=c:\hostedtoolcache\windows\Python\3.7.6\x64\Scripts\ /p:Configuration=Release /p:PlatformToolset=v141 /m
+          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
 
       # Test the crypto
       - name: Test Crypto
@@ -360,9 +375,9 @@ jobs:
 
       # Upload to S3
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7 # Or other version
+          python-version: 3.8 # Or other version
       - name: Install awscli via pipx # Isolates dependencies
         shell: bash
         run: |

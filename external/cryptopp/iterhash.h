@@ -126,7 +126,7 @@ public:
 	typedef T_Endianness ByteOrderClass;
 	typedef T_HashWordType HashWordType;
 
-	CRYPTOPP_CONSTANT(BLOCKSIZE = T_BlockSize)
+	CRYPTOPP_CONSTANT(BLOCKSIZE = T_BlockSize);
 	// BCB2006 workaround: can't use BLOCKSIZE here
 	CRYPTOPP_COMPILE_ASSERT((T_BlockSize & (T_BlockSize - 1)) == 0);	// blockSize is a power of 2
 
@@ -159,8 +159,9 @@ public:
 	}
 
 protected:
+	enum { Blocks = T_BlockSize/sizeof(T_HashWordType) };
 	T_HashWordType* DataBuf() {return this->m_data;}
-	FixedSizeSecBlock<T_HashWordType, T_BlockSize/sizeof(T_HashWordType)> m_data;
+	FixedSizeSecBlock<T_HashWordType, Blocks> m_data;
 };
 
 /// \brief Iterated hash with a static transformation function
@@ -177,7 +178,7 @@ class CRYPTOPP_NO_VTABLE IteratedHashWithStaticTransform
 	: public ClonableImpl<T_Transform, AlgorithmImpl<IteratedHash<T_HashWordType, T_Endianness, T_BlockSize>, T_Transform> >
 {
 public:
-	CRYPTOPP_CONSTANT(DIGESTSIZE = T_DigestSize ? T_DigestSize : T_StateSize)
+	CRYPTOPP_CONSTANT(DIGESTSIZE = T_DigestSize ? T_DigestSize : T_StateSize);
 
 	virtual ~IteratedHashWithStaticTransform() {}
 
@@ -191,8 +192,9 @@ protected:
 	void HashEndianCorrectedBlock(const T_HashWordType *data) {T_Transform::Transform(this->m_state, data);}
 	void Init() {T_Transform::InitState(this->m_state);}
 
+	enum { Blocks = T_BlockSize/sizeof(T_HashWordType) };
 	T_HashWordType* StateBuf() {return this->m_state;}
-	FixedSizeAlignedSecBlock<T_HashWordType, T_BlockSize/sizeof(T_HashWordType), T_StateAligned> m_state;
+	FixedSizeAlignedSecBlock<T_HashWordType, Blocks, T_StateAligned> m_state;
 };
 
 #if !defined(__GNUC__) && !defined(__clang__)

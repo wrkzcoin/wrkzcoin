@@ -196,9 +196,7 @@ endif ()
 #set(ZSTD_LIB_RELEASE ${ZSTD_HOME}/lib/native/retail/amd64/libzstd_static.lib)
 
 # For compatibility
-if (ZSTD)
-  set(WITH_ZSTD ON)
-endif ()
+set(WITH_ZSTD ON)
 
 if (WITH_ZSTD)
   message(STATUS "ZSTD library is enabled")

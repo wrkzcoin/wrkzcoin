@@ -1,8 +1,6 @@
 # WrkzCoin
 
-![Download Count](https://img.shields.io/github/downloads/wrkzcoin/wrkzcoin/total.svg?include_prereleases)
-![Open Issue Count](https://img.shields.io/github/issues/wrkzcoin/wrkzcoin)
-![License](https://img.shields.io/github/license/wrkzcoin/wrkzcoin)
+[![Discord](https://img.shields.io/discord/460755304863498250?label=WrkzCoin%20Discord)](https://chat.wrkz.work) [![GitHub All Releases](https://img.shields.io/github/downloads/wrkzcoin/wrkzcoin/total.svg?include_prereleases)](https://latest.wrkz.work/) [![GitHub contributors](https://img.shields.io/github/contributors-anon/wrkzcoin/wrkzcoin?label=Contributors)](https://github.com/wrkzcoin/wrkzcoin/graphs/contributors) [![GitHub issues](https://img.shields.io/github/issues/wrkzcoin/wrkzcoin?label=Issues)](https://github.com/wrkzcoin/wrkzcoin/issues) ![GitHub stars](https://img.shields.io/github/stars/wrkzcoin/wrkzcoin?label=Github%20Stars)
 ![Version](https://img.shields.io/github/v/release/wrkzcoin/wrkzcoin?include_prereleases)
 
 ### Master Build Status
