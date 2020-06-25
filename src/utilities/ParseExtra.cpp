@@ -55,7 +55,7 @@ namespace Utilities
 
             const uint8_t c = *it;
 
-            const auto elementsRemaining = std::distance(it, extra.end());
+            const size_t elementsRemaining = std::distance(it, extra.end());
 
             /* Found a pubkey */
 
@@ -79,14 +79,14 @@ namespace Utilities
             }
 
             /* Found nonce information and need to decode it.
-            /* Nonce is a sub-tagged field and thus we need to work through
+               Nonce is a sub-tagged field and thus we need to work through
                the data to determine what fields are in here */
             if (c == Constants::TX_EXTRA_NONCE_IDENTIFIER && elementsRemaining > 1 && !seenNonce)
             {
                 /* Get the length of the following data in the field */
                 size_t nonceSize = 0;
 
-                const auto readNonceSize = Tools::read_varint(it + 1, extra.end(), nonceSize);
+                const size_t readNonceSize = Tools::read_varint(it + 1, extra.end(), nonceSize);
 
                 /* Set up a variable to hold how much we have read so we know how far to skip ahead */
                 size_t advanceIterator = readNonceSize;
@@ -104,7 +104,7 @@ namespace Utilities
                     {
                         const uint8_t s = *is;
 
-                        const auto nElementsRemaining = std::distance(is, nonceData.end());
+                        const size_t nElementsRemaining = std::distance(is, nonceData.end());
 
                         /* If we encounter a Payment ID field and there are enough bytes remaining in
                            the nonce data and we have not encountered a payment ID, then read it out */
@@ -136,7 +136,7 @@ namespace Utilities
                             /* Read out the size of the data */
                             size_t dataSize = 0;
 
-                            const auto readDataSize = Tools::read_varint(is + 1, nonceData.end(), dataSize);
+                            const size_t readDataSize = Tools::read_varint(is + 1, nonceData.end(), dataSize);
 
                             /* If there are enough bytes left to read based upon the size above then
                                read out the data */
@@ -175,7 +175,7 @@ namespace Utilities
                 /* Get the length of the following data (Probably 33 bytes for depth+hash) */
                 size_t dataSize = 0;
 
-                const auto readDataSize = Tools::read_varint(it + 1, extra.end(), dataSize);
+                const size_t readDataSize = Tools::read_varint(it + 1, extra.end(), dataSize);
 
                 if (elementsRemaining > dataSize + readDataSize && dataSize >= 33)
                 {

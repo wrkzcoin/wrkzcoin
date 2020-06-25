@@ -1053,7 +1053,7 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
 
     writer.StartArray();
     {
-        for (const auto [hash, globalIndexes] : indexes)
+        for (const auto &[hash, globalIndexes] : indexes)
         {
             writer.StartObject();
 
@@ -1906,7 +1906,7 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
                 }
                 writer.EndObject();
 
-                for (const std::vector<uint8_t> rawTX : transactions)
+                for (const std::vector<uint8_t> &rawTX : transactions)
                 {
                     writer.StartObject();
                     {
@@ -2067,7 +2067,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
             writer.Key("vin");
             writer.StartArray();
             {
-                for (const auto input : transaction.inputs)
+                for (const auto &input : transaction.inputs)
                 {
                     const auto type = input.type() == typeid(CryptoNote::BaseInput)
                         ? "ff"
@@ -2117,7 +2117,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
             writer.Key("vout");
             writer.StartArray();
             {
-                for (const auto output : transaction.outputs)
+                for (const auto &output : transaction.outputs)
                 {
                     writer.StartObject();
                     {
@@ -2208,7 +2208,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
         writer.Key("transactions");
         writer.StartArray();
         {
-            for (const auto tx : m_core->getPoolTransactions())
+            for (const auto &tx : m_core->getPoolTransactions())
             {
                 writer.StartObject();
 
@@ -2316,7 +2316,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
     writer.Key("items");
     writer.StartArray();
     {
-        for (const auto block : blocks)
+        for (const auto &block : blocks)
         {
             writer.StartObject();
             {
@@ -2336,7 +2336,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
                 writer.Key("blockShortInfo.txPrefixes");
                 writer.StartArray();
                 {
-                    for (const auto prefix : block.txPrefixes)
+                    for (const auto &prefix : block.txPrefixes)
                     {
                         writer.StartObject();
                         {
@@ -2358,7 +2358,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
                                 writer.Key("vin");
                                 writer.StartArray();
                                 {
-                                    for (const auto input : prefix.txPrefix.inputs)
+                                    for (const auto &input : prefix.txPrefix.inputs)
                                     {
                                         const auto type = input.type() == typeid(CryptoNote::BaseInput)
                                             ? "ff"
@@ -2408,7 +2408,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
                                 writer.Key("vout");
                                 writer.StartArray();
                                 {
-                                    for (const auto output : prefix.txPrefix.outputs)
+                                    for (const auto &output : prefix.txPrefix.outputs)
                                     {
                                         writer.StartObject();
                                         {
@@ -2580,7 +2580,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
     writer.Key("addedTxs");
     writer.StartArray();
     {
-        for (const auto prefix: addedTransactions)
+        for (const auto &prefix: addedTransactions)
         {
             writer.StartObject();
             {
@@ -2602,7 +2602,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
                     writer.Key("vin");
                     writer.StartArray();
                     {
-                        for (const auto input : prefix.txPrefix.inputs)
+                        for (const auto &input : prefix.txPrefix.inputs)
                         {
                             const auto type = input.type() == typeid(CryptoNote::BaseInput)
                                 ? "ff"
@@ -2634,7 +2634,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
                                         writer.Key("key_offsets");
                                         writer.StartArray();
                                         {
-                                            for (const auto index : keyInput.outputIndexes)
+                                            for (const auto &index : keyInput.outputIndexes)
                                             {
                                                 writer.Uint(index);
                                             }
@@ -2652,7 +2652,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
                     writer.Key("vout");
                     writer.StartArray();
                     {
-                        for (const auto output : prefix.txPrefix.outputs)
+                        for (const auto &output : prefix.txPrefix.outputs)
                         {
                             writer.StartObject();
                             {
@@ -2690,7 +2690,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
     writer.Key("deletedTxsIds");
     writer.StartArray();
     {
-        for (const auto hash : deletedTransactions)
+        for (const auto &hash : deletedTransactions)
         {
             writer.String(Common::podToHex(hash));
         }
@@ -2776,7 +2776,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
     writer.Key("blocks");
     writer.StartArray();
     {
-        for (const auto block : blocks)
+        for (const auto &block : blocks)
         {
             writer.StartObject();
             {
@@ -2847,7 +2847,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
                                 writer.Key("nonce");
                                 writer.StartArray();
                                 {
-                                    for (const auto c : tx.extra.nonce)
+                                    for (const auto &c : tx.extra.nonce)
                                     {
                                         writer.Uint64(c);
                                     }
@@ -2919,7 +2919,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
                                                     writer.Key("key_offsets");
                                                     writer.StartArray();
                                                     {
-                                                        for (const auto index : in.input.outputIndexes)
+                                                        for (const auto &index : in.input.outputIndexes)
                                                         {
                                                             writer.Uint(index);
                                                         }

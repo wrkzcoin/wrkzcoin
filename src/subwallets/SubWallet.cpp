@@ -132,7 +132,7 @@ std::tuple<uint64_t, uint64_t> SubWallet::getBalance(const uint64_t currentHeigh
 {
     uint64_t unlockedBalance = 0;
     uint64_t lockedBalance = 0;
-    for (const auto input : m_unspentInputs)
+    for (const auto &input : m_unspentInputs)
     {
         /* If an unlock height is present, check if the input is unlocked */
         if (Utilities::isInputUnlocked(input.unlockTime, currentHeight))
@@ -146,7 +146,7 @@ std::tuple<uint64_t, uint64_t> SubWallet::getBalance(const uint64_t currentHeigh
     }
 
     /* Add the locked balance from incoming transactions */
-    for (const auto unconfirmedInput : m_unconfirmedIncomingAmounts)
+    for (const auto &unconfirmedInput : m_unconfirmedIncomingAmounts)
     {
         lockedBalance += unconfirmedInput.amount;
     }
@@ -218,7 +218,7 @@ void SubWallet::markInputAsSpent(const Crypto::KeyImage keyImage, const uint64_t
         /* Set the spend height */
         it->spendHeight = spendHeight;
 
-        
+
         /* Ensure we don't add the input twice */
         if (!inSpent)
         {
@@ -366,7 +366,7 @@ std::vector<Crypto::KeyImage> SubWallet::removeForkedInputs(const uint64_t forkH
             {
                 std::stringstream stream;
 
-                stream << "Input with key " << input.key 
+                stream << "Input with key " << input.key
                        << " being marked as unspent is already present in unspent inputs vector.";
 
                 Logger::logger.log(
@@ -437,7 +437,7 @@ bool SubWallet::haveSpendableInput(
     const WalletTypes::TransactionInput& input,
     const uint64_t height) const
 {
-    for (const auto i : m_unspentInputs)
+    for (const auto &i : m_unspentInputs)
     {
         /* Checking for .key to support view wallets */
         if (input.keyImage == i.keyImage || input.key == i.key)
@@ -454,7 +454,7 @@ bool SubWallet::haveSpendableInput(
 std::vector<WalletTypes::TxInputAndOwner> SubWallet::getSpendableInputs(const uint64_t height) const
 {
     std::vector<WalletTypes::TxInputAndOwner> inputs;
-    for (const auto input : m_unspentInputs)
+    for (const auto &input : m_unspentInputs)
     {
         if (Utilities::isInputUnlocked(input.unlockTime, height))
         {

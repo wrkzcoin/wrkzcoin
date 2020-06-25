@@ -680,7 +680,7 @@ namespace CryptoNote
             /* Pop into a set for quicker .find() */
             std::unordered_set<Crypto::Hash> poolTransactions(txs.begin(), txs.end());
 
-            for (const auto hash : transactionHashes)
+            for (const auto &hash : transactionHashes)
             {
                 if (poolTransactions.find(hash) != poolTransactions.end())
                 {
@@ -813,7 +813,7 @@ namespace CryptoNote
                 rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
             }
 
-            for (const auto rawBlock : rawBlocks)
+            for (const auto &rawBlock : rawBlocks)
             {
                 BlockTemplate block;
 
@@ -1502,7 +1502,7 @@ namespace CryptoNote
 
         const auto maxTransactionSize = getMaximumTransactionAllowedSize(blockMedianSize, currency);
 
-        for (const auto poolTxHash : poolHashes)
+        for (const auto &poolTxHash : poolHashes)
         {
             const auto poolTx = pool.tryGetTransaction(poolTxHash);
 
@@ -1777,9 +1777,9 @@ namespace CryptoNote
 
             std::vector<Crypto::Hash> transactionHashes;
 
-            for (const auto rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
+            for (const auto &rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
             {
-                for (const auto transaction : rawBlock.transactions)
+                for (const auto &transaction : rawBlock.transactions)
                 {
                     transactionHashes.push_back(getBinaryArrayHash(transaction));
                 }

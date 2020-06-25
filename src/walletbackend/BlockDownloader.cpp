@@ -300,7 +300,7 @@ bool BlockDownloader::downloadBlocks()
 
     std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> blocksWithIndex;
 
-    for (const auto block : blocks)
+    for (const auto &block : blocks)
     {
         blocksWithIndex.push_back({block, m_arrivalIndex++});
     }

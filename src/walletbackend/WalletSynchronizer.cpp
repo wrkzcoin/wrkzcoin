@@ -311,7 +311,7 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>>
         inputs.insert(inputs.end(), newInputs.begin(), newInputs.end());
     }
 
-    for (const auto tx : block.transactions)
+    for (const auto &tx : block.transactions)
     {
         const auto newInputs = processTransactionOutputs(tx, block.blockHeight);
 
@@ -348,7 +348,7 @@ void WalletSynchronizer::completeBlockProcessing(
 
     BlockScanTmpInfo blockScanInfo = processBlockTransactions(block, ourInputs);
 
-    for (const auto tx : blockScanInfo.transactionsToAdd)
+    for (const auto &tx : blockScanInfo.transactionsToAdd)
     {
         std::stringstream stream;
 
@@ -360,7 +360,7 @@ void WalletSynchronizer::completeBlockProcessing(
         m_eventHandler->onTransaction.fire(tx);
     }
 
-    for (const auto [publicKey, input] : blockScanInfo.inputsToAdd)
+    for (const auto &[publicKey, input] : blockScanInfo.inputsToAdd)
     {
         std::stringstream stream;
 
@@ -373,7 +373,7 @@ void WalletSynchronizer::completeBlockProcessing(
 
     /* The input has been spent, discard the key image so we
        don't double spend it */
-    for (const auto [publicKey, keyImage] : blockScanInfo.keyImagesToMarkSpent)
+    for (const auto &[publicKey, keyImage] : blockScanInfo.keyImagesToMarkSpent)
     {
         std::stringstream stream;
 
@@ -413,7 +413,7 @@ BlockScanTmpInfo WalletSynchronizer::processBlockTransactions(
         }
     }
 
-    for (const auto rawTX : block.transactions)
+    for (const auto &rawTX : block.transactions)
     {
         const auto [tx, keyImagesToMarkSpent] = processTransaction(block, inputs, rawTX);
 
@@ -491,7 +491,7 @@ std::tuple<std::optional<WalletTypes::Transaction>, std::vector<std::tuple<Crypt
 
     std::vector<std::tuple<Crypto::PublicKey, Crypto::KeyImage>> spentKeyImages;
 
-    for (const auto input : tx.keyInputs)
+    for (const auto &input : tx.keyInputs)
     {
         const auto [found, publicSpendKey] = m_subWallets->getKeyImageOwner(input.keyImage);
 
@@ -506,12 +506,12 @@ std::tuple<std::optional<WalletTypes::Transaction>, std::vector<std::tuple<Crypt
     {
         uint64_t fee = 0;
 
-        for (const auto input : tx.keyInputs)
+        for (const auto &input : tx.keyInputs)
         {
             fee += input.amount;
         }
 
-        for (const auto output : tx.keyOutputs)
+        for (const auto &output : tx.keyOutputs)
         {
             fee -= output.amount;
         }
@@ -548,7 +548,7 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
 
     uint64_t outputIndex = 0;
 
-    for (const auto output : rawTX.keyOutputs)
+    for (const auto &output : rawTX.keyOutputs)
     {
         Crypto::PublicKey derivedSpendKey;
 
