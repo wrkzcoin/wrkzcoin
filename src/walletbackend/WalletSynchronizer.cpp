@@ -254,10 +254,14 @@ void WalletSynchronizer::blockProcessingThread()
                            Also need to check there are enough indexes for the one we want */
                         while (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
                         {
+                            if (m_shouldStop)
+                            {
+                                return;
+                            }
+
                             Logger::logger.log(
                                 "Warning: Failed to get correct global indexes from daemon."
-                                "\nIf you see this error message repeatedly, the daemon "
-                                "may be faulty. More likely, the chain just forked.",
+                                "\nThe daemon may have gone offline or the chain may have just forked.",
                                 Logger::FATAL,
                                 {Logger::SYNC, Logger::DAEMON});
 
