@@ -12,12 +12,16 @@
 
 #include "options/cf_options.h"
 #include "options/db_options.h"
+#include "options/options_type.h"
 #include "rocksdb/options.h"
 #include "rocksdb/status.h"
 #include "rocksdb/table.h"
 #include "rocksdb/universal_compaction.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
+struct ConfigOptions;
+
+std::vector<CompressionType> GetSupportedCompressions();
 
 DBOptions BuildDBOptions(const ImmutableDBOptions& immutable_db_options,
                          const MutableDBOptions& mutable_db_options);
@@ -27,6 +31,15 @@ ColumnFamilyOptions BuildColumnFamilyOptions(
     const MutableCFOptions& mutable_cf_options);
 
 #ifndef ROCKSDB_LITE
+Status GetStringFromStruct(
+    const ConfigOptions& config_options, const void* const opt_ptr,
+    const std::unordered_map<std::string, OptionTypeInfo>& type_info,
+    std::string* opt_string);
+
+Status ParseColumnFamilyOption(const ConfigOptions& config_options,
+                               const std::string& name,
+                               const std::string& org_value,
+                               ColumnFamilyOptions* new_options);
 
 Status GetMutableOptionsFromStrings(
     const MutableCFOptions& base_options,
@@ -44,71 +57,10 @@ Status GetTableFactoryFromMap(
     std::shared_ptr<TableFactory>* table_factory,
     bool ignore_unknown_options = false);
 
-enum class OptionType {
-  kBoolean,
-  kInt,
-  kInt32T,
-  kInt64T,
-  kVectorInt,
-  kUInt,
-  kUInt32T,
-  kUInt64T,
-  kSizeT,
-  kString,
-  kDouble,
-  kCompactionStyle,
-  kCompactionPri,
-  kSliceTransform,
-  kCompressionType,
-  kVectorCompressionType,
-  kTableFactory,
-  kComparator,
-  kCompactionFilter,
-  kCompactionFilterFactory,
-  kCompactionOptionsFIFO,
-  kCompactionOptionsUniversal,
-  kCompactionStopStyle,
-  kMergeOperator,
-  kMemTableRepFactory,
-  kBlockBasedTableIndexType,
-  kBlockBasedTableDataBlockIndexType,
-  kBlockBasedTableIndexShorteningMode,
-  kFilterPolicy,
-  kFlushBlockPolicyFactory,
-  kChecksumType,
-  kEncodingType,
-  kWALRecoveryMode,
-  kAccessHint,
-  kInfoLogLevel,
-  kLRUCacheOptions,
-  kEnv,
-  kUnknown,
-};
-
-enum class OptionVerificationType {
-  kNormal,
-  kByName,               // The option is pointer typed so we can only verify
-                         // based on it's name.
-  kByNameAllowNull,      // Same as kByName, but it also allows the case
-                         // where one of them is a nullptr.
-  kByNameAllowFromNull,  // Same as kByName, but it also allows the case
-                         // where the old option is nullptr.
-  kDeprecated            // The option is no longer used in rocksdb. The RocksDB
-                         // OptionsParser will still accept this option if it
-                         // happen to exists in some Options file.  However,
-                         // the parser will not include it in serialization
-                         // and verification processes.
-};
-
-// A struct for storing constant option information such as option name,
-// option type, and offset.
-struct OptionTypeInfo {
-  int offset;
-  OptionType type;
-  OptionVerificationType verification;
-  bool is_mutable;
-  int mutable_offset;
-};
+Status GetTableFactoryFromMap(
+    const ConfigOptions& config_options, const std::string& factory_name,
+    const std::unordered_map<std::string, std::string>& opt_map,
+    std::shared_ptr<TableFactory>* table_factory);
 
 // A helper function that converts "opt_address" to a std::string
 // based on the specified OptionType.
@@ -119,21 +71,10 @@ bool SerializeSingleOptionHelper(const char* opt_address,
 // this further takes an optional output vector "unsupported_options_names",
 // which stores the name of all the unsupported options specified in "opts_map".
 Status GetDBOptionsFromMapInternal(
-    const DBOptions& base_options,
+    const ConfigOptions& config_options, const DBOptions& base_options,
     const std::unordered_map<std::string, std::string>& opts_map,
-    DBOptions* new_options, bool input_strings_escaped,
-    std::vector<std::string>* unsupported_options_names = nullptr,
-    bool ignore_unknown_options = false);
-
-// In addition to its public version defined in rocksdb/convenience.h,
-// this further takes an optional output vector "unsupported_options_names",
-// which stores the name of all the unsupported options specified in "opts_map".
-Status GetColumnFamilyOptionsFromMapInternal(
-    const ColumnFamilyOptions& base_options,
-    const std::unordered_map<std::string, std::string>& opts_map,
-    ColumnFamilyOptions* new_options, bool input_strings_escaped,
-    std::vector<std::string>* unsupported_options_names = nullptr,
-    bool ignore_unknown_options = false);
+    DBOptions* new_options,
+    std::vector<std::string>* unsupported_options_names = nullptr);
 
 bool ParseSliceTransform(
     const std::string& value,
@@ -230,4 +171,4 @@ static auto& info_log_level_string_map =
     OptionsHelper::info_log_level_string_map;
 #endif  // !ROCKSDB_LITE
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

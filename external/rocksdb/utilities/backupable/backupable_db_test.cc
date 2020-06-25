@@ -27,13 +27,12 @@
 #include "test_util/sync_point.h"
 #include "test_util/testharness.h"
 #include "test_util/testutil.h"
-#include "util/file_reader_writer.h"
 #include "util/mutexlock.h"
 #include "util/random.h"
 #include "util/stderr_logger.h"
 #include "util/string_util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 namespace {
 
@@ -524,8 +523,8 @@ class BackupableDBTest : public testing::Test {
     kShareWithChecksum,
   };
 
-  const std::vector<ShareOption> kAllShareOptions = {kNoShare, kShareNoChecksum,
-                                                     kShareWithChecksum};
+  const std::vector<ShareOption> kAllShareOptions = {
+      kNoShare, kShareNoChecksum, kShareWithChecksum};
 
   BackupableDBTest() {
     // set up files
@@ -1097,7 +1096,8 @@ TEST_F(BackupableDBTest, BackupOptions) {
     db_.reset();
     db_.reset(OpenDB());
     ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), true));
-    rocksdb::GetLatestOptionsFileName(db_->GetName(), options_.env, &name);
+    ROCKSDB_NAMESPACE::GetLatestOptionsFileName(db_->GetName(), options_.env,
+                                                &name);
     ASSERT_OK(file_manager_->FileExists(OptionsPath(backupdir_, i) + name));
     backup_chroot_env_->GetChildren(OptionsPath(backupdir_, i), &filenames);
     for (auto fn : filenames) {
@@ -1118,7 +1118,7 @@ TEST_F(BackupableDBTest, SetOptionsBackupRaceCondition) {
        {"BackupableDBTest::SetOptionsBackupRaceCondition:AfterSetOptions",
         "CheckpointImpl::CreateCheckpoint:SavedLiveFiles2"}});
   SyncPoint::GetInstance()->EnableProcessing();
-  rocksdb::port::Thread setoptions_thread{[this]() {
+  ROCKSDB_NAMESPACE::port::Thread setoptions_thread{[this]() {
     TEST_SYNC_POINT(
         "BackupableDBTest::SetOptionsBackupRaceCondition:BeforeSetOptions");
     DBImpl* dbi = static_cast<DBImpl*>(db_.get());
@@ -1572,20 +1572,21 @@ TEST_F(BackupableDBTest, ChangeManifestDuringBackupCreation) {
   OpenDBAndBackupEngine(true);
   FillDB(db_.get(), 0, 100);
 
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->LoadDependency({
       {"CheckpointImpl::CreateCheckpoint:SavedLiveFiles1",
        "VersionSet::LogAndApply:WriteManifest"},
       {"VersionSet::LogAndApply:WriteManifestDone",
        "CheckpointImpl::CreateCheckpoint:SavedLiveFiles2"},
   });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->EnableProcessing();
 
-  rocksdb::port::Thread flush_thread{[this]() { ASSERT_OK(db_->Flush(FlushOptions())); }};
+  ROCKSDB_NAMESPACE::port::Thread flush_thread{
+      [this]() { ASSERT_OK(db_->Flush(FlushOptions())); }};
 
   ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), false));
 
   flush_thread.join();
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->DisableProcessing();
 
   // The last manifest roll would've already been cleaned up by the full scan
   // that happens when CreateNewBackup invokes EnableFileDeletions. We need to
@@ -1688,12 +1689,50 @@ TEST_F(BackupableDBTest, LimitBackupsOpened) {
   CloseDBAndBackupEngine();
 
   backupable_options_->max_valid_backups_to_open = 2;
-  OpenDBAndBackupEngine();
+  backupable_options_->destroy_old_data = false;
+  BackupEngineReadOnly* read_only_backup_engine;
+  ASSERT_OK(BackupEngineReadOnly::Open(backup_chroot_env_.get(),
+                                       *backupable_options_,
+                                       &read_only_backup_engine));
+
   std::vector<BackupInfo> backup_infos;
-  backup_engine_->GetBackupInfo(&backup_infos);
+  read_only_backup_engine->GetBackupInfo(&backup_infos);
   ASSERT_EQ(2, backup_infos.size());
   ASSERT_EQ(2, backup_infos[0].backup_id);
   ASSERT_EQ(4, backup_infos[1].backup_id);
+  delete read_only_backup_engine;
+}
+
+TEST_F(BackupableDBTest, IgnoreLimitBackupsOpenedWhenNotReadOnly) {
+  // Verify the specified max_valid_backups_to_open is ignored if the engine
+  // is not read-only.
+  //
+  // Setup:
+  // - backups 1, 2, and 4 are valid
+  // - backup 3 is corrupt
+  // - max_valid_backups_to_open == 2
+  //
+  // Expectation: the engine opens backups 4, 2, and 1 since those are latest
+  // non-corrupt backups, by ignoring max_valid_backups_to_open == 2.
+  const int kNumKeys = 5000;
+  OpenDBAndBackupEngine(true);
+  for (int i = 1; i <= 4; ++i) {
+    FillDB(db_.get(), kNumKeys * i, kNumKeys * (i + 1));
+    ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), true));
+    if (i == 3) {
+      ASSERT_OK(file_manager_->CorruptFile(backupdir_ + "/meta/3", 3));
+    }
+  }
+  CloseDBAndBackupEngine();
+
+  backupable_options_->max_valid_backups_to_open = 2;
+  OpenDBAndBackupEngine();
+  std::vector<BackupInfo> backup_infos;
+  backup_engine_->GetBackupInfo(&backup_infos);
+  ASSERT_EQ(3, backup_infos.size());
+  ASSERT_EQ(1, backup_infos[0].backup_id);
+  ASSERT_EQ(2, backup_infos[1].backup_id);
+  ASSERT_EQ(4, backup_infos[2].backup_id);
   CloseDBAndBackupEngine();
   DestroyDB(dbname_, options_);
 }
@@ -1713,33 +1752,6 @@ TEST_F(BackupableDBTest, CreateWhenLatestBackupCorrupted) {
   OpenDBAndBackupEngine();
   ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(),
                                             true /* flush_before_backup */));
-  std::vector<BackupInfo> backup_infos;
-  backup_engine_->GetBackupInfo(&backup_infos);
-  ASSERT_EQ(1, backup_infos.size());
-  ASSERT_EQ(2, backup_infos[0].backup_id);
-}
-
-TEST_F(BackupableDBTest, WriteOnlyEngine) {
-  // Verify we can open a backup engine and create new ones even if reading old
-  // backups would fail with IOError. IOError is a more serious condition than
-  // corruption and would cause the engine to fail opening. So the only way to
-  // avoid is by not reading old backups at all, i.e., respecting
-  // `max_valid_backups_to_open == 0`.
-  const int kNumKeys = 5000;
-  OpenDBAndBackupEngine(true /* destroy_old_data */);
-  FillDB(db_.get(), 0 /* from */, kNumKeys);
-  ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), true));
-  CloseDBAndBackupEngine();
-
-  backupable_options_->max_valid_backups_to_open = 0;
-  // cause any meta-file reads to fail with IOError during Open
-  test_backup_env_->SetDummySequentialFile(true);
-  test_backup_env_->SetDummySequentialFileFailReads(true);
-  OpenDBAndBackupEngine();
-  test_backup_env_->SetDummySequentialFileFailReads(false);
-  test_backup_env_->SetDummySequentialFile(false);
-
-  ASSERT_OK(backup_engine_->CreateNewBackup(db_.get(), true));
   std::vector<BackupInfo> backup_infos;
   backup_engine_->GetBackupInfo(&backup_infos);
   ASSERT_EQ(1, backup_infos.size());
@@ -1830,12 +1842,93 @@ TEST_P(BackupableDBTestWithParam, BackupUsingDirectIO) {
   }
 }
 
+TEST_F(BackupableDBTest, BackgroundThreadCpuPriority) {
+  std::atomic<CpuPriority> priority(CpuPriority::kNormal);
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->SetCallBack(
+      "BackupEngineImpl::Initialize:SetCpuPriority", [&](void* new_priority) {
+        priority.store(*reinterpret_cast<CpuPriority*>(new_priority));
+      });
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->EnableProcessing();
+
+  // 1 thread is easier to test, otherwise, we may not be sure which thread
+  // actually does the work during CreateNewBackup.
+  backupable_options_->max_background_operations = 1;
+  OpenDBAndBackupEngine(true);
+
+  {
+    FillDB(db_.get(), 0, 100);
+
+    // by default, cpu priority is not changed.
+    CreateBackupOptions options;
+    ASSERT_OK(backup_engine_->CreateNewBackup(options, db_.get()));
+
+    ASSERT_EQ(priority, CpuPriority::kNormal);
+  }
+
+  {
+    FillDB(db_.get(), 101, 200);
+
+    // decrease cpu priority from normal to low.
+    CreateBackupOptions options;
+    options.decrease_background_thread_cpu_priority = true;
+    options.background_thread_cpu_priority = CpuPriority::kLow;
+    ASSERT_OK(backup_engine_->CreateNewBackup(options, db_.get()));
+
+    ASSERT_EQ(priority, CpuPriority::kLow);
+  }
+
+  {
+    FillDB(db_.get(), 201, 300);
+
+    // try to upgrade cpu priority back to normal,
+    // the priority should still low.
+    CreateBackupOptions options;
+    options.decrease_background_thread_cpu_priority = true;
+    options.background_thread_cpu_priority = CpuPriority::kNormal;
+    ASSERT_OK(backup_engine_->CreateNewBackup(options, db_.get()));
+
+    ASSERT_EQ(priority, CpuPriority::kLow);
+  }
+
+  {
+    FillDB(db_.get(), 301, 400);
+
+    // decrease cpu priority from low to idle.
+    CreateBackupOptions options;
+    options.decrease_background_thread_cpu_priority = true;
+    options.background_thread_cpu_priority = CpuPriority::kIdle;
+    ASSERT_OK(backup_engine_->CreateNewBackup(options, db_.get()));
+
+    ASSERT_EQ(priority, CpuPriority::kIdle);
+  }
+
+  {
+    FillDB(db_.get(), 301, 400);
+
+    // reset priority to later verify that it's not updated by SetCpuPriority.
+    priority = CpuPriority::kNormal;
+
+    // setting the same cpu priority won't call SetCpuPriority.
+    CreateBackupOptions options;
+    options.decrease_background_thread_cpu_priority = true;
+    options.background_thread_cpu_priority = CpuPriority::kIdle;
+    ASSERT_OK(backup_engine_->CreateNewBackup(options, db_.get()));
+
+    ASSERT_EQ(priority, CpuPriority::kNormal);
+  }
+
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->DisableProcessing();
+  ROCKSDB_NAMESPACE::SyncPoint::GetInstance()->ClearAllCallBacks();
+  CloseDBAndBackupEngine();
+  DestroyDB(dbname_, options_);
+}
+
 }  // anon namespace
 
-} //  namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 int main(int argc, char** argv) {
-  rocksdb::port::InstallStackTraceHandler();
+  ROCKSDB_NAMESPACE::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

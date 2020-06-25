@@ -53,15 +53,15 @@
 #include "db/write_batch_internal.h"
 #include "monitoring/perf_context_imp.h"
 #include "monitoring/statistics.h"
+#include "port/lang.h"
 #include "rocksdb/merge_operator.h"
 #include "util/autovector.h"
 #include "util/cast_util.h"
 #include "util/coding.h"
 #include "util/duplicate_detector.h"
 #include "util/string_util.h"
-#include "util/util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 // anon namespace for file-local types
 namespace {
@@ -334,9 +334,7 @@ void WriteBatch::Clear() {
   wal_term_point_.clear();
 }
 
-uint32_t WriteBatch::Count() const {
-  return WriteBatchInternal::Count(this);
-}
+uint32_t WriteBatch::Count() const { return WriteBatchInternal::Count(this); }
 
 uint32_t WriteBatch::ComputeContentFlags() const {
   auto rv = content_flags_.load(std::memory_order_relaxed);
@@ -1283,7 +1281,7 @@ class MemTableInserter : public WriteBatch::Handler {
         ignore_missing_column_families_(ignore_missing_column_families),
         recovering_log_number_(recovering_log_number),
         log_number_ref_(0),
-        db_(static_cast_with_check<DBImpl, DB>(db)),
+        db_(static_cast_with_check<DBImpl>(db)),
         concurrent_memtable_writes_(concurrent_memtable_writes),
         post_info_created_(false),
         has_valid_writes_(has_valid_writes),
@@ -1830,8 +1828,9 @@ class MemTableInserter : public WriteBatch::Handler {
       // we are now iterating through a prepared section
       rebuilding_trx_ = new WriteBatch();
       rebuilding_trx_seq_ = sequence_;
-      // We only call MarkBeginPrepare once per batch, and unprepared_batch_
-      // is initialized to false by default.
+      // Verify that we have matching MarkBeginPrepare/MarkEndPrepare markers.
+      // unprepared_batch_ should be false because it is false by default, and
+      // gets reset to false in MarkEndPrepare.
       assert(!unprepared_batch_);
       unprepared_batch_ = unprepare;
 
@@ -1856,6 +1855,7 @@ class MemTableInserter : public WriteBatch::Handler {
       db_->InsertRecoveredTransaction(recovering_log_number_, name.ToString(),
                                       rebuilding_trx_, rebuilding_trx_seq_,
                                       batch_cnt, unprepared_batch_);
+      unprepared_batch_ = false;
       rebuilding_trx_ = nullptr;
     } else {
       assert(rebuilding_trx_ == nullptr);
@@ -2089,4 +2089,4 @@ size_t WriteBatchInternal::AppendedByteSize(size_t leftByteSize,
   }
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

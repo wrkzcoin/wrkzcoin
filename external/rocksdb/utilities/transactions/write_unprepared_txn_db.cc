@@ -6,10 +6,11 @@
 #ifndef ROCKSDB_LITE
 
 #include "utilities/transactions/write_unprepared_txn_db.h"
+#include "db/arena_wrapped_db_iter.h"
 #include "rocksdb/utilities/transaction_db.h"
 #include "util/cast_util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 // Instead of reconstructing a Transaction object, and calling rollback on it,
 // we can be more efficient with RollbackRecoveredTransaction by skipping
@@ -20,10 +21,23 @@ Status WriteUnpreparedTxnDB::RollbackRecoveredTransaction(
   assert(rtxn->unprepared_);
   auto cf_map_shared_ptr = WritePreparedTxnDB::GetCFHandleMap();
   auto cf_comp_map_shared_ptr = WritePreparedTxnDB::GetCFComparatorMap();
+  // In theory we could write with disableWAL = true during recovery, and
+  // assume that if we crash again during recovery, we can just replay from
+  // the very beginning. Unfortunately, the XIDs from the application may not
+  // necessarily be unique across restarts, potentially leading to situations
+  // like this:
+  //
+  // BEGIN_PREPARE(unprepared) Put(a) END_PREPARE(xid = 1)
+  // -- crash and recover with Put(a) rolled back as it was not prepared
+  // BEGIN_PREPARE(prepared) Put(b) END_PREPARE(xid = 1)
+  // COMMIT(xid = 1)
+  // -- crash and recover with both a, b
+  //
+  // We could just write the rollback marker, but then we would have to extend
+  // MemTableInserter during recovery to actually do writes into the DB
+  // instead of just dropping the in-memory write batch.
+  //
   WriteOptions w_options;
-  // If we crash during recovery, we can just recalculate and rewrite the
-  // rollback batch.
-  w_options.disableWAL = true;
 
   class InvalidSnapshotReadCallback : public ReadCallback {
    public:
@@ -179,7 +193,7 @@ Status WriteUnpreparedTxnDB::Initialize(
     const std::vector<size_t>& compaction_enabled_cf_indices,
     const std::vector<ColumnFamilyHandle*>& handles) {
   // TODO(lth): Reduce code duplication in this function.
-  auto dbimpl = static_cast_with_check<DBImpl, DB>(GetRootDB());
+  auto dbimpl = static_cast_with_check<DBImpl>(GetRootDB());
   assert(dbimpl != nullptr);
 
   db_impl_->SetSnapshotChecker(new WritePreparedSnapshotChecker(this));
@@ -254,8 +268,7 @@ Status WriteUnpreparedTxnDB::Initialize(
 
     Transaction* real_trx = BeginTransaction(w_options, t_options, nullptr);
     assert(real_trx);
-    auto wupt =
-        static_cast_with_check<WriteUnpreparedTxn, Transaction>(real_trx);
+    auto wupt = static_cast_with_check<WriteUnpreparedTxn>(real_trx);
     wupt->recovered_txn_ = true;
 
     real_trx->SetLogNumber(first_log_number);
@@ -292,7 +305,7 @@ Status WriteUnpreparedTxnDB::Initialize(
     }
   }
   // AddPrepared must be called in order
-  for (auto seq_cnt: ordered_seq_cnt) {
+  for (auto seq_cnt : ordered_seq_cnt) {
     auto seq = seq_cnt.first;
     auto cnt = seq_cnt.second;
     for (size_t i = 0; i < cnt; i++) {
@@ -437,8 +450,7 @@ Iterator* WriteUnpreparedTxnDB::NewIterator(const ReadOptions& options,
     return nullptr;
   }
   min_uncommitted =
-      static_cast_with_check<const SnapshotImpl, const Snapshot>(snapshot)
-          ->min_uncommitted_;
+      static_cast_with_check<const SnapshotImpl>(snapshot)->min_uncommitted_;
 
   auto* cfd = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family)->cfd();
   auto* state =
@@ -450,5 +462,5 @@ Iterator* WriteUnpreparedTxnDB::NewIterator(const ReadOptions& options,
   return db_iter;
 }
 
-}  //  namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 #endif  // ROCKSDB_LITE

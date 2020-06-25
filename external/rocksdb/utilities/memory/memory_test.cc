@@ -15,7 +15,7 @@
 #include "test_util/testutil.h"
 #include "util/string_util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 class MemoryTest : public testing::Test {
  public:
@@ -57,6 +57,8 @@ class MemoryTest : public testing::Test {
     cache_set->clear();
 
     for (auto* db : dbs) {
+      assert(db);
+
       // Cache from DBImpl
       StackableDB* sdb = dynamic_cast<StackableDB*>(db);
       DBImpl* db_impl = dynamic_cast<DBImpl*>(sdb ? sdb->GetBaseDB() : db);
@@ -255,7 +257,7 @@ TEST_F(MemoryTest, MemTableAndTableReadersTotal) {
     delete dbs[i];
   }
 }
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 int main(int argc, char** argv) {
 #if !(defined NDEBUG) || !defined(OS_WIN)

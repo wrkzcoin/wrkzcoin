@@ -8,7 +8,7 @@
 #include "rocksdb/utilities/ldb_cmd.h"
 #include "tools/ldb_cmd_impl.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 LDBOptions::LDBOptions() {}
 
@@ -21,6 +21,8 @@ void LDBCommandRunner::PrintHelp(const LDBOptions& ldb_options,
   ret.append("commands MUST specify --" + LDBCommand::ARG_DB +
              "=<full_path_to_db_directory> when necessary\n");
   ret.append("\n");
+  ret.append("commands can optionally specify --" + LDBCommand::ARG_ENV_URI +
+             "=<uri_of_environment> if necessary\n\n");
   ret.append(
       "The following optional parameters control if keys/values are "
       "input/output as hex or as plain strings:\n");
@@ -44,6 +46,8 @@ void LDBCommandRunner::PrintHelp(const LDBOptions& ldb_options,
              " : DB supports ttl and value is internally timestamp-suffixed\n");
   ret.append("  --" + LDBCommand::ARG_TRY_LOAD_OPTIONS +
              " : Try to load option file from DB.\n");
+  ret.append("  --" + LDBCommand::ARG_DISABLE_CONSISTENCY_CHECKS +
+             " : Set options.force_consistency_checks = false.\n");
   ret.append("  --" + LDBCommand::ARG_IGNORE_UNKNOWN_OPTIONS +
              " : Ignore unknown options when loading option file.\n");
   ret.append("  --" + LDBCommand::ARG_BLOOM_BITS + "=<int,e.g.:14>\n");
@@ -82,6 +86,7 @@ void LDBCommandRunner::PrintHelp(const LDBOptions& ldb_options,
   DBDumperCommand::Help(ret);
   DBLoaderCommand::Help(ret);
   ManifestDumpCommand::Help(ret);
+  FileChecksumDumpCommand::Help(ret);
   ListColumnFamiliesCommand::Help(ret);
   CreateColumnFamilyCommand::Help(ret);
   DropColumnFamilyCommand::Help(ret);
@@ -132,6 +137,6 @@ void LDBTool::Run(int argc, char** argv, Options options,
                                                 ldb_options, column_families);
   exit(error_code);
 }
-} // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 #endif  // ROCKSDB_LITE

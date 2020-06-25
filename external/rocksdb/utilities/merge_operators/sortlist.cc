@@ -2,16 +2,16 @@
 //  This source code is licensed under both the GPLv2 (found in the
 //  COPYING file in the root directory) and Apache 2.0 License
 //  (found in the LICENSE.Apache file in the root directory).
+#include "utilities/merge_operators/sortlist.h"
 #include "rocksdb/merge_operator.h"
 #include "rocksdb/slice.h"
 #include "utilities/merge_operators.h"
-#include "utilities/merge_operators/sortlist.h"
 
-using rocksdb::Logger;
-using rocksdb::MergeOperator;
-using rocksdb::Slice;
+using ROCKSDB_NAMESPACE::Logger;
+using ROCKSDB_NAMESPACE::MergeOperator;
+using ROCKSDB_NAMESPACE::Slice;
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 bool SortList::FullMergeV2(const MergeOperationInput& merge_in,
                            MergeOperationOutput* merge_out) const {
@@ -97,4 +97,4 @@ std::vector<int> SortList::Merge(std::vector<int>& left,
 std::shared_ptr<MergeOperator> MergeOperators::CreateSortOperator() {
   return std::make_shared<SortList>();
 }
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

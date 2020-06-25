@@ -9,7 +9,7 @@
 #include "table/block_based/block_based_table_reader.h"
 #include "util/compression.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 Status UncompressionDictReader::Create(
     const BlockBasedTable* table, FilePrefetchBuffer* prefetch_buffer,
@@ -102,12 +102,12 @@ size_t UncompressionDictReader::ApproximateMemoryUsage() const {
                      : 0;
 
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
-    usage += malloc_usable_size(const_cast<UncompressionDictReader*>(this));
+  usage += malloc_usable_size(const_cast<UncompressionDictReader*>(this));
 #else
-    usage += sizeof(*this);
+  usage += sizeof(*this);
 #endif  // ROCKSDB_MALLOC_USABLE_SIZE
 
-    return usage;
+  return usage;
 }
 
 bool UncompressionDictReader::cache_dictionary_blocks() const {
@@ -117,4 +117,4 @@ bool UncompressionDictReader::cache_dictionary_blocks() const {
   return table_->get_rep()->table_options.cache_index_and_filter_blocks;
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

@@ -5,19 +5,19 @@
 
 package org.rocksdb;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.rocksdb.util.BytewiseComparator;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
 
 public class SstFileReaderTest {
   private static final String SST_FILE_NAME = "test.sst";
@@ -48,9 +48,10 @@ public class SstFileReaderTest {
 
   @Rule public TemporaryFolder parentFolder = new TemporaryFolder();
 
-  enum OpType { PUT, PUT_BYTES, MERGE, MERGE_BYTES, DELETE, DELETE_BYTES}
+  enum OpType { PUT, PUT_BYTES, MERGE, MERGE_BYTES, DELETE, DELETE_BYTES }
 
-  private File newSstFile(final List<KeyValueWithOp> keyValues) throws IOException, RocksDBException {
+  private File newSstFile(final List<KeyValueWithOp> keyValues)
+      throws IOException, RocksDBException {
     final EnvOptions envOptions = new EnvOptions();
     final StringAppendOperator stringAppendOperator = new StringAppendOperator();
     final Options options = new Options().setMergeOperator(stringAppendOperator);
@@ -105,15 +106,11 @@ public class SstFileReaderTest {
     final List<KeyValueWithOp> keyValues = new ArrayList<>();
     keyValues.add(new KeyValueWithOp("key1", "value1", OpType.PUT));
 
-
     final File sstFile = newSstFile(keyValues);
-    try(final StringAppendOperator stringAppendOperator =
-            new StringAppendOperator();
-        final Options options = new Options()
-            .setCreateIfMissing(true)
-            .setMergeOperator(stringAppendOperator);
-        final SstFileReader reader = new SstFileReader(options)
-    ) {
+    try (final StringAppendOperator stringAppendOperator = new StringAppendOperator();
+         final Options options =
+             new Options().setCreateIfMissing(true).setMergeOperator(stringAppendOperator);
+         final SstFileReader reader = new SstFileReader(options)) {
       // Open the sst file and iterator
       reader.open(sstFile.getAbsolutePath());
       final ReadOptions readOptions = new ReadOptions();
@@ -131,7 +128,28 @@ public class SstFileReaderTest {
       // Check key and value
       assertThat(iterator.key()).isEqualTo("key1".getBytes());
       assertThat(iterator.value()).isEqualTo("value1".getBytes());
+
+      ByteBuffer direct = ByteBuffer.allocateDirect(128);
+      direct.put("key1".getBytes()).flip();
+      iterator.seek(direct);
+      assertThat(direct.position()).isEqualTo(4);
+      assertThat(direct.limit()).isEqualTo(4);
+
+      assertThat(iterator.isValid()).isTrue();
+      assertThat(iterator.key()).isEqualTo("key1".getBytes());
+      assertThat(iterator.value()).isEqualTo("value1".getBytes());
+
+      direct.clear();
+      assertThat(iterator.key(direct)).isEqualTo("key1".getBytes().length);
+      byte[] dst = new byte["key1".getBytes().length];
+      direct.get(dst);
+      assertThat(new String(dst)).isEqualTo("key1");
+
+      direct.clear();
+      assertThat(iterator.value(direct)).isEqualTo("value1".getBytes().length);
+      dst = new byte["value1".getBytes().length];
+      direct.get(dst);
+      assertThat(new String(dst)).isEqualTo("value1");
     }
   }
-
 }

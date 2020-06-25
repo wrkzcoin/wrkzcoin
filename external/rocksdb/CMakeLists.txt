@@ -40,8 +40,6 @@ find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
   message(STATUS "Found ccache package... Activating...")
   set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CCACHE_PROGRAM}")
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
 endif()
 
 project(rocksdb)
@@ -76,6 +74,15 @@ if(MSVC)
   option(WITH_GFLAGS "build with GFlags" OFF)
   option(WITH_XPRESS "build with windows built in compression" OFF)
   include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty.inc)
+
+  if(WITH_LZ4)
+    message(STATUS "LZ4 library is enabled")
+    SET(LZ4_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lz4")
+    SET(LZ4_LIBRARIES lz4)
+    add_definitions(-DLZ4)
+    include_directories(${LZ4_INCLUDE_DIR})
+    list(APPEND THIRDPARTY_LIBS ${LZ4_LIBRARIES})
+  endif()
 
   if(WITH_ZSTD)
     SET(ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../zstd")
@@ -136,9 +143,12 @@ else()
   endif()
 
   if(WITH_LZ4)
-    find_package(lz4 REQUIRED)
+    message(STATUS "LZ4 library is enabled")
+    SET(LZ4_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lz4")
+    SET(LZ4_LIBRARIES lz4)
     add_definitions(-DLZ4)
-    list(APPEND THIRDPARTY_LIBS lz4::lz4)
+    include_directories(${LZ4_INCLUDE_DIR})
+    list(APPEND THIRDPARTY_LIBS ${LZ4_LIBRARIES})
   endif()
 
   if(WITH_ZSTD)
@@ -154,7 +164,6 @@ else()
 endif()
 
 string(TIMESTAMP GIT_DATE_TIME "%Y/%m/%d %H:%M:%S" UTC)
-set(GIT_DATE_TIME "${GIT_DATE_TIME}" CACHE STRING "the time we first built rocksdb")
 
 find_package(Git)
 
@@ -240,11 +249,11 @@ endif(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
 option(PORTABLE "build a portable binary" ON)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
-        CHECK_C_COMPILER_FLAG("-march=armv8-a+crc+crypto" HAS_ARMV8_CRC)
+        CHECK_C_COMPILER_FLAG("-march=armv8-a+crc" HAS_ARMV8_CRC)
   if(HAS_ARMV8_CRC)
     message(STATUS " HAS_ARMV8_CRC yes")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a+crc+crypto -Wno-unused-function")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+crc+crypto -Wno-unused-function")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a+crc -Wno-unused-function")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+crc -Wno-unused-function")
   endif(HAS_ARMV8_CRC)
 endif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
 
@@ -425,7 +434,7 @@ endif()
 option(ROCKSDB_LITE "Build RocksDBLite version" OFF)
 if(ROCKSDB_LITE)
   add_definitions(-DROCKSDB_LITE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -Os")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Cygwin")
@@ -528,9 +537,14 @@ find_package(Threads REQUIRED)
 # Main library source code
 
 set(SOURCES
+        cache/cache.cc
         cache/clock_cache.cc
         cache/lru_cache.cc
         cache/sharded_cache.cc
+        db/arena_wrapped_db_iter.cc
+        db/blob/blob_file_addition.cc
+        db/blob/blob_file_garbage.cc
+        db/blob/blob_file_meta.cc
         db/builder.cc
         db/c.cc
         db/column_family.cc
@@ -584,6 +598,7 @@ set(SOURCES
         db/trim_history_scheduler.cc
         db/version_builder.cc
         db/version_edit.cc
+        db/version_edit_handler.cc
         db/version_set.cc
         db/wal_manager.cc
         db/write_batch.cc
@@ -594,17 +609,25 @@ set(SOURCES
         env/env_chroot.cc
         env/env_encryption.cc
         env/env_hdfs.cc
+        env/file_system.cc
         env/mock_env.cc
         file/delete_scheduler.cc
+        file/file_prefetch_buffer.cc
         file/file_util.cc
         file/filename.cc
+        file/random_access_file_reader.cc
+        file/read_write_util.cc
+        file/readahead_raf.cc
+        file/sequence_file_reader.cc
         file/sst_file_manager_impl.cc
+        file/writable_file_writer.cc
         logging/auto_roll_logger.cc
         logging/event_logger.cc
         logging/log_buffer.cc
         memory/arena.cc
         memory/concurrent_arena.cc
         memory/jemalloc_nodump_allocator.cc
+        memory/memkind_kmem_allocator.cc
         memtable/alloc_tracker.cc
         memtable/hash_linklist_rep.cc
         memtable/hash_skiplist_rep.cc
@@ -629,23 +652,32 @@ set(SOURCES
         options/options.cc
         options/options_helper.cc
         options/options_parser.cc
-        options/options_sanity_check.cc
         port/stack_trace.cc
         table/adaptive/adaptive_table_factory.cc
+        table/block_based/binary_search_index_reader.cc
         table/block_based/block.cc
         table/block_based/block_based_filter_block.cc
         table/block_based/block_based_table_builder.cc
         table/block_based/block_based_table_factory.cc
+        table/block_based/block_based_table_iterator.cc
         table/block_based/block_based_table_reader.cc
         table/block_based/block_builder.cc
+        table/block_based/block_prefetcher.cc
         table/block_based/block_prefix_index.cc
         table/block_based/data_block_hash_index.cc
         table/block_based/data_block_footer.cc
         table/block_based/filter_block_reader_common.cc
+        table/block_based/filter_policy.cc
         table/block_based/flush_block_policy.cc
         table/block_based/full_filter_block.cc
+        table/block_based/hash_index_reader.cc
         table/block_based/index_builder.cc
+        table/block_based/index_reader_common.cc
+        table/block_based/parsed_full_filter_block.cc
         table/block_based/partitioned_filter_block.cc
+        table/block_based/partitioned_index_iterator.cc
+        table/block_based/partitioned_index_reader.cc
+        table/block_based/reader_common.cc
         table/block_based/uncompression_dict_reader.cc
         table/block_fetcher.cc
         table/cuckoo/cuckoo_table_builder.cc
@@ -672,7 +704,6 @@ set(SOURCES
         test_util/testutil.cc
         test_util/transaction_test_util.cc
         tools/block_cache_analyzer/block_cache_trace_analyzer.cc
-        tools/db_bench_tool.cc
         tools/dump/db_dump_tool.cc
         tools/ldb_cmd.cc
         tools/ldb_tool.cc
@@ -680,7 +711,6 @@ set(SOURCES
         tools/trace_analyzer_tool.cc
         trace_replay/trace_replay.cc
         trace_replay/block_cache_tracer.cc
-        util/bloom.cc
         util/coding.cc
         util/compaction_job_stats_impl.cc
         util/comparator.cc
@@ -688,13 +718,12 @@ set(SOURCES
         util/concurrent_task_limiter_impl.cc
         util/crc32c.cc
         util/dynamic_bloom.cc
-        util/file_reader_writer.cc
-        util/filter_policy.cc
         util/hash.cc
         util/murmurhash.cc
         util/random.cc
         util/rate_limiter.cc
         util/slice.cc
+        util/file_checksum_helper.cc
         util/status.cc
         util/string_util.cc
         util/thread_local.cc
@@ -799,6 +828,7 @@ else()
   list(APPEND SOURCES
     port/port_posix.cc
     env/env_posix.cc
+    env/fs_posix.cc
     env/io_posix.cc)
 endif()
 
@@ -936,6 +966,9 @@ if(WITH_TESTS)
   set(TESTS
         cache/cache_test.cc
         cache/lru_cache_test.cc
+        db/blob/blob_file_addition_test.cc
+        db/blob/blob_file_garbage_test.cc
+        db/blob/db_blob_index_test.cc
         db/column_family_test.cc
         db/compact_files_test.cc
         db/compaction/compaction_job_stats_test.cc
@@ -946,7 +979,7 @@ if(WITH_TESTS)
         db/corruption_test.cc
         db/cuckoo_table_db_test.cc
         db/db_basic_test.cc
-        db/db_blob_index_test.cc
+        db/db_with_timestamp_basic_test.cc
         db/db_block_cache_test.cc
         db/db_bloom_filter_test.cc
         db/db_compaction_filter_test.cc
@@ -972,12 +1005,14 @@ if(WITH_TESTS)
         db/db_tailing_iter_test.cc
         db/db_test.cc
         db/db_test2.cc
+        db/db_logical_block_size_cache_test.cc
         db/db_universal_compaction_test.cc
         db/db_wal_test.cc
+        db/db_with_timestamp_compaction_test.cc
         db/db_write_test.cc
         db/dbformat_test.cc
         db/deletefile_test.cc
-        db/error_handler_test.cc
+        db/error_handler_fs_test.cc
         db/obsolete_files_test.cc
         db/external_sst_file_basic_test.cc
         db/external_sst_file_test.cc
@@ -1008,12 +1043,15 @@ if(WITH_TESTS)
         db/write_controller_test.cc
         env/env_basic_test.cc
         env/env_test.cc
+        env/io_posix_test.cc
         env/mock_env_test.cc
         file/delete_scheduler_test.cc
+        file/random_access_file_reader_test.cc
         logging/auto_roll_logger_test.cc
         logging/env_logger_test.cc
         logging/event_logger_test.cc
         memory/arena_test.cc
+        memory/memkind_kmem_allocator_test.cc
         memtable/inlineskiplist_test.cc
         memtable/skiplist_test.cc
         memtable/write_buffer_manager_test.cc
@@ -1034,6 +1072,7 @@ if(WITH_TESTS)
         table/merger_test.cc
         table/sst_file_reader_test.cc
         table/table_test.cc
+        table/block_fetcher_test.cc
         tools/block_cache_analyzer/block_cache_trace_analyzer_test.cc
         tools/ldb_cmd_test.cc
         tools/reduce_levels_test.cc
@@ -1043,17 +1082,22 @@ if(WITH_TESTS)
         util/bloom_test.cc
         util/coding_test.cc
         util/crc32c_test.cc
+        util/defer_test.cc
         util/dynamic_bloom_test.cc
         util/file_reader_writer_test.cc
         util/filelock_test.cc
         util/hash_test.cc
         util/heap_test.cc
+        util/random_test.cc
         util/rate_limiter_test.cc
         util/repeatable_thread_test.cc
+        util/slice_test.cc
         util/slice_transform_test.cc
         util/timer_queue_test.cc
+        util/timer_test.cc
         util/thread_list_test.cc
         util/thread_local_test.cc
+        util/work_queue_test.cc
         utilities/backupable/backupable_db_test.cc
         utilities/blob_db/blob_db_test.cc
         utilities/cassandra/cassandra_functional_test.cc
@@ -1073,6 +1117,7 @@ if(WITH_TESTS)
         utilities/table_properties_collectors/compact_on_deletion_collector_test.cc
         utilities/transactions/optimistic_transaction_test.cc
         utilities/transactions/transaction_test.cc
+        utilities/transactions/transaction_lock_mgr_test.cc
         utilities/transactions/write_prepared_transaction_test.cc
         utilities/transactions/write_unprepared_transaction_test.cc
         utilities/ttl/ttl_test.cc

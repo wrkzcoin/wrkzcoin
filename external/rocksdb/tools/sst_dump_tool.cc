@@ -9,14 +9,17 @@
 #include "tools/sst_dump_tool_imp.h"
 
 #include <cinttypes>
+#include <chrono>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <sstream>
 #include <vector>
 
+#include "db/blob/blob_index.h"
 #include "db/memtable.h"
 #include "db/write_batch_internal.h"
+#include "env/composite_env_wrapper.h"
 #include "options/cf_options.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
@@ -38,15 +41,16 @@
 
 #include "port/port.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 SstFileDumper::SstFileDumper(const Options& options,
                              const std::string& file_path, bool verify_checksum,
-                             bool output_hex)
+                             bool output_hex, bool decode_blob_index)
     : file_name_(file_path),
       read_num_(0),
       verify_checksum_(verify_checksum),
       output_hex_(output_hex),
+      decode_blob_index_(decode_blob_index),
       options_(options),
       ioptions_(options_),
       moptions_(ColumnFamilyOptions(options_)),
@@ -89,7 +93,8 @@ Status SstFileDumper::GetTableReader(const std::string& file_path) {
     s = options_.env->GetFileSize(file_path, &file_size);
   }
 
-  file_.reset(new RandomAccessFileReader(std::move(file), file_path));
+  file_.reset(new RandomAccessFileReader(NewLegacyRandomAccessFileWrapper(file),
+                                         file_path));
 
   if (s.ok()) {
     s = ReadFooterFromFile(file_.get(), nullptr /* prefetch_buffer */,
@@ -104,7 +109,8 @@ Status SstFileDumper::GetTableReader(const std::string& file_path) {
         magic_number == kLegacyPlainTableMagicNumber) {
       soptions_.use_mmap_reads = true;
       options_.env->NewRandomAccessFile(file_path, &file, soptions_);
-      file_.reset(new RandomAccessFileReader(std::move(file), file_path));
+      file_.reset(new RandomAccessFileReader(
+          NewLegacyRandomAccessFileWrapper(file), file_path));
     }
     options_.comparator = &internal_comparator_;
     // For old sst format, ReadTableProperties might fail but file can be read
@@ -126,20 +132,22 @@ Status SstFileDumper::NewTableReader(
     const ImmutableCFOptions& /*ioptions*/, const EnvOptions& /*soptions*/,
     const InternalKeyComparator& /*internal_comparator*/, uint64_t file_size,
     std::unique_ptr<TableReader>* /*table_reader*/) {
+  auto t_opt = TableReaderOptions(ioptions_, moptions_.prefix_extractor.get(),
+                                  soptions_, internal_comparator_);
+  // Allow open file with global sequence number for backward compatibility.
+  t_opt.largest_seqno = kMaxSequenceNumber;
+
   // We need to turn off pre-fetching of index and filter nodes for
   // BlockBasedTable
   if (BlockBasedTableFactory::kName == options_.table_factory->Name()) {
-    return options_.table_factory->NewTableReader(
-        TableReaderOptions(ioptions_, moptions_.prefix_extractor.get(),
-                           soptions_, internal_comparator_),
-        std::move(file_), file_size, &table_reader_, /*enable_prefetch=*/false);
+    return options_.table_factory->NewTableReader(t_opt, std::move(file_),
+                                                  file_size, &table_reader_,
+                                                  /*enable_prefetch=*/false);
   }
 
   // For all other factory implementation
-  return options_.table_factory->NewTableReader(
-      TableReaderOptions(ioptions_, moptions_.prefix_extractor.get(), soptions_,
-                         internal_comparator_),
-      std::move(file_), file_size, &table_reader_);
+  return options_.table_factory->NewTableReader(t_opt, std::move(file_),
+                                                file_size, &table_reader_);
 }
 
 Status SstFileDumper::VerifyChecksum() {
@@ -150,7 +158,7 @@ Status SstFileDumper::VerifyChecksum() {
 
 Status SstFileDumper::DumpTable(const std::string& out_filename) {
   std::unique_ptr<WritableFile> out_file;
-  Env* env = Env::Default();
+  Env* env = options_.env;
   env->NewWritableFile(out_filename, &out_file, soptions_);
   Status s = table_reader_->DumpTable(out_file.get());
   out_file->Close();
@@ -158,13 +166,15 @@ Status SstFileDumper::DumpTable(const std::string& out_filename) {
 }
 
 uint64_t SstFileDumper::CalculateCompressedTableSize(
-    const TableBuilderOptions& tb_options, size_t block_size) {
+    const TableBuilderOptions& tb_options, size_t block_size,
+    uint64_t* num_data_blocks) {
   std::unique_ptr<WritableFile> out_file;
-  std::unique_ptr<Env> env(NewMemEnv(Env::Default()));
+  std::unique_ptr<Env> env(NewMemEnv(options_.env));
   env->NewWritableFile(testFileName, &out_file, soptions_);
   std::unique_ptr<WritableFileWriter> dest_writer;
   dest_writer.reset(
-      new WritableFileWriter(std::move(out_file), testFileName, soptions_));
+      new WritableFileWriter(NewLegacyWritableFileWrapper(std::move(out_file)),
+                             testFileName, soptions_));
   BlockBasedTableOptions table_options;
   table_options.block_size = block_size;
   BlockBasedTableFactory block_based_tf(table_options);
@@ -177,11 +187,11 @@ uint64_t SstFileDumper::CalculateCompressedTableSize(
       ReadOptions(), moptions_.prefix_extractor.get(), /*arena=*/nullptr,
       /*skip_filters=*/false, TableReaderCaller::kSSTDumpTool));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    if (!iter->status().ok()) {
-      fputs(iter->status().ToString().c_str(), stderr);
-      exit(1);
-    }
     table_builder->Add(iter->key(), iter->value());
+  }
+  if (!iter->status().ok()) {
+    fputs(iter->status().ToString().c_str(), stderr);
+    exit(1);
   }
   Status s = table_builder->Finish();
   if (!s.ok()) {
@@ -189,6 +199,8 @@ uint64_t SstFileDumper::CalculateCompressedTableSize(
     exit(1);
   }
   uint64_t size = table_builder->FileSize();
+  assert(num_data_blocks != nullptr);
+  *num_data_blocks = table_builder->GetTableProperties().num_data_blocks;
   env->DeleteFile(testFileName);
   return size;
 }
@@ -196,30 +208,21 @@ uint64_t SstFileDumper::CalculateCompressedTableSize(
 int SstFileDumper::ShowAllCompressionSizes(
     size_t block_size,
     const std::vector<std::pair<CompressionType, const char*>>&
-        compression_types) {
-  ReadOptions read_options;
-  Options opts;
-  const ImmutableCFOptions imoptions(opts);
-  const ColumnFamilyOptions cfo(opts);
-  const MutableCFOptions moptions(cfo);
-  rocksdb::InternalKeyComparator ikc(opts.comparator);
-  std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
-      block_based_table_factories;
+      compression_types,
+    int32_t compress_level_from,
+    int32_t compress_level_to) {
 
   fprintf(stdout, "Block Size: %" ROCKSDB_PRIszt "\n", block_size);
-
   for (auto& i : compression_types) {
     if (CompressionTypeSupported(i.first)) {
+      fprintf(stdout, "Compression: %-24s\n", i.second);
       CompressionOptions compress_opt;
-      std::string column_family_name;
-      int unknown_level = -1;
-      TableBuilderOptions tb_opts(
-          imoptions, moptions, ikc, &block_based_table_factories, i.first,
-          0 /* sample_for_compression */, compress_opt,
-          false /* skip_filters */, column_family_name, unknown_level);
-      uint64_t file_size = CalculateCompressedTableSize(tb_opts, block_size);
-      fprintf(stdout, "Compression: %s", i.second);
-      fprintf(stdout, " Size: %" PRIu64 "\n", file_size);
+      for(int32_t j = compress_level_from; j <= compress_level_to;
+          j++) {
+        fprintf(stdout, "Compression level: %d", j);
+        compress_opt.level = j;
+        ShowCompressionSize(block_size, i.first, compress_opt);
+      }
     } else {
       fprintf(stdout, "Unsupported compression type: %s.\n", i.second);
     }
@@ -227,12 +230,81 @@ int SstFileDumper::ShowAllCompressionSizes(
   return 0;
 }
 
+int SstFileDumper::ShowCompressionSize(
+    size_t block_size,
+    CompressionType compress_type,
+    const CompressionOptions& compress_opt) {
+  ReadOptions read_options;
+  Options opts;
+  opts.statistics = ROCKSDB_NAMESPACE::CreateDBStatistics();
+  opts.statistics->set_stats_level(StatsLevel::kAll);
+  const ImmutableCFOptions imoptions(opts);
+  const ColumnFamilyOptions cfo(opts);
+  const MutableCFOptions moptions(cfo);
+  ROCKSDB_NAMESPACE::InternalKeyComparator ikc(opts.comparator);
+  std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
+      block_based_table_factories;
+
+  std::string column_family_name;
+  int unknown_level = -1;
+  TableBuilderOptions tb_opts(
+      imoptions, moptions, ikc, &block_based_table_factories, compress_type,
+      0 /* sample_for_compression */, compress_opt,
+      false /* skip_filters */, column_family_name, unknown_level);
+  uint64_t num_data_blocks = 0;
+  std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+  uint64_t file_size =
+      CalculateCompressedTableSize(tb_opts, block_size, &num_data_blocks);
+  std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+  fprintf(stdout, " Size: %10" PRIu64, file_size);
+  fprintf(stdout, " Blocks: %6" PRIu64, num_data_blocks);
+  fprintf(stdout, " Time Taken: %10s microsecs",
+          std::to_string(std::chrono::duration_cast<std::chrono::microseconds>
+                         (end-start).count()).c_str());
+  const uint64_t compressed_blocks =
+       opts.statistics->getAndResetTickerCount(NUMBER_BLOCK_COMPRESSED);
+  const uint64_t not_compressed_blocks =
+       opts.statistics->getAndResetTickerCount(NUMBER_BLOCK_NOT_COMPRESSED);
+  // When the option enable_index_compression is true,
+  // NUMBER_BLOCK_COMPRESSED is incremented for index block(s).
+  if ((compressed_blocks + not_compressed_blocks) > num_data_blocks) {
+     num_data_blocks = compressed_blocks + not_compressed_blocks;
+  }
+
+  const uint64_t ratio_not_compressed_blocks =
+       (num_data_blocks - compressed_blocks) - not_compressed_blocks;
+  const double compressed_pcnt =
+       (0 == num_data_blocks) ? 0.0
+                              : ((static_cast<double>(compressed_blocks) /
+                                  static_cast<double>(num_data_blocks)) *
+                                100.0);
+  const double ratio_not_compressed_pcnt =
+       (0 == num_data_blocks)
+          ? 0.0
+          : ((static_cast<double>(ratio_not_compressed_blocks) /
+              static_cast<double>(num_data_blocks)) *
+              100.0);
+  const double not_compressed_pcnt =
+       (0 == num_data_blocks)
+           ? 0.0
+          : ((static_cast<double>(not_compressed_blocks) /
+              static_cast<double>(num_data_blocks)) *
+             100.0);
+  fprintf(stdout, " Compressed: %6" PRIu64 " (%5.1f%%)", compressed_blocks,
+          compressed_pcnt);
+  fprintf(stdout, " Not compressed (ratio): %6" PRIu64 " (%5.1f%%)",
+          ratio_not_compressed_blocks, ratio_not_compressed_pcnt);
+  fprintf(stdout, " Not compressed (abort): %6" PRIu64 " (%5.1f%%)\n",
+          not_compressed_blocks, not_compressed_pcnt);
+  return 0;
+}
+
 Status SstFileDumper::ReadTableProperties(uint64_t table_magic_number,
                                           RandomAccessFileReader* file,
                                           uint64_t file_size) {
   TableProperties* table_properties = nullptr;
-  Status s = rocksdb::ReadTableProperties(file, file_size, table_magic_number,
-                                          ioptions_, &table_properties);
+  Status s = ROCKSDB_NAMESPACE::ReadTableProperties(
+      file, file_size, table_magic_number, ioptions_, &table_properties);
   if (s.ok()) {
     table_properties_.reset(table_properties);
   } else {
@@ -338,9 +410,22 @@ Status SstFileDumper::ReadSequential(bool print_kv, uint64_t read_num,
     }
 
     if (print_kv) {
-      fprintf(stdout, "%s => %s\n",
-          ikey.DebugString(output_hex_).c_str(),
-          value.ToString(output_hex_).c_str());
+      if (!decode_blob_index_ || ikey.type != kTypeBlobIndex) {
+        fprintf(stdout, "%s => %s\n", ikey.DebugString(output_hex_).c_str(),
+                value.ToString(output_hex_).c_str());
+      } else {
+        BlobIndex blob_index;
+
+        const Status s = blob_index.DecodeFrom(value);
+        if (!s.ok()) {
+          fprintf(stderr, "%s => error decoding blob index\n",
+                  ikey.DebugString(output_hex_).c_str());
+          continue;
+        }
+
+        fprintf(stdout, "%s => %s\n", ikey.DebugString(output_hex_).c_str(),
+                blob_index.DebugString(output_hex_).c_str());
+      }
     }
   }
 
@@ -364,21 +449,28 @@ Status SstFileDumper::ReadTableProperties(
 namespace {
 
 void print_help() {
-  fprintf(stderr,
-          R"(sst_dump --file=<data_dir_OR_sst_file> [--command=check|scan|raw]
+  fprintf(
+      stderr,
+      R"(sst_dump --file=<data_dir_OR_sst_file> [--command=check|scan|raw|recompress]
     --file=<data_dir_OR_sst_file>
       Path to SST file or directory containing SST files
 
+    --env_uri=<uri of underlying Env>
+      URI of underlying Env
+
     --command=check|scan|raw|verify
-        check: Iterate over entries in files but dont print anything except if an error is encounterd (default command)
+        check: Iterate over entries in files but don't print anything except if an error is encountered (default command)
         scan: Iterate over entries in files and print them to screen
         raw: Dump all the table contents to <file_name>_dump.txt
-        verify: Iterate all the blocks in files verifying checksum to detect possible coruption but dont print anything except if a corruption is encountered
+        verify: Iterate all the blocks in files verifying checksum to detect possible corruption but don't print anything except if a corruption is encountered
         recompress: reports the SST file size if recompressed with different
                     compression types
 
     --output_hex
       Can be combined with scan command to print the keys and values in Hex
+
+    --decode_blob_index
+      Decode blob indexes and print them in a human-readable format during scans.
 
     --from=<user_key>
       Key to start reading from when executing check|scan
@@ -415,12 +507,21 @@ void print_help() {
     --parse_internal_key=<0xKEY>
       Convenience option to parse an internal key on the command line. Dumps the
       internal key in hex format {'key' @ SN: type}
+
+    --compression_level_from=<compression_level>
+      Compression level to start compressing when executing recompress. One compression type
+      and compression_level_to must also be specified
+
+    --compression_level_to=<compression_level>
+      Compression level to stop compressing when executing recompress. One compression type
+      and compression_level_from must also be specified
 )");
 }
 
 }  // namespace
 
 int SSTDumpTool::Run(int argc, char** argv, Options options) {
+  const char* env_uri = nullptr;
   const char* dir_or_file = nullptr;
   uint64_t read_num = std::numeric_limits<uint64_t>::max();
   std::string command;
@@ -429,6 +530,7 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
   uint64_t n;
   bool verify_checksum = false;
   bool output_hex = false;
+  bool decode_blob_index = false;
   bool input_key_hex = false;
   bool has_from = false;
   bool has_to = false;
@@ -436,9 +538,14 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
   bool show_properties = false;
   bool show_summary = false;
   bool set_block_size = false;
+  bool has_compression_level_from = false;
+  bool has_compression_level_to = false;
+  bool has_specified_compression_types = false;
   std::string from_key;
   std::string to_key;
   std::string block_size_str;
+  std::string compression_level_from_str;
+  std::string compression_level_to_str;
   size_t block_size = 0;
   std::vector<std::pair<CompressionType, const char*>> compression_types;
   uint64_t total_num_files = 0;
@@ -446,16 +553,21 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
   uint64_t total_data_block_size = 0;
   uint64_t total_index_block_size = 0;
   uint64_t total_filter_block_size = 0;
+  int32_t compress_level_from = CompressionOptions::kDefaultCompressionLevel;
+  int32_t compress_level_to = CompressionOptions::kDefaultCompressionLevel;
   for (int i = 1; i < argc; i++) {
-    if (strncmp(argv[i], "--file=", 7) == 0) {
+    if (strncmp(argv[i], "--env_uri=", 10) == 0) {
+      env_uri = argv[i] + 10;
+    } else if (strncmp(argv[i], "--file=", 7) == 0) {
       dir_or_file = argv[i] + 7;
     } else if (strcmp(argv[i], "--output_hex") == 0) {
       output_hex = true;
+    } else if (strcmp(argv[i], "--decode_blob_index") == 0) {
+      decode_blob_index = true;
     } else if (strcmp(argv[i], "--input_key_hex") == 0) {
       input_key_hex = true;
-    } else if (sscanf(argv[i],
-               "--read_num=%lu%c",
-               (unsigned long*)&n, &junk) == 1) {
+    } else if (sscanf(argv[i], "--read_num=%lu%c", (unsigned long*)&n, &junk) ==
+               1) {
       read_num = n;
     } else if (strcmp(argv[i], "--verify_checksum") == 0) {
       verify_checksum = true;
@@ -487,6 +599,7 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
       std::string compression_types_csv = argv[i] + 20;
       std::istringstream iss(compression_types_csv);
       std::string compression_type;
+      has_specified_compression_types = true;
       while (std::getline(iss, compression_type, ',')) {
         auto iter = std::find_if(
             kCompressions.begin(), kCompressions.end(),
@@ -503,14 +616,14 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
     } else if (strncmp(argv[i], "--parse_internal_key=", 21) == 0) {
       std::string in_key(argv[i] + 21);
       try {
-        in_key = rocksdb::LDBCommand::HexToString(in_key);
+        in_key = ROCKSDB_NAMESPACE::LDBCommand::HexToString(in_key);
       } catch (...) {
         std::cerr << "ERROR: Invalid key input '"
           << in_key
           << "' Use 0x{hex representation of internal rocksdb key}" << std::endl;
         return -1;
       }
-      Slice sl_key = rocksdb::Slice(in_key);
+      Slice sl_key = ROCKSDB_NAMESPACE::Slice(in_key);
       ParsedInternalKey ikey;
       int retc = 0;
       if (!ParseInternalKey(sl_key, &ikey)) {
@@ -520,11 +633,40 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
       }
       fprintf(stdout, "key=%s\n", ikey.DebugString(true).c_str());
       return retc;
-    } else {
+    } else if (strncmp(argv[i], "--compression_level_from=", 25) == 0) {
+      compression_level_from_str = argv[i] + 25;
+      has_compression_level_from = true;
+      std::istringstream iss(compression_level_from_str);
+      iss >> compress_level_from;
+      if (iss.fail()) {
+        fprintf(stderr, "compression_level_from must be numeric\n");
+        exit(1);
+      }
+    } else if (strncmp(argv[i], "--compression_level_to=", 22) == 0) {
+      compression_level_to_str = argv[i]+23 ;
+      has_compression_level_to = true;
+      std::istringstream iss(compression_level_to_str);
+      iss >> compress_level_to;
+      if (iss.fail()) {
+        fprintf(stderr, "compression_level_to must be numeric\n");
+        exit(1);
+      }
+    }else {
       fprintf(stderr, "Unrecognized argument '%s'\n\n", argv[i]);
       print_help();
       exit(1);
     }
+  }
+
+  if(has_compression_level_from && has_compression_level_to) {
+    if(!has_specified_compression_types || compression_types.size() != 1) {
+      fprintf(stderr, "Specify one compression type.\n\n");
+      exit(1);
+    }
+  } else if(has_compression_level_from || has_compression_level_to) {
+    fprintf(stderr, "Specify both --compression_level_from and "
+                     "--compression_level_to.\n\n");
+    exit(1);
   }
 
   if (use_from_as_prefix && has_from) {
@@ -534,10 +676,10 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
 
   if (input_key_hex) {
     if (has_from || use_from_as_prefix) {
-      from_key = rocksdb::LDBCommand::HexToString(from_key);
+      from_key = ROCKSDB_NAMESPACE::LDBCommand::HexToString(from_key);
     }
     if (has_to) {
-      to_key = rocksdb::LDBCommand::HexToString(to_key);
+      to_key = ROCKSDB_NAMESPACE::LDBCommand::HexToString(to_key);
     }
   }
 
@@ -547,9 +689,26 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
     exit(1);
   }
 
+  std::shared_ptr<ROCKSDB_NAMESPACE::Env> env_guard;
+
+  // If caller of SSTDumpTool::Run(...) does not specify a different env other
+  // than Env::Default(), then try to load custom env based on dir_or_file.
+  // Otherwise, the caller is responsible for creating custom env.
+  if (!options.env || options.env == ROCKSDB_NAMESPACE::Env::Default()) {
+    Env* env = Env::Default();
+    Status s = Env::LoadEnv(env_uri ? env_uri : "", &env, &env_guard);
+    if (!s.ok() && !s.IsNotFound()) {
+      fprintf(stderr, "LoadEnv: %s\n", s.ToString().c_str());
+      exit(1);
+    }
+    options.env = env;
+  } else {
+    fprintf(stdout, "options.env is %p\n", options.env);
+  }
+
   std::vector<std::string> filenames;
-  rocksdb::Env* env = options.env;
-  rocksdb::Status st = env->GetChildren(dir_or_file, &filenames);
+  ROCKSDB_NAMESPACE::Env* env = options.env;
+  ROCKSDB_NAMESPACE::Status st = env->GetChildren(dir_or_file, &filenames);
   bool dir = true;
   if (!st.ok()) {
     filenames.clear();
@@ -558,8 +717,8 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
   }
 
   fprintf(stdout, "from [%s] to [%s]\n",
-      rocksdb::Slice(from_key).ToString(true).c_str(),
-      rocksdb::Slice(to_key).ToString(true).c_str());
+          ROCKSDB_NAMESPACE::Slice(from_key).ToString(true).c_str(),
+          ROCKSDB_NAMESPACE::Slice(to_key).ToString(true).c_str());
 
   uint64_t total_read = 0;
   for (size_t i = 0; i < filenames.size(); i++) {
@@ -573,8 +732,8 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
       filename = std::string(dir_or_file) + "/" + filename;
     }
 
-    rocksdb::SstFileDumper dumper(options, filename, verify_checksum,
-                                  output_hex);
+    ROCKSDB_NAMESPACE::SstFileDumper dumper(options, filename, verify_checksum,
+                                            output_hex, decode_blob_index);
     if (!dumper.getStatus().ok()) {
       fprintf(stderr, "%s: %s\n", filename.c_str(),
               dumper.getStatus().ToString().c_str());
@@ -584,7 +743,8 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
     if (command == "recompress") {
       dumper.ShowAllCompressionSizes(
           set_block_size ? block_size : 16384,
-          compression_types.empty() ? kCompressions : compression_types);
+          compression_types.empty() ? kCompressions : compression_types,
+          compress_level_from, compress_level_to);
       return 0;
     }
 
@@ -630,9 +790,9 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
     }
 
     if (show_properties || show_summary) {
-      const rocksdb::TableProperties* table_properties;
+      const ROCKSDB_NAMESPACE::TableProperties* table_properties;
 
-      std::shared_ptr<const rocksdb::TableProperties>
+      std::shared_ptr<const ROCKSDB_NAMESPACE::TableProperties>
           table_properties_from_reader;
       st = dumper.ReadTableProperties(&table_properties_from_reader);
       if (!st.ok()) {
@@ -655,17 +815,19 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
         total_data_block_size += table_properties->data_size;
         total_index_block_size += table_properties->index_size;
         total_filter_block_size += table_properties->filter_size;
-      }
-      if (show_properties) {
-        fprintf(stdout,
-                "Raw user collected properties\n"
-                "------------------------------\n");
-        for (const auto& kv : table_properties->user_collected_properties) {
-          std::string prop_name = kv.first;
-          std::string prop_val = Slice(kv.second).ToString(true);
-          fprintf(stdout, "  # %s: 0x%s\n", prop_name.c_str(),
-                  prop_val.c_str());
+        if (show_properties) {
+          fprintf(stdout,
+                  "Raw user collected properties\n"
+                  "------------------------------\n");
+          for (const auto& kv : table_properties->user_collected_properties) {
+            std::string prop_name = kv.first;
+            std::string prop_val = Slice(kv.second).ToString(true);
+            fprintf(stdout, "  # %s: 0x%s\n", prop_name.c_str(),
+                    prop_val.c_str());
+          }
         }
+      } else {
+        fprintf(stderr, "Reader unexpectedly returned null properties\n");
       }
     }
   }
@@ -682,6 +844,6 @@ int SSTDumpTool::Run(int argc, char** argv, Options options) {
   }
   return 0;
 }
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 #endif  // ROCKSDB_LITE

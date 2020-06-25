@@ -4,7 +4,7 @@
 //  (found in the LICENSE.Apache file in the root directory).
 //
 // This file implements the "bridge" between Java and C++ and enables
-// calling C++ rocksdb::SstFileReader methods
+// calling C++ ROCKSDB_NAMESPACE::SstFileReader methods
 // from Java side.
 
 #include <jni.h>
@@ -23,11 +23,12 @@
  * Signature: (J)J
  */
 jlong Java_org_rocksdb_SstFileReader_newSstFileReader(JNIEnv * /*env*/,
-                                                         jclass /*jcls*/,
-                                                          jlong joptions) {
-  auto *options = reinterpret_cast<const rocksdb::Options *>(joptions);
-  rocksdb::SstFileReader *sst_file_reader =
-      new rocksdb::SstFileReader(*options);
+                                                      jclass /*jcls*/,
+                                                      jlong joptions) {
+  auto *options =
+      reinterpret_cast<const ROCKSDB_NAMESPACE::Options *>(joptions);
+  ROCKSDB_NAMESPACE::SstFileReader *sst_file_reader =
+      new ROCKSDB_NAMESPACE::SstFileReader(*options);
   return reinterpret_cast<jlong>(sst_file_reader);
 }
 
@@ -43,28 +44,30 @@ void Java_org_rocksdb_SstFileReader_open(JNIEnv *env, jobject /*jobj*/,
     // exception thrown: OutOfMemoryError
     return;
   }
-  rocksdb::Status s =
-      reinterpret_cast<rocksdb::SstFileReader *>(jhandle)->Open(file_path);
+  ROCKSDB_NAMESPACE::Status s =
+      reinterpret_cast<ROCKSDB_NAMESPACE::SstFileReader *>(jhandle)->Open(
+          file_path);
   env->ReleaseStringUTFChars(jfile_path, file_path);
 
   if (!s.ok()) {
-    rocksdb::RocksDBExceptionJni::ThrowNew(env, s);
+    ROCKSDB_NAMESPACE::RocksDBExceptionJni::ThrowNew(env, s);
   }
 }
 
 /*
-* Class:     org_rocksdb_SstFileReader
-* Method:    newIterator
-* Signature: (JJ)J
-*/
-jlong Java_org_rocksdb_SstFileReader_newIterator(JNIEnv* /*env*/,
+ * Class:     org_rocksdb_SstFileReader
+ * Method:    newIterator
+ * Signature: (JJ)J
+ */
+jlong Java_org_rocksdb_SstFileReader_newIterator(JNIEnv * /*env*/,
                                                  jobject /*jobj*/,
                                                  jlong jhandle,
                                                  jlong jread_options_handle) {
-    auto* sst_file_reader = reinterpret_cast<rocksdb::SstFileReader*>(jhandle);
-    auto* read_options =
-        reinterpret_cast<rocksdb::ReadOptions*>(jread_options_handle);
-    return reinterpret_cast<jlong>(sst_file_reader->NewIterator(*read_options));
+  auto *sst_file_reader =
+      reinterpret_cast<ROCKSDB_NAMESPACE::SstFileReader *>(jhandle);
+  auto *read_options =
+      reinterpret_cast<ROCKSDB_NAMESPACE::ReadOptions *>(jread_options_handle);
+  return reinterpret_cast<jlong>(sst_file_reader->NewIterator(*read_options));
 }
 
 /*
@@ -75,7 +78,7 @@ jlong Java_org_rocksdb_SstFileReader_newIterator(JNIEnv* /*env*/,
 void Java_org_rocksdb_SstFileReader_disposeInternal(JNIEnv * /*env*/,
                                                     jobject /*jobj*/,
                                                     jlong jhandle) {
-    delete reinterpret_cast<rocksdb::SstFileReader *>(jhandle);
+  delete reinterpret_cast<ROCKSDB_NAMESPACE::SstFileReader *>(jhandle);
 }
 
 /*
@@ -84,12 +87,13 @@ void Java_org_rocksdb_SstFileReader_disposeInternal(JNIEnv * /*env*/,
  * Signature: (J)V
  */
 void Java_org_rocksdb_SstFileReader_verifyChecksum(JNIEnv *env,
-                                             jobject /*jobj*/,
-                                              jlong jhandle) {
-  auto* sst_file_reader = reinterpret_cast<rocksdb::SstFileReader*>(jhandle);
+                                                   jobject /*jobj*/,
+                                                   jlong jhandle) {
+  auto *sst_file_reader =
+      reinterpret_cast<ROCKSDB_NAMESPACE::SstFileReader *>(jhandle);
   auto s = sst_file_reader->VerifyChecksum();
   if (!s.ok()) {
-    rocksdb::RocksDBExceptionJni::ThrowNew(env, s);
+    ROCKSDB_NAMESPACE::RocksDBExceptionJni::ThrowNew(env, s);
   }
 }
 
@@ -99,12 +103,14 @@ void Java_org_rocksdb_SstFileReader_verifyChecksum(JNIEnv *env,
  * Signature: (J)J
  */
 jobject Java_org_rocksdb_SstFileReader_getTableProperties(JNIEnv *env,
-                                                  jobject /*jobj*/,
-                                                  jlong jhandle) {
-  auto* sst_file_reader = reinterpret_cast<rocksdb::SstFileReader*>(jhandle);
-  std::shared_ptr<const rocksdb::TableProperties> tp = sst_file_reader->GetTableProperties();
-  jobject jtable_properties = rocksdb::TablePropertiesJni::fromCppTableProperties(
-      env, *(tp.get()));
+                                                          jobject /*jobj*/,
+                                                          jlong jhandle) {
+  auto *sst_file_reader =
+      reinterpret_cast<ROCKSDB_NAMESPACE::SstFileReader *>(jhandle);
+  std::shared_ptr<const ROCKSDB_NAMESPACE::TableProperties> tp =
+      sst_file_reader->GetTableProperties();
+  jobject jtable_properties =
+      ROCKSDB_NAMESPACE::TablePropertiesJni::fromCppTableProperties(
+          env, *(tp.get()));
   return jtable_properties;
 }
-

@@ -4,12 +4,12 @@
 //  (found in the LICENSE.Apache file in the root directory).
 //
 
-#include "env/mock_env.h"
 #include "logging/env_logger.h"
+#include "env/mock_env.h"
 #include "test_util/testharness.h"
 #include "test_util/testutil.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 namespace {
 // In this test we only want to Log some simple log message with
@@ -44,9 +44,7 @@ class EnvLoggerTest : public testing::Test {
     return result;
   }
 
-  void DeleteLogFile() {
-    ASSERT_OK(env_->DeleteFile(kLogFile));
-  }
+  void DeleteLogFile() { ASSERT_OK(env_->DeleteFile(kLogFile)); }
 
   static const std::string kSampleMessage;
   static const std::string kTestDir;
@@ -156,7 +154,7 @@ TEST_F(EnvLoggerTest, ConcurrentLogging) {
   DeleteLogFile();
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);

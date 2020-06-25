@@ -14,7 +14,7 @@
 #include "rocksdb/env.h"
 #include "rocksdb/concurrent_task_limiter.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 class TaskLimiterToken;
 
@@ -24,8 +24,8 @@ class ConcurrentTaskLimiterImpl : public ConcurrentTaskLimiter {
                                      int32_t max_outstanding_task);
   // No copying allowed
   ConcurrentTaskLimiterImpl(const ConcurrentTaskLimiterImpl&) = delete;
-  ConcurrentTaskLimiterImpl& operator=(
-      const ConcurrentTaskLimiterImpl&) = delete;
+  ConcurrentTaskLimiterImpl& operator=(const ConcurrentTaskLimiterImpl&) =
+      delete;
 
   virtual ~ConcurrentTaskLimiterImpl();
 
@@ -64,4 +64,4 @@ class TaskLimiterToken {
   void operator=(const TaskLimiterToken&) = delete;
 };
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
