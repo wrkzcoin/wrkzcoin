@@ -149,6 +149,10 @@ void sc_add(unsigned char *, const unsigned char *, const unsigned char *);
 
 void sc_sub(unsigned char *, const unsigned char *, const unsigned char *);
 
+void sc_mul(unsigned char *s, const unsigned char *a, const unsigned char *b);
+
+void sc_muladd(unsigned char *s, const unsigned char *a, const unsigned char *b, const unsigned char *c);
+
 void sc_mulsub(unsigned char *, const unsigned char *, const unsigned char *, const unsigned char *);
 
 int sc_check(const unsigned char *);

@@ -8,6 +8,7 @@
 #include "CryptoTypes.h"
 #include "common/StringTools.h"
 #include "crypto/crypto.h"
+#include "crypto/multisig.h"
 
 #include <assert.h>
 #include <chrono>
@@ -276,7 +277,10 @@ void benchmarkGenerateKeyDerivation()
     std::cout << "Time to perform generateKeyDerivation: " << timePerDerivation / 1000.0 << " ms" << std::endl;
 }
 
-void TestDeterministicSubwalletCreation (const std::string baseSpendKey, const uint64_t subWalletIndex, const std::string expectedSpendKey)
+void TestDeterministicSubwalletCreation(
+    const std::string baseSpendKey,
+    const uint64_t subWalletIndex,
+    const std::string expectedSpendKey)
 {
     Crypto::SecretKey f_baseSpendKey;
 
@@ -296,7 +300,8 @@ void TestDeterministicSubwalletCreation (const std::string baseSpendKey, const u
         exit(1);
     }
 
-    const auto [subwalletPrivateKey, subwalletPublicKey] = Crypto::generate_deterministic_subwallet_keys(f_baseSpendKey, subWalletIndex);
+    const auto [subwalletPrivateKey, subwalletPublicKey] =
+        Crypto::generate_deterministic_subwallet_keys(f_baseSpendKey, subWalletIndex);
 
     if (subwalletPrivateKey != f_expectedSpendKey)
     {
@@ -364,7 +369,299 @@ int main(int argc, char **argv)
     {
         std::cout << getProjectCLIHeader() << std::endl;
 
-        std::cout << "Input: " << INPUT_DATA << std::endl << std::endl;
+        std::cout << std::endl << "Test Crypto Primitives" << std::endl << std::endl;
+
+        {
+            std::cout << "Crypto::crypto_ops::prepareRingSignatures: ";
+
+            Crypto::Hash txPrefixHash;
+
+            Common::podFromHex("b542df5b6e7f5f05275c98e7345884e2ac726aeeb07e03e44e0389eb86cd05f0", txPrefixHash);
+
+            Crypto::KeyImage keyImage("6865866ed8a25824e042e21dd36e946836b58b03366e489aecf979f444f599b0");
+
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            publicKeys.push_back(Crypto::PublicKey("492390897da1cabd3886e3eff43ad1d04aa510a905bec0acd31a0a2f260e7862"));
+
+            publicKeys.push_back(Crypto::PublicKey("7644ccb5410cca2be18b033e5f7497aeeeafd1d8f317f29cba4803e4306aa402"));
+
+            publicKeys.push_back(Crypto::PublicKey("bb9a956ffdf8159ad69474e6b0811316c44a17a540d5e39a44642d4d933a6460"));
+
+            publicKeys.push_back(Crypto::PublicKey("e1cd9ccdfdf2b3a45ac2cfd1e29185d22c185742849f52368c3cdd1c0ce499c0"));
+
+            Crypto::SecretKey privateEmpheremal("73a8e577d58f7c11992201d4014ac7eef39c1e9f6f6d78673103de60a0c3240b");
+
+            const auto [success, signatures, k] = Crypto::crypto_ops::prepareRingSignatures(txPrefixHash, keyImage, publicKeys, 3);
+
+            if (!success)
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::crypto_ops::generateRingSignatures: ";
+
+            Crypto::Hash txPrefixHash;
+
+            Common::podFromHex("b542df5b6e7f5f05275c98e7345884e2ac726aeeb07e03e44e0389eb86cd05f0", txPrefixHash);
+
+            Crypto::KeyImage keyImage("6865866ed8a25824e042e21dd36e946836b58b03366e489aecf979f444f599b0");
+
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            publicKeys.push_back(Crypto::PublicKey("492390897da1cabd3886e3eff43ad1d04aa510a905bec0acd31a0a2f260e7862"));
+
+            publicKeys.push_back(Crypto::PublicKey("7644ccb5410cca2be18b033e5f7497aeeeafd1d8f317f29cba4803e4306aa402"));
+
+            publicKeys.push_back(Crypto::PublicKey("bb9a956ffdf8159ad69474e6b0811316c44a17a540d5e39a44642d4d933a6460"));
+
+            publicKeys.push_back(Crypto::PublicKey("e1cd9ccdfdf2b3a45ac2cfd1e29185d22c185742849f52368c3cdd1c0ce499c0"));
+
+            Crypto::SecretKey privateEmpheremal("73a8e577d58f7c11992201d4014ac7eef39c1e9f6f6d78673103de60a0c3240b");
+
+            const auto [success, signatures] =
+                Crypto::crypto_ops::generateRingSignatures(txPrefixHash, keyImage, publicKeys, privateEmpheremal, 3);
+
+            if (!success)
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            bool check = Crypto::crypto_ops::checkRingSignature(txPrefixHash, keyImage, publicKeys, signatures);
+
+            if (!check)
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::generate_deterministic_subwallet_keys: ";
+
+            TestDeterministicSubwalletCreation(
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c",
+                0,
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c");
+            TestDeterministicSubwalletCreation(
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c",
+                1,
+                "c55cbe4fd1c49dca5958fa1c7b9212c2dbf3fd5bfec84de741d434056e298600");
+            TestDeterministicSubwalletCreation(
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c",
+                2,
+                "9813c40428ed9b380a2f72bac1374a9d3852a974b0527e003cbc93afab764d01");
+            TestDeterministicSubwalletCreation(
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c",
+                64,
+                "29c2afed13271e2bb3321c2483356fd8798f2709af4de3906b6627ec71727108");
+            TestDeterministicSubwalletCreation(
+                "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c",
+                65,
+                "0c6b5fff72260832558e35c38e690072503211af065056862288dc7fd992350a");
+
+            std::cout << "passed" << std::endl;
+        }
+
+        std::cout << std::endl << "Test Multisig Primitives" << std::endl << std::endl;
+
+        {
+            std::cout << "Crypto::Multisig::calculate_multisig_private_keys: ";
+
+            Crypto::SecretKey privateKey("a0ba0cae34ce1133b9cb658e5d0a56440608622a64562ac360907a2c68ea130d");
+
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            publicKeys.push_back(Crypto::PublicKey("ba719ff6486ae5ab5ea0c7e05f6b42468f898bd366f83a4d165e396c1f7c5eec"));
+
+            publicKeys.push_back(Crypto::PublicKey("fd524a5384bf5044feeb61f19866e11f74b8dbf5e7d050238046b04289a31849"));
+
+            std::vector<Crypto::SecretKey> multisigKeys =
+                Crypto::Multisig::calculate_multisig_private_keys(privateKey, publicKeys);
+
+            if (multisigKeys[0] != Crypto::SecretKey("ca67bdeba4cc489c86b0e6be24ed86ee75fd7e4caaf6566ea3b241946f40f901")
+                || multisigKeys[1]
+                       != Crypto::SecretKey("98c2625a77504c46fb4d83bdf2c5dee505d4e3d0d30005bac636b0d49f90420f"))
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::Multisig::calculate_shared_public_key: ";
+
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            publicKeys.push_back(Crypto::PublicKey("6bce43e0d797b9ee674db41c173f9b147fab6841fed36e97d434bd7c6f5b81d5"));
+
+            publicKeys.push_back(Crypto::PublicKey("ba719ff6486ae5ab5ea0c7e05f6b42468f898bd366f83a4d165e396c1f7c5eec"));
+
+            Crypto::PublicKey sharedPublicKey = Crypto::Multisig::calculate_shared_public_key(publicKeys);
+
+            if (sharedPublicKey
+                != Crypto::PublicKey("caa8f9aaf673ff2c055025942eeefde720a71281420ec8c42f0a817225db032b"))
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::Multisig::calculate_shared_private_key: ";
+
+            std::vector<Crypto::SecretKey> secretKeys;
+
+            secretKeys.push_back(Crypto::SecretKey("01d85bf9ce5583c7a1039f2c2695cb562bf1ea97636bbaf9051af01dddc89e0b"));
+
+            secretKeys.push_back(Crypto::SecretKey("650110a79f0353624f0fa14aaaf8c5af405ddb009c3127366e5b8591ecec9704"));
+
+            Crypto::SecretKey sharedPrivateKey = Crypto::Multisig::calculate_shared_private_key(secretKeys);
+
+            if (sharedPrivateKey
+                != Crypto::SecretKey("7905764354f6c3d11a7648d4f193b2f16b4ec698ff9ce12f747575afc9b53600"))
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::Multisig::restore_key_image: ";
+
+            Crypto::PublicKey publicEphemeral("e1cd9ccdfdf2b3a45ac2cfd1e29185d22c185742849f52368c3cdd1c0ce499c0");
+
+            Crypto::KeyDerivation derivation("9475ebaa9f869b06d967aa0ca09d1632f4b8a383211c8a66e39021bc04d80fc4");
+
+            std::vector<Crypto::KeyImage> partialKeyImages;
+
+            partialKeyImages.push_back(
+                Crypto::KeyImage("f67f9a1a525d9f34386c8d8f2bfebe15e653b7fbbf561da8531eedbf5dd06317"));
+
+            partialKeyImages.push_back(
+                Crypto::KeyImage("b04a322530870398ce1f1bd4df2e40155425a8ed45fb8f4637f22c648cbac2f2"));
+
+            Crypto::KeyImage keyImage =
+                Crypto::Multisig::restore_key_image(publicEphemeral, derivation, 2, partialKeyImages);
+
+            if (keyImage != Crypto::KeyImage("6865866ed8a25824e042e21dd36e946836b58b03366e489aecf979f444f599b0"))
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::Multisig::generate_partial_signing_key: ";
+
+            Crypto::Signature signature("d3b4f642eb7049e00b17130ec95d47e878c756a205766418687667fe4877920500000000000000"
+                                        "00000000000000000000000000000000000000000000000000");
+
+            Crypto::SecretKey privateSpendKey("a0ba0cae34ce1133b9cb658e5d0a56440608622a64562ac360907a2c68ea130d");
+
+            Crypto::SecretKey partialKey = Crypto::Multisig::generate_partial_signing_key(signature, privateSpendKey);
+
+            if (partialKey != Crypto::SecretKey("bea03f1dcdc3a6375d883afa86f88e4a43606bcc2b0c9b00e313813f7436ef03"))
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        {
+            std::cout << "Crypto::Multisig::restore_ring_signatures: ";
+
+            Crypto::KeyDerivation derivation("9475ebaa9f869b06d967aa0ca09d1632f4b8a383211c8a66e39021bc04d80fc4");
+
+            std::vector<Crypto::SecretKey> partialSigningKeys;
+
+            partialSigningKeys.push_back(
+                Crypto::SecretKey("bea03f1dcdc3a6375d883afa86f88e4a43606bcc2b0c9b00e313813f7436ef03"));
+
+            partialSigningKeys.push_back(
+                Crypto::SecretKey("14c09b9e8186a405f66fcd695c7ca675018f355eb3e28c240e3e647913f3c506"));
+
+            Crypto::EllipticCurveScalar k("80bd5c68a280c2071c0a11be82e83c0fd2539660b21f7d9ff54a654f2a73c40d");
+
+            std::vector<Crypto::Signature> signatures;
+
+            signatures.push_back(Crypto::Signature("719afc6be33058758d3aea7c382c6bf9340b62b2297fb93b42d0c984af8c0f0b08d"
+                                                   "7973924dc379e9b75ae5135ed6f40efc7418d597eaabdb69ebbb2b7630b05"));
+
+            signatures.push_back(Crypto::Signature("128bfd98170ea31dfdcc2214e14e66a08e4f66d581d2317ab0c583e4573c9103ec1"
+                                                   "1bc5dd9e7f734b3f0fbd3c29eddea102275b9f871cb96b658ca0787261607"));
+
+            signatures.push_back(Crypto::Signature("ef602f4a07c2b643b456d5587f682a7d44cb360cd83bdb2d176f3ad687027c0bf38"
+                                                   "8ab6dbf91dcec2fdfab865dd065c02905f1fa6c7b778cb9773cfd839bd300"));
+
+            signatures.push_back(Crypto::Signature("d3b4f642eb7049e00b17130ec95d47e878c756a205766418687667fe48779205000"
+                                                   "0000000000000000000000000000000000000000000000000000000000000"));
+
+            const auto [success, restoredSignatures] =
+                Crypto::Multisig::restore_ring_signatures(derivation, 2, partialSigningKeys, 3, k, signatures);
+
+            if (!success)
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            Crypto::Hash txPrefixHash;
+
+            Common::podFromHex("b542df5b6e7f5f05275c98e7345884e2ac726aeeb07e03e44e0389eb86cd05f0", txPrefixHash);
+
+            Crypto::KeyImage keyImage("6865866ed8a25824e042e21dd36e946836b58b03366e489aecf979f444f599b0");
+
+            std::vector<Crypto::PublicKey> publicKeys;
+
+            publicKeys.push_back(Crypto::PublicKey("492390897da1cabd3886e3eff43ad1d04aa510a905bec0acd31a0a2f260e7862"));
+
+            publicKeys.push_back(Crypto::PublicKey("7644ccb5410cca2be18b033e5f7497aeeeafd1d8f317f29cba4803e4306aa402"));
+
+            publicKeys.push_back(Crypto::PublicKey("bb9a956ffdf8159ad69474e6b0811316c44a17a540d5e39a44642d4d933a6460"));
+
+            publicKeys.push_back(Crypto::PublicKey("e1cd9ccdfdf2b3a45ac2cfd1e29185d22c185742849f52368c3cdd1c0ce499c0"));
+
+            bool check = Crypto::crypto_ops::checkRingSignature(txPrefixHash, keyImage, publicKeys, restoredSignatures);
+
+            if (!check)
+            {
+                std::cout << "failed" << std::endl;
+
+                exit(1);
+            }
+
+            std::cout << "passed" << std::endl;
+        }
+
+        std::cout << std::endl << "Input: " << INPUT_DATA << std::endl << std::endl;
 
         TEST_HASH_FUNCTION(cn_slow_hash_v0, CN_SLOW_HASH_V0);
         TEST_HASH_FUNCTION(cn_slow_hash_v1, CN_SLOW_HASH_V1);
@@ -462,16 +759,6 @@ int main(int argc, char **argv)
 
             BENCHMARK(chukwa_slow_hash, o_iterations_long);
         }
-
-        std::cout <<std::endl << "Deterministic Subwallet Creation Tests: ";
-
-        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 0, "dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c");
-        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 1, "c55cbe4fd1c49dca5958fa1c7b9212c2dbf3fd5bfec84de741d434056e298600");
-        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 2, "9813c40428ed9b380a2f72bac1374a9d3852a974b0527e003cbc93afab764d01");
-        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 64, "29c2afed13271e2bb3321c2483356fd8798f2709af4de3906b6627ec71727108");
-        TestDeterministicSubwalletCreation("dd0c02d3202634821b4d9d91b63d919725f5c3e97e803f3512e52fb0dc2aab0c", 65, "0c6b5fff72260832558e35c38e690072503211af065056862288dc7fd992350a");
-
-        std::cout << "Passed." << std::endl;
     }
     catch (std::exception &e)
     {
