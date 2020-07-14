@@ -13,6 +13,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 include_directories(${CMAKE_SOURCE_DIR}/external/snappy)
+include_directories(${CMAKE_SOURCE_DIR}/external/zlib)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
@@ -134,9 +135,9 @@ elseif (UNIX)
 endif ()
 
 if (MSVC)
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb zstd leveldb snappy Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb zstd leveldb zlib snappy Errors ${Boost_LIBRARIES})
 else ()
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib zstd leveldblib snappy Errors ${Boost_LIBRARIES})
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib zstd leveldblib zlib snappy Errors ${Boost_LIBRARIES})
 endif ()
 
 # Add the dependencies we need

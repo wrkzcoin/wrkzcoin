@@ -52,7 +52,7 @@ void LevelDBWrapper::init(const DataBaseConfig &config)
     // incompressible, the kSnappyCompression implementation will
     // efficiently detect that and will switch to uncompressed mode.
     dbOptions.compression = config.compressionEnabled
-        ? leveldb::kSnappyCompression
+        ? leveldb::kZlibCompression
         : leveldb::kNoCompression;
 
     // Leveldb will write up to this amount of bytes to a file before
