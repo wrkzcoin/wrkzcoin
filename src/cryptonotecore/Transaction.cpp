@@ -7,6 +7,8 @@
 #include "TransactionApiExtra.h"
 #include "TransactionUtils.h"
 #include "common/CryptoNoteTools.h"
+#include <common/CheckDifficulty.h>
+#include <walletbackend/Transfer.h>
 
 #include <boost/optional.hpp>
 #include <config/CryptoNoteConfig.h>
@@ -116,6 +118,8 @@ namespace CryptoNote
 
         virtual void
             signInputKey(size_t input, const TransactionTypes::InputKeyInfo &info, const KeyPair &ephKeys) override;
+
+        virtual void generateTxProofOfWork() override;
 
       private:
         void invalidateHash();
@@ -367,6 +371,12 @@ namespace CryptoNote
     {
         checkIfSigning();
         transaction.extra.insert(transaction.extra.end(), extraData.begin(), extraData.end());
+    }
+
+    void TransactionImpl::generateTxProofOfWork()
+    {
+        checkIfSigning();
+        transaction.extra = SendTransaction::generateTransactionPoW(transaction, transaction.extra);
     }
 
     bool TransactionImpl::getExtraNonce(BinaryArray &nonce) const

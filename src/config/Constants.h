@@ -197,6 +197,8 @@ namespace Constants
     /* Indicates the following data is a merge mine depth+merkle root */
     const uint8_t TX_EXTRA_MERGE_MINING_IDENTIFIER = 0x03;
 
+    const uint8_t TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER = 0x04;
+
     /* Indicates the following data is arbitrary data in tx_extra */
     const uint8_t TX_EXTRA_ARBITRARY_DATA_IDENTIFIER = 0x7f;
 

@@ -22,6 +22,7 @@ namespace Utilities
         std::string paymentID;
         MergedMiningTag mergedMiningTag;
         std::vector<uint8_t> extraData;
+        uint64_t transactionPowNonce = 0;
     };
 
     std::string getPaymentIDFromExtra(const std::vector<uint8_t> &extra);

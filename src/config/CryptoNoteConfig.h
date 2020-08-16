@@ -204,6 +204,12 @@ namespace CryptoNote
         const uint64_t MAX_EXTRA_SIZE_V2 = 1024;
 
         const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT = 543000;
+
+        const uint64_t TRANSACTION_POW_HEIGHT = 1250000; // TODO: adjust and check this with p2p and fork height also
+
+        /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
+        const uint64_t TRANSACTION_POW_DIFFICULTY = 40000;
+
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes
          * an invalid block. */
@@ -293,11 +299,11 @@ namespace CryptoNote
             832000,   // 9
             864864,   // 10
             1000000,  // 11
-            1250000,  // 12
+            1250000,  // 12 TODO: Check this fork height before release
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 11;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 11; // TODO: Check this fork height before release. Shall be 12
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -372,9 +378,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 12;
+    const uint8_t P2P_CURRENT_VERSION = 12; // TODO: Check this fork height before release. It should be 13
 
-    const uint8_t P2P_MINIMUM_VERSION = 11;
+    const uint8_t P2P_MINIMUM_VERSION = 11; // TODO: Check this fork height before release. It should be 12
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;

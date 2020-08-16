@@ -7,9 +7,11 @@
 // Please see the included LICENSE file for more information.
 
 #include <config/CryptoNoteConfig.h>
+#include <common/CheckDifficulty.h>
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
+#include <serialization/SerializationTools.h>
 #include <utilities/Utilities.h>
 
 ValidateTransaction::ValidateTransaction(
@@ -79,6 +81,11 @@ TransactionValidationResult ValidateTransaction::validate()
         return m_validationResult;
     }
 
+    if (!validateTransactionPoW())
+    {
+        return m_validationResult;
+    }
+
     /* Verify key images are not spent, ring signatures are valid, etc. We
      * do this separately from the transaction input verification, because
      * these checks are much slower to perform, so we want to fail fast on the
@@ -132,6 +139,16 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
     if (!validateTransactionFee())
     {
         return m_validationResult;
+    }
+
+    /* Make sure any txs left in the pool after the change are not included */
+    if (m_blockHeight >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT
+     && m_blockHeight <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT + 100)
+    {
+        if (!validateTransactionPoW())
+        {
+            return m_validationResult;
+        }
     }
 
     m_validationResult.valid = true;
@@ -517,6 +534,32 @@ bool ValidateTransaction::validateTransactionMixin()
     }
 
     return true;
+}
+
+bool ValidateTransaction::validateTransactionPoW()
+{
+    if (m_blockHeight < CryptoNote::parameters::TRANSACTION_POW_HEIGHT)
+    {
+        return true;
+    }
+
+    std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(m_transaction));
+
+    Crypto::Hash hash;
+
+    Crypto::cn_turtle_lite_slow_hash_v2(data.data(), data.size(), hash);
+
+    if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
+    {
+        return true;
+    }
+
+    setTransactionValidationResult(
+        CryptoNote::error::TransactionValidationError::POW_INVALID,
+        "Transaction has a too weak proof of work"
+    );
+
+    return false;
 }
 
 bool ValidateTransaction::validateTransactionInputsExpensive()

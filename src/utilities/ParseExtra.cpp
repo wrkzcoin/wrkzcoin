@@ -35,6 +35,12 @@ namespace Utilities
         return parsed.extraData;
     }
 
+    uint64_t getTransactionPowNonceFromExtra(const std::vector<uint8_t> &extra)
+    {
+        const ParsedExtra parsed = parseExtra(extra);
+        return parsed.transactionPowNonce;
+    }
+
     ParsedExtra parseExtra(const std::vector<uint8_t> &extra)
     {
         ParsedExtra parsed {Constants::NULL_PUBLIC_KEY, std::string(), {0, Constants::NULL_HASH}};
@@ -44,11 +50,12 @@ namespace Utilities
         bool seenExtraData = false;
         bool seenPaymentID = false;
         bool seenMergedMiningTag = false;
+        bool seenPowNonce = false;
 
         for (auto it = extra.begin(); it < extra.end(); it++)
         {
             /* Nothing else to parse. */
-            if (seenPubKey && seenPaymentID && seenMergedMiningTag && seenExtraData)
+            if (seenPubKey && seenPaymentID && seenMergedMiningTag && seenExtraData && seenPowNonce)
             {
                 break;
             }
@@ -201,6 +208,25 @@ namespace Utilities
                     continue;
                 }
             }
+
+            if (c == Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER && elementsRemaining > 8 && !seenPowNonce)
+            {
+                uint8_t tmp[8];
+
+                std::copy(it + 1, it + 1 + 8, std::begin(tmp));
+
+                /* Copy 8 chars, beginning from the next char */
+                std::memcpy(&parsed.transactionPowNonce, tmp, 8); 
+
+                /* Advance past the nonce identifier */
+                it += 8;
+
+                seenPowNonce = true;
+
+                /* And continue parsing. */
+                continue;
+            }
+
         }
 
         return parsed;
