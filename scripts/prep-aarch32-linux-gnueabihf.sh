@@ -45,11 +45,12 @@ export CUSTOM_TOOLCHAIN_FILE=../scripts/cross-aarch32-linux-gnueabihf.cmake
 # Check to see if we have Boost 1.55 ready in our toolchain, if
 # not we'll download and build it
 echo -n "Checking for Boost 1.55... "
-if [ ! -f $TOOLCHAIN_DIR/boost_1_55_0/stage/lib/libboost_system.a ]; then
+if [ ! -f $TOOLCHAIN_DIR/boost_1_55_0_aarch32-linux-gnueabihf/stage/lib/libboost_system.a ]; then
   echo "Not found... Installing..."
   wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
   tar zxvf boost_1_55_0.tar.gz >/dev/null
-  cd boost_1_55_0
+  mv boost_1_55_0 boost_1_55_0_aarch32-linux-gnueabihf
+  cd boost_1_55_0_aarch32-linux-gnueabihf
   echo -n "Bootstrapping Boost 1.55 build... "
   ./bootstrap.sh > /dev/null
   echo "Complete"
@@ -63,17 +64,17 @@ else
 fi
 
 # Set our environment variable to use the new Boost root
-export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_55_0
+export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_55_0_aarch32-linux-gnueabihf
 
 # Check to see if we have OpenSSL ready in our toolchain, if
 # not we'll download and build it
 echo -n "Checking for OpenSSL 1.1.1f..."
-if [ ! -f $TOOLCHAIN_DIR/openssl/lib/libcrypto.a ]; then
+if [ ! -f $TOOLCHAIN_DIR/openssl_aarch32-linux-gnueabihf/lib/libcrypto.a ]; then
   echo "Not found... Installing..."
   wget https://www.openssl.org/source/openssl-1.1.1f.tar.gz
   tar zxvf openssl-1.1.1f.tar.gz >/dev/null
   cd openssl-1.1.1f
-  ./Configure linux-armv4 --prefix=$TOOLCHAIN_DIR/openssl --openssldir=$TOOLCHAIN_DIR/openssl >/dev/null
+  ./Configure linux-armv4 --prefix=$TOOLCHAIN_DIR/openssl_aarch32-linux-gnueabihf --openssldir=$TOOLCHAIN_DIR/openssl_aarch32-linux-gnueabihf >/dev/null
   echo -n "Building OpenSSL 1.1.1f... "
   make PROCESSOR=ARM install >/dev/null
   echo "Complete"
@@ -82,7 +83,7 @@ else
 fi
 
 # Set our environment variable to use the new OpenSSL root
-export OPENSSL_ROOT_DIR=$TOOLCHAIN_DIR/openssl
+export OPENSSL_ROOT_DIR=$TOOLCHAIN_DIR/openssl_aarch32-linux-gnueabihf
 
 # Set an environment variable that contains our custom CMake toolchain
 # commands for our project and other env vars that we'll need
