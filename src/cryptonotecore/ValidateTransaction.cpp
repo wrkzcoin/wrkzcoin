@@ -547,7 +547,7 @@ bool ValidateTransaction::validateTransactionPoW()
 
     Crypto::Hash hash;
 
-    Crypto::cn_turtle_lite_slow_hash_v2(data.data(), data.size(), hash);
+    Crypto::cn_upx(data.data(), data.size(), hash);
 
     if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
     {

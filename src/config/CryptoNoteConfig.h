@@ -208,7 +208,7 @@ namespace CryptoNote
         const uint64_t TRANSACTION_POW_HEIGHT = 1250000; // TODO: adjust and check this with p2p and fork height also
 
         /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
-        const uint64_t TRANSACTION_POW_DIFFICULTY = 40000;
+        const uint64_t TRANSACTION_POW_DIFFICULTY = 20000;
 
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes

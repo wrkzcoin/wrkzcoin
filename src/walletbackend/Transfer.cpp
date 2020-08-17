@@ -1573,7 +1573,7 @@ namespace SendTransaction
 
             std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(tx));
 
-            Crypto::cn_turtle_lite_slow_hash_v2(data.data(), data.size(), hash);
+            Crypto::cn_upx(data.data(), data.size(), hash);
 
             if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
             {
