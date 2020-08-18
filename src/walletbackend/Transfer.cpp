@@ -94,7 +94,8 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
-        const uint64_t fee = daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT 
+        && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
             ? CryptoNote::parameters::FUSION_FEE_V1
             : 0;
 

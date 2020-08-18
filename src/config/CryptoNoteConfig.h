@@ -255,6 +255,8 @@ namespace CryptoNote
 
         const uint64_t FUSION_FEE_V1 = 10000;
 
+        const uint64_t FUSION_ZERO_FEE_V2_HEIGHT = 1250000; // TODO: replace with fork height
+
         /* This sets the maximum number of fusion transactions that can be present in the pool
            at any given time. Incoming fusion transactions that attempt to exceed this limit
            will be rejected from the pool and will not be added. This mechanism is in place

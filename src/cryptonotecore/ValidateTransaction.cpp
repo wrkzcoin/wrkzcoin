@@ -396,7 +396,8 @@ bool ValidateTransaction::validateTransactionFee()
     if (isFusion)
     {
         /* Fusions must pay at least FUSION_FEE_V1 in fees. */
-        if (m_blockHeight >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT)
+        if (m_blockHeight >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        && m_blockHeight < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
         {
             validFee = fee >= CryptoNote::parameters::FUSION_FEE_V1;
         }
