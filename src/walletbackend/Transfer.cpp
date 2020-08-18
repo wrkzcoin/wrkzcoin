@@ -9,6 +9,7 @@
 
 #include <config/Constants.h>
 #include <config/WalletConfig.h>
+#include <common/CheckDifficulty.h>
 #include <common/Varint.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
@@ -93,7 +94,8 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
-        const uint64_t fee = daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT 
+        && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
             ? CryptoNote::parameters::FUSION_FEE_V1
             : 0;
 
@@ -1439,11 +1441,15 @@ namespace SendTransaction
         if (setupTX.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             result.error = OUTPUT_DECOMPOSITION;
+
             return result;
         }
 
-        /* Pubkey, payment ID */
-        setupTX.extra = extra;
+        /* Generate the transaction proof of work, this comes before the ring
+         * signature generation, as ring signatures take the transaction prefix
+         * hash. Generating it afterwards would change the hash, and thus invalidate
+         * the sigs. */
+        setupTX.extra = generateTransactionPoW(setupTX, extra);
 
         /* Fill in the transaction signatures */
         /* NOTE: Do not modify the transaction after this, or the ring signatures
@@ -1539,4 +1545,92 @@ namespace SendTransaction
         }
     }
 
+    void generateTransactionPowWorker(
+        std::vector<uint8_t> &finalExtra,
+        const int threadCount,
+        uint64_t nonce,
+        std::atomic<bool> &shouldStop,
+        CryptoNote::Transaction tx,
+        const std::shared_ptr<Nigel> daemon)
+    {
+        /* Make a thread local copy */
+        auto extra = finalExtra;
+
+        /* Get a pointer to the start of where we want to insert our nonce */
+        const auto noncePosition = &extra[extra.size() - 8];
+
+        while (true)
+        {
+            if (shouldStop)
+            {
+                return;
+            }
+
+            /* Copy in the nonce */
+            std::memcpy(noncePosition, &nonce, sizeof(nonce));
+
+            Crypto::Hash hash;
+
+            tx.extra = extra;
+
+            std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(tx));
+
+            Crypto::cn_upx(data.data(), data.size(), hash);
+
+            const uint64_t actualFee = sumTransactionFee(tx);
+
+            const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
+
+            const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            if (CryptoNote::check_hash(hash, diff))
+            {
+                finalExtra = extra;
+                shouldStop = true;
+
+                return;
+            }
+
+            nonce += threadCount;
+        }
+    }
+
+    std::vector<uint8_t> generateTransactionPoW(
+        CryptoNote::Transaction tx,
+        std::vector<uint8_t> extra)
+    {
+        /* Add the nonce identifier */
+        extra.push_back(Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER);
+
+        /* Add extra room for the nonce */
+        extra.resize(extra.size() + 8);
+
+        std::vector<std::thread> threads;
+
+        const int threadCount = std::max(1u, std::thread::hardware_concurrency());
+
+        std::atomic<bool> shouldStop = false;
+
+        const std::shared_ptr<Nigel> daemon;
+
+        for (int i = 0; i < threadCount; i++)
+        {
+            threads.push_back(std::thread(
+                generateTransactionPowWorker,
+                std::ref(extra),
+                threadCount,
+                i,
+                std::ref(shouldStop),
+                tx,
+                daemon
+            ));
+        }
+
+        for (auto &thread : threads)
+        {
+            thread.join();
+        }
+
+        return extra;
+    }
 } // namespace SendTransaction

@@ -75,7 +75,8 @@ bool optimizeRound(const std::shared_ptr<WalletBackend> walletBackend)
         }
     }
 
-    if (std::get<2>(walletBackend->getSyncStatus()) > CryptoNote::parameters::FUSION_FEE_V1_HEIGHT)
+    if (std::get<2>(walletBackend->getSyncStatus()) > CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+    && std::get<2>(walletBackend->getSyncStatus()) < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
     {
         /* Ensure we're waiting for the resulting balance after the fusion fee,
          * or we'll loop forever. */

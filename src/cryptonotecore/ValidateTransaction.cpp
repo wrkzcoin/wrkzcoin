@@ -7,9 +7,11 @@
 // Please see the included LICENSE file for more information.
 
 #include <config/CryptoNoteConfig.h>
+#include <common/CheckDifficulty.h>
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
+#include <serialization/SerializationTools.h>
 #include <utilities/Utilities.h>
 
 ValidateTransaction::ValidateTransaction(
@@ -79,6 +81,11 @@ TransactionValidationResult ValidateTransaction::validate()
         return m_validationResult;
     }
 
+    if (!validateTransactionPoW())
+    {
+        return m_validationResult;
+    }
+
     /* Verify key images are not spent, ring signatures are valid, etc. We
      * do this separately from the transaction input verification, because
      * these checks are much slower to perform, so we want to fail fast on the
@@ -132,6 +139,16 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
     if (!validateTransactionFee())
     {
         return m_validationResult;
+    }
+
+    /* Make sure any txs left in the pool after the change are not included */
+    if (m_blockHeight >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT
+     && m_blockHeight <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT + 100)
+    {
+        if (!validateTransactionPoW())
+        {
+            return m_validationResult;
+        }
     }
 
     m_validationResult.valid = true;
@@ -379,7 +396,8 @@ bool ValidateTransaction::validateTransactionFee()
     if (isFusion)
     {
         /* Fusions must pay at least FUSION_FEE_V1 in fees. */
-        if (m_blockHeight >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT)
+        if (m_blockHeight >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        && m_blockHeight < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
         {
             validFee = fee >= CryptoNote::parameters::FUSION_FEE_V1;
         }
@@ -517,6 +535,38 @@ bool ValidateTransaction::validateTransactionMixin()
     }
 
     return true;
+}
+
+bool ValidateTransaction::validateTransactionPoW()
+{
+    const bool isFusion = m_currency.isFusionTransaction(
+        m_transaction, m_cachedTransaction.getTransactionBinaryArray().size(), m_blockHeight);
+
+    if (m_blockHeight < CryptoNote::parameters::TRANSACTION_POW_HEIGHT)
+    {
+        return true;
+    }
+
+    std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(m_transaction));
+
+    Crypto::Hash hash;
+
+    Crypto::cn_upx(data.data(), data.size(), hash);
+
+    const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+
+    if (CryptoNote::check_hash(hash, diff))
+    {
+        return true;
+    }
+
+
+    setTransactionValidationResult(
+        CryptoNote::error::TransactionValidationError::POW_INVALID,
+        "Transaction has a too weak proof of work"
+    );
+
+    return false;
 }
 
 bool ValidateTransaction::validateTransactionInputsExpensive()

@@ -77,6 +77,8 @@ class ValidateTransaction
 
         bool validateTransactionMixin();
 
+        bool validateTransactionPoW();
+
         bool validateTransactionInputsExpensive();
 
         void setTransactionValidationResult(const std::error_code &error_code, const std::string &error_message = "");

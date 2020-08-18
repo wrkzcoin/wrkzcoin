@@ -142,7 +142,7 @@ endif ()
 # Add the dependencies we need
 target_link_libraries(Common __filesystem)
 target_link_libraries(Crypto argon2)
-target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System ${Boost_LIBRARIES})
+target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System ${Boost_LIBRARIES} WalletBackend)
 target_link_libraries(cryptotest Crypto Common)
 target_link_libraries(Errors Crypto SubWallets Utilities)
 target_link_libraries(Logging Common)
