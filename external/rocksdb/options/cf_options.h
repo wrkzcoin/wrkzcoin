@@ -13,14 +13,13 @@
 #include "rocksdb/options.h"
 #include "util/compression.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 // ImmutableCFOptions is a data struct used by RocksDB internal. It contains a
 // subset of Options that should not be changed during the entire lifetime
 // of DB. Raw pointers defined in this struct do not have ownership to the data
 // they point to. Options contains std::shared_ptr to these data.
 struct ImmutableCFOptions {
-  ImmutableCFOptions();
   explicit ImmutableCFOptions(const Options& options);
 
   ImmutableCFOptions(const ImmutableDBOptions& db_options,
@@ -62,6 +61,8 @@ struct ImmutableCFOptions {
 
   Env* env;
 
+  FileSystem* fs;
+
   // Allow the OS to mmap file for reading sst tables. Default: false
   bool allow_mmap_reads;
 
@@ -88,12 +89,6 @@ struct ImmutableCFOptions {
   bool use_fsync;
 
   std::vector<CompressionType> compression_per_level;
-
-  CompressionType bottommost_compression;
-
-  CompressionOptions bottommost_compression_opts;
-
-  CompressionOptions compression_opts;
 
   bool level_compaction_dynamic_level_bytes;
 
@@ -124,6 +119,8 @@ struct ImmutableCFOptions {
   std::vector<DbPath> cf_paths;
 
   std::shared_ptr<ConcurrentTaskLimiter> compaction_thread_limiter;
+
+  FileChecksumGenFactory* file_checksum_gen_factory;
 };
 
 struct MutableCFOptions {
@@ -151,7 +148,6 @@ struct MutableCFOptions {
         target_file_size_base(options.target_file_size_base),
         target_file_size_multiplier(options.target_file_size_multiplier),
         max_bytes_for_level_base(options.max_bytes_for_level_base),
-        snap_refresh_nanos(options.snap_refresh_nanos),
         max_bytes_for_level_multiplier(options.max_bytes_for_level_multiplier),
         ttl(options.ttl),
         periodic_compaction_seconds(options.periodic_compaction_seconds),
@@ -164,6 +160,9 @@ struct MutableCFOptions {
         paranoid_file_checks(options.paranoid_file_checks),
         report_bg_io_stats(options.report_bg_io_stats),
         compression(options.compression),
+        bottommost_compression(options.bottommost_compression),
+        compression_opts(options.compression_opts),
+        bottommost_compression_opts(options.bottommost_compression_opts),
         sample_for_compression(options.sample_for_compression) {
     RefreshDerivedOptions(options.num_levels, options.compaction_style);
   }
@@ -188,7 +187,6 @@ struct MutableCFOptions {
         target_file_size_base(0),
         target_file_size_multiplier(0),
         max_bytes_for_level_base(0),
-        snap_refresh_nanos(0),
         max_bytes_for_level_multiplier(0),
         ttl(0),
         periodic_compaction_seconds(0),
@@ -197,6 +195,7 @@ struct MutableCFOptions {
         paranoid_file_checks(false),
         report_bg_io_stats(false),
         compression(Snappy_Supported() ? kSnappyCompression : kNoCompression),
+        bottommost_compression(kDisableCompressionOption),
         sample_for_compression(0) {}
 
   explicit MutableCFOptions(const Options& options);
@@ -240,7 +239,6 @@ struct MutableCFOptions {
   uint64_t target_file_size_base;
   int target_file_size_multiplier;
   uint64_t max_bytes_for_level_base;
-  uint64_t snap_refresh_nanos;
   double max_bytes_for_level_multiplier;
   uint64_t ttl;
   uint64_t periodic_compaction_seconds;
@@ -253,6 +251,10 @@ struct MutableCFOptions {
   bool paranoid_file_checks;
   bool report_bg_io_stats;
   CompressionType compression;
+  CompressionType bottommost_compression;
+  CompressionOptions compression_opts;
+  CompressionOptions bottommost_compression_opts;
+
   uint64_t sample_for_compression;
 
   // Derived options
@@ -266,4 +268,4 @@ uint64_t MultiplyCheckOverflow(uint64_t op1, double op2);
 uint64_t MaxFileSizeForLevel(const MutableCFOptions& cf_options,
     int level, CompactionStyle compaction_style, int base_level = 1,
     bool level_compaction_dynamic_level_bytes = false);
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

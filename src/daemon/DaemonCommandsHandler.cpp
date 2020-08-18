@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -412,7 +413,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     size_t longestDescription = 0;
 
     /* Figure out the dimensions of the table */
-    for (const auto [value, description] : statusTable)
+    for (const auto &[value, description] : statusTable)
     {
         if (value.length() > longestValue)
         {
@@ -433,7 +434,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     std::cout << std::string(totalTableWidth, '-') << std::endl;
 
     /* Output the table itself */
-    for (const auto [value, description] : statusTable)
+    for (const auto &[value, description] : statusTable)
     {
         std::cout << "| " << InformationMsg(value, longestValue) << " ";
         std::cout << "| " << SuccessMsg(description, longestDescription) << " |" << std::endl;

@@ -7,6 +7,8 @@
 
 #include <arpa/inet.h>
 #include <cassert>
+#include <cstdint>
+#include <stdexcept>
 #include <sys/epoll.h>
 #include <system/ErrorMessage.h>
 #include <system/InterruptedException.h>

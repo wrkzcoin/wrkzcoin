@@ -26,6 +26,9 @@
 #include "db/db_impl/db_impl.h"
 #include "db/memtable.h"
 #include "db/write_batch_internal.h"
+#include "env/composite_env_wrapper.h"
+#include "file/read_write_util.h"
+#include "file/writable_file_writer.h"
 #include "options/cf_options.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
@@ -43,7 +46,6 @@
 #include "trace_replay/trace_replay.h"
 #include "util/coding.h"
 #include "util/compression.h"
-#include "util/file_reader_writer.h"
 #include "util/gflags_compat.h"
 #include "util/random.h"
 #include "util/string_util.h"
@@ -163,7 +165,7 @@ DEFINE_double(sample_ratio, 1.0,
               "If the trace size is extremely huge or user want to sample "
               "the trace when analyzing, sample ratio can be set (0, 1.0]");
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 std::map<std::string, int> taOptToIndex = {
     {"get", 0},           {"put", 1},
@@ -272,8 +274,8 @@ TraceAnalyzer::TraceAnalyzer(std::string& trace_path, std::string& output_path,
     : trace_name_(trace_path),
       output_path_(output_path),
       analyzer_opts_(_analyzer_opts) {
-  rocksdb::EnvOptions env_options;
-  env_ = rocksdb::Env::Default();
+  ROCKSDB_NAMESPACE::EnvOptions env_options;
+  env_ = ROCKSDB_NAMESPACE::Env::Default();
   offset_ = 0;
   c_time_ = 0;
   total_requests_ = 0;
@@ -572,8 +574,9 @@ Status TraceAnalyzer::MakeStatistics() {
       // output the access count distribution
       if (FLAGS_output_access_count_stats && stat.second.a_count_dist_f) {
         for (auto& record : stat.second.a_count_stats) {
-          ret = snprintf(buffer_, sizeof(buffer_), "access_count: %" PRIu64 " num: %" PRIu64 "\n",
-                        record.first, record.second);
+          ret = snprintf(buffer_, sizeof(buffer_),
+                         "access_count: %" PRIu64 " num: %" PRIu64 "\n",
+                         record.first, record.second);
           if (ret < 0) {
             return Status::IOError("Format the output failed");
           }
@@ -596,8 +599,8 @@ Status TraceAnalyzer::MakeStatistics() {
           get_mid = true;
         }
         if (FLAGS_output_key_distribution && stat.second.a_key_size_f) {
-          ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %" PRIu64 "\n", record.first,
-                        record.second);
+          ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %" PRIu64 "\n",
+                         record.first, record.second);
           if (ret < 0) {
             return Status::IOError("Format output failed");
           }
@@ -625,9 +628,9 @@ Status TraceAnalyzer::MakeStatistics() {
             (type == TraceOperationType::kPut ||
              type == TraceOperationType::kMerge)) {
           ret = snprintf(buffer_, sizeof(buffer_),
-                        "Number_of_value_size_between %" PRIu64 " and %" PRIu64
-                        " is: %" PRIu64 "\n",
-                        v_begin, v_end, record.second);
+                         "Number_of_value_size_between %" PRIu64 " and %" PRIu64
+                         " is: %" PRIu64 "\n",
+                         v_begin, v_end, record.second);
           if (ret < 0) {
             return Status::IOError("Format output failed");
           }
@@ -675,9 +678,10 @@ Status TraceAnalyzer::MakeStatisticKeyStatsOrPrefix(TraceStats& stats) {
       succ_ratio = (static_cast<double>(record.second.succ_count)) /
                    record.second.access_count;
     }
-    ret = snprintf(buffer_, sizeof(buffer_), "%u %zu %" PRIu64 " %" PRIu64 " %f\n",
-                  record.second.cf_id, record.second.value_size,
-                  record.second.key_id, record.second.access_count, succ_ratio);
+    ret = snprintf(buffer_, sizeof(buffer_),
+                   "%u %zu %" PRIu64 " %" PRIu64 " %f\n", record.second.cf_id,
+                   record.second.value_size, record.second.key_id,
+                   record.second.access_count, succ_ratio);
     if (ret < 0) {
       return Status::IOError("Format output failed");
     }
@@ -691,7 +695,8 @@ Status TraceAnalyzer::MakeStatisticKeyStatsOrPrefix(TraceStats& stats) {
     // write the prefix cut of the accessed keys
     if (FLAGS_output_prefix_cut > 0 && stats.a_prefix_cut_f) {
       if (record.first.compare(0, FLAGS_output_prefix_cut, prefix) != 0) {
-        std::string prefix_out = rocksdb::LDBCommand::StringToHex(prefix);
+        std::string prefix_out =
+            ROCKSDB_NAMESPACE::LDBCommand::StringToHex(prefix);
         if (prefix_count == 0) {
           prefix_ave_access = 0.0;
         } else {
@@ -703,9 +708,11 @@ Status TraceAnalyzer::MakeStatisticKeyStatsOrPrefix(TraceStats& stats) {
           prefix_succ_ratio =
               (static_cast<double>(prefix_succ_access)) / prefix_access;
         }
-        ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %" PRIu64 " %" PRIu64 " %f %f %s\n",
-                      record.second.key_id, prefix_access, prefix_count,
-                      prefix_ave_access, prefix_succ_ratio, prefix_out.c_str());
+        ret =
+            snprintf(buffer_, sizeof(buffer_),
+                     "%" PRIu64 " %" PRIu64 " %" PRIu64 " %f %f %s\n",
+                     record.second.key_id, prefix_access, prefix_count,
+                     prefix_ave_access, prefix_succ_ratio, prefix_out.c_str());
         if (ret < 0) {
           return Status::IOError("Format output failed");
         }
@@ -870,7 +877,8 @@ Status TraceAnalyzer::MakeStatisticQPS() {
             cur_ratio = (static_cast<double>(find_time->second)) / cur_uni_key;
             cur_num = find_time->second;
           }
-          ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %.12f\n", cur_num, cur_ratio);
+          ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %.12f\n",
+                         cur_num, cur_ratio);
           if (ret < 0) {
             return Status::IOError("Format the output failed");
           }
@@ -888,8 +896,8 @@ Status TraceAnalyzer::MakeStatisticQPS() {
       if (FLAGS_output_prefix_cut > 0 && stat.second.a_top_qps_prefix_f) {
         while (!stat.second.top_k_qps_sec.empty()) {
           ret = snprintf(buffer_, sizeof(buffer_), "At time: %u with QPS: %u\n",
-                        stat.second.top_k_qps_sec.top().second,
-                        stat.second.top_k_qps_sec.top().first);
+                         stat.second.top_k_qps_sec.top().second,
+                         stat.second.top_k_qps_sec.top().first);
           if (ret < 0) {
             return Status::IOError("Format the output failed");
           }
@@ -905,9 +913,10 @@ Status TraceAnalyzer::MakeStatisticQPS() {
               stat.second.a_qps_prefix_stats.end()) {
             for (auto& qps_prefix : stat.second.a_qps_prefix_stats[qps_time]) {
               std::string qps_prefix_out =
-                  rocksdb::LDBCommand::StringToHex(qps_prefix.first);
-              ret = snprintf(buffer_, sizeof(buffer_), "The prefix: %s Access count: %u\n",
-                            qps_prefix_out.c_str(), qps_prefix.second);
+                  ROCKSDB_NAMESPACE::LDBCommand::StringToHex(qps_prefix.first);
+              ret = snprintf(buffer_, sizeof(buffer_),
+                             "The prefix: %s Access count: %u\n",
+                             qps_prefix_out.c_str(), qps_prefix.second);
               if (ret < 0) {
                 return Status::IOError("Format the output failed");
               }
@@ -1016,9 +1025,10 @@ Status TraceAnalyzer::ReProcessing() {
           if (found != stat.a_key_stats.end()) {
             key_id = found->second.key_id;
           }
-          ret = snprintf(buffer_, sizeof(buffer_), "%u %" PRIu64 " %" PRIu64 "\n",
-                        stat.time_series.front().type,
-                        stat.time_series.front().ts, key_id);
+          ret =
+              snprintf(buffer_, sizeof(buffer_), "%u %" PRIu64 " %" PRIu64 "\n",
+                       stat.time_series.front().type,
+                       stat.time_series.front().ts, key_id);
           if (ret < 0) {
             return Status::IOError("Format the output failed");
           }
@@ -1041,22 +1051,31 @@ Status TraceAnalyzer::ReProcessing() {
       std::vector<std::string> prefix(kTaTypeNum);
       std::istringstream iss;
       bool has_data = true;
-      s = env_->NewSequentialFile(whole_key_path, &wkey_input_f_, env_options_);
+      std::unique_ptr<SequentialFile> wkey_input_f;
+
+      s = env_->NewSequentialFile(whole_key_path, &wkey_input_f, env_options_);
       if (!s.ok()) {
         fprintf(stderr, "Cannot open the whole key space file of CF: %u\n",
                 cf_id);
-        wkey_input_f_.reset();
+        wkey_input_f.reset();
       }
-      if (wkey_input_f_) {
+
+      if (wkey_input_f) {
+        std::unique_ptr<FSSequentialFile> file;
+        file = NewLegacySequentialFileWrapper(wkey_input_f);
+        size_t kTraceFileReadaheadSize = 2 * 1024 * 1024;
+        SequentialFileReader sf_reader(
+            std::move(file), whole_key_path,
+            kTraceFileReadaheadSize /* filereadahead_size */);
         for (cfs_[cf_id].w_count = 0;
-             ReadOneLine(&iss, wkey_input_f_.get(), &get_key, &has_data, &s);
+             ReadOneLine(&iss, &sf_reader, &get_key, &has_data, &s);
              ++cfs_[cf_id].w_count) {
           if (!s.ok()) {
             fprintf(stderr, "Read whole key space file failed\n");
             return s;
           }
 
-          input_key = rocksdb::LDBCommand::HexToString(get_key);
+          input_key = ROCKSDB_NAMESPACE::LDBCommand::HexToString(get_key);
           for (int type = 0; type < kTaTypeNum; type++) {
             if (!ta_[type].enabled) {
               continue;
@@ -1064,9 +1083,9 @@ Status TraceAnalyzer::ReProcessing() {
             TraceStats& stat = ta_[type].stats[cf_id];
             if (stat.w_key_f) {
               if (stat.a_key_stats.find(input_key) != stat.a_key_stats.end()) {
-                ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %" PRIu64 "\n",
-                              cfs_[cf_id].w_count,
-                              stat.a_key_stats[input_key].access_count);
+                ret = snprintf(buffer_, sizeof(buffer_),
+                               "%" PRIu64 " %" PRIu64 "\n", cfs_[cf_id].w_count,
+                               stat.a_key_stats[input_key].access_count);
                 if (ret < 0) {
                   return Status::IOError("Format the output failed");
                 }
@@ -1085,9 +1104,9 @@ Status TraceAnalyzer::ReProcessing() {
                   0) {
                 prefix[type] = input_key.substr(0, FLAGS_output_prefix_cut);
                 std::string prefix_out =
-                    rocksdb::LDBCommand::StringToHex(prefix[type]);
-                ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %s\n", cfs_[cf_id].w_count,
-                              prefix_out.c_str());
+                    ROCKSDB_NAMESPACE::LDBCommand::StringToHex(prefix[type]);
+                ret = snprintf(buffer_, sizeof(buffer_), "%" PRIu64 " %s\n",
+                               cfs_[cf_id].w_count, prefix_out.c_str());
                 if (ret < 0) {
                   return Status::IOError("Format the output failed");
                 }
@@ -1416,7 +1435,8 @@ Status TraceAnalyzer::OpenStatsOutputFiles(const std::string& type,
 // create the output path of the files to be opened
 Status TraceAnalyzer::CreateOutputFile(
     const std::string& type, const std::string& cf_name,
-    const std::string& ending, std::unique_ptr<rocksdb::WritableFile>* f_ptr) {
+    const std::string& ending,
+    std::unique_ptr<ROCKSDB_NAMESPACE::WritableFile>* f_ptr) {
   std::string path;
   path = output_path_ + "/" + FLAGS_output_prefix + "-" + type + "-" + cf_name +
          "-" + ending;
@@ -1802,8 +1822,8 @@ void TraceAnalyzer::PrintStatistics() {
         printf("The Top %d keys that are accessed:\n",
                FLAGS_print_top_k_access);
         while (!stat.top_k_queue.empty()) {
-          std::string hex_key =
-              rocksdb::LDBCommand::StringToHex(stat.top_k_queue.top().second);
+          std::string hex_key = ROCKSDB_NAMESPACE::LDBCommand::StringToHex(
+              stat.top_k_queue.top().second);
           printf("Access_count: %" PRIu64 " %s\n", stat.top_k_queue.top().first,
                  hex_key.c_str());
           stat.top_k_queue.pop();
@@ -1901,10 +1921,10 @@ Status TraceAnalyzer::WriteTraceSequence(const uint32_t& type,
                                          const std::string& key,
                                          const size_t value_size,
                                          const uint64_t ts) {
-  std::string hex_key = rocksdb::LDBCommand::StringToHex(key);
+  std::string hex_key = ROCKSDB_NAMESPACE::LDBCommand::StringToHex(key);
   int ret;
-  ret =
-      snprintf(buffer_, sizeof(buffer_), "%u %u %zu %" PRIu64 "\n", type, cf_id, value_size, ts);
+  ret = snprintf(buffer_, sizeof(buffer_), "%u %u %zu %" PRIu64 "\n", type,
+                 cf_id, value_size, ts);
   if (ret < 0) {
     return Status::IOError("failed to format the output");
   }
@@ -1936,7 +1956,7 @@ int trace_analyzer_tool(int argc, char** argv) {
     exit(1);
   }
 
-  rocksdb::Status s = analyzer->PrepareProcessing();
+  ROCKSDB_NAMESPACE::Status s = analyzer->PrepareProcessing();
   if (!s.ok()) {
     fprintf(stderr, "%s\n", s.getState());
     fprintf(stderr, "Cannot initiate the trace reader\n");
@@ -1975,7 +1995,7 @@ int trace_analyzer_tool(int argc, char** argv) {
 
   return 0;
 }
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
 
 #endif  // Endif of Gflag
 #endif  // RocksDB LITE

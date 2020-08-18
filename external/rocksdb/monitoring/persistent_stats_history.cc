@@ -15,7 +15,7 @@
 #include "port/likely.h"
 #include "util/string_util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 // 10 digit seconds timestamp => [Sep 9, 2001 ~ Nov 20, 2286]
 const int kNowSecondsStringLength = 10;
 const std::string kFormatVersionKeyString =
@@ -69,7 +69,6 @@ void OptimizeForPersistentStats(ColumnFamilyOptions* cfo) {
   cfo->write_buffer_size = 2 << 20;
   cfo->target_file_size_base = 2 * 1048576;
   cfo->max_bytes_for_level_base = 10 * 1048576;
-  cfo->snap_refresh_nanos = 0;
   cfo->soft_pending_compaction_bytes_limit = 256 * 1048576;
   cfo->hard_pending_compaction_bytes_limit = 1073741824ul;
   cfo->compression = kNoCompression;
@@ -168,4 +167,4 @@ void PersistentStatsHistoryIterator::AdvanceIteratorByTime(uint64_t start_time,
   }
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

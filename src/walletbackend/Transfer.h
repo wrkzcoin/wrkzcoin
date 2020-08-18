@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -153,6 +154,10 @@ namespace SendTransaction
         const uint64_t actualFee,
         const uint64_t height,
         const CryptoNote::Transaction tx);
+
+    std::vector<uint8_t> generateTransactionPoW(
+        CryptoNote::Transaction tx,
+        std::vector<uint8_t> extra);
 
     /* Template so we can do transaction, and transactionprefix */
     template<typename T> Crypto::Hash getTransactionHash(T tx)

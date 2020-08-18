@@ -16,7 +16,7 @@
 #include "table/multiget_context.h"
 #include "table/table_reader_caller.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 class Iterator;
 struct ParsedInternalKey;
@@ -45,11 +45,13 @@ class TableReader {
   //        all the states but those allocated in arena.
   // skip_filters: disables checking the bloom filters even if they exist. This
   //               option is effective only for block-based table format.
-  // compaction_readahead_size: its value will only be used if caller = kCompaction
-  virtual InternalIterator* NewIterator(const ReadOptions&,
-                                        const SliceTransform* prefix_extractor,
-                                        Arena* arena, bool skip_filters,
-                                        TableReaderCaller caller, size_t compaction_readahead_size = 0) = 0;
+  // compaction_readahead_size: its value will only be used if caller =
+  // kCompaction
+  virtual InternalIterator* NewIterator(
+      const ReadOptions&, const SliceTransform* prefix_extractor, Arena* arena,
+      bool skip_filters, TableReaderCaller caller,
+      size_t compaction_readahead_size = 0,
+      bool allow_unprepared_value = false) = 0;
 
   virtual FragmentedRangeTombstoneIterator* NewRangeTombstoneIterator(
       const ReadOptions& /*read_options*/) {
@@ -133,4 +135,4 @@ class TableReader {
   }
 };
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

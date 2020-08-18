@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -8,6 +9,7 @@
 
 #include <config/Constants.h>
 #include <config/WalletConfig.h>
+#include <common/CheckDifficulty.h>
 #include <common/Varint.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
@@ -92,7 +94,8 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
-        const uint64_t fee = daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT 
+        && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
             ? CryptoNote::parameters::FUSION_FEE_V1
             : 0;
 
@@ -232,7 +235,7 @@ namespace SendTransaction
         subWallets->storeTxPrivateKey(txKeyPair.secretKey, txHash);
 
         /* Lock the input for spending till it is confirmed as spent in a block */
-        for (const auto input : ourInputs)
+        for (const auto &input : ourInputs)
         {
             subWallets->markInputAsLocked(input.input.keyImage, input.publicSpendKey);
         }
@@ -375,7 +378,7 @@ namespace SendTransaction
         uint64_t requiredAmount = totalAmount;
         WalletTypes::PreparedTransactionInfo txInfo;
 
-        for (const auto input : availableInputs)
+        for (const auto &input : availableInputs)
         {
             ourInputs.push_back(input);
             sumOfInputs += input.input.amount;
@@ -556,7 +559,7 @@ namespace SendTransaction
             subWallets->storeTxPrivateKey(txResult.txKeyPair.secretKey, txHash);
 
             /* Lock the input for spending till it is confirmed as spent in a block */
-            for (const auto input : ourInputs)
+            for (const auto &input : ourInputs)
             {
                 subWallets->markInputAsLocked(input.input.keyImage, input.publicSpendKey);
             }
@@ -612,7 +615,7 @@ namespace SendTransaction
         subWallets->storeTxPrivateKey(txInfo.tx.txKeyPair.secretKey, txHash);
 
         /* Lock the input for spending till it is confirmed as spent in a block */
-        for (const auto input : txInfo.inputs)
+        for (const auto &input : txInfo.inputs)
         {
             subWallets->markInputAsLocked(input.input.keyImage, input.publicSpendKey);
         }
@@ -687,7 +690,7 @@ namespace SendTransaction
             {
                 return { false, txResult, changeRequired, amountPreFee + actualFee };
             }
-            
+
             /* Our fee was too low. Lets try making the transaction again,
              * this time using the actual fee calculated. Note that this still
              * may fail, since we are possibly adding more outputs, and so have
@@ -776,7 +779,7 @@ namespace SendTransaction
         std::unordered_map<Crypto::PublicKey, int64_t> transfers;
 
         /* Loop through each input, and minus that from the transfers array */
-        for (const auto input : ourInputs)
+        for (const auto &input : ourInputs)
         {
             transfers[input.publicSpendKey] -= input.input.amount;
         }
@@ -834,7 +837,7 @@ namespace SendTransaction
 
         std::vector<WalletTypes::TransactionDestination> destinations;
 
-        for (const auto [address, amount] : addressesAndAmounts)
+        for (const auto &[address, amount] : addressesAndAmounts)
         {
             /* Grab the public keys from the receiver address */
             const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
@@ -977,7 +980,7 @@ namespace SendTransaction
 
         size_t i = 0;
 
-        for (const auto walletAmount : sources)
+        for (const auto &walletAmount : sources)
         {
             WalletTypes::GlobalIndexKey realOutput {*walletAmount.input.globalOutputIndex, walletAmount.input.key};
 
@@ -1158,7 +1161,7 @@ namespace SendTransaction
 
         std::vector<WalletTypes::KeyOutput> outputs;
 
-        for (const auto destination : destinations)
+        for (const auto &destination : destinations)
         {
             Crypto::KeyDerivation derivation;
 
@@ -1195,7 +1198,7 @@ namespace SendTransaction
         size_t i = 0;
 
         /* Add the transaction signatures */
-        for (const auto input : inputsAndFakes)
+        for (const auto &input : inputsAndFakes)
         {
             std::vector<Crypto::PublicKey> publicKeys;
 
@@ -1227,11 +1230,11 @@ namespace SendTransaction
 
         i = 0;
 
-        for (const auto input : inputsAndFakes)
+        for (const auto &input : inputsAndFakes)
         {
             std::vector<Crypto::PublicKey> publicKeys;
 
-            for (const auto output : input.outputs)
+            for (const auto &output : input.outputs)
             {
                 publicKeys.push_back(output.key);
             }
@@ -1301,7 +1304,7 @@ namespace SendTransaction
     {
         std::vector<CryptoNote::TransactionInput> result;
 
-        for (const auto input : keyInputs)
+        for (const auto &input : keyInputs)
         {
             result.push_back(input);
         }
@@ -1438,11 +1441,15 @@ namespace SendTransaction
         if (setupTX.outputs.size() > CryptoNote::parameters::NORMAL_TX_MAX_OUTPUT_COUNT_V1)
         {
             result.error = OUTPUT_DECOMPOSITION;
+
             return result;
         }
 
-        /* Pubkey, payment ID */
-        setupTX.extra = extra;
+        /* Generate the transaction proof of work, this comes before the ring
+         * signature generation, as ring signatures take the transaction prefix
+         * hash. Generating it afterwards would change the hash, and thus invalidate
+         * the sigs. */
+        setupTX.extra = generateTransactionPoW(setupTX, extra);
 
         /* Fill in the transaction signatures */
         /* NOTE: Do not modify the transaction after this, or the ring signatures
@@ -1458,7 +1465,7 @@ namespace SendTransaction
 
         /* Note - not verifying inputs as it's possible to have received inputs
            from another wallet which don't enforce this rule */
-        for (const auto output : tx.outputs)
+        for (const auto &output : tx.outputs)
         {
             amounts.push_back(output.amount);
         }
@@ -1486,12 +1493,12 @@ namespace SendTransaction
         uint64_t inputTotal = 0;
         uint64_t outputTotal = 0;
 
-        for (const auto input : tx.inputs)
+        for (const auto &input : tx.inputs)
         {
             inputTotal += boost::get<CryptoNote::KeyInput>(input).amount;
         }
 
-        for (const auto output : tx.outputs)
+        for (const auto &output : tx.outputs)
         {
             outputTotal += output.amount;
         }
@@ -1538,4 +1545,92 @@ namespace SendTransaction
         }
     }
 
+    void generateTransactionPowWorker(
+        std::vector<uint8_t> &finalExtra,
+        const int threadCount,
+        uint64_t nonce,
+        std::atomic<bool> &shouldStop,
+        CryptoNote::Transaction tx,
+        const std::shared_ptr<Nigel> daemon)
+    {
+        /* Make a thread local copy */
+        auto extra = finalExtra;
+
+        /* Get a pointer to the start of where we want to insert our nonce */
+        const auto noncePosition = &extra[extra.size() - 8];
+
+        while (true)
+        {
+            if (shouldStop)
+            {
+                return;
+            }
+
+            /* Copy in the nonce */
+            std::memcpy(noncePosition, &nonce, sizeof(nonce));
+
+            Crypto::Hash hash;
+
+            tx.extra = extra;
+
+            std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(tx));
+
+            Crypto::cn_upx(data.data(), data.size(), hash);
+
+            const uint64_t actualFee = sumTransactionFee(tx);
+
+            const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
+
+            const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            if (CryptoNote::check_hash(hash, diff))
+            {
+                finalExtra = extra;
+                shouldStop = true;
+
+                return;
+            }
+
+            nonce += threadCount;
+        }
+    }
+
+    std::vector<uint8_t> generateTransactionPoW(
+        CryptoNote::Transaction tx,
+        std::vector<uint8_t> extra)
+    {
+        /* Add the nonce identifier */
+        extra.push_back(Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER);
+
+        /* Add extra room for the nonce */
+        extra.resize(extra.size() + 8);
+
+        std::vector<std::thread> threads;
+
+        const int threadCount = std::max(1u, std::thread::hardware_concurrency());
+
+        std::atomic<bool> shouldStop = false;
+
+        const std::shared_ptr<Nigel> daemon;
+
+        for (int i = 0; i < threadCount; i++)
+        {
+            threads.push_back(std::thread(
+                generateTransactionPowWorker,
+                std::ref(extra),
+                threadCount,
+                i,
+                std::ref(shouldStop),
+                tx,
+                daemon
+            ));
+        }
+
+        for (auto &thread : threads)
+        {
+            thread.join();
+        }
+
+        return extra;
+    }
 } // namespace SendTransaction

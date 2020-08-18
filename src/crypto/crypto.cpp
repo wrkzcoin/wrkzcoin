@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2016-2018, The Karbowanec developers
-// Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2020, The TurtleCoin Developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -40,6 +40,16 @@ namespace Crypto
     {
         cn_fast_hash(data, length, reinterpret_cast<Hash &>(res));
         sc_reduce32(reinterpret_cast<unsigned char *>(&res));
+    }
+
+    void crypto_ops::scReduce32(EllipticCurveScalar &scalar)
+    {
+        sc_reduce32(reinterpret_cast<unsigned char *>(&scalar));
+    }
+
+    void crypto_ops::hashToScalar(const void *data, size_t length, EllipticCurveScalar &res)
+    {
+        hash_to_scalar(data, length, res);
     }
 
     void crypto_ops::generate_keys(PublicKey &pub, SecretKey &sec)
@@ -114,7 +124,8 @@ namespace Crypto
         return true;
     }
 
-    static void derivation_to_scalar(const KeyDerivation &derivation, size_t output_index, EllipticCurveScalar &res)
+    void
+        crypto_ops::derivation_to_scalar(const KeyDerivation &derivation, size_t output_index, EllipticCurveScalar &res)
     {
         struct
         {
@@ -128,7 +139,7 @@ namespace Crypto
         hash_to_scalar(&buf, end - reinterpret_cast<char *>(&buf), res);
     }
 
-    static void derivation_to_scalar(
+    void crypto_ops::derivation_to_scalar(
         const KeyDerivation &derivation,
         size_t output_index,
         const uint8_t *suffix,
@@ -156,7 +167,16 @@ namespace Crypto
         const PublicKey &base,
         PublicKey &derived_key)
     {
-        EllipticCurveScalar scalar;
+        EllipticCurveScalar derivationScalar;
+        derivation_to_scalar(derivation, output_index, derivationScalar);
+        return derive_public_key(derivationScalar, base, derived_key);
+    }
+
+    bool crypto_ops::derive_public_key(
+        const EllipticCurveScalar &derivationScalar,
+        const PublicKey &base,
+        PublicKey &derived_key)
+    {
         ge_p3 point1;
         ge_p3 point2;
         ge_cached point3;
@@ -166,8 +186,7 @@ namespace Crypto
         {
             return false;
         }
-        derivation_to_scalar(derivation, output_index, scalar);
-        ge_scalarmult_base(&point2, reinterpret_cast<unsigned char *>(&scalar));
+        ge_scalarmult_base(&point2, reinterpret_cast<const unsigned char *>(&derivationScalar));
         ge_p3_to_cached(&point3, &point2);
         ge_add(&point4, &point1, &point3);
         ge_p1p1_to_p2(&point5, &point4);
@@ -233,13 +252,21 @@ namespace Crypto
         const SecretKey &base,
         SecretKey &derived_key)
     {
-        EllipticCurveScalar scalar;
+        EllipticCurveScalar derivationScalar;
+        derivation_to_scalar(derivation, output_index, derivationScalar);
+        derive_secret_key(derivationScalar, base, derived_key);
+    }
+
+    void crypto_ops::derive_secret_key(
+        const EllipticCurveScalar &derivationScalar,
+        const SecretKey &base,
+        SecretKey &derived_key)
+    {
         assert(sc_check(reinterpret_cast<const unsigned char *>(&base)) == 0);
-        derivation_to_scalar(derivation, output_index, scalar);
         sc_add(
             reinterpret_cast<unsigned char *>(&derived_key),
             reinterpret_cast<const unsigned char *>(&base),
-            reinterpret_cast<unsigned char *>(&scalar));
+            reinterpret_cast<const unsigned char *>(&derivationScalar));
     }
 
     void crypto_ops::derive_secret_key(
@@ -446,18 +473,18 @@ namespace Crypto
         return sizeof(rs_comm) + pubs_count * sizeof(((rs_comm *)0)->ab[0]);
     }
 
-    std::tuple<bool, std::vector<Signature>> crypto_ops::generateRingSignatures(
+    std::tuple<bool, std::vector<Signature>> crypto_ops::prepareRingSignatures(
         const Hash prefixHash,
         const KeyImage keyImage,
         const std::vector<PublicKey> publicKeys,
-        const Crypto::SecretKey transactionSecretKey,
-        uint64_t realOutput)
+        const uint64_t realOutput,
+        const EllipticCurveScalar k)
     {
         std::vector<Signature> signatures(publicKeys.size());
 
         ge_p3 image_unp;
         ge_dsmp image_pre;
-        EllipticCurveScalar sum, k, h;
+        Crypto::EllipticCurveScalar sum, h;
 
         rs_comm *const buf = reinterpret_cast<rs_comm *>(alloca(rs_comm_size(publicKeys.size())));
 
@@ -479,11 +506,10 @@ namespace Crypto
 
             if (i == realOutput)
             {
-                random_scalar(k);
-                ge_scalarmult_base(&tmp3, reinterpret_cast<unsigned char *>(&k));
+                ge_scalarmult_base(&tmp3, reinterpret_cast<const unsigned char *>(&k));
                 ge_p3_tobytes(reinterpret_cast<unsigned char *>(&buf->ab[i].a), &tmp3);
                 hash_to_ec(publicKeys[i], tmp3);
-                ge_scalarmult(&tmp2, reinterpret_cast<unsigned char *>(&k), &tmp3);
+                ge_scalarmult(&tmp2, reinterpret_cast<const unsigned char *>(&k), &tmp3);
                 ge_tobytes(reinterpret_cast<unsigned char *>(&buf->ab[i].b), &tmp2);
             }
             else
@@ -530,13 +556,71 @@ namespace Crypto
             reinterpret_cast<unsigned char *>(&h),
             reinterpret_cast<unsigned char *>(&sum));
 
-        sc_mulsub(
-            reinterpret_cast<unsigned char *>(&signatures[realOutput]) + 32,
-            reinterpret_cast<unsigned char *>(&signatures[realOutput]),
-            reinterpret_cast<const unsigned char *>(&transactionSecretKey),
-            reinterpret_cast<unsigned char *>(&k));
-
         return {true, signatures};
+    }
+
+    std::tuple<bool, std::vector<Signature>, EllipticCurveScalar> crypto_ops::prepareRingSignatures(
+        const Hash prefixHash,
+        const KeyImage keyImage,
+        const std::vector<PublicKey> publicKeys,
+        const uint64_t realOutput)
+    {
+        EllipticCurveScalar k;
+
+        random_scalar(k);
+
+        const auto [success, signatures] = prepareRingSignatures(prefixHash, keyImage, publicKeys, realOutput, k);
+
+        return {success, signatures, k};
+    }
+
+    std::tuple<bool, std::vector<Signature>> crypto_ops::completeRingSignatures(
+        const SecretKey transactionSecretKey,
+        const uint64_t realOutput,
+        const EllipticCurveScalar &k,
+        const std::vector<Signature> &signatures)
+    {
+        std::vector<Signature> completeSignatures;
+
+        if (signatures.empty() || realOutput >= signatures.size())
+        {
+            return {false, completeSignatures};
+        }
+
+        std::copy(signatures.begin(), signatures.end(), std::back_inserter(completeSignatures));
+
+        sc_mulsub(
+            reinterpret_cast<unsigned char *>(&completeSignatures[realOutput]) + 32,
+            reinterpret_cast<unsigned char *>(&completeSignatures[realOutput]),
+            reinterpret_cast<const unsigned char *>(&transactionSecretKey),
+            reinterpret_cast<const unsigned char *>(&k));
+
+        return {true, completeSignatures};
+    }
+
+    std::tuple<bool, std::vector<Signature>> crypto_ops::generateRingSignatures(
+        const Hash prefixHash,
+        const KeyImage keyImage,
+        const std::vector<PublicKey> publicKeys,
+        const Crypto::SecretKey transactionSecretKey,
+        const uint64_t realOutput)
+    {
+        const auto [success, signatures, k] = prepareRingSignatures(prefixHash, keyImage, publicKeys, realOutput);
+
+        if (!success)
+        {
+            return {false, signatures};
+        }
+
+        const auto [completeSuccess, completeSignatures] =
+            completeRingSignatures(transactionSecretKey, realOutput, k, signatures);
+
+        if (!completeSuccess)
+        {
+            return {false, signatures};
+        }
+
+        return {true, completeSignatures};
     }
 
     bool crypto_ops::checkRingSignature(

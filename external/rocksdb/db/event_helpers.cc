@@ -5,7 +5,7 @@
 
 #include "db/event_helpers.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 namespace {
 template <class T>
@@ -70,8 +70,8 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
     const std::vector<std::shared_ptr<EventListener>>& listeners,
     const std::string& db_name, const std::string& cf_name,
     const std::string& file_path, int job_id, const FileDescriptor& fd,
-    const TableProperties& table_properties, TableFileCreationReason reason,
-    const Status& s) {
+    uint64_t oldest_blob_file_number, const TableProperties& table_properties,
+    TableFileCreationReason reason, const Status& s) {
   if (s.ok() && event_logger) {
     JSONWriter jwriter;
     AppendCurrentTime(&jwriter);
@@ -129,6 +129,11 @@ void EventHelpers::LogAndNotifyTableFileCreationFinished(
       }
       jwriter.EndObject();
     }
+
+    if (oldest_blob_file_number != kInvalidBlobFileNumber) {
+      jwriter << "oldest_blob_file_number" << oldest_blob_file_number;
+    }
+
     jwriter.EndObject();
 
     event_logger->Log(jwriter);
@@ -215,4 +220,4 @@ void EventHelpers::NotifyOnErrorRecoveryCompleted(
 #endif  // ROCKSDB_LITE
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

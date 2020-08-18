@@ -12,8 +12,10 @@
 #include <string>
 #include <utility>
 
+#include "db/version_edit.h"
 #include "port/port.h"
 #include "rocksdb/comparator.h"
+#include "rocksdb/io_status.h"
 #include "rocksdb/table.h"
 #include "table/internal_iterator.h"
 #include "table/table_builder.h"
@@ -23,13 +25,11 @@
 #include "util/kv_map.h"
 #include "util/mutexlock.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 namespace mock {
 
 stl_wrappers::KVMap MakeMockFile(
     std::initializer_list<std::pair<const std::string, std::string>> l = {});
-stl_wrappers::KVMap MakeMockFile(
-    std::vector<std::pair<const std::string, std::string>> l);
 
 struct MockTableFileSystem {
   port::Mutex mutex;
@@ -44,7 +44,8 @@ class MockTableReader : public TableReader {
                                 const SliceTransform* prefix_extractor,
                                 Arena* arena, bool skip_filters,
                                 TableReaderCaller caller,
-                              size_t compaction_readahead_size = 0) override;
+                                size_t compaction_readahead_size = 0,
+                                bool allow_unprepared_value = false) override;
 
   Status Get(const ReadOptions& readOptions, const Slice& key,
              GetContext* get_context, const SliceTransform* prefix_extractor,
@@ -139,6 +140,9 @@ class MockTableBuilder : public TableBuilder {
   // Return non-ok iff some error has been detected.
   Status status() const override { return Status::OK(); }
 
+  // Return non-ok iff some error happens during IO.
+  IOStatus io_status() const override { return IOStatus::OK(); }
+
   Status Finish() override {
     MutexLock lock_guard(&file_system_->mutex);
     file_system_->files.insert({id_, table_});
@@ -153,6 +157,13 @@ class MockTableBuilder : public TableBuilder {
 
   TableProperties GetTableProperties() const override {
     return TableProperties();
+  }
+
+  // Get file checksum
+  std::string GetFileChecksum() const override { return kUnknownFileChecksum; }
+  // Get file checksum function name
+  const char* GetFileChecksumFuncName() const override {
+    return kUnknownFileChecksumFuncName.c_str();
   }
 
  private:
@@ -194,12 +205,6 @@ class MockTableFactory : public TableFactory {
   // contents are equal to file_contents
   void AssertSingleFile(const stl_wrappers::KVMap& file_contents);
   void AssertLatestFile(const stl_wrappers::KVMap& file_contents);
-  stl_wrappers::KVMap output() {
-    assert(!file_system_.files.empty());
-    auto latest = file_system_.files.end();
-    --latest;
-    return latest->second;
-  }
 
  private:
   uint32_t GetAndWriteNextID(WritableFileWriter* file) const;
@@ -210,4 +215,4 @@ class MockTableFactory : public TableFactory {
 };
 
 }  // namespace mock
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

@@ -13,7 +13,7 @@
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/universal_compaction.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 class Slice;
 class SliceTransform;
@@ -117,6 +117,21 @@ struct CompressionOptions {
   // Default: 0.
   uint32_t zstd_max_train_bytes;
 
+  // Number of threads for parallel compression.
+  // Parallel compression is enabled only if threads > 1.
+  // THE FEATURE IS STILL EXPERIMENTAL
+  //
+  // This option is valid only when BlockBasedTable is used.
+  //
+  // When parallel compression is enabled, SST size file sizes might be
+  // more inflated compared to the target size, because more data of unknown
+  // compressed size is in flight when compression is parallelized. To be
+  // reasonably accurate, this inflation is also estimated by using historical
+  // compression ratio and current bytes inflight.
+  //
+  // Default: 1.
+  uint32_t parallel_threads;
+
   // When the compression options are set by the user, it will be set to "true".
   // For bottommost_compression_opts, to enable it, user must set enabled=true.
   // Otherwise, bottommost compression will use compression_opts as default
@@ -134,14 +149,17 @@ struct CompressionOptions {
         strategy(0),
         max_dict_bytes(0),
         zstd_max_train_bytes(0),
+        parallel_threads(1),
         enabled(false) {}
   CompressionOptions(int wbits, int _lev, int _strategy, int _max_dict_bytes,
-                     int _zstd_max_train_bytes, bool _enabled)
+                     int _zstd_max_train_bytes, int _parallel_threads,
+                     bool _enabled)
       : window_bits(wbits),
         level(_lev),
         strategy(_strategy),
         max_dict_bytes(_max_dict_bytes),
         zstd_max_train_bytes(_zstd_max_train_bytes),
+        parallel_threads(_parallel_threads),
         enabled(_enabled) {}
 };
 
@@ -150,7 +168,6 @@ enum UpdateStatus {    // Return status For inplace update callback
   UPDATED_INPLACE = 1, // Value updated inplace
   UPDATED         = 2, // No inplace update. Merged value set
 };
-
 
 struct AdvancedColumnFamilyOptions {
   // The maximum number of write buffers that are built up in memory.
@@ -330,10 +347,9 @@ struct AdvancedColumnFamilyOptions {
   std::shared_ptr<const SliceTransform>
       memtable_insert_with_hint_prefix_extractor = nullptr;
 
-  // Control locality of bloom filter probes to improve cache miss rate.
-  // This option only applies to memtable prefix bloom and plaintable
-  // prefix bloom. It essentially limits every bloom checking to one cache line.
-  // This optimization is turned off when set to 0, and positive number to turn
+  // Control locality of bloom filter probes to improve CPU cache hit rate.
+  // This option now only applies to plaintable prefix bloom. This
+  // optimization is turned off when set to 0, and positive number to turn
   // it on.
   // Default: 0
   uint32_t bloom_locality = 0;
@@ -647,17 +663,22 @@ struct AdvancedColumnFamilyOptions {
   bool report_bg_io_stats = false;
 
   // Files older than TTL will go through the compaction process.
-  // Supported in Level and FIFO compaction.
   // Pre-req: This needs max_open_files to be set to -1.
   // In Level: Non-bottom-level files older than TTL will go through the
   //           compation process.
   // In FIFO: Files older than TTL will be deleted.
   // unit: seconds. Ex: 1 day = 1 * 24 * 60 * 60
+  // In FIFO, this option will have the same meaning as
+  // periodic_compaction_seconds. Whichever stricter will be used.
+  // 0 means disabling.
+  // UINT64_MAX - 1 (0xfffffffffffffffe) is special flag to allow RocksDB to
+  // pick default.
   //
-  // Default: 0 (disabled)
+  // Default: 30 days for leveled compaction + block based table. disable
+  //          otherwise.
   //
   // Dynamically changeable through SetOptions() API
-  uint64_t ttl = 0;
+  uint64_t ttl = 0xfffffffffffffffe;
 
   // Files older than this value will be picked up for compaction, and
   // re-written to the same level as they were before.
@@ -667,13 +688,26 @@ struct AdvancedColumnFamilyOptions {
   // age is based on the file's last modified time (given by the underlying
   // Env).
   //
-  // Only supported in Level compaction.
+  // Supported in Level and FIFO compaction.
+  // In FIFO compaction, this option has the same meaning as TTL and whichever
+  // stricter will be used.
   // Pre-req: max_open_file == -1.
   // unit: seconds. Ex: 7 days = 7 * 24 * 60 * 60
-  // Default: 0 (disabled)
+  //
+  // Values:
+  // 0: Turn off Periodic compactions.
+  // UINT64_MAX - 1 (i.e 0xfffffffffffffffe): Let RocksDB control this feature
+  //     as needed. For now, RocksDB will change this value to 30 days
+  //     (i.e 30 * 24 * 60 * 60) so that every file goes through the compaction
+  //     process at least once every 30 days if not compacted sooner.
+  //     In FIFO compaction, since the option has the same meaning as ttl,
+  //     when this value is left default, and ttl is left to 0, 30 days will be
+  //     used. Otherwise, min(ttl, periodic_compaction_seconds) will be used.
+  //
+  // Default: UINT64_MAX - 1 (allow RocksDB to auto-tune)
   //
   // Dynamically changeable through SetOptions() API
-  uint64_t periodic_compaction_seconds = 0;
+  uint64_t periodic_compaction_seconds = 0xfffffffffffffffe;
 
   // If this option is set then 1 in N blocks are compressed
   // using a fast (lz4) and slow (zstd) compression algorithm.
@@ -712,4 +746,4 @@ struct AdvancedColumnFamilyOptions {
   bool purge_redundant_kvs_while_flush = true;
 };
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

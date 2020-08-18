@@ -32,29 +32,29 @@
 
 #if defined(OS_WIN) && defined(_MSC_VER)
 
-// MSVC does not have weak symbol support. As long as ROCKSDB_JEMALLOC is defined,
-// Jemalloc memory allocator is used.
+// MSVC does not have weak symbol support. As long as ROCKSDB_JEMALLOC is
+// defined, Jemalloc memory allocator is used.
 static inline bool HasJemalloc() { return true; }
 
 #else
 
 // Declare non-standard jemalloc APIs as weak symbols. We can null-check these
 // symbols to detect whether jemalloc is linked with the binary.
-extern "C" void* mallocx(size_t, int) __attribute__((__weak__));
-extern "C" void* rallocx(void*, size_t, int) __attribute__((__weak__));
-extern "C" size_t xallocx(void*, size_t, size_t, int) __attribute__((__weak__));
-extern "C" size_t sallocx(const void*, int) __attribute__((__weak__));
-extern "C" void dallocx(void*, int) __attribute__((__weak__));
-extern "C" void sdallocx(void*, size_t, int) __attribute__((__weak__));
-extern "C" size_t nallocx(size_t, int) __attribute__((__weak__));
+extern "C" void* mallocx(size_t, int) __attribute__((__nothrow__, __weak__));
+extern "C" void* rallocx(void*, size_t, int) __attribute__((__nothrow__, __weak__));
+extern "C" size_t xallocx(void*, size_t, size_t, int) __attribute__((__nothrow__, __weak__));
+extern "C" size_t sallocx(const void*, int) __attribute__((__nothrow__, __weak__));
+extern "C" void dallocx(void*, int) __attribute__((__nothrow__, __weak__));
+extern "C" void sdallocx(void*, size_t, int) __attribute__((__nothrow__, __weak__));
+extern "C" size_t nallocx(size_t, int) __attribute__((__nothrow__, __weak__));
 extern "C" int mallctl(const char*, void*, size_t*, void*, size_t)
-    __attribute__((__weak__));
+    __attribute__((__nothrow__, __weak__));
 extern "C" int mallctlnametomib(const char*, size_t*, size_t*)
-    __attribute__((__weak__));
+    __attribute__((__nothrow__, __weak__));
 extern "C" int mallctlbymib(const size_t*, size_t, void*, size_t*, void*,
-                            size_t) __attribute__((__weak__));
+                            size_t) __attribute__((__nothrow__, __weak__));
 extern "C" void malloc_stats_print(void (*)(void*, const char*), void*,
-                                   const char*) __attribute__((__weak__));
+                                   const char*) __attribute__((__nothrow__, __weak__));
 extern "C" size_t malloc_usable_size(JEMALLOC_USABLE_SIZE_CONST void*)
     JEMALLOC_CXX_THROW __attribute__((__weak__));
 

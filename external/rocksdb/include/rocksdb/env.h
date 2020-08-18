@@ -39,7 +39,7 @@
 #define ROCKSDB_PRINTF_FORMAT_ATTR(format_param, dots_param)
 #endif
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 class DynamicLibrary;
 class FileLock;
@@ -57,6 +57,7 @@ struct MutableDBOptions;
 class RateLimiter;
 class ThreadStatusUpdater;
 struct ThreadStatus;
+class FileSystem;
 
 const size_t kDefaultPageSize = 4 * 1024;
 
@@ -140,7 +141,9 @@ class Env {
     uint64_t size_bytes;
   };
 
-  Env() : thread_status_updater_(nullptr) {}
+  Env();
+  // Construct an Env with a separate FileSystem implementation
+  Env(std::shared_ptr<FileSystem> fs);
   // No copying allowed
   Env(const Env&) = delete;
   void operator=(const Env&) = delete;
@@ -152,12 +155,25 @@ class Env {
   // Loads the environment specified by the input value into the result
   static Status LoadEnv(const std::string& value, Env** result);
 
+  // Loads the environment specified by the input value into the result
+  static Status LoadEnv(const std::string& value, Env** result,
+                        std::shared_ptr<Env>* guard);
+
   // Return a default environment suitable for the current operating
   // system.  Sophisticated users may wish to provide their own Env
   // implementation instead of relying on this default environment.
   //
   // The result of Default() belongs to rocksdb and must never be deleted.
   static Env* Default();
+
+  // See FileSystem::RegisterDbPaths.
+  virtual Status RegisterDbPaths(const std::vector<std::string>& /*paths*/) {
+    return Status::OK();
+  }
+  // See FileSystem::UnregisterDbPaths.
+  virtual Status UnregisterDbPaths(const std::vector<std::string>& /*paths*/) {
+    return Status::OK();
+  }
 
   // Create a brand new sequentially-readable file with the specified name.
   // On success, stores a pointer to the new file in *result and returns OK.
@@ -211,7 +227,7 @@ class Env {
   virtual Status ReopenWritableFile(const std::string& /*fname*/,
                                     std::unique_ptr<WritableFile>* /*result*/,
                                     const EnvOptions& /*options*/) {
-    return Status::NotSupported();
+    return Status::NotSupported("Env::ReopenWritableFile() not supported.");
   }
 
   // Reuse an existing file by renaming it and opening it as writable.
@@ -445,7 +461,7 @@ class Env {
   virtual int GetBackgroundThreads(Priority pri = LOW) = 0;
 
   virtual Status SetAllowNonOwnerAccess(bool /*allow_non_owner_access*/) {
-    return Status::NotSupported("Not supported.");
+    return Status::NotSupported("Env::SetAllowNonOwnerAccess() not supported.");
   }
 
   // Enlarge number of background worker threads of a specific thread pool
@@ -502,7 +518,7 @@ class Env {
 
   // Returns the status of all threads that belong to the current Env.
   virtual Status GetThreadList(std::vector<ThreadStatus>* /*thread_list*/) {
-    return Status::NotSupported("Not supported.");
+    return Status::NotSupported("Env::GetThreadList() not supported.");
   }
 
   // Returns the pointer to ThreadStatusUpdater.  This function will be
@@ -521,8 +537,19 @@ class Env {
   // Get the amount of free disk space
   virtual Status GetFreeSpace(const std::string& /*path*/,
                               uint64_t* /*diskfree*/) {
-    return Status::NotSupported();
+    return Status::NotSupported("Env::GetFreeSpace() not supported.");
   }
+
+  // Check whether the specified path is a directory
+  virtual Status IsDirectory(const std::string& /*path*/, bool* /*is_dir*/) {
+    return Status::NotSupported("Env::IsDirectory() not supported.");
+  }
+
+  virtual void SanitizeEnvOptions(EnvOptions* /*env_opts*/) const {}
+
+  // Get the FileSystem implementation this Env was constructed with. It
+  // could be a fully implemented one, or a wrapper class around the Env
+  const std::shared_ptr<FileSystem>& GetFileSystem() const;
 
   // If you're adding methods here, remember to add them to EnvWrapper too.
 
@@ -530,6 +557,9 @@ class Env {
   // The pointer to an internal structure that will update the
   // status of each thread.
   ThreadStatusUpdater* thread_status_updater_;
+
+  // Pointer to the underlying FileSystem implementation
+  std::shared_ptr<FileSystem> file_system_;
 };
 
 // The factory function to construct a ThreadStatusUpdater.  Any Env
@@ -574,14 +604,16 @@ class SequentialFile {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   virtual Status InvalidateCache(size_t /*offset*/, size_t /*length*/) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return Status::NotSupported(
+        "SequentialFile::InvalidateCache not supported.");
   }
 
   // Positioned Read for direct I/O
   // If Direct I/O enabled, offset, n, and scratch should be properly aligned
   virtual Status PositionedRead(uint64_t /*offset*/, size_t /*n*/,
                                 Slice* /*result*/, char* /*scratch*/) {
-    return Status::NotSupported();
+    return Status::NotSupported(
+        "SequentialFile::PositionedRead() not supported.");
   }
 
   // If you're adding methods here, remember to add them to
@@ -666,7 +698,7 @@ class RandomAccessFile {
   virtual size_t GetUniqueId(char* /*id*/, size_t /*max_size*/) const {
     return 0;  // Default implementation to prevent issues with backwards
                // compatibility.
-  };
+  }
 
   enum AccessPattern { NORMAL, RANDOM, SEQUENTIAL, WILLNEED, DONTNEED };
 
@@ -684,7 +716,8 @@ class RandomAccessFile {
   // of this file. If the length is 0, then it refers to the end of file.
   // If the system is not caching the file contents, then this is a noop.
   virtual Status InvalidateCache(size_t /*offset*/, size_t /*length*/) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return Status::NotSupported(
+        "RandomAccessFile::InvalidateCache not supported.");
   }
 
   // If you're adding methods here, remember to add them to
@@ -742,7 +775,8 @@ class WritableFile {
   // required is queried via GetRequiredBufferAlignment()
   virtual Status PositionedAppend(const Slice& /* data */,
                                   uint64_t /* offset */) {
-    return Status::NotSupported();
+    return Status::NotSupported(
+        "WritableFile::PositionedAppend() not supported.");
   }
 
   // Truncate is necessary to trim the file to the correct size
@@ -817,7 +851,7 @@ class WritableFile {
   // If the system is not caching the file contents, then this is a noop.
   // This call has no effect on dirty pages in the cache.
   virtual Status InvalidateCache(size_t /*offset*/, size_t /*length*/) {
-    return Status::NotSupported("InvalidateCache not supported.");
+    return Status::NotSupported("WritableFile::InvalidateCache not supported.");
   }
 
   // Sync a file range with disk.
@@ -1116,13 +1150,15 @@ extern Status ReadFileToString(Env* env, const std::string& fname,
 // Useful when wrapping the default implementations.
 // Typical usage is to inherit your wrapper from *Wrapper, e.g.:
 //
-// class MySequentialFileWrapper : public rocksdb::SequentialFileWrapper {
+// class MySequentialFileWrapper : public
+// ROCKSDB_NAMESPACE::SequentialFileWrapper {
 //  public:
-//   MySequentialFileWrapper(rocksdb::SequentialFile* target):
-//     rocksdb::SequentialFileWrapper(target) {}
+//   MySequentialFileWrapper(ROCKSDB_NAMESPACE::SequentialFile* target):
+//     ROCKSDB_NAMESPACE::SequentialFileWrapper(target) {}
 //   Status Read(size_t n, Slice* result, char* scratch) override {
 //     cout << "Doing a read of size " << n << "!" << endl;
-//     return rocksdb::SequentialFileWrapper::Read(n, result, scratch);
+//     return ROCKSDB_NAMESPACE::SequentialFileWrapper::Read(n, result,
+//     scratch);
 //   }
 //   // All other methods are forwarded to target_ automatically.
 // };
@@ -1147,6 +1183,14 @@ class EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target()
+  Status RegisterDbPaths(const std::vector<std::string>& paths) override {
+    return target_->RegisterDbPaths(paths);
+  }
+
+  Status UnregisterDbPaths(const std::vector<std::string>& paths) override {
+    return target_->UnregisterDbPaths(paths);
+  }
+
   Status NewSequentialFile(const std::string& f,
                            std::unique_ptr<SequentialFile>* r,
                            const EnvOptions& options) override {
@@ -1243,6 +1287,10 @@ class EnvWrapper : public Env {
   }
 
   Status UnlockFile(FileLock* l) override { return target_->UnlockFile(l); }
+
+  Status IsDirectory(const std::string& path, bool* is_dir) override {
+    return target_->IsDirectory(path, is_dir);
+  }
 
   Status LoadLibrary(const std::string& lib_name,
                      const std::string& search_path,
@@ -1359,6 +1407,9 @@ class EnvWrapper : public Env {
   Status GetFreeSpace(const std::string& path, uint64_t* diskfree) override {
     return target_->GetFreeSpace(path, diskfree);
   }
+  void SanitizeEnvOptions(EnvOptions* env_opts) const override {
+    target_->SanitizeEnvOptions(env_opts);
+  }
 
  private:
   Env* target_;
@@ -1405,7 +1456,7 @@ class RandomAccessFileWrapper : public RandomAccessFile {
   }
   size_t GetUniqueId(char* id, size_t max_size) const override {
     return target_->GetUniqueId(id, max_size);
-  };
+  }
   void Hint(AccessPattern pattern) override { target_->Hint(pattern); }
   bool use_direct_io() const override { return target_->use_direct_io(); }
   size_t GetRequiredBufferAlignment() const override {
@@ -1575,4 +1626,6 @@ Env* NewTimedEnv(Env* base_env);
 Status NewEnvLogger(const std::string& fname, Env* env,
                     std::shared_ptr<Logger>* result);
 
-}  // namespace rocksdb
+std::unique_ptr<Env> NewCompositeEnv(std::shared_ptr<FileSystem> fs);
+
+}  // namespace ROCKSDB_NAMESPACE

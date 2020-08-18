@@ -5,16 +5,16 @@
 
 #include "db/db_info_dumper.h"
 
-#include <cinttypes>
 #include <stdio.h>
-#include <string>
 #include <algorithm>
+#include <cinttypes>
+#include <string>
 #include <vector>
 
 #include "file/filename.h"
 #include "rocksdb/env.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 void DumpDBFileSummary(const ImmutableDBOptions& options,
                        const std::string& dbname) {
@@ -120,4 +120,4 @@ void DumpDBFileSummary(const ImmutableDBOptions& options,
   Header(options.info_log, "Write Ahead Log file in %s: %s\n",
          options.wal_dir.c_str(), wal_info.c_str());
 }
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

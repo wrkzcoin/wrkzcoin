@@ -12,6 +12,10 @@
 #pragma once
 
 #include <thread>
+
+#include "rocksdb/options.h"
+#include "rocksdb/rocksdb_namespace.h"
+
 // size_t printf formatting named in the manner of C99 standard formatting
 // strings such as PRIu64
 // in fact, we could use that one
@@ -81,7 +85,7 @@
 #define fdatasync fsync
 #endif
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 extern const bool kDefaultToAdaptiveMutex;
 
@@ -96,7 +100,7 @@ const int64_t kMaxInt64 = std::numeric_limits<int64_t>::max();
 const int64_t kMinInt64 = std::numeric_limits<int64_t>::min();
 const size_t kMaxSizet = std::numeric_limits<size_t>::max();
 
-static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
+constexpr bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 #undef PLATFORM_IS_LITTLE_ENDIAN
 
 class CondVar;
@@ -178,22 +182,22 @@ typedef pthread_once_t OnceType;
 extern void InitOnce(OnceType* once, void (*initializer)());
 
 #ifndef CACHE_LINE_SIZE
-  // To test behavior with non-native cache line size, e.g. for
-  // Bloom filters, set TEST_CACHE_LINE_SIZE to the desired test size.
-  // This disables ALIGN_AS to keep it from failing compilation.
-  #ifdef TEST_CACHE_LINE_SIZE
-    #define CACHE_LINE_SIZE TEST_CACHE_LINE_SIZE
-    #define ALIGN_AS(n) /*empty*/
-  #else
-    #if defined(__s390__)
-      #define CACHE_LINE_SIZE 256U
-    #elif defined(__powerpc__) || defined(__aarch64__)
-      #define CACHE_LINE_SIZE 128U
-    #else
-      #define CACHE_LINE_SIZE 64U
-    #endif
-    #define ALIGN_AS(n) alignas(n)
-  #endif
+// To test behavior with non-native cache line size, e.g. for
+// Bloom filters, set TEST_CACHE_LINE_SIZE to the desired test size.
+// This disables ALIGN_AS to keep it from failing compilation.
+#ifdef TEST_CACHE_LINE_SIZE
+#define CACHE_LINE_SIZE TEST_CACHE_LINE_SIZE
+#define ALIGN_AS(n) /*empty*/
+#else
+#if defined(__s390__)
+#define CACHE_LINE_SIZE 256U
+#elif defined(__powerpc__) || defined(__aarch64__)
+#define CACHE_LINE_SIZE 128U
+#else
+#define CACHE_LINE_SIZE 64U
+#endif
+#define ALIGN_AS(n) alignas(n)
+#endif
 #endif
 
 static_assert((CACHE_LINE_SIZE & (CACHE_LINE_SIZE - 1)) == 0,
@@ -209,5 +213,11 @@ extern void Crash(const std::string& srcfile, int srcline);
 
 extern int GetMaxOpenFiles();
 
+extern const size_t kPageSize;
+
+using ThreadId = pid_t;
+
+extern void SetCpuPriority(ThreadId id, CpuPriority priority);
+
 } // namespace port
-} // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

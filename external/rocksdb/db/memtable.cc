@@ -10,9 +10,9 @@
 #include "db/memtable.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <memory>
-
 #include "db/dbformat.h"
 #include "db/merge_context.h"
 #include "db/merge_helper.h"
@@ -23,6 +23,7 @@
 #include "memory/memory_usage.h"
 #include "monitoring/perf_context_imp.h"
 #include "monitoring/statistics.h"
+#include "port/lang.h"
 #include "port/port.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/env.h"
@@ -36,9 +37,8 @@
 #include "util/autovector.h"
 #include "util/coding.h"
 #include "util/mutexlock.h"
-#include "util/util.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 ImmutableMemTableOptions::ImmutableMemTableOptions(
     const ImmutableCFOptions& ioptions,
@@ -127,10 +127,10 @@ MemTable::~MemTable() {
 }
 
 size_t MemTable::ApproximateMemoryUsage() {
-  autovector<size_t> usages = {arena_.ApproximateMemoryUsage(),
-                               table_->ApproximateMemoryUsage(),
-                               range_del_table_->ApproximateMemoryUsage(),
-                               rocksdb::ApproximateMemoryUsage(insert_hints_)};
+  autovector<size_t> usages = {
+      arena_.ApproximateMemoryUsage(), table_->ApproximateMemoryUsage(),
+      range_del_table_->ApproximateMemoryUsage(),
+      ROCKSDB_NAMESPACE::ApproximateMemoryUsage(insert_hints_)};
   size_t total_usage = 0;
   for (size_t usage : usages) {
     // If usage + total_usage >= kMaxSizet, return kMaxSizet.
@@ -288,7 +288,9 @@ class MemTableIterator : public InternalIterator {
             !mem.GetImmutableMemTableOptions()->inplace_update_support) {
     if (use_range_del_table) {
       iter_ = mem.range_del_table_->GetIterator(arena);
-    } else if (prefix_extractor_ != nullptr && !read_options.total_order_seek) {
+    } else if (prefix_extractor_ != nullptr && !read_options.total_order_seek &&
+               !read_options.auto_prefix_mode) {
+      // Auto prefix mode is not implemented in memtable yet.
       bloom_ = mem.bloom_filter_.get();
       iter_ = mem.table_->GetDynamicPrefixIterator(arena);
     } else {
@@ -442,7 +444,7 @@ FragmentedRangeTombstoneIterator* MemTable::NewRangeTombstoneIterator(
 }
 
 port::RWMutex* MemTable::GetLock(const Slice& key) {
-  return &locks_[static_cast<size_t>(GetSliceNPHash64(key)) % locks_.size()];
+  return &locks_[fastrange64(GetSliceNPHash64(key), locks_.size())];
 }
 
 MemTable::MemTableStats MemTable::ApproximateStats(const Slice& start_ikey,
@@ -598,6 +600,7 @@ struct Saver {
   bool* merge_in_progress;
   std::string* value;
   SequenceNumber seq;
+  std::string* timestamp;
   const MergeOperator* merge_operator;
   // the merge operations encountered;
   MergeContext* merge_context;
@@ -641,9 +644,11 @@ static bool SaveValue(void* arg, const char* entry) {
   uint32_t key_length;
   const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
   Slice user_key_slice = Slice(key_ptr, key_length - 8);
-  if (s->mem->GetInternalKeyComparator()
-          .user_comparator()
-          ->CompareWithoutTimestamp(user_key_slice, s->key->user_key()) == 0) {
+  const Comparator* user_comparator =
+      s->mem->GetInternalKeyComparator().user_comparator();
+  size_t ts_sz = user_comparator->timestamp_size();
+  if (user_comparator->CompareWithoutTimestamp(user_key_slice,
+                                               s->key->user_key()) == 0) {
     // Correct user key
     const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
     ValueType type;
@@ -666,7 +671,7 @@ static bool SaveValue(void* arg, const char* entry) {
           ROCKS_LOG_ERROR(s->logger, "Encounter unexpected blob index.");
           *(s->status) = Status::NotSupported(
               "Encounter unsupported blob value. Please open DB with "
-              "rocksdb::blob_db::BlobDB instead.");
+              "ROCKSDB_NAMESPACE::blob_db::BlobDB instead.");
         } else if (*(s->merge_in_progress)) {
           *(s->status) =
               Status::NotSupported("Blob DB does not support merge operator.");
@@ -710,6 +715,11 @@ static bool SaveValue(void* arg, const char* entry) {
         *(s->found_final_value) = true;
         if (s->is_blob_index != nullptr) {
           *(s->is_blob_index) = (type == kTypeBlobIndex);
+        }
+
+        if (ts_sz > 0 && s->timestamp != nullptr) {
+          Slice ts = ExtractTimestampFromUserKey(user_key_slice, ts_sz);
+          s->timestamp->assign(ts.data(), ts.size());
         }
         return false;
       }
@@ -765,7 +775,8 @@ static bool SaveValue(void* arg, const char* entry) {
   return false;
 }
 
-bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
+bool MemTable::Get(const LookupKey& key, std::string* value,
+                   std::string* timestamp, Status* s,
                    MergeContext* merge_context,
                    SequenceNumber* max_covering_tombstone_seq,
                    SequenceNumber* seq, const ReadOptions& read_opts,
@@ -804,6 +815,7 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
           bloom_filter_->MayContain(prefix_extractor_->Transform(user_key));
     }
   }
+
   if (bloom_filter_ && !may_contain) {
     // iter is null if prefix bloom says the key does not exist
     PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
@@ -812,26 +824,9 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
     if (bloom_filter_) {
       PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
     }
-    Saver saver;
-    saver.status = s;
-    saver.found_final_value = &found_final_value;
-    saver.merge_in_progress = &merge_in_progress;
-    saver.key = &key;
-    saver.value = value;
-    saver.seq = kMaxSequenceNumber;
-    saver.mem = this;
-    saver.merge_context = merge_context;
-    saver.max_covering_tombstone_seq = *max_covering_tombstone_seq;
-    saver.merge_operator = moptions_.merge_operator;
-    saver.logger = moptions_.info_log;
-    saver.inplace_update_support = moptions_.inplace_update_support;
-    saver.statistics = moptions_.statistics;
-    saver.env_ = env_;
-    saver.callback_ = callback;
-    saver.is_blob_index = is_blob_index;
-    saver.do_merge = do_merge;
-    table_->Get(key, &saver, SaveValue);
-    *seq = saver.seq;
+    GetFromTable(key, *max_covering_tombstone_seq, do_merge, callback,
+                 is_blob_index, value, timestamp, s, merge_context, seq,
+                 &found_final_value, &merge_in_progress);
   }
 
   // No change to value, since we have not yet found a Put/Delete
@@ -840,6 +835,105 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   }
   PERF_COUNTER_ADD(get_from_memtable_count, 1);
   return found_final_value;
+}
+
+void MemTable::GetFromTable(const LookupKey& key,
+                            SequenceNumber max_covering_tombstone_seq,
+                            bool do_merge, ReadCallback* callback,
+                            bool* is_blob_index, std::string* value,
+                            std::string* timestamp, Status* s,
+                            MergeContext* merge_context, SequenceNumber* seq,
+                            bool* found_final_value, bool* merge_in_progress) {
+  Saver saver;
+  saver.status = s;
+  saver.found_final_value = found_final_value;
+  saver.merge_in_progress = merge_in_progress;
+  saver.key = &key;
+  saver.value = value;
+  saver.timestamp = timestamp;
+  saver.seq = kMaxSequenceNumber;
+  saver.mem = this;
+  saver.merge_context = merge_context;
+  saver.max_covering_tombstone_seq = max_covering_tombstone_seq;
+  saver.merge_operator = moptions_.merge_operator;
+  saver.logger = moptions_.info_log;
+  saver.inplace_update_support = moptions_.inplace_update_support;
+  saver.statistics = moptions_.statistics;
+  saver.env_ = env_;
+  saver.callback_ = callback;
+  saver.is_blob_index = is_blob_index;
+  saver.do_merge = do_merge;
+  table_->Get(key, &saver, SaveValue);
+  *seq = saver.seq;
+}
+
+void MemTable::MultiGet(const ReadOptions& read_options, MultiGetRange* range,
+                        ReadCallback* callback, bool* is_blob) {
+  // The sequence number is updated synchronously in version_set.h
+  if (IsEmpty()) {
+    // Avoiding recording stats for speed.
+    return;
+  }
+  PERF_TIMER_GUARD(get_from_memtable_time);
+
+  MultiGetRange temp_range(*range, range->begin(), range->end());
+  if (bloom_filter_) {
+    std::array<Slice*, MultiGetContext::MAX_BATCH_SIZE> keys;
+    std::array<bool, MultiGetContext::MAX_BATCH_SIZE> may_match = {{true}};
+    autovector<Slice, MultiGetContext::MAX_BATCH_SIZE> prefixes;
+    int num_keys = 0;
+    for (auto iter = temp_range.begin(); iter != temp_range.end(); ++iter) {
+      if (!prefix_extractor_) {
+        keys[num_keys++] = &iter->ukey;
+      } else if (prefix_extractor_->InDomain(iter->ukey)) {
+        prefixes.emplace_back(prefix_extractor_->Transform(iter->ukey));
+        keys[num_keys++] = &prefixes.back();
+      }
+    }
+    bloom_filter_->MayContain(num_keys, &keys[0], &may_match[0]);
+    int idx = 0;
+    for (auto iter = temp_range.begin(); iter != temp_range.end(); ++iter) {
+      if (prefix_extractor_ && !prefix_extractor_->InDomain(iter->ukey)) {
+        PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
+        continue;
+      }
+      if (!may_match[idx]) {
+        temp_range.SkipKey(iter);
+        PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
+      } else {
+        PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
+      }
+      idx++;
+    }
+  }
+  for (auto iter = temp_range.begin(); iter != temp_range.end(); ++iter) {
+    SequenceNumber seq = kMaxSequenceNumber;
+    bool found_final_value{false};
+    bool merge_in_progress = iter->s->IsMergeInProgress();
+    std::unique_ptr<FragmentedRangeTombstoneIterator> range_del_iter(
+        NewRangeTombstoneIterator(
+            read_options, GetInternalKeySeqno(iter->lkey->internal_key())));
+    if (range_del_iter != nullptr) {
+      iter->max_covering_tombstone_seq = std::max(
+          iter->max_covering_tombstone_seq,
+          range_del_iter->MaxCoveringTombstoneSeqnum(iter->lkey->user_key()));
+    }
+    GetFromTable(*(iter->lkey), iter->max_covering_tombstone_seq, true,
+                 callback, is_blob, iter->value->GetSelf(), iter->timestamp,
+                 iter->s, &(iter->merge_context), &seq, &found_final_value,
+                 &merge_in_progress);
+
+    if (!found_final_value && merge_in_progress) {
+      *(iter->s) = Status::MergeInProgress();
+    }
+
+    if (found_final_value) {
+      iter->value->PinSelf();
+      range->MarkKeyDone(iter);
+      RecordTick(moptions_.statistics, MEMTABLE_HIT);
+    }
+  }
+  PERF_COUNTER_ADD(get_from_memtable_count, 1);
 }
 
 void MemTable::Update(SequenceNumber seq,
@@ -1036,4 +1130,4 @@ uint64_t MemTable::GetMinLogContainingPrepSection() {
   return min_prep_log_referenced_.load();
 }
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

@@ -20,7 +20,7 @@
 #include "utilities/merge_operators.h"
 #include "utilities/merge_operators/string_append/stringappend.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 namespace {
 class ColumnFamilyHandleImplDummy : public ColumnFamilyHandleImpl {
@@ -1308,7 +1308,6 @@ TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge2) {
   DestroyDB(dbname, options);
 }
 
-
 TEST_F(WriteBatchWithIndexTest, TestGetFromBatchAndDBMerge3) {
   DB* db;
   Options options;
@@ -1828,10 +1827,10 @@ TEST_F(WriteBatchWithIndexTest, SingleDeleteDeltaIterTest) {
   ASSERT_EQ("B:b3,E:ee,", value);
 }
 
-}  // namespace
+}  // namespace ROCKSDB_NAMESPACE
 
 int main(int argc, char** argv) {
-  rocksdb::port::InstallStackTraceHandler();
+  ROCKSDB_NAMESPACE::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

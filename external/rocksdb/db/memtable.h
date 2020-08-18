@@ -26,11 +26,13 @@
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/memtablerep.h"
+#include "table/multiget_context.h"
 #include "util/dynamic_bloom.h"
 #include "util/hash.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
+struct FlushJobInfo;
 class Mutex;
 class MemTableIterator;
 class MergeContext;
@@ -63,6 +65,7 @@ struct MemTablePostProcessInfo {
   uint64_t num_deletes = 0;
 };
 
+using MultiGetRange = MultiGetContext::Range;
 // Note:  Many of the methods in this class have comments indicating that
 // external synchronization is required as these methods are not thread-safe.
 // It is up to higher layers of code to decide how to prevent concurrent
@@ -209,17 +212,31 @@ class MemTable {
            MergeContext* merge_context,
            SequenceNumber* max_covering_tombstone_seq, SequenceNumber* seq,
            const ReadOptions& read_opts, ReadCallback* callback = nullptr,
+           bool* is_blob_index = nullptr, bool do_merge = true) {
+    return Get(key, value, /*timestamp=*/nullptr, s, merge_context,
+               max_covering_tombstone_seq, seq, read_opts, callback,
+               is_blob_index, do_merge);
+  }
+
+  bool Get(const LookupKey& key, std::string* value, std::string* timestamp,
+           Status* s, MergeContext* merge_context,
+           SequenceNumber* max_covering_tombstone_seq, SequenceNumber* seq,
+           const ReadOptions& read_opts, ReadCallback* callback = nullptr,
            bool* is_blob_index = nullptr, bool do_merge = true);
 
-  bool Get(const LookupKey& key, std::string* value, Status* s,
-           MergeContext* merge_context,
+  bool Get(const LookupKey& key, std::string* value, std::string* timestamp,
+           Status* s, MergeContext* merge_context,
            SequenceNumber* max_covering_tombstone_seq,
            const ReadOptions& read_opts, ReadCallback* callback = nullptr,
            bool* is_blob_index = nullptr, bool do_merge = true) {
     SequenceNumber seq;
-    return Get(key, value, s, merge_context, max_covering_tombstone_seq, &seq,
-               read_opts, callback, is_blob_index, do_merge);
+    return Get(key, value, timestamp, s, merge_context,
+               max_covering_tombstone_seq, &seq, read_opts, callback,
+               is_blob_index, do_merge);
   }
+
+  void MultiGet(const ReadOptions& read_options, MultiGetRange* range,
+                ReadCallback* callback, bool* is_blob);
 
   // Attempts to update the new_value inplace, else does normal Add
   // Pseudocode
@@ -418,6 +435,16 @@ class MemTable {
     flush_in_progress_ = in_progress;
   }
 
+#ifndef ROCKSDB_LITE
+  void SetFlushJobInfo(std::unique_ptr<FlushJobInfo>&& info) {
+    flush_job_info_ = std::move(info);
+  }
+
+  std::unique_ptr<FlushJobInfo> ReleaseFlushJobInfo() {
+    return std::move(flush_job_info_);
+  }
+#endif  // !ROCKSDB_LITE
+
  private:
   enum FlushStateEnum { FLUSH_NOT_REQUESTED, FLUSH_REQUESTED, FLUSH_SCHEDULED };
 
@@ -500,6 +527,11 @@ class MemTable {
   // Gets refrshed inside `ApproximateMemoryUsage()` or `ShouldFlushNow`
   std::atomic<uint64_t> approximate_memory_usage_;
 
+#ifndef ROCKSDB_LITE
+  // Flush job info of the current memtable.
+  std::unique_ptr<FlushJobInfo> flush_job_info_;
+#endif  // !ROCKSDB_LITE
+
   // Returns a heuristic flush decision
   bool ShouldFlushNow();
 
@@ -507,8 +539,15 @@ class MemTable {
   void UpdateFlushState();
 
   void UpdateOldestKeyTime();
+
+  void GetFromTable(const LookupKey& key,
+                    SequenceNumber max_covering_tombstone_seq, bool do_merge,
+                    ReadCallback* callback, bool* is_blob_index,
+                    std::string* value, std::string* timestamp, Status* s,
+                    MergeContext* merge_context, SequenceNumber* seq,
+                    bool* found_final_value, bool* merge_in_progress);
 };
 
 extern const char* EncodeKey(std::string* scratch, const Slice& target);
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE

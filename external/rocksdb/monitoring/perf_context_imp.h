@@ -8,7 +8,7 @@
 #include "rocksdb/perf_context.h"
 #include "util/stop_watch.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 #if defined(NPERF_CONTEXT) || !defined(ROCKSDB_SUPPORT_THREAD_LOCAL)
 extern PerfContext perf_context;
 #else
@@ -27,7 +27,8 @@ extern thread_local PerfContext perf_context;
 #define PERF_TIMER_GUARD(metric)
 #define PERF_TIMER_GUARD_WITH_ENV(metric, env)
 #define PERF_CPU_TIMER_GUARD(metric, env)
-#define PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(metric, condition, stats, ticker_type)
+#define PERF_CONDITIONAL_TIMER_FOR_MUTEX_GUARD(metric, condition, stats, \
+                                               ticker_type)
 #define PERF_TIMER_MEASURE(metric)
 #define PERF_COUNTER_ADD(metric, value)
 #define PERF_COUNTER_BY_LEVEL_ADD(metric, value, level)
@@ -93,4 +94,4 @@ extern thread_local PerfContext perf_context;
 
 #endif
 
-}
+}  // namespace ROCKSDB_NAMESPACE

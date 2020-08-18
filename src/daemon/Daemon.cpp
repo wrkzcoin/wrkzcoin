@@ -2,6 +2,7 @@
 // Copyright (c) 2018, The Karai Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
 // Copyright (c) 2019, The CyprusCoin Developers
+// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -186,7 +187,7 @@ int main(int argc, char *argv[])
             config.dataDirectory + "/" + CryptoNote::parameters::P2P_NET_DATA_FILENAME,
             config.dataDirectory + "/DB"};
 
-        for (const auto path : removablePaths)
+        for (const auto &path : removablePaths)
         {
             fs::remove_all(fs::path(path), ec);
 
@@ -369,11 +370,11 @@ int main(int argc, char *argv[])
 
         if (config.enableLevelDB)
         {
-            database = std::make_shared<LevelDBWrapper>(logManager); 
+            database = std::make_shared<LevelDBWrapper>(logManager);
         }
         else
         {
-            database = std::make_shared<RocksDBWrapper>(logManager); 
+            database = std::make_shared<RocksDBWrapper>(logManager);
         }
 
         database->init(dbConfig);

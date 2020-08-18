@@ -3,6 +3,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
+try:
+    from builtins import object
+    from builtins import str
+except ImportError:
+    from __builtin__ import object
+    from __builtin__ import str
 import targets_cfg
 
 def pretty_list(lst, indent=8):
@@ -18,7 +24,7 @@ def pretty_list(lst, indent=8):
     return res
 
 
-class TARGETSBuilder:
+class TARGETSBuilder(object):
     def __init__(self, path):
         self.path = path
         self.targets_file = open(path, 'w')
@@ -42,6 +48,18 @@ class TARGETSBuilder:
             headers_attr_prefix=headers_attr_prefix,
             headers=headers,
             deps=pretty_list(deps)))
+        self.total_lib = self.total_lib + 1
+
+    def add_rocksdb_library(self, name, srcs, headers=None):
+        headers_attr_prefix = ""
+        if headers is None:
+            headers_attr_prefix = "auto_"
+            headers = "AutoHeaders.RECURSIVE_GLOB"
+        self.targets_file.write(targets_cfg.rocksdb_library_template.format(
+            name=name,
+            srcs=pretty_list(srcs),
+            headers_attr_prefix=headers_attr_prefix,
+            headers=headers))
         self.total_lib = self.total_lib + 1
 
     def add_binary(self, name, srcs, deps=None):

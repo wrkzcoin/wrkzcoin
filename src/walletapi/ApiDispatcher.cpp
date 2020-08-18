@@ -765,7 +765,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
 
     std::vector<std::pair<std::string, uint64_t>> destinations;
 
-    for (const auto destination : destinationsJSON)
+    for (const auto &destination : destinationsJSON)
     {
         const std::string address = getJsonValue<std::string>(destination, "address");
         const uint64_t amount = getJsonValue<uint64_t>(destination, "amount");
@@ -1530,7 +1530,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::getTransactionDetails(
 
     Common::podFromHex(hashStr, hash.data);
 
-    for (const auto tx : m_walletBackend->getTransactions())
+    for (const auto &tx : m_walletBackend->getTransactions())
     {
         if (tx.hash == hash)
         {
@@ -1571,7 +1571,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsByPaymentId(
 
     std::vector<WalletTypes::Transaction> transactions;
 
-    for (const auto tx : m_walletBackend->getTransactions())
+    for (const auto &tx : m_walletBackend->getTransactions())
     {
         if (tx.paymentID == paymentID)
         {
@@ -1595,7 +1595,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::getTransactionsWithPaymentId(
 {
     std::vector<WalletTypes::Transaction> transactions;
 
-    for (const auto tx : m_walletBackend->getTransactions())
+    for (const auto &tx : m_walletBackend->getTransactions())
     {
         if (tx.paymentID != "")
         {
@@ -1652,7 +1652,7 @@ std::tuple<Error, uint16_t>
 
     nlohmann::json j;
 
-    for (const auto [address, unlocked, locked] : balances)
+    for (const auto &[address, unlocked, locked] : balances)
     {
         j.push_back({{"address", address}, {"unlocked", unlocked}, {"locked", locked}});
     }

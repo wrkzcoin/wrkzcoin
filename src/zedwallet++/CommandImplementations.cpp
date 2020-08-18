@@ -88,7 +88,7 @@ void balance(const std::shared_ptr<WalletBackend> walletBackend)
 
         const auto transactions = walletBackend->getTransactions();
 
-        for (const auto tx : transactions)
+        for (const auto &tx : transactions)
         {
             if (!tx.isFusionTransaction())
             {
@@ -323,7 +323,7 @@ void saveCSV(const std::shared_ptr<WalletBackend> walletBackend)
     /* Create CSV header */
     csv << "Timestamp,Block Height,Hash,Amount,In/Out" << std::endl;
 
-    for (const auto tx : transactions)
+    for (const auto &tx : transactions)
     {
         /* Ignore fusion transactions */
         if (tx.isFusionTransaction())
@@ -434,7 +434,7 @@ void listTransfers(const bool incoming, const bool outgoing, const std::shared_p
     /* Append them, unconfirmed transactions last */
     transactions.insert(transactions.end(), unconfirmedTransactions.begin(), unconfirmedTransactions.end());
 
-    for (const auto tx : transactions)
+    for (const auto &tx : transactions)
     {
         /* Is a fusion transaction (on a view only wallet). It appears to have
            an incoming amount, because we can't detract the outputs (can't

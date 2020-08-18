@@ -28,19 +28,21 @@
 #include "rocksdb/options.h"
 #include "rocksdb/status.h"
 
-namespace rocksdb {
+namespace ROCKSDB_NAMESPACE {
 
 // -- Block-based Table
+class FilterPolicy;
 class FlushBlockPolicyFactory;
 class PersistentCache;
 class RandomAccessFile;
 struct TableReaderOptions;
 struct TableBuilderOptions;
 class TableBuilder;
+class TableFactory;
 class TableReader;
 class WritableFileWriter;
+struct ConfigOptions;
 struct EnvOptions;
-struct Options;
 
 enum ChecksumType : char {
   kNoChecksum = 0x0,
@@ -113,11 +115,6 @@ struct BlockBasedTableOptions {
     //    e.g. when prefix changes.
     // Makes the index significantly bigger (2x or more), especially when keys
     // are long.
-    //
-    // IO errors are not handled correctly in this mode right now: if an error
-    // happens when lazily reading a block in value(), value() returns empty
-    // slice, and you need to call Valid()/status() afterwards.
-    // TODO(kolmike): Fix it.
     kBinarySearchWithFirstKey = 0x03,
   };
 
@@ -269,7 +266,10 @@ struct BlockBasedTableOptions {
   // probably use this as it would reduce the index size.
   // This option only affects newly written tables. When reading existing
   // tables, the information about version is read from the footer.
-  uint32_t format_version = 2;
+  // 5 -- Can be read by RocksDB's versions since 6.6.0. Full and partitioned
+  // filters use a generally faster and more accurate Bloom filter
+  // implementation, with a different schema.
+  uint32_t format_version = 4;
 
   // Store index blocks on disk in compressed format. Changing this option to
   // false  will avoid the overhead of decompression if index blocks are evicted
@@ -557,8 +557,8 @@ class TableFactory {
   // RocksDB prints configurations at DB Open().
   virtual std::string GetPrintableTableOptions() const = 0;
 
-  virtual Status GetOptionString(std::string* /*opt_string*/,
-                                 const std::string& /*delimiter*/) const {
+  virtual Status GetOptionString(const ConfigOptions& /*config_options*/,
+                                 std::string* /*opt_string*/) const {
     return Status::NotSupported(
         "The table factory doesn't implement GetOptionString().");
   }
@@ -601,4 +601,4 @@ extern TableFactory* NewAdaptiveTableFactory(
 
 #endif  // ROCKSDB_LITE
 
-}  // namespace rocksdb
+}  // namespace ROCKSDB_NAMESPACE
