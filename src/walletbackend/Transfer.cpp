@@ -1550,7 +1550,8 @@ namespace SendTransaction
         const int threadCount,
         uint64_t nonce,
         std::atomic<bool> &shouldStop,
-        CryptoNote::Transaction tx)
+        CryptoNote::Transaction tx,
+        const std::shared_ptr<Nigel> daemon)
     {
         /* Make a thread local copy */
         auto extra = finalExtra;
@@ -1576,12 +1577,31 @@ namespace SendTransaction
 
             Crypto::cn_upx(data.data(), data.size(), hash);
 
-            if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
-            {
-                finalExtra = extra;
-                shouldStop = true;
+            const uint64_t actualFee = sumTransactionFee(tx);
 
-                return;
+            const bool isFusion = (actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)) ? true : false;
+
+            /* If it is not fusion but fee 100.00, then diff is 2x, shall be passed in any of the two cases*/
+            if (isFusion)
+            {
+                if (CryptoNote::check_hash(hash, CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY))
+                {
+                    finalExtra = extra;
+                    shouldStop = true;
+
+                    return;
+                }
+            }
+            else
+            {
+                if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
+                {
+                    finalExtra = extra;
+                    shouldStop = true;
+
+                    return;
+                }
             }
 
             nonce += threadCount;
@@ -1604,6 +1624,8 @@ namespace SendTransaction
 
         std::atomic<bool> shouldStop = false;
 
+        const std::shared_ptr<Nigel> daemon;
+
         for (int i = 0; i < threadCount; i++)
         {
             threads.push_back(std::thread(
@@ -1612,7 +1634,8 @@ namespace SendTransaction
                 threadCount,
                 i,
                 std::ref(shouldStop),
-                tx
+                tx,
+                daemon
             ));
         }
 

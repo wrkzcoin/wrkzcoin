@@ -539,6 +539,9 @@ bool ValidateTransaction::validateTransactionMixin()
 
 bool ValidateTransaction::validateTransactionPoW()
 {
+    const bool isFusion = m_currency.isFusionTransaction(
+        m_transaction, m_cachedTransaction.getTransactionBinaryArray().size(), m_blockHeight);
+
     if (m_blockHeight < CryptoNote::parameters::TRANSACTION_POW_HEIGHT)
     {
         return true;
@@ -550,10 +553,21 @@ bool ValidateTransaction::validateTransactionPoW()
 
     Crypto::cn_upx(data.data(), data.size(), hash);
 
-    if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
+    if (isFusion)
     {
-        return true;
+        if (CryptoNote::check_hash(hash, CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY))
+        {
+            return true;
+        }
     }
+    else
+    {
+        if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
+        {
+            return true;
+        }
+    }
+
 
     setTransactionValidationResult(
         CryptoNote::error::TransactionValidationError::POW_INVALID,
