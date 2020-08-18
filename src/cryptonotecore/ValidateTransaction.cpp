@@ -553,19 +553,11 @@ bool ValidateTransaction::validateTransactionPoW()
 
     Crypto::cn_upx(data.data(), data.size(), hash);
 
-    if (isFusion)
+    const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+
+    if (CryptoNote::check_hash(hash, diff))
     {
-        if (CryptoNote::check_hash(hash, CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY))
-        {
-            return true;
-        }
-    }
-    else
-    {
-        if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
-        {
-            return true;
-        }
+        return true;
     }
 
 

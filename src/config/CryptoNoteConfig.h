@@ -210,8 +210,8 @@ namespace CryptoNote
         /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
         const uint64_t TRANSACTION_POW_DIFFICULTY = 20000;
 
-        /* Tx difficulty will be 2 times from normal TX, in exchange of zero fee */
-        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY = 2 * TRANSACTION_POW_DIFFICULTY;
+        /* Tx difficulty will be 3 times from normal TX, in exchange of zero fee */
+        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY = 3 * TRANSACTION_POW_DIFFICULTY;
 
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes

@@ -1579,29 +1579,16 @@ namespace SendTransaction
 
             const uint64_t actualFee = sumTransactionFee(tx);
 
-            const bool isFusion = (actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
-                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)) ? true : false;
+            const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
 
-            /* If it is not fusion but fee 100.00, then diff is 2x, shall be passed in any of the two cases*/
-            if (isFusion)
+            const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            if (CryptoNote::check_hash(hash, diff))
             {
-                if (CryptoNote::check_hash(hash, CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY))
-                {
-                    finalExtra = extra;
-                    shouldStop = true;
+                finalExtra = extra;
+                shouldStop = true;
 
-                    return;
-                }
-            }
-            else
-            {
-                if (CryptoNote::check_hash(hash, CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY))
-                {
-                    finalExtra = extra;
-                    shouldStop = true;
-
-                    return;
-                }
+                return;
             }
 
             nonce += threadCount;
