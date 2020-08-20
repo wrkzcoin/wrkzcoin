@@ -31,6 +31,19 @@ namespace CryptoNote
 
         const uint32_t CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW = 40;
 
+        /* Transactions sent need to have an unlock time of current block + n.
+         * To avoid transactions hanging out in the transaction pool for a while
+         * no longer being valid, we will add this many blocks to the unlock time
+         * to allow the transactions to linger in the pool for this many blocks
+         * before becoming invalid. */
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
+
+        /* Transactions must have an unlock time of at least current block +
+         * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
+        const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 12;
+
+        const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V3 = 3 * DIFFICULTY_TARGET;
@@ -109,7 +122,7 @@ namespace CryptoNote
          * - 5 TRTL vs 5.12 TRTL. You can read this as.. the fee per chunk
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
-        
+
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
 

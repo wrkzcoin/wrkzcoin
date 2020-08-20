@@ -276,6 +276,7 @@ namespace CryptoNote
             Utilities::ThreadPool<bool> &threadPool,
             uint64_t &fee,
             uint32_t blockIndex,
+            uint64_t blockTimestamp,
             const bool isPoolTransaction);
 
         uint32_t findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const;

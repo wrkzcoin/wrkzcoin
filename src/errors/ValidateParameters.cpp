@@ -64,6 +64,7 @@ Error validateTransaction(
     const std::vector<std::string> subWalletsToTakeFrom,
     const std::string changeAddress,
     const std::shared_ptr<SubWallets> subWallets,
+    const uint64_t unlockTime,
     const uint64_t currentHeight)
 {
     /* Validate the destinations */
@@ -107,6 +108,11 @@ Error validateTransaction(
 
     /* Verify the change address is valid and exists in the subwallets */
     if (Error error = validateOurAddresses({changeAddress}, subWallets); error != SUCCESS)
+    {
+        return error;
+    }
+
+    if (Error error = validateUnlockTime(unlockTime, currentHeight); error != SUCCESS)
     {
         return error;
     }
@@ -458,4 +464,22 @@ Error validateOptimizeTarget(const std::optional<uint64_t> optimizeTarget)
     }
 
     return SUCCESS;
+}
+
+Error validateUnlockTime(
+    const uint64_t unlockTime,
+    const uint64_t currentHeight)
+{
+    if (unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+    {
+        return unlockTime >= std::time(nullptr) + (CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS * CryptoNote::parameters::DIFFICULTY_TARGET)
+            ? SUCCESS
+            : UNLOCK_TIME_TOO_SMALL;
+    }
+    else
+    {
+        return unlockTime >= currentHeight + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS
+            ? SUCCESS
+            : UNLOCK_TIME_TOO_SMALL;
+    }
 }

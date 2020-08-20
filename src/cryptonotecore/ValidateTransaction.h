@@ -50,6 +50,7 @@ class ValidateTransaction
             Utilities::ThreadPool<bool> &threadPool,
             const uint64_t blockHeight,
             const uint64_t blockSizeMedian,
+            const uint64_t blockTimestamp,
             const bool isPoolTransaction);
 
         /////////////////////////////
@@ -81,6 +82,8 @@ class ValidateTransaction
 
         bool validateTransactionInputsExpensive();
 
+        bool validateTransactionUnlockTime();
+
         void setTransactionValidationResult(const std::error_code &error_code, const std::string &error_message = "");
 
         /////////////////////////
@@ -99,6 +102,8 @@ class ValidateTransaction
         const CryptoNote::Checkpoints &m_checkpoints;
 
         const uint64_t m_blockHeight;
+
+        const uint64_t m_blockTimestamp;
 
         const uint64_t m_blockSizeMedian;
 

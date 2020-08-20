@@ -1266,11 +1266,13 @@ namespace CryptoNote
 
         uint64_t cumulativeFee = 0;
 
+        const uint64_t timestamp = cachedBlock.getBlock().timestamp;
+
         for (const auto &transaction : transactions)
         {
             uint64_t fee = 0;
             auto transactionValidationResult =
-                validateTransaction(transaction, validatorState, cache, m_transactionValidationThreadPool, fee, previousBlockIndex, false);
+                validateTransaction(transaction, validatorState, cache, m_transactionValidationThreadPool, fee, previousBlockIndex, timestamp, false);
 
             if (transactionValidationResult)
             {
@@ -1874,9 +1876,10 @@ namespace CryptoNote
         }
 
         uint64_t fee;
+        const uint64_t lastTimestamp = chainsLeaves[0]->getLastTimestamps(1)[0];
 
         if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true))
+                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true, lastTimestamp))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
@@ -2277,6 +2280,7 @@ namespace CryptoNote
         Utilities::ThreadPool<bool> &threadPool,
         uint64_t &fee,
         uint32_t blockIndex,
+        uint64_t blockTimestamp,
         const bool isPoolTransaction)
     {
         ValidateTransaction txValidator(
@@ -2288,6 +2292,7 @@ namespace CryptoNote
             threadPool,
             blockIndex,
             blockMedianSize,
+            blockTimestamp,
             isPoolTransaction
         );
 
@@ -2933,6 +2938,7 @@ namespace CryptoNote
             m_transactionValidationThreadPool,
             blockHeight,
             blockMedianSize,
+            chainsLeaves[0]->getLastTimestamps(1)[0],
             true /* Pool transaction */
         );
 
