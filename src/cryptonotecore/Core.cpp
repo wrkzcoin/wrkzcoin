@@ -772,7 +772,7 @@ namespace CryptoNote
                 firstBlockHeight);
 
             /* Difference between the start and end */
-            uint64_t blockDifference = (currentIndex > startIndex) : currentIndex - startIndex ? startIndex - currentIndex;
+            uint64_t blockDifference = (currentIndex > startIndex) ? currentIndex - startIndex : startIndex - currentIndex;
 
             /* Sync actualBlockCount or the amount of blocks between
            start and end, whichever is smaller */
@@ -918,7 +918,7 @@ namespace CryptoNote
                 firstBlockHeight);
 
             /* Difference between the start and end */
-            uint64_t blockDifference = (currentIndex > startIndex) : currentIndex - startIndex ? startIndex - currentIndex;
+            uint64_t blockDifference = (currentIndex > startIndex) ? currentIndex - startIndex : startIndex - currentIndex;
 
             /* Sync actualBlockCount or the amount of blocks between
            start and end, whichever is smaller */
