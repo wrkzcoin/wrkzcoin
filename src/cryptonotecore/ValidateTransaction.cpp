@@ -23,6 +23,7 @@ ValidateTransaction::ValidateTransaction(
     Utilities::ThreadPool<bool> &threadPool,
     const uint64_t blockHeight,
     const uint64_t blockSizeMedian,
+    const uint64_t blockTimestamp,
     const bool isPoolTransaction):
     m_cachedTransaction(cachedTransaction),
     m_transaction(cachedTransaction.getTransaction()),
@@ -33,6 +34,7 @@ ValidateTransaction::ValidateTransaction(
     m_blockchainCache(cache),
     m_blockHeight(blockHeight),
     m_blockSizeMedian(blockSizeMedian),
+    m_blockTimestamp(blockTimestamp),
     m_isPoolTransaction(isPoolTransaction)
 {
 }
@@ -65,6 +67,12 @@ TransactionValidationResult ValidateTransaction::validate()
 
     /* Validate the transaction extra is a reasonable size. */
     if (!validateTransactionExtra())
+    {
+        return m_validationResult;
+    }
+
+    /* Verify unlock time meets requirements */
+    if (!validateTransactionUnlockTime())
     {
         return m_validationResult;
     }
@@ -131,6 +139,12 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
 
     /* Validate transaction outputs are non zero, don't overflow, etc */
     if (!validateTransactionOutputs())
+    {
+        return m_validationResult;
+    }
+
+    /* Verify unlock time meets requirements */
+    if (!validateTransactionUnlockTime())
     {
         return m_validationResult;
     }
@@ -683,6 +697,34 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
     return valid;
 }
 
+bool ValidateTransaction::validateTransactionUnlockTime()
+{
+    if (m_blockHeight <= CryptoNote::parameters::UNLOCK_TIME_HEIGHT)
+    {
+        return true;
+    }
+
+    bool valid;
+
+    if (m_transaction.unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+    {
+        valid = m_transaction.unlockTime >= m_blockTimestamp + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS * CryptoNote::parameters::DIFFICULTY_TARGET;
+    }
+    else
+    {
+        valid = m_transaction.unlockTime >= m_blockHeight + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+    }
+
+    if (!valid)
+    {
+        setTransactionValidationResult(
+            CryptoNote::error::TransactionValidationError::UNLOCK_TIME_TOO_SMALL,
+            "Transaction has a too small unlock time"
+        );
+    }
+
+    return valid;
+}
 
 void ValidateTransaction::setTransactionValidationResult(const std::error_code &error_code, const std::string &error_message)
 {

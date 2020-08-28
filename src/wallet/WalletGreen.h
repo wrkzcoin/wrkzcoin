@@ -118,9 +118,9 @@ namespace CryptoNote
 
         virtual std::vector<size_t> getDelayedTransactionIds() const;
 
-        virtual size_t transfer(const TransactionParameters &transactionParameters);
+        virtual size_t transfer(TransactionParameters &transactionParameters);
 
-        virtual size_t makeTransaction(const TransactionParameters &sendingTransaction);
+        virtual size_t makeTransaction(TransactionParameters &sendingTransaction);
 
         virtual void commitTransaction(size_t);
 

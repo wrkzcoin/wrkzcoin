@@ -321,6 +321,10 @@ std::string Error::getErrorMessage() const
             return "The amount given does not have only a single significant digit. "
                    "For example, 20000 or 100000 would be fine, but 20001 or 123456 would not.";
         }
+        case UNLOCK_TIME_TOO_SMALL:
+        {
+            return "Unlock time is too small";
+        }
         /* No default case so the compiler warns us if we missed one */
     }
 

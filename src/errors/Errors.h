@@ -237,6 +237,9 @@ enum ErrorCode
     /* The amount given does not have only a single significant digit - i.e.,
      * it cannot be used directly as a transaction input/output amount */
     AMOUNT_UGLY = 59,
+
+    /* Unlock time does not meet the required minimum locked blocks */
+    UNLOCK_TIME_TOO_SMALL = 60,
 };
 
 class Error

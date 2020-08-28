@@ -46,7 +46,7 @@ namespace SendTransaction
         std::string changeAddress,
         const std::shared_ptr<Nigel> daemon,
         const std::shared_ptr<SubWallets> subWallets,
-        const uint64_t unlockTime,
+        uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
         const bool sendAll = false,
         const bool sendTransaction = true);
@@ -92,7 +92,7 @@ namespace SendTransaction
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources);
-    
+
     WalletTypes::TransactionResult makeTransaction(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,

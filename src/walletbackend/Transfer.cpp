@@ -94,7 +94,7 @@ namespace SendTransaction
 
         CryptoNote::KeyPair txKeyPair;
 
-        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT 
+        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
         && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
             ? CryptoNote::parameters::FUSION_FEE_V1
             : 0;
@@ -171,7 +171,9 @@ namespace SendTransaction
                 continue;
             }
 
-            const uint64_t unlockTime = 0;
+            const uint64_t unlockTime = daemon->networkBlockCount()
+                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 
             WalletTypes::TransactionResult txResult =
                 makeTransaction(mixin, daemon, ourInputs, paymentID, destinations, subWallets, unlockTime, extraData);
@@ -297,7 +299,7 @@ namespace SendTransaction
         std::string changeAddress,
         const std::shared_ptr<Nigel> daemon,
         const std::shared_ptr<SubWallets> subWallets,
-        const uint64_t unlockTime,
+        uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
         const bool sendAll,
         const bool sendTransaction)
@@ -315,6 +317,13 @@ namespace SendTransaction
             changeAddress = subWallets->getPrimaryAddress();
         }
 
+        if (unlockTime == 0)
+        {
+            unlockTime = daemon->networkBlockCount()
+                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+        }
+
         /* Validate the transaction input parameters */
         Error error = validateTransaction(
             addressesAndAmounts,
@@ -324,6 +333,7 @@ namespace SendTransaction
             addressesToTakeFrom,
             changeAddress,
             subWallets,
+            unlockTime,
             daemon->networkBlockCount());
 
         if (error)
