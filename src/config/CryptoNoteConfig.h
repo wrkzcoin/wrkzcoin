@@ -40,9 +40,9 @@ namespace CryptoNote
 
         /* Transactions must have an unlock time of at least current block +
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
-        const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 12;
+        const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
-        const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+        const uint64_t UNLOCK_TIME_HEIGHT = 1400000;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
