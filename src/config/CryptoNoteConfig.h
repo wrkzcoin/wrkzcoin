@@ -42,7 +42,7 @@ namespace CryptoNote
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
-        const uint64_t UNLOCK_TIME_HEIGHT = 1400000;
+        const uint64_t UNLOCK_TIME_HEIGHT = 1400000; // TODO: Update fork height
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
@@ -226,6 +226,21 @@ namespace CryptoNote
         /* Tx difficulty will be 3 times from normal TX, in exchange of zero fee */
         const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY = 3 * TRANSACTION_POW_DIFFICULTY;
 
+        /* Height of dynamic Tx PoW diff for each input output size */
+        const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1400000; // TODO: Update fork height
+        
+        /* A minimum diff tx pow. Example, it will be 100000 + Multiplier * [Input + Output size()] */
+        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 100000;
+        
+        /* Multiplier diff */
+        const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1 = 1000;
+        
+        /* Output / Input factor: how many times we factor Output diff. Assuming input is 1 */
+        const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1 = 4;
+
+        /* Tx difficulty will be 3 times of TRANSACTION_POW_DIFFICULTY_DYN_V1, in exchange of zero fee */
+        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY_V2 = 3 * TRANSACTION_POW_DIFFICULTY_DYN_V1;
+
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes
          * an invalid block. */
@@ -318,7 +333,7 @@ namespace CryptoNote
             864864,   // 10
             1000000,  // 11
             1123000,  // 12
-            1400000,  // 13
+            1400000,  // 13  // TODO: Update fork height
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */

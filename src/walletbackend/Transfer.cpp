@@ -1592,7 +1592,20 @@ namespace SendTransaction
             const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
                 && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
 
-            const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            uint64_t diff = CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1;
+            
+            if (daemon->networkBlockCount() >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT && 
+            daemon->networkBlockCount() <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            } else if (daemon->networkBlockCount() > CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY_V2 : 
+                (CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1 
+                + (tx.inputs.size() + tx.outputs.size() * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1) 
+                * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1);
+            }
+
             if (CryptoNote::check_hash(hash, diff))
             {
                 finalExtra = extra;
