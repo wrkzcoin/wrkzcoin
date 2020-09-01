@@ -229,8 +229,8 @@ namespace CryptoNote
         /* Height of dynamic Tx PoW diff for each input output size */
         const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1400000; // TODO: Update fork height
         
-        /* A minimum diff tx pow. Example, it will be 100000 + Multiplier * [Input + Output size()] */
-        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 100000;
+        /* A minimum diff tx pow. Example, it will be 40000 + Multiplier * [Input + Output size()] */
+        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 40000;
         
         /* Multiplier diff */
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1 = 1000;
