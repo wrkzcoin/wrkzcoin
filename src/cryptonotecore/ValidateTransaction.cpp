@@ -569,6 +569,26 @@ bool ValidateTransaction::validateTransactionPoW()
 
     uint64_t diff = CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1;
 
+    uint64_t txInputSize = 0;
+    try
+    {
+        txInputSize = m_transaction.inputs.size();
+    }
+    catch (const std::exception &e)
+    {
+        //
+    }
+
+    uint64_t txOutputSize = 0;
+    try
+    {
+        txOutputSize = m_transaction.outputs.size();
+    }
+    catch (const std::exception &e)
+    {
+        //
+    }
+
     if (m_blockHeight >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT && 
     m_blockHeight <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
     {
@@ -577,7 +597,7 @@ bool ValidateTransaction::validateTransactionPoW()
     {
         diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY_V2 : 
         (CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1 
-        + (m_transaction.inputs.size() + m_transaction.outputs.size() * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1) 
+        + (txInputSize + txOutputSize * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1) 
         * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1);
     }
 
