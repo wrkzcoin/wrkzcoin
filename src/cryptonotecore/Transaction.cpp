@@ -119,7 +119,7 @@ namespace CryptoNote
         virtual void
             signInputKey(size_t input, const TransactionTypes::InputKeyInfo &info, const KeyPair &ephKeys) override;
 
-        virtual void generateTxProofOfWork() override;
+        virtual void generateTxProofOfWork(const uint64_t height) override;
 
       private:
         void invalidateHash();
@@ -373,10 +373,10 @@ namespace CryptoNote
         transaction.extra.insert(transaction.extra.end(), extraData.begin(), extraData.end());
     }
 
-    void TransactionImpl::generateTxProofOfWork()
+    void TransactionImpl::generateTxProofOfWork(const uint64_t height)
     {
         checkIfSigning();
-        transaction.extra = SendTransaction::generateTransactionPoW(transaction, transaction.extra);
+        transaction.extra = SendTransaction::generateTransactionPoWHeight(transaction, transaction.extra, height);
     }
 
     bool TransactionImpl::getExtraNonce(BinaryArray &nonce) const

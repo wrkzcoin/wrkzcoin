@@ -18,6 +18,7 @@
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
+#include <ctime> // time_t
 
 namespace SendTransaction
 {
@@ -1459,7 +1460,36 @@ namespace SendTransaction
          * signature generation, as ring signatures take the transaction prefix
          * hash. Generating it afterwards would change the hash, and thus invalidate
          * the sigs. */
-        setupTX.extra = generateTransactionPoW(setupTX, extra);
+
+        Logger::logger.log(
+            "Tx PoW preparing",
+            Logger::DEBUG,
+            { Logger::TRANSACTIONS }
+        );
+
+        try
+        {
+            /* get time start and end for Tx PoW Log */
+            time_t time_begin, time_end; // time_t is a datatype to store time values.
+
+            time (&time_begin); // note time before execution
+
+            setupTX.extra = generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+
+            time (&time_end); // note time after execution
+
+            const double difference = difftime (time_end, time_begin);
+
+            Logger::logger.log(
+                "Tx PoW took " + std::to_string(difference) + " second(s)",
+                Logger::DEBUG,
+                { Logger::TRANSACTIONS }
+            );
+        }
+        catch (const std::exception &e)
+        {
+            std::cout << "Unhandled exception caught: " << e.what() << "\n..." << std::endl;
+        }
 
         /* Fill in the transaction signatures */
         /* NOTE: Do not modify the transaction after this, or the ring signatures
@@ -1561,7 +1591,7 @@ namespace SendTransaction
         uint64_t nonce,
         std::atomic<bool> &shouldStop,
         CryptoNote::Transaction tx,
-        const std::shared_ptr<Nigel> daemon)
+        const uint64_t height)
     {
         /* Make a thread local copy */
         auto extra = finalExtra;
@@ -1589,12 +1619,48 @@ namespace SendTransaction
 
             const uint64_t actualFee = sumTransactionFee(tx);
 
-            const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
-                && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
+            const bool isFusion = actualFee == 0 || (actualFee == CryptoNote::parameters::FUSION_FEE_V1 && height >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+                && height < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT);
 
-            const uint64_t diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            uint64_t diff = CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1;
+            
+            uint64_t txInputSize = 0;
+            try
+            {
+                txInputSize = tx.inputs.size();
+            }
+            catch (const std::exception &e)
+            {
+            }
+
+            uint64_t txOutputSize = 0;
+            try
+            {
+                txOutputSize = tx.outputs.size();
+            }
+            catch (const std::exception &e)
+            {
+            }
+
+            if (height >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT && 
+            height < CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            } else if (height >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY_V2 : 
+                (CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1 
+                + (txInputSize + txOutputSize * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1) 
+                * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1);
+            }
+
             if (CryptoNote::check_hash(hash, diff))
             {
+                Logger::logger.log(
+                    "Making Tx PoW with difficulty " + std::to_string(diff),
+                    Logger::DEBUG,
+                    { Logger::TRANSACTIONS }
+                );
                 finalExtra = extra;
                 shouldStop = true;
 
@@ -1605,9 +1671,10 @@ namespace SendTransaction
         }
     }
 
-    std::vector<uint8_t> generateTransactionPoW(
+    std::vector<uint8_t> generateTransactionPoWHeight(
         CryptoNote::Transaction tx,
-        std::vector<uint8_t> extra)
+        std::vector<uint8_t> extra,
+        const uint64_t height)
     {
         /* Add the nonce identifier */
         extra.push_back(Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER);
@@ -1632,7 +1699,7 @@ namespace SendTransaction
                 i,
                 std::ref(shouldStop),
                 tx,
-                daemon
+                height
             ));
         }
 

@@ -2879,7 +2879,8 @@ namespace CryptoNote
             tx->addInput(makeAccountKeys(*input.walletRecord), input.keyInfo, input.ephKeys);
         }
 
-        tx->generateTxProofOfWork();
+        uint32_t height = m_node.getLastKnownBlockHeight();
+        tx->generateTxProofOfWork(height);
 
         size_t i = 0;
         for (auto &input : keysInfo)

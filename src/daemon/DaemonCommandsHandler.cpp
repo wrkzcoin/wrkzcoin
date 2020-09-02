@@ -20,6 +20,7 @@
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Utilities.h>
+#include <common/CheckDifficulty.h>
 
 namespace
 {
@@ -307,6 +308,8 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 {
     const auto pool = m_core.getPoolTransactions();
 
+    const uint64_t height = m_core.getTopBlockIndex();
+
     if (pool.size() == 0)
     {
         std::cout << InformationMsg("\nPool state: ") << SuccessMsg("Empty.") << std::endl;
@@ -323,12 +326,64 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
     {
         CryptoNote::CachedTransaction ctx(tx);
 
+        std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(tx));
+
+        Crypto::Hash hash;
+
+        Crypto::cn_upx(data.data(), data.size(), hash);
+
+        uint64_t txInputSize = 0;
+        try
+        {
+            txInputSize = tx.inputs.size();
+        }
+        catch (const std::exception &e)
+        {
+        }
+
+        uint64_t txOutputSize = 0;
+        try
+        {
+            txOutputSize = tx.outputs.size();
+        }
+        catch (const std::exception &e)
+        {
+        }
+
+        bool isFusion = ctx.getTransactionFee() == 0;
+
+        uint64_t diff = 0;
+
+        try
+        {
+            uint64_t checked_diff = 0;
+            if (height >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT && 
+            height <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                checked_diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
+            } else if (height > CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            {
+                checked_diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY_V2 : 
+                (CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1 
+                + (txInputSize + txOutputSize * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1) 
+                * CryptoNote::parameters::MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1);
+            }
+            if (CryptoNote::check_hash(hash, checked_diff))
+            {
+                diff = checked_diff;
+            }
+        }
+        catch (const std::exception &e)
+        {
+        }
+
         std::cout << InformationMsg("Hash: ") << SuccessMsg(ctx.getTransactionHash())
                   << InformationMsg(", Size: ") << SuccessMsg(Utilities::prettyPrintBytes(ctx.getTransactionBinaryArray().size()))
                   << InformationMsg(", Fee: ") << SuccessMsg(Utilities::formatAmount(ctx.getTransactionFee()))
+                  << InformationMsg(", Tx Diff: ") << SuccessMsg(std::to_string(diff))
                   << InformationMsg(", Fusion: ");
 
-        if (ctx.getTransactionFee() == 0)
+        if (isFusion)
         {
             std::cout << SuccessMsg("Yes") << std::endl;
         }
