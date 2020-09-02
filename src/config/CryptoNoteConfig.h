@@ -42,7 +42,7 @@ namespace CryptoNote
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
-        const uint64_t UNLOCK_TIME_HEIGHT = 1400000; // TODO: Update fork height
+        const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
@@ -227,7 +227,7 @@ namespace CryptoNote
         const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY = 3 * TRANSACTION_POW_DIFFICULTY;
 
         /* Height of dynamic Tx PoW diff for each input output size */
-        const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1400000; // TODO: Update fork height
+        const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1200000;
         
         /* A minimum diff tx pow. Example, it will be 40000 + Multiplier * [Input + Output size()] */
         const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 40000; // If this change, please look at FUSION_TRANSACTION_POW_DIFFICULTY_V2
@@ -333,11 +333,12 @@ namespace CryptoNote
             864864,   // 10
             1000000,  // 11
             1123000,  // 12
-            1400000,  // 13  // TODO: Update fork height
+            1200000,  // 13
+            1500000,  // 14  // TODO: Update fork height
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 12;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 13;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
