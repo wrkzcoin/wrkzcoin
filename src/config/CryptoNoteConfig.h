@@ -230,7 +230,7 @@ namespace CryptoNote
         const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1400000; // TODO: Update fork height
         
         /* A minimum diff tx pow. Example, it will be 40000 + Multiplier * [Input + Output size()] */
-        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 40000;
+        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 40000; // If this change, please look at FUSION_TRANSACTION_POW_DIFFICULTY_V2
         
         /* Multiplier diff */
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1 = 1000;
@@ -239,7 +239,7 @@ namespace CryptoNote
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1 = 4;
 
         /* Tx difficulty will be 3 times of TRANSACTION_POW_DIFFICULTY_DYN_V1, in exchange of zero fee */
-        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY_V2 = 3 * TRANSACTION_POW_DIFFICULTY_DYN_V1;
+        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY_V2 = 8 * TRANSACTION_POW_DIFFICULTY_DYN_V1;
 
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes
