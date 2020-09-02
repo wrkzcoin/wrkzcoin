@@ -1643,10 +1643,10 @@ namespace SendTransaction
             }
 
             if (height >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT && 
-            height <= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            height < CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
             {
                 diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY : CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY;
-            } else if (height > CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
+            } else if (height >= CryptoNote::parameters::TRANSACTION_POW_HEIGHT_DYN_V1)
             {
                 diff = isFusion ? CryptoNote::parameters::FUSION_TRANSACTION_POW_DIFFICULTY_V2 : 
                 (CryptoNote::parameters::TRANSACTION_POW_DIFFICULTY_DYN_V1 
