@@ -54,16 +54,18 @@ namespace CryptoNote
       public:
         virtual ~IDataBase() {}
 
-        virtual void init(const DataBaseConfig &config) = 0;
+        virtual void init() = 0;
 
         virtual void shutdown() = 0;
 
-        virtual void destroy(const DataBaseConfig &config) = 0;
+        virtual void destroy() = 0;
 
         virtual std::error_code write(IWriteBatch &batch) = 0;
 
         virtual std::error_code read(IReadBatch &batch) = 0;
 
         virtual std::error_code readThreadSafe(IReadBatch &batch) = 0;
+
+        virtual void recreate() = 0;
     };
 } // namespace CryptoNote

@@ -16,7 +16,6 @@
 #include "IBlockchainCacheFactory.h"
 #include "ICore.h"
 #include "ICoreInformation.h"
-#include "IMainChainStorage.h"
 #include "ITransactionPool.h"
 #include "ITransactionPoolCleaner.h"
 #include "IUpgradeManager.h"
@@ -29,6 +28,7 @@
 #include <system/ContextGroup.h>
 #include <unordered_map>
 #include <utilities/ThreadPool.h>
+#include <utilities/ThreadSafeQueue.h>
 #include <vector>
 
 namespace CryptoNote
@@ -42,7 +42,6 @@ namespace CryptoNote
             Checkpoints &&checkpoints,
             System::Dispatcher &dispatcher,
             std::unique_ptr<IBlockchainCacheFactory> &&blockchainCacheFactory,
-            std::unique_ptr<IMainChainStorage> &&mainChainStorage,
             uint32_t transactionValidationThreads);
 
         virtual ~Core();
@@ -219,11 +218,25 @@ namespace CryptoNote
 
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const override;
 
-        virtual uint64_t get_current_blockchain_height() const;
-
         static WalletTypes::RawCoinbaseTransaction getRawCoinbaseTransaction(const CryptoNote::Transaction &t);
 
         static WalletTypes::RawTransaction getRawTransaction(const std::vector<uint8_t> &rawTX);
+
+        virtual std::string exportBlockchain(
+            uint64_t startIndex,
+            const uint64_t endIndex,
+            const std::string filePath) override;
+
+        virtual std::tuple<Crypto::Hash, std::string> importRawBlock(
+            RawBlock &rawBlock,
+            const Crypto::Hash previousBlockHash,
+            const uint64_t height) override;
+
+        virtual std::string importBlockchain(
+            const std::string filePath,
+            const bool performExpensiveValidation) override;
+
+        virtual void rewind(const uint64_t blockIndex) override;
 
       private:
         const Currency &currency;
@@ -251,8 +264,6 @@ namespace CryptoNote
         IntrusiveLinkedList<MessageQueue<BlockchainMessage>> queueList;
 
         std::unique_ptr<IBlockchainCacheFactory> blockchainCacheFactory;
-
-        std::unique_ptr<IMainChainStorage> mainChainStorage;
 
         Utilities::ThreadPool<bool> m_transactionValidationThreadPool;
 
@@ -404,12 +415,8 @@ namespace CryptoNote
 
         void initRootSegment();
 
-        void importBlocksFromStorage();
-
         void cutSegment(IBlockchainCache &segment, uint32_t startIndex);
-
-        void switchMainChainStorage(uint32_t splitBlockIndex, IBlockchainCache &newChain);
-
+        
         std::mutex m_submitBlockMutex;
     };
 
