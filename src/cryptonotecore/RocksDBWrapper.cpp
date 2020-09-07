@@ -160,36 +160,43 @@ std::error_code RocksDBWrapper::read(IReadBatch &batch)
 {
     if (state.load() != INITIALIZED)
     {
-        throw std::runtime_error("Not initialized.");
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
     rocksdb::ReadOptions readOptions;
 
     std::vector<std::string> rawKeys(batch.getRawKeys());
-    std::vector<rocksdb::Slice> keySlices;
-    keySlices.reserve(rawKeys.size());
-    for (const std::string &key : rawKeys)
+    if (rawKeys.size() > 0)
     {
-        keySlices.emplace_back(rocksdb::Slice(key));
-    }
-
-    std::vector<std::string> values;
-    values.reserve(rawKeys.size());
-    std::vector<rocksdb::Status> statuses = db->MultiGet(readOptions, keySlices, &values);
-
-    std::error_code error;
-    std::vector<bool> resultStates;
-    for (const rocksdb::Status &status : statuses)
-    {
-        if (!status.ok() && !status.IsNotFound())
+        std::vector<rocksdb::Slice> keySlices;
+        keySlices.reserve(rawKeys.size());
+        for (const std::string &key : rawKeys)
         {
-            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            keySlices.emplace_back(rocksdb::Slice(key));
         }
-        resultStates.push_back(status.ok());
-    }
 
-    batch.submitRawResult(values, resultStates);
-    return std::error_code();
+        std::vector<std::string> values;
+        values.reserve(rawKeys.size());
+        std::vector<rocksdb::Status> statuses = db->MultiGet(readOptions, keySlices, &values);
+
+        std::error_code error;
+        std::vector<bool> resultStates;
+        for (const rocksdb::Status &status : statuses)
+        {
+            if (!status.ok() && !status.IsNotFound())
+            {
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+            resultStates.push_back(status.ok());
+        }
+
+        batch.submitRawResult(values, resultStates);
+        return std::error_code();
+    } else
+    {
+        logger(ERROR) << "RocksDBWrapper::read: detected rawKeys.size() == 0!!!";
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
 }
 
 std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)

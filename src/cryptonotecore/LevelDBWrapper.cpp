@@ -164,35 +164,43 @@ std::error_code LevelDBWrapper::read(IReadBatch &batch)
 {
     if (state.load() != INITIALIZED)
     {
-        throw std::runtime_error("Not initialized.");
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
     leveldb::ReadOptions readOptions;
 
     std::vector<std::string> rawKeys(batch.getRawKeys());
-    std::vector<leveldb::Slice> keySlices;
-    keySlices.reserve(rawKeys.size());
-
-    std::vector<std::string> values;
-    std::error_code error;
-    std::vector<bool> resultStates;
-
-    for (const std::string &key : rawKeys)
+    if (rawKeys.size() > 0)
     {
-        std::string tmp_value;
-        leveldb::Status s = db->Get(leveldb::ReadOptions(), key, &tmp_value);
-        if (!s.ok() && !s.IsNotFound())
+        std::vector<leveldb::Slice> keySlices;
+        keySlices.reserve(rawKeys.size());
+
+        std::vector<std::string> values;
+        std::error_code error;
+        std::vector<bool> resultStates;
+
+        for (const std::string &key : rawKeys)
         {
-            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            std::string tmp_value;
+            leveldb::Status s = db->Get(leveldb::ReadOptions(), key, &tmp_value);
+            if (!s.ok() && !s.IsNotFound())
+            {
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+            values.push_back(tmp_value);
+            resultStates.push_back(s.ok());
         }
-        values.push_back(tmp_value);
-        resultStates.push_back(s.ok());
+
+        values.reserve(rawKeys.size());
+
+        batch.submitRawResult(values, resultStates);
+        return std::error_code();
     }
-
-    values.reserve(rawKeys.size());
-
-    batch.submitRawResult(values, resultStates);
-    return std::error_code();
+    else
+    {
+        logger(ERROR) << "LevelDBWrapper::read: detected rawKeys.size() == 0!!!";
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
 }
 
 /* LevelDB is thread safe by default: https://github.com/google/leveldb/blob/master/doc/index.md#concurrency */
