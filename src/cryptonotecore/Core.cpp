@@ -9,6 +9,7 @@
 #include <WalletTypes.h>
 #include <algorithm>
 #include <common/CryptoNoteTools.h>
+#include <common/FileSystemShim.h>
 #include <common/Math.h>
 #include <common/MemoryInputStream.h>
 #include <common/ShuffleGenerator.h>
@@ -2464,16 +2465,28 @@ namespace CryptoNote
     std::string Core::exportBlockchain(
         const std::string filePath)
     {
+        fs::path dumpfile = filePath;
+
+        if (fs::exists(dumpfile))
+        {
+            return filePath + " already exists.";
+        }
+
         IBlockchainCache *mainChain = chainsLeaves[0];
         uint64_t currentIndex = mainChain->getTopBlockIndex() + 1;
-        
+
+        if (currentIndex < 1000 || currentIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+        {
+            return "Top block is too low or too high, not going to create an export.";
+        }
+
         /* Exporting block, we need to minus top block by 1,000 to be safe */
-        uint64_t endIndex = currentIndex - 100;
+        uint64_t endIndex = currentIndex - 1000;
         uint64_t startIndex = 1;
 
-        if (endIndex < 0)
+        if (endIndex < 0 || endIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
         {
-            return "Top block is too low, not necessary to create export.";
+            return "Top block is too low or too high, not going to create an export.";
         }
 
         std::fstream blockchainDump(filePath, std::ios::out | std::ios_base::binary);
