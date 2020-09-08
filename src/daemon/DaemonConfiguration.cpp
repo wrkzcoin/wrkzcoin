@@ -52,6 +52,14 @@ namespace DaemonConfig
             "Output daemon version information",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
 
+        options.add_options("Import / Export")(
+            "import-blockchain",
+            "Import blockchain DB from dump file",
+            cxxopts::value<bool>(config.importChain)->default_value("false")->implicit_value("true"))(
+            "export-blockchain",
+            "Export blockchain DB to a dump file",
+            cxxopts::value<bool>(config.exportChain)->default_value("false")->implicit_value("true"));
+
         options.add_options("Genesis Block")(
             "print-genesis-tx",
             "Print the genesis block transaction hex and exits",

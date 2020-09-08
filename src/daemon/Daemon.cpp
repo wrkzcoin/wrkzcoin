@@ -392,42 +392,51 @@ int main(int argc, char *argv[])
 
         logger(INFO) << "Core initialized OK";
 
-        const bool importChain = true;
-        const bool performExpensiveValidation = false;
-        const uint64_t startIndex = 0;
-        const uint64_t endIndex = 10000;
-
         std::string error;
         std::string filepath = "blockchain.dump";
 
         auto startTimer = std::chrono::high_resolution_clock::now();
 
-        if (importChain)
+        const bool performExpensiveValidation = false;
+        auto elapsedTime = std::chrono::high_resolution_clock::now() - startTimer;
+        if (config.importChain)
         {
             logger(INFO) << "Importing blockchain...";
             error = ccore->importBlockchain(filepath, performExpensiveValidation);
-        }
-        else
+            elapsedTime = std::chrono::high_resolution_clock::now() - startTimer;
+            if (error != "")
+            {
+                logger(ERROR) << "Failed to import "
+                              << "blockchain: " << error;
+                exit(1);
+            }
+            else
+            {
+                std::cout << "Time to import "
+                          << std::chrono::duration_cast<std::chrono::seconds>(elapsedTime).count()
+                          << " seconds." << std::endl
+                          << std::endl;
+                exit(0);
+            }
+        } else if (config.exportChain)
         {
             logger(INFO) << "Exporting blockchain...";
-            error = ccore->exportBlockchain(startIndex, endIndex, filepath);
-        }
-
-        auto elapsedTime = std::chrono::high_resolution_clock::now() - startTimer;
-
-        if (error != "")
-        {
-            logger(ERROR) << "Failed to " << (importChain ? "import " : " export ")
-                          << "blockchain: " << error;
-        }
-        else
-        {
-            std::cout << "Time to " << (importChain ? "import " : "export ")
-                      << (endIndex - startIndex) << " blocks: " 
-                      << std::chrono::duration_cast<std::chrono::seconds>(elapsedTime).count()
-                      << " seconds." << std::endl
-                      << "Blocks per second: " << ((endIndex - startIndex) / std::chrono::duration_cast<std::chrono::seconds>(elapsedTime).count())
-                      << std::endl;
+            error = ccore->exportBlockchain(filepath);
+            elapsedTime = std::chrono::high_resolution_clock::now() - startTimer;
+            if (error != "")
+            {
+                logger(ERROR) << "Failed to export "
+                              << "blockchain: " << error;
+                exit(1);
+            }
+            else
+            {
+                std::cout << "Time to export "
+                          << std::chrono::duration_cast<std::chrono::seconds>(elapsedTime).count()
+                          << " seconds." << std::endl
+                          << std::endl;
+                exit(0);
+            }
         }
 
         /* If we were told to rewind the blockchain to a certain height

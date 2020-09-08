@@ -51,6 +51,8 @@ namespace DaemonConfig
             enableDbCompression = false;
             resync = false;
             enableLevelDB = false;
+            importChain = false;
+            exportChain = false;
         }
 
         std::string dataDirectory;
@@ -116,6 +118,10 @@ namespace DaemonConfig
         bool p2pResetPeerstate;
 
         bool enableLevelDB;
+
+        bool importChain;
+
+        bool exportChain;
 
         std::string configFile;
 

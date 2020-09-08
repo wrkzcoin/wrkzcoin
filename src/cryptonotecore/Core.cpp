@@ -2462,26 +2462,18 @@ namespace CryptoNote
 
     /* Note: Final block height will be endIndex - 1 */
     std::string Core::exportBlockchain(
-        uint64_t startIndex,
-        const uint64_t endIndex,
         const std::string filePath)
     {
         IBlockchainCache *mainChain = chainsLeaves[0];
         uint64_t currentIndex = mainChain->getTopBlockIndex() + 1;
+        
+        /* Exporting block, we need to minus top block by 1,000 to be safe */
+        uint64_t endIndex = currentIndex - 100;
+        uint64_t startIndex = 1;
 
-        if (startIndex == 0)
+        if (endIndex < 0)
         {
-            startIndex = 1;
-        }
-
-        if (startIndex >= endIndex)
-        {
-            return "Start index is greater or equal to end index, aborting";
-        }
-
-        if (currentIndex < endIndex)
-        {
-            return "Requested end height is greater than current chain height of " + std::to_string(currentIndex);
+            return "Top block is too low, not necessary to create export.";
         }
 
         std::fstream blockchainDump(filePath, std::ios::out | std::ios_base::binary);
