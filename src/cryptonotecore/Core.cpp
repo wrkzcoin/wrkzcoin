@@ -2444,21 +2444,24 @@ namespace CryptoNote
                 /* Height - Size of following block - Block */
                 const std::string line = std::to_string(height) + " " + std::to_string(blockBinaryStr.size()) + " " + blockBinaryStr + " ";
 
-                blockchainDump.write(line.c_str(), line.size());
-
-                height++;
+                if (!line.empty() && line != " ")
+                {
+                    blockchainDump.write(line.c_str(), line.size());
+                    height++;
+                } else
+                {
+                    blockchainDump.close();
+                    return;
+                }
             }
 
             /* All blocks exported. */
             if (height == endIndex)
             {
+                blockchainDump.close();
                 return;
             }
-        }
-
-        /* Not strictly necessary, but i'd rather ensure the data gets flushed
-         * ASAP */
-        blockchainDump.close();
+        }        
     }
 
     /* Note: Final block height will be endIndex - 1 */
@@ -2475,18 +2478,13 @@ namespace CryptoNote
         IBlockchainCache *mainChain = chainsLeaves[0];
         uint64_t currentIndex = mainChain->getTopBlockIndex() + 1;
 
-        if (currentIndex < 1000 || currentIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
-        {
-            return "Top block is too low or too high, not going to create an export.";
-        }
-
-        /* Exporting block, we need to minus top block by 1,000 to be safe */
-        uint64_t endIndex = currentIndex - 1000;
+        /* Exporting block, we need to minus top block by 1,000 to be safe. Better to rewind some before export */
+        uint64_t endIndex = currentIndex;
         uint64_t startIndex = 1;
 
-        if (endIndex < 0 || endIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+        if (endIndex < 1000 || endIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
         {
-            return "Top block is too low or too high, not going to create an export.";
+            return "Top block is too low or too high, not going to create an export. endIndex: " + std::to_string(endIndex);
         }
 
         std::fstream blockchainDump(filePath, std::ios::out | std::ios_base::binary);
@@ -2560,6 +2558,11 @@ namespace CryptoNote
         /* Read in the block height and the length of the following raw block */
         blockchainDump >> blockIndexStr >> rawBlockLenStr;
 
+        if (blockIndexStr.empty() || blockIndexStr == " " || rawBlockLenStr.empty() || rawBlockLenStr == " ")
+        {
+            return { 0, RawBlock(), "Empty blockIndexStr or rawBlockLenStr" };
+        }
+
         try
         {
             uint64_t blockIndex = std::stoull(blockIndexStr);
@@ -2605,7 +2608,7 @@ namespace CryptoNote
             {
                 std::stringstream stream;
 
-                stream << "Blockchain import file is invalid, cannot parse "
+                stream << "[!rawBlock] Blockchain import file is invalid, cannot parse "
                        << "rawBlock at height " << blockIndex;
 
                 return { 0, RawBlock(), stream.str() };
@@ -2616,12 +2619,12 @@ namespace CryptoNote
 
             return { blockIndex, rawBlock, std::string() };
         }
-        catch (const std::exception &)
+        catch (const std::exception &e)
         {
             std::stringstream stream;
 
-            stream << "Blockchain import file is invalid, cannot parse block "
-                   << "index at height " << prevBlockHeight + 1;
+            stream << "[exception] Blockchain import file is invalid, cannot parse block "
+                   << "index at height " << prevBlockHeight + 1 << " " << e.what() << "blockIndexStr: " << blockIndexStr << " rawBlockLenStr: " << rawBlockLenStr;
 
             return { 0, RawBlock(), stream.str() };
         }
@@ -2756,11 +2759,22 @@ namespace CryptoNote
         while (blockchainDump)
         {
             /* Read block */
-            std::tie(blockHeight, rawBlock, err) = readRawBlock(blockchainDump, blockHeight);
+            try {
+                std::tie(blockHeight, rawBlock, err) = readRawBlock(blockchainDump, blockHeight);
+            } catch (const std::exception &e)
+            {
+                break;
+                return err;
+            }
 
-            if (err != "")
+            if (err != "" && err != "Empty blockIndexStr or rawBlockLenStr")
             {
                 return err;
+            }
+
+            if (err == "Empty blockIndexStr or rawBlockLenStr")
+            {
+                return std::string();
             }
 
             if (performExpensiveValidation)
