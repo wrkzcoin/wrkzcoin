@@ -204,7 +204,8 @@ namespace CryptoNote
         virtual std::tuple<Crypto::Hash, std::string> importRawBlock(
             RawBlock &rawBlock,
             const Crypto::Hash previousBlockHash,
-            const uint64_t height) = 0;
+            const uint64_t height,
+            const bool lastBlock) = 0;
 
         virtual std::string importBlockchain(
             const std::string filePath,

@@ -2547,6 +2547,12 @@ namespace CryptoNote
 
         writeThread.join();
 
+        auto time_end = std::time(nullptr);
+
+        std::cout << "Progress [" << endIndex << " / " << endIndex << "]" 
+                  << " @ Time [" << std::put_time(std::localtime(&time_end), "%H:%M:%S") 
+                  << "]" << std::endl;
+
         return std::string();
     }
 
@@ -2633,9 +2639,13 @@ namespace CryptoNote
     std::tuple<Crypto::Hash, std::string> Core::importRawBlock(
         RawBlock &rawBlock,
         const Crypto::Hash previousBlockHash,
-        const uint64_t height)
+        const uint64_t height,
+        const bool lastBlock)
     {
-        std::cout << "Importing block " << height << std::endl;
+        if ((height > 0 && (height % 1000 == 0)) || lastBlock)
+        {
+            std::cout << "Importing block " << height << std::endl;
+        }
 
         const BlockTemplate blockTemplate = extractBlockTemplate(rawBlock);
         const CachedBlock cachedBlock(blockTemplate);
@@ -2748,7 +2758,7 @@ namespace CryptoNote
         uint64_t blockHeight = startHeight;
 
         /* Import the first block */
-        std::tie(previousBlockHash, err) = importRawBlock(rawBlock, getBlockHashByIndex(blockHeight - 1), blockHeight);
+        std::tie(previousBlockHash, err) = importRawBlock(rawBlock, getBlockHashByIndex(blockHeight - 1), blockHeight, true);
 
         if (err != "")
         {
@@ -2756,6 +2766,8 @@ namespace CryptoNote
         }
 
         /* Read rest of blocks line by line. */
+        uint64_t topHeight = startHeight;
+
         while (blockchainDump)
         {
             /* Read block */
@@ -2774,6 +2786,8 @@ namespace CryptoNote
 
             if (err == "Empty blockIndexStr or rawBlockLenStr")
             {
+                std::cout << "Importing block " << (topHeight + 1) << std::endl;
+
                 return std::string();
             }
 
@@ -2789,14 +2803,17 @@ namespace CryptoNote
             else
             {
                 /* Add block to chain */
-                std::tie(previousBlockHash, err) = importRawBlock(rawBlock, previousBlockHash, blockHeight);
+                std::tie(previousBlockHash, err) = importRawBlock(rawBlock, previousBlockHash, blockHeight, false);
 
                 if (err != "")
                 {
                     return err;
                 }
             }
+            ++topHeight;
         }
+
+        std::cout << "Importing block " << (topHeight + 1) << std::endl;
 
         if (!blockchainDump.eof())
         {
