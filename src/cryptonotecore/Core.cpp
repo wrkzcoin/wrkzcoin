@@ -2652,7 +2652,11 @@ namespace CryptoNote
     {
         if ((height > 0 && (height % 1000 == 0)) || lastBlock)
         {
-            std::cout << "Importing block " << height << std::endl;
+            auto time = std::time(nullptr);
+
+            std::cout << "Importing block [" << height << "]"
+                      << " @ Time [" << std::put_time(std::localtime(&time), "%H:%M:%S") 
+                      << "]" << std::endl;
         }
 
         const BlockTemplate blockTemplate = extractBlockTemplate(rawBlock);
