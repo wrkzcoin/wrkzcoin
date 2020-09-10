@@ -53,6 +53,7 @@ namespace DaemonConfig
             enableLevelDB = false;
             importChain = false;
             exportChain = false;
+            exportNumBlocks = 0;
         }
 
         std::string dataDirectory;
@@ -122,6 +123,8 @@ namespace DaemonConfig
         bool importChain;
 
         bool exportChain;
+
+        uint32_t exportNumBlocks;
 
         std::string configFile;
 

@@ -2466,7 +2466,8 @@ namespace CryptoNote
 
     /* Note: Final block height will be endIndex - 1 */
     std::string Core::exportBlockchain(
-        const std::string filePath)
+        const std::string filePath,
+        const uint64_t numBlocks)
     {
         fs::path dumpfile = filePath;
 
@@ -2478,8 +2479,15 @@ namespace CryptoNote
         IBlockchainCache *mainChain = chainsLeaves[0];
         uint64_t currentIndex = mainChain->getTopBlockIndex() + 1;
 
-        /* Exporting block, we need to minus top block by 1,000 to be safe. Better to rewind some before export */
         uint64_t endIndex = currentIndex;
+
+        if (numBlocks > 0 && numBlocks <= endIndex)
+        {
+            endIndex = numBlocks;
+        } else if (numBlocks > endIndex)
+        {
+            return "Out of range. endIndex only: " + std::to_string(endIndex);
+        }
         uint64_t startIndex = 1;
 
         if (endIndex < 1000 || endIndex > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)

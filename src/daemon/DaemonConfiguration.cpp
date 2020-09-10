@@ -58,7 +58,11 @@ namespace DaemonConfig
             cxxopts::value<bool>(config.importChain)->default_value("false")->implicit_value("true"))(
             "export-blockchain",
             "Export blockchain DB to a dump file",
-            cxxopts::value<bool>(config.exportChain)->default_value("false")->implicit_value("true"));
+            cxxopts::value<bool>(config.exportChain)->default_value("false")->implicit_value("true"))(
+            "max-export-blocks",
+            "Maximum number of blocks for export to dump file.",
+            cxxopts::value<uint32_t>(),
+            "#");
 
         options.add_options("Genesis Block")(
             "print-genesis-tx",
@@ -257,6 +261,22 @@ namespace DaemonConfig
                 else
                 {
                     config.rewindToHeight = rewindHeight;
+                }
+            }
+
+            if (cli.count("max-export-blocks") > 0)
+            {
+                uint32_t exportBlocks = cli["max-export-blocks"].as<uint32_t>();
+                if (exportBlocks == 0)
+                {
+                    std::cout << CryptoNote::getProjectCLIHeader()
+                              << "`--max-export-blocks` can not be 0. "
+                              << std::endl;
+                    exit(1);
+                }
+                else
+                {
+                    config.exportNumBlocks = exportBlocks;
                 }
             }
 

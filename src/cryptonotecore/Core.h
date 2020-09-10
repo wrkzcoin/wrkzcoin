@@ -223,7 +223,8 @@ namespace CryptoNote
         static WalletTypes::RawTransaction getRawTransaction(const std::vector<uint8_t> &rawTX);
 
         virtual std::string exportBlockchain(
-            const std::string filePath) override;
+            const std::string filePath,
+            const uint64_t numBlocks) override;
 
         virtual std::tuple<Crypto::Hash, std::string> importRawBlock(
             RawBlock &rawBlock,

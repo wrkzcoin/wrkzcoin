@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
         } else if (config.exportChain)
         {
             logger(INFO) << "Exporting blockchain...";
-            error = ccore->exportBlockchain(filepath);
+            error = ccore->exportBlockchain(filepath, config.exportNumBlocks);
             elapsedTime = std::chrono::high_resolution_clock::now() - startTimer;
             if (error != "")
             {

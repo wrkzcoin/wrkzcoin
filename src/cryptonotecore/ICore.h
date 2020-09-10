@@ -199,7 +199,8 @@ namespace CryptoNote
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const = 0;
 
         virtual std::string exportBlockchain(
-            const std::string filePath) = 0;
+            const std::string filePath,
+            const uint64_t numBlocks) = 0;
 
         virtual std::tuple<Crypto::Hash, std::string> importRawBlock(
             RawBlock &rawBlock,
