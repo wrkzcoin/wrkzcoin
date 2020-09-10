@@ -20,32 +20,35 @@ void TransactionMonitor::start()
 
     while (!m_shouldStop)
     {
-        const auto tx = m_queuedTransactions.front();
-
         /* Make sure we're not printing a garbage tx */
         if (m_shouldStop)
         {
             break;
         }
 
-        /* Don't print out fusion or outgoing transactions */
-        if (!tx.isFusionTransaction() && tx.totalAmount() > 0)
+        if (m_queuedTransactions.size() > 0)
         {
-            /* Aquire the lock, so we're not interleaving our output when a
-               command is being handled, for example, transferring */
-            std::scoped_lock lock(*m_mutex);
+            const auto tx = m_queuedTransactions.front();
 
-            std::cout << InformationMsg("\nNew transaction found!\n\n");
+            /* Don't print out fusion or outgoing transactions */
+            if (!tx.isFusionTransaction() && tx.totalAmount() > 0)
+            {
+                /* Aquire the lock, so we're not interleaving our output when a
+                   command is being handled, for example, transferring */
+                std::scoped_lock lock(*m_mutex);
 
-            printIncomingTransfer(tx);
+                std::cout << InformationMsg("\nNew transaction found!\n\n");
 
-            /* Write out the prompt after every transfer. This prevents the
-               wallet being in a 'ready' state, waiting for input, but looking
-               like it's not. */
-            std::cout << InformationMsg(prompt) << std::flush;
+                printIncomingTransfer(tx);
+
+                /* Write out the prompt after every transfer. This prevents the
+                   wallet being in a 'ready' state, waiting for input, but looking
+                   like it's not. */
+                std::cout << InformationMsg(prompt) << std::flush;
+            }
+
+            m_queuedTransactions.deleteFront();
         }
-
-        m_queuedTransactions.deleteFront();
     }
 
     m_walletBackend->m_eventHandler->onTransaction.unsubscribe();
