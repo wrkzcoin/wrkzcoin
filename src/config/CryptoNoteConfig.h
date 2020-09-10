@@ -358,6 +358,9 @@ namespace CryptoNote
         const char P2P_NET_DATA_FILENAME[] = "p2pstate.wrkz.bin";
 
         const char MINER_CONFIG_FILE_NAME[] = "miner_conf.wrkz.json";
+        
+        /* Maximum allowable blocks to rewind from existing chain */
+        const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";

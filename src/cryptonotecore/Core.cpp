@@ -2849,10 +2849,25 @@ namespace CryptoNote
 
         if (mainChain->getTopBlockIndex() < blockIndex)
         {
+            logger(Logging::INFO) << "getTopBlockIndex less than rewound height: " << std::to_string(mainChain->getTopBlockIndex()) << " . Ignored `--rewind-to-height`";
+            return;
+        }
+
+        if (mainChain->getTopBlockIndex() - blockIndex > CryptoNote::parameters::MAX_BLOCK_ALLOWED_TO_REWIND)
+        {
+            logger(Logging::INFO) << "You can only rewind to " << std::to_string(mainChain->getTopBlockIndex() - CryptoNote::parameters::MAX_BLOCK_ALLOWED_TO_REWIND) << ". Skipped rewinding.";
+            return;
+        }
+
+        if (mainChain->getTopBlockIndex() < CryptoNote::parameters::MAX_BLOCK_ALLOWED_TO_REWIND)
+        {
+            logger(Logging::INFO) << "getTopBlockIndex too low: " << std::to_string(mainChain->getTopBlockIndex()) << " . You can try resync instead.";
             return;
         }
 
         mainChain->rewind(blockIndex);
+
+        logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

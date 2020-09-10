@@ -446,8 +446,6 @@ int main(int argc, char *argv[])
             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
 
             ccore->rewind(config.rewindToHeight);
-
-            logger(INFO) << "Blockchain rewound to: " << config.rewindToHeight << std::endl;
         }
 
         const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
