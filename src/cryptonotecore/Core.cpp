@@ -2720,6 +2720,8 @@ namespace CryptoNote
 
         uint64_t currentIndex = chainsLeaves[0]->getTopBlockIndex() + 1;
 
+        std::cout << "Existing DB has currentIndex: " << currentIndex << std::endl;
+
         std::ifstream blockchainDump(filePath);
 
         if (!blockchainDump)
@@ -2748,17 +2750,14 @@ namespace CryptoNote
                 + ", while database is at block height of " + std::to_string(currentIndex)
                 + ". Cannot import until database is at same height or higher than blockchain import file.";
         }
-        /* Blockchain import file starts before current height in DB, rewind
-         * DB to height import starts at. */
-        else if (startHeight < currentIndex)
-        {
-            rewind(startHeight + 1);
-        }
 
         uint64_t blockHeight = startHeight;
 
-        /* Import the first block */
-        std::tie(previousBlockHash, err) = importRawBlock(rawBlock, getBlockHashByIndex(blockHeight - 1), blockHeight, true);
+        /* Import the first block, if from empty database */
+        if (currentIndex == 1)
+        {
+            std::tie(previousBlockHash, err) = importRawBlock(rawBlock, getBlockHashByIndex(blockHeight - 1), blockHeight, true);
+        }
 
         if (err != "")
         {
@@ -2773,6 +2772,21 @@ namespace CryptoNote
             /* Read block */
             try {
                 std::tie(blockHeight, rawBlock, err) = readRawBlock(blockchainDump, blockHeight);
+                if ((blockHeight <= currentIndex - 1) && currentIndex != 1)
+                {
+                    previousBlockHash = chainsLeaves[0]->getBlockHash(blockHeight);;
+
+                    ++topHeight;
+
+                    if (blockHeight > 1 && (blockHeight +1) % 1000 == 0 
+                    && err != "Empty blockIndexStr or rawBlockLenStr")
+                    {
+                        std::cout << "Skipped block " << (blockHeight) << " previousBlockHash: " << previousBlockHash 
+                                  << std::endl;
+                    }
+
+                    continue;
+                }
             } catch (const std::exception &e)
             {
                 break;
@@ -2786,7 +2800,7 @@ namespace CryptoNote
 
             if (err == "Empty blockIndexStr or rawBlockLenStr")
             {
-                std::cout << "Importing block " << (topHeight + 1) << std::endl;
+                std::cout << "Completed at block " << (topHeight + 1) << std::endl;
 
                 return std::string();
             }
@@ -2812,8 +2826,6 @@ namespace CryptoNote
             }
             ++topHeight;
         }
-
-        std::cout << "Importing block " << (topHeight + 1) << std::endl;
 
         if (!blockchainDump.eof())
         {
