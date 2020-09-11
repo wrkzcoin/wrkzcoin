@@ -95,8 +95,8 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
 
         walletBlockCount = tmpWalletBlockCount;
 
-        /* Save every 50k blocks */
-        if (walletBlockCount > lastSavedBlock + 50000)
+        /* Save every 10k blocks */
+        if (walletBlockCount > lastSavedBlock + 10000)
         {
             std::cout << InformationMsg("\nSaving progress...\n\n");
 
@@ -117,6 +117,6 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
             std::cout << WarningMsg(stream.str()) << std::endl;
         }
 
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 }
