@@ -157,7 +157,10 @@ void WalletSynchronizer::mainLoop()
             {
                 const auto [block, ourInputs, arrivalIndex] = m_processedBlocks.top_unsafe();
                 completeBlockProcessing(block, ourInputs);
-                m_processedBlocks.pop_unsafe();
+                if (!m_processedBlocks.empty_unsafe() && !m_shouldStop)
+                {
+                    m_processedBlocks.pop_unsafe();
+                }
             }
         }
 
