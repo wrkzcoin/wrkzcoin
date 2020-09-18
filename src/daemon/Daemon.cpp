@@ -464,7 +464,7 @@ int main(int argc, char *argv[])
 
         RpcMode rpcMode = RpcMode::Default;
 
-        if (config.enableBlockExplorerDetailed && config.enableMining)
+        if (config.enableBlockExplorerDetailed)
         {
             rpcMode = RpcMode::AllMethodsEnabled;
         }
