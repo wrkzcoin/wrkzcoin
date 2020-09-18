@@ -19,7 +19,9 @@ namespace CryptoNote
     class LevelDBWrapper : public IDataBase
     {
       public:
-        LevelDBWrapper(std::shared_ptr<Logging::ILogger> logger);
+        LevelDBWrapper(
+            std::shared_ptr<Logging::ILogger> logger,
+            const DataBaseConfig &config);
 
         virtual ~LevelDBWrapper();
 
@@ -31,20 +33,24 @@ namespace CryptoNote
 
         LevelDBWrapper &operator=(LevelDBWrapper &&) = delete;
 
-        void init(const DataBaseConfig &config) override;
+        void init();
 
         void shutdown() override;
 
-        void destroy(const DataBaseConfig &config) override; // Be careful with this method!
+        void destroy(); // Be careful with this method!
 
         std::error_code write(IWriteBatch &batch) override;
 
         std::error_code read(IReadBatch &batch) override;
 
         std::error_code readThreadSafe(IReadBatch &batch) override;
+        
+        void recreate() override;
 
       private:
         std::error_code write(IWriteBatch &batch, bool sync);
+
+        leveldb::Options getDBOptions(const DataBaseConfig &config);
 
         std::string getDataDir(const DataBaseConfig &config);
 
@@ -59,5 +65,7 @@ namespace CryptoNote
         std::unique_ptr<leveldb::DB> db;
 
         std::atomic<State> state;
+        
+        const DataBaseConfig m_config;
     };
 } // namespace CryptoNote

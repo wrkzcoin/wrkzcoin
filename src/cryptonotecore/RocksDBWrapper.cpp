@@ -20,28 +20,31 @@ namespace
     const std::string DB_NAME = "DB";
 }
 
-RocksDBWrapper::RocksDBWrapper(std::shared_ptr<Logging::ILogger> logger):
+RocksDBWrapper::RocksDBWrapper(
+    std::shared_ptr<Logging::ILogger> logger,
+    const DataBaseConfig &config):
     logger(logger, "RocksDBWrapper"),
+    m_config(config),
     state(NOT_INITIALIZED)
 {
 }
 
 RocksDBWrapper::~RocksDBWrapper() {}
 
-void RocksDBWrapper::init(const DataBaseConfig &config)
+void RocksDBWrapper::init()
 {
     if (state.load() != NOT_INITIALIZED)
     {
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::ALREADY_INITIALIZED));
     }
 
-    std::string dataDir = getDataDir(config);
+    std::string dataDir = getDataDir(m_config);
 
     logger(INFO) << "Opening DB in " << dataDir;
 
     rocksdb::DB *dbPtr;
 
-    rocksdb::Options dbOptions = getDBOptions(config);
+    rocksdb::Options dbOptions = getDBOptions(m_config);
     rocksdb::Status status = rocksdb::DB::Open(dbOptions, dataDir, &dbPtr);
     if (status.ok())
     {
@@ -87,18 +90,18 @@ void RocksDBWrapper::shutdown()
     state.store(NOT_INITIALIZED);
 }
 
-void RocksDBWrapper::destroy(const DataBaseConfig &config)
+void RocksDBWrapper::destroy()
 {
     if (state.load() != NOT_INITIALIZED)
     {
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::ALREADY_INITIALIZED));
     }
 
-    std::string dataDir = getDataDir(config);
+    std::string dataDir = getDataDir(m_config);
 
     logger(WARNING) << "Destroying DB in " << dataDir;
 
-    rocksdb::Options dbOptions = getDBOptions(config);
+    rocksdb::Options dbOptions = getDBOptions(m_config);
     rocksdb::Status status = rocksdb::DestroyDB(dataDir, dbOptions);
 
     if (status.ok())
@@ -157,36 +160,43 @@ std::error_code RocksDBWrapper::read(IReadBatch &batch)
 {
     if (state.load() != INITIALIZED)
     {
-        throw std::runtime_error("Not initialized.");
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
     rocksdb::ReadOptions readOptions;
 
     std::vector<std::string> rawKeys(batch.getRawKeys());
-    std::vector<rocksdb::Slice> keySlices;
-    keySlices.reserve(rawKeys.size());
-    for (const std::string &key : rawKeys)
+    if (rawKeys.size() > 0)
     {
-        keySlices.emplace_back(rocksdb::Slice(key));
-    }
-
-    std::vector<std::string> values;
-    values.reserve(rawKeys.size());
-    std::vector<rocksdb::Status> statuses = db->MultiGet(readOptions, keySlices, &values);
-
-    std::error_code error;
-    std::vector<bool> resultStates;
-    for (const rocksdb::Status &status : statuses)
-    {
-        if (!status.ok() && !status.IsNotFound())
+        std::vector<rocksdb::Slice> keySlices;
+        keySlices.reserve(rawKeys.size());
+        for (const std::string &key : rawKeys)
         {
-            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            keySlices.emplace_back(rocksdb::Slice(key));
         }
-        resultStates.push_back(status.ok());
-    }
 
-    batch.submitRawResult(values, resultStates);
-    return std::error_code();
+        std::vector<std::string> values;
+        values.reserve(rawKeys.size());
+        std::vector<rocksdb::Status> statuses = db->MultiGet(readOptions, keySlices, &values);
+
+        std::error_code error;
+        std::vector<bool> resultStates;
+        for (const rocksdb::Status &status : statuses)
+        {
+            if (!status.ok() && !status.IsNotFound())
+            {
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+            resultStates.push_back(status.ok());
+        }
+
+        batch.submitRawResult(values, resultStates);
+        return std::error_code();
+    } else
+    {
+        logger(ERROR) << "RocksDBWrapper::read: detected rawKeys.size() == 0!!!";
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
 }
 
 std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
@@ -292,4 +302,15 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 std::string RocksDBWrapper::getDataDir(const DataBaseConfig &config)
 {
     return config.dataDir + '/' + DB_NAME;
+}
+
+void RocksDBWrapper::recreate()
+{
+    if (state.load() == INITIALIZED)
+    {
+        shutdown();
+    }
+
+    destroy();
+    init();
 }

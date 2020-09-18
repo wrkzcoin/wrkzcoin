@@ -197,5 +197,21 @@ namespace CryptoNote
             getBlockHashesByTimestamps(uint64_t timestampBegin, size_t secondsCount) const = 0;
 
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const = 0;
+
+        virtual std::string exportBlockchain(
+            const std::string filePath,
+            const uint64_t numBlocks) = 0;
+
+        virtual std::tuple<Crypto::Hash, std::string> importRawBlock(
+            RawBlock &rawBlock,
+            const Crypto::Hash previousBlockHash,
+            const uint64_t height,
+            const bool lastBlock) = 0;
+
+        virtual std::string importBlockchain(
+            const std::string filePath,
+            const bool performExpensiveValidation) = 0;
+
+        virtual void rewind(const uint64_t blockIndex) = 0;
     };
 } // namespace CryptoNote
