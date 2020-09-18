@@ -31,6 +31,19 @@ namespace CryptoNote
 
         const uint32_t CRYPTONOTE_MINED_MONEY_UNLOCK_WINDOW = 40;
 
+        /* Transactions sent need to have an unlock time of current block + n.
+         * To avoid transactions hanging out in the transaction pool for a while
+         * no longer being valid, we will add this many blocks to the unlock time
+         * to allow the transactions to linger in the pool for this many blocks
+         * before becoming invalid. */
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
+
+        /* Transactions must have an unlock time of at least current block +
+         * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
+        const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
+
+        const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT_V3 = 3 * DIFFICULTY_TARGET;
@@ -109,7 +122,7 @@ namespace CryptoNote
          * - 5 TRTL vs 5.12 TRTL. You can read this as.. the fee per chunk
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
-        
+
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
 
@@ -213,6 +226,21 @@ namespace CryptoNote
         /* Tx difficulty will be 3 times from normal TX, in exchange of zero fee */
         const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY = 3 * TRANSACTION_POW_DIFFICULTY;
 
+        /* Height of dynamic Tx PoW diff for each input output size */
+        const uint64_t TRANSACTION_POW_HEIGHT_DYN_V1 = 1200000;
+        
+        /* A minimum diff tx pow. Example, it will be 40000 + Multiplier * [Input + Output size()] */
+        const uint64_t TRANSACTION_POW_DIFFICULTY_DYN_V1 = 40000; // If this change, please look at FUSION_TRANSACTION_POW_DIFFICULTY_V2
+        
+        /* Multiplier diff */
+        const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1 = 1000;
+        
+        /* Output / Input factor: how many times we factor Output diff. Assuming input is 1 */
+        const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1 = 4;
+
+        /* Tx difficulty will be 3 times of TRANSACTION_POW_DIFFICULTY_DYN_V1, in exchange of zero fee */
+        const uint64_t FUSION_TRANSACTION_POW_DIFFICULTY_V2 = 8 * TRANSACTION_POW_DIFFICULTY_DYN_V1;
+
         /* 12.5 trillion atomic, or 125 billion TRTL -> Max supply / mixin+1 outputs */
         /* This is enforced on the daemon side. An output > 125 billion causes
          * an invalid block. */
@@ -305,11 +333,12 @@ namespace CryptoNote
             864864,   // 10
             1000000,  // 11
             1123000,  // 12
-            1400000,  // 13
+            1200000,  // 13
+            1500000,  // 14  // TODO: Update fork height
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 12;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 13;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -326,15 +355,12 @@ namespace CryptoNote
             FORK_HEIGHTS_SIZE == 0 || CURRENT_FORK_INDEX < FORK_HEIGHTS_SIZE,
             "CURRENT_FORK_INDEX out of range of FORK_HEIGHTS!");
 
-        const char CRYPTONOTE_BLOCKS_FILENAME[] = "blocks.wrkz.bin";
-
-        const char CRYPTONOTE_BLOCKINDEXES_FILENAME[] = "blockindexes.wrkz.bin";
-
-        const char CRYPTONOTE_POOLDATA_FILENAME[] = "poolstate.wrkz.bin";
-
         const char P2P_NET_DATA_FILENAME[] = "p2pstate.wrkz.bin";
 
         const char MINER_CONFIG_FILE_NAME[] = "miner_conf.wrkz.json";
+        
+        /* Maximum allowable blocks to rewind from existing chain */
+        const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";
@@ -384,9 +410,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 13;
+    const uint8_t P2P_CURRENT_VERSION = 15;
 
-    const uint8_t P2P_MINIMUM_VERSION = 12;
+    const uint8_t P2P_MINIMUM_VERSION = 14;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -410,14 +436,14 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 256; // 256 MB
-    const uint64_t ROCKSDB_READ_BUFFER_MB = 512; // 512 MB
-    const uint64_t ROCKSDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 32; // 32 MB
+    const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
+    const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
 
-    const uint64_t LEVELDB_WRITE_BUFFER_MB = 64; // 64 MB
-    const uint64_t LEVELDB_READ_BUFFER_MB = 64; // 64 MB
-    const uint64_t LEVELDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t LEVELDB_WRITE_BUFFER_MB = 4; // 4 MB
+    const uint64_t LEVELDB_READ_BUFFER_MB = 128; // 128 MB
+    const uint64_t LEVELDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
 
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
@@ -430,6 +456,7 @@ namespace CryptoNote
     const char *const SEED_NODES[] = {
         "176.9.145.124:17855",        // myexplorer.wrkz.work
         "51.15.243.43:17855",         // arm-node.wrkz.work
+        "135.181.32.181:17855",       // web eu
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };

@@ -1194,17 +1194,27 @@ std::vector<WalletTypes::Transaction>
 {
     std::vector<WalletTypes::Transaction> result;
 
-    const auto transactions = getTransactions();
+    try {
+        const auto transactions = getTransactions();
 
-    std::copy_if(
-        transactions.begin(),
-        transactions.end(),
-        std::back_inserter(result),
-        [&startHeight, &endHeight](const auto tx) {
-            return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
-        });
+        if (!transactions.empty())
+        {
+            std::copy_if(
+                transactions.begin(),
+                transactions.end(),
+                std::back_inserter(result),
+                [&startHeight, &endHeight](const auto tx) {
+                    return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
+                });
 
-    return result;
+            return result;
+        } else
+        {
+            return std::vector<WalletTypes::Transaction> {};
+        }
+    } catch (const std::exception &e)
+    {
+    }
 }
 
 std::tuple<uint64_t, std::string> WalletBackend::getNodeFee() const

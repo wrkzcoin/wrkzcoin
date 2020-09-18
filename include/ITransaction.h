@@ -134,7 +134,7 @@ namespace CryptoNote
         // signing
         virtual void signInputKey(size_t input, const TransactionTypes::InputKeyInfo &info, const KeyPair &ephKeys) = 0;
 
-        virtual void generateTxProofOfWork() = 0;
+        virtual void generateTxProofOfWork(const uint64_t height) = 0;
     };
 
     class ITransaction : public ITransactionReader, public ITransactionWriter

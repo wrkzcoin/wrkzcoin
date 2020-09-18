@@ -46,7 +46,8 @@ namespace CryptoNote
             EXCESSIVE_OUTPUTS,
             WRONG_FEE,
             SIZE_TOO_LARGE,
-            POW_INVALID
+            POW_INVALID,
+            UNLOCK_TIME_TOO_SMALL
         };
 
         // custom category:
@@ -135,6 +136,8 @@ namespace CryptoNote
                         return "Transaction is too large (in bytes)";
                     case TransactionValidationError::POW_INVALID:
                         return "Transaction has a too weak proof of work";
+                    case TransactionValidationError::UNLOCK_TIME_TOO_SMALL:
+                        return "Transaction has a too small unlock time";
                     default:
                         return "Unknown error";
                 }

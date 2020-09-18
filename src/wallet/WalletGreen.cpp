@@ -1633,8 +1633,15 @@ namespace CryptoNote
         return id;
     }
 
-    size_t WalletGreen::transfer(const TransactionParameters &transactionParameters)
+    size_t WalletGreen::transfer(TransactionParameters &transactionParameters)
     {
+        if (transactionParameters.unlockTimestamp == 0)
+        {
+            transactionParameters.unlockTimestamp = m_node.getLastKnownBlockHeight()
+                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+        }
+
         size_t id = WALLET_INVALID_TRANSACTION_ID;
         Tools::ScopeExit releaseContext([this, &id] {
             m_dispatcher.yield();
@@ -1702,7 +1709,7 @@ namespace CryptoNote
         /* To begin with, no estimate for fee per byte. We'll adjust once we
          * have more information. */
         uint64_t estimatedFee = fee.isFixedFee ? fee.fixedFee : 0;
-        
+
         const uint64_t totalAmount = countNeededMoney(preparedTransaction.destinations, 0);
 
         while (true)
@@ -2217,8 +2224,15 @@ namespace CryptoNote
         return preparedTransaction;
     }
 
-    size_t WalletGreen::makeTransaction(const TransactionParameters &sendingTransaction)
+    size_t WalletGreen::makeTransaction(TransactionParameters &sendingTransaction)
     {
+        if (sendingTransaction.unlockTimestamp == 0)
+        {
+            sendingTransaction.unlockTimestamp = m_node.getLastKnownBlockHeight()
+                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+        }
+
         size_t id = WALLET_INVALID_TRANSACTION_ID;
         Tools::ScopeExit releaseContext([this, &id] {
             m_dispatcher.yield();
@@ -2865,7 +2879,8 @@ namespace CryptoNote
             tx->addInput(makeAccountKeys(*input.walletRecord), input.keyInfo, input.ephKeys);
         }
 
-        tx->generateTxProofOfWork();
+        uint32_t height = m_node.getLastKnownBlockHeight();
+        tx->generateTxProofOfWork(height);
 
         size_t i = 0;
         for (auto &input : keysInfo)
