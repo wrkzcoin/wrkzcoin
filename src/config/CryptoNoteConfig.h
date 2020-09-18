@@ -436,14 +436,14 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 256; // 256 MB
-    const uint64_t ROCKSDB_READ_BUFFER_MB = 512; // 512 MB
-    const uint64_t ROCKSDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 32; // 32 MB
+    const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
+    const uint64_t ROCKSDB_MAX_OPEN_FILES = 256; // 256 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
 
-    const uint64_t LEVELDB_WRITE_BUFFER_MB = 64; // 64 MB
+    const uint64_t LEVELDB_WRITE_BUFFER_MB = 4; // 4 MB
     const uint64_t LEVELDB_READ_BUFFER_MB = 64; // 64 MB
-    const uint64_t LEVELDB_MAX_OPEN_FILES = 128; // 128 files
+    const uint64_t LEVELDB_MAX_OPEN_FILES = 256; // 256 files
     const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
 
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
