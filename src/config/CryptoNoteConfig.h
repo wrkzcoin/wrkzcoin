@@ -456,6 +456,7 @@ namespace CryptoNote
     const char *const SEED_NODES[] = {
         "176.9.145.124:17855",        // myexplorer.wrkz.work
         "51.15.243.43:17855",         // arm-node.wrkz.work
+        "135.181.32.181:17855",       // web eu
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };
