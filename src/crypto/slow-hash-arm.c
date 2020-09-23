@@ -55,7 +55,7 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
     __asm__("umulh %0, %1, %2\n\t" : "=r"(hi) : "r"(c[0]), "r"(b[0]));
 
 #define pre_aes()                  \
-    j = U64(a) & mask;                  \
+    j = (*(uint32_t *)a) & mask;                  \
     _c = vld1q_u8(&hp_state[j]);   \
     _a = vld1q_u8((const uint8_t *)a);
 
@@ -64,7 +64,7 @@ STATIC INLINE void xor64(uint64_t *a, const uint64_t b)
     vst1q_u8((uint8_t *)c, _c);               \
     vst1q_u8(&hp_state[j], veorq_u8(_b, _c)); \
     VARIANT1_1(&hp_state[j]);                 \
-    j = U64(c) & mask;                             \
+    j = (*(uint32_t *)c) & mask;                             \
     p = U64(&hp_state[j]);                    \
     b[0] = p[0];                              \
     b[1] = p[1];                              \
