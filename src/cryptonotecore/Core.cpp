@@ -2734,7 +2734,7 @@ namespace CryptoNote
 
         std::cout << "Existing DB has currentIndex: " << currentIndex << std::endl;
 
-        std::ifstream blockchainDump(filePath);
+        std::ifstream blockchainDump(filePath, std::ios::in | std::ios_base::binary);
 
         if (!blockchainDump)
         {
