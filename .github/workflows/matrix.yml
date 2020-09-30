@@ -76,7 +76,7 @@ jobs:
           then
             source scripts/pre-linux-32.sh
             mkdir build && cd build
-            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-m32" -DSTATIC=true ..
+            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-m32" -DCMAKE_C_FLAGS="-m32" -DCMAKE_SYSTEM_PROCESSOR=x86 -DSTATIC=true ..
           else
             mkdir build && cd build
             cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
