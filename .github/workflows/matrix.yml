@@ -44,7 +44,7 @@ jobs:
             deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
-      LABEL: ${{ matrix.label }}
+      LABEL: ${{ matrix.build_name }}
     steps:
       - uses: actions/checkout@v2
 
@@ -57,7 +57,7 @@ jobs:
 
       # needed for x86 builds
       - name: Dependencies x86
-        if: runner.os == 'Linux' && matrix.build_name != 'Ubuntu GCC 8 x86'
+        if: runner.os == 'Linux' && matrix.build_name == 'Ubuntu GCC 8 x86'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
