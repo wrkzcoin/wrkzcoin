@@ -64,9 +64,7 @@ jobs:
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y libc6-dbg:i386
-          if [ "${{ matrix.cc }}" = "gcc-8" ]; then
-            sudo apt-get install -y gcc-8-multilib g++-8-multilib
-          fi
+          sudo apt-get install -y gcc-8-multilib g++-8-multilib g++-7-multilib gcc-7-multilib
           echo "Building libboost 32 bits..."
           wget http://sourceforge.net/projects/boost/files/boost/1.65.0/boost_1_65_0.tar.gz
           tar zxvf boost_1_65_0.tar.gz >/dev/null
@@ -74,9 +72,9 @@ jobs:
           echo -n "Bootstrapping Boost 1.65 build... "
           ./bootstrap.sh >/dev/null
           echo -e "using gcc : : g++ : <compileflags>-m32 <linkflags>-m32 ;">tools/build/example/user-config.jam
-          cp tools/build/example/user-config.jam $HOME/
+          cp tools/build/example/user-config.jam $TOOLCHAIN_DIR/
           echo -n "Building Boost 1.65..."
-          ./b2 install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 \
+          ./b2 --user-config=$TOOLCHAIN_DIR/user-config.jam install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 \
           --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options
           echo "Building Boost 1.65 Complete"
           export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_65_0
