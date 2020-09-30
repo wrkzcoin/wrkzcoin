@@ -64,8 +64,6 @@ jobs:
           sudo apt-get install -y libc6-dbg:i386
           if [ "${{ matrix.cc }}" = "gcc-8" ]; then
             sudo apt-get install -y gcc-8-multilib g++-8-multilib
-            echo "::set-env name=CC::gcc-8"
-            echo "::set-env name=CXX::g++-8"
           fi
 
       - name: Setup ccache
@@ -86,8 +84,12 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           mkdir build && cd build
-          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
-
+          if [[ "${LABEL}" == "linux-86" ]]
+          then
+            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="-m32" -DSTATIC=true ..
+          else
+            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+          fi
       # Build for linux
       - name: Build
         if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
