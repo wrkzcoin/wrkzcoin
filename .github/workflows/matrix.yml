@@ -74,7 +74,7 @@ jobs:
           echo -n "Bootstrapping Boost 1.65 build... "
           ./bootstrap.sh
           echo -n "Building Boost 1.65... "
-          ./b2 install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 architecture=x86 cflags=-m32 cxxflags=-m32 instruction-set=i686 \
+          ./b2 install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 \
           --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
           echo "Building Boost 1.65 Complete"
           export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_65_0
