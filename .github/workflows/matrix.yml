@@ -50,7 +50,7 @@ jobs:
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name == 'Ubuntu GCC 8 x86'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -72,7 +72,7 @@ jobs:
           tar zxvf boost_1_65_0.tar.gz >/dev/null
           cd boost_1_65_0
           echo -n "Bootstrapping Boost 1.65 build... "
-          ./bootstrap.sh --prefix=$TOOLCHAIN_DIR/boost_1_65_0 > /dev/null
+          ./bootstrap.sh
           echo -n "Building Boost 1.65... "
           ./b2 install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 architecture=x86 cflags=-m32 cxxflags=-m32 instruction-set=i686 \
           --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
