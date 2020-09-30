@@ -59,13 +59,36 @@ jobs:
       - name: Dependencies x86
         if: runner.os == 'Linux' && matrix.build_name == 'Ubuntu GCC 8 x86'
         run: |
+          export BASEDIR=`pwd`
+          export TOOLCHAIN_DIR=$HOME/build_support
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y libc6-dbg:i386
           if [ "${{ matrix.cc }}" = "gcc-8" ]; then
             sudo apt-get install -y gcc-8-multilib g++-8-multilib
           fi
-
+          echo "Building libboost 32 bits..."
+          wget http://sourceforge.net/projects/boost/files/boost/1.55.0/boost_1_55_0.tar.gz
+          tar zxvf boost_1_65_0.tar.gz >/dev/null
+          cd boost_1_65_0
+          echo -n "Bootstrapping Boost 1.65 build... "
+          ./bootstrap.sh --prefix=$TOOLCHAIN_DIR/boost_1_65_0 > /dev/null
+          echo -n "Building Boost 1.65... "
+          ./b2 install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 architecture=x86 cflags=-m32 cxxflags=-m32 instruction-set=i686 \
+          --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options >/dev/null
+          echo "Building Boost 1.65 Complete"
+          export BOOST_ROOT=$TOOLCHAIN_DIR/boost_1_65_0
+          cd $BASEDIR
+          echo "Building OpenSSL 32 bits..."
+          wget https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+          tar zxvf openssl-1.1.1f.tar.gz >/dev/null
+          cd openssl-1.1.1f
+          ./Configure -m32 linux-generic32 --prefix=$TOOLCHAIN_DIR/openssl --openssldir=$TOOLCHAIN_DIR/openssl >/dev/null
+          echo -n "Building OpenSSL 1.1.1f... "
+          make install >/dev/null
+          echo "OpenSSL 32 bits Complete"
+          export OPENSSL_ROOT_DIR=$TOOLCHAIN_DIR/openssl
+          cd $BASEDIR
       - name: Setup ccache
         run: |
           sudo apt install ccache
