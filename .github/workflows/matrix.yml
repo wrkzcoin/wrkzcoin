@@ -31,7 +31,7 @@ jobs:
             package_name: 'gcc-8 g++-8'
             cc: gcc-8
             cxx: g++-8
-            label: linux
+            label: linux-86
             deployable: true
           - build_name: 'aarch64'
             label: aarch64
@@ -44,7 +44,7 @@ jobs:
             deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
-      LABEL: ${{ matrix.build_name }}
+      LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v2
 
