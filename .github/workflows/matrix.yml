@@ -75,7 +75,7 @@ jobs:
           cd boost_1_65_0
           echo -n "Bootstrapping Boost 1.65 build... "
           ./bootstrap.sh >/dev/null
-          echo -e "using gcc-8 : : g++-8 : <compileflags>-m32 <linkflags>-m32 ;">tools/build/example/user-config.jam
+          echo -e "using gcc : : g++-8 : <compileflags>-m32 <linkflags>-m32 ;">tools/build/example/user-config.jam
           cp tools/build/example/user-config.jam $TOOLCHAIN_DIR/
           echo -n "Building Boost 1.65..."
           ./b2 --user-config=$TOOLCHAIN_DIR/user-config.jam install --prefix=$TOOLCHAIN_DIR/boost_1_65_0 toolset=gcc address-model=32 \
