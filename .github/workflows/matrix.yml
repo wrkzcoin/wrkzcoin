@@ -19,9 +19,15 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 8', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
+        build_name: ['Ubuntu GCC 8', 'Ubuntu GCC 8 x86', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
           - build_name: 'Ubuntu GCC 8'
+            package_name: 'gcc-8 g++-8'
+            cc: gcc-8
+            cxx: g++-8
+            label: linux
+            deployable: true
+          - build_name: 'Ubuntu GCC 8 x86'
             package_name: 'gcc-8 g++-8'
             cc: gcc-8
             cxx: g++-8
@@ -48,6 +54,19 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
+
+      # needed for x86 builds
+      - name: Dependencies x86
+        if: runner.os == 'Linux' && matrix.build_name != 'Ubuntu GCC 8 x86'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libc6-dbg:i386
+          if [ "${{ matrix.cc }}" = "gcc-8" ]; then
+            sudo apt-get install -y gcc-8-multilib g++-8-multilib
+            echo "::set-env name=CC::gcc-8"
+            echo "::set-env name=CXX::g++-8"
+          fi
 
       - name: Setup ccache
         run: |
