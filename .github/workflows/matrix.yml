@@ -58,13 +58,17 @@ jobs:
       # needed for x86 builds
       - name: Dependencies x86
         if: runner.os == 'Linux' && matrix.build_name == 'Ubuntu GCC 8 x86'
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
         run: |
           export BASEDIR=`pwd`
           export TOOLCHAIN_DIR=$HOME/build_support
+          mkdir -p $TOOLCHAIN_DIR
           sudo dpkg --add-architecture i386
           sudo apt-get update
           sudo apt-get install -y libc6-dbg:i386
-          sudo apt-get install -y gcc-8-multilib g++-8-multilib g++-7-multilib gcc-7-multilib
+          sudo apt-get install -y gcc-8-multilib g++-8-multilib
           echo "Building libboost 32 bits..."
           wget http://sourceforge.net/projects/boost/files/boost/1.65.0/boost_1_65_0.tar.gz
           tar zxvf boost_1_65_0.tar.gz >/dev/null
