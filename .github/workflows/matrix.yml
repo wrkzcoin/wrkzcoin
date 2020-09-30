@@ -50,7 +50,7 @@ jobs:
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name == 'Ubuntu GCC 8 x86'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'Ubuntu GCC 8 x86'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
