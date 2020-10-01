@@ -125,7 +125,7 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          export TAG=${COMMIT_SHA::8}
+          export TAG=${COMMIT_SHA::7}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
           if [[ "${LABEL}" != "aarch64" && "${LABEL}" != "aarch32-linux-gnueabi" && "${LABEL}" != "aarch32-linux-gnueabihf" ]]; then strip ${TARGETS}; fi
@@ -176,8 +176,8 @@ jobs:
           FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
-          SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
+          SHA8=${COMMIT_SHA::7}
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
@@ -252,7 +252,7 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          export TAG=${COMMIT_SHA::8}
+          export TAG=${COMMIT_SHA::7}
           cd build/src
           TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
           strip ${TARGETS}
@@ -303,8 +303,8 @@ jobs:
           FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
-          SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
+          SHA8=${COMMIT_SHA::7}
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
@@ -332,9 +332,19 @@ jobs:
   windows_build:
     name: Windows
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add more compilers here if you need them
+        build_name: ['Win64', 'Win32']
+        include:
+          - build_name: 'Win64'
+            label: win64
+          - build_name: 'Win32'
+            label: win32
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
-      LABEL: windows
+      LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v2
 
@@ -355,7 +365,13 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
+          if ($env:LABEL -imatch "win64") {
+            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
+          }
+          else {
+            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
+          }
+          
 
       # Build for Windows
       - name: Build
@@ -363,7 +379,12 @@ jobs:
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
+          if ($env:LABEL -imatch "win64") {
+            MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
+          }
+          else {
+            MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m
+          }
 
       # Test the crypto
       - name: Test Crypto
@@ -379,7 +400,7 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          export TAG=${COMMIT_SHA::8}
+          export TAG=${COMMIT_SHA::7}
           cd build/src/Release
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
@@ -429,8 +450,8 @@ jobs:
           FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
           DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
-          SHA8=${COMMIT_SHA::8}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::8}-${{ steps.before_deploy.outputs.file_name }}"
+          SHA8=${COMMIT_SHA::7}
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
