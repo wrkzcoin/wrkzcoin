@@ -343,51 +343,54 @@ jobs:
           - build_name: 'Win32'
             label: win32
     env:
+      MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
       LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup MSYS
-        uses: msys2/setup-msys2@v2
+      - name: Setup clcache
+        run: pip install clcache
+
+      - name: Retrieve clcache
+        uses: actions/cache@v1
         with:
-          msystem: MSYS
-        shell: bash
-        run: |
-          if [[ "${LABEL}" == "win64" ]]; then
-            pacman --noconfirm -U mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-boost mingw-w64-x86_64-openssl git
-          elif [[ "${LABEL}" == "win32" ]]; then
-            pacman --noconfirm -U mingw-w64-i686-toolchain make mingw-w64-i686-cmake mingw-w64-i686-boost mingw-w64-i686-openssl git
-          fi
+          path: clcache
+          key: clcache-windows
+
+      - name: Install OpenSSL
+        run: choco install openssl
 
       # Configure project with cmake
       - name: Configure
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MSYS
-        shell: bash
         run: |
           mkdir build
           cd build
-          if [[ "${LABEL}" == "win64" ]]; then
-            set MSYSTEM=MINGW64
-            pacman --noconfirm -U mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-boost mingw-w64-x86_64-openssl git
-          elif [[ "${LABEL}" == "win32" ]]; then
-            set MSYSTEM=MINGW32
-            pacman --noconfirm -U mingw-w64-i686-toolchain make mingw-w64-i686-cmake mingw-w64-i686-boost mingw-w64-i686-openssl git
-          fi
-          cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..          
+          if ($env:LABEL -imatch "win64") {
+            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
+          }
+          else {
+            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_69_0"
+          }
+          
 
       # Build for Windows
       - name: Build
         run: |
+          $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
+          $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          make -j2
+          if ($env:LABEL -imatch "win64") {
+            MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
+          }
+          else {
+            MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m
+          }
 
       # Test the crypto
       - name: Test Crypto
         shell: bash
         run: |
-          cd build/src
+          cd build/src/Release
           ./cryptotest.exe
 
       # Prepare for deploy
@@ -398,7 +401,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           export TAG=${COMMIT_SHA::7}
-          cd build/src
+          cd build/src/Release
           rm -rf wrkzcoin-${TAG}
           mkdir wrkzcoin-${TAG}
           cp *.exe wrkzcoin-${TAG}/
@@ -437,7 +440,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }} # optional: defaults to us-east-1
           AWS_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-          SOURCE_DIR: 'build/src' # optional: defaults to entire repository
+          SOURCE_DIR: 'build/src/Release' # optional: defaults to entire repository
           DEST_DIR: 'cli'
           COMMIT_SHA: ${{ github.sha }}
           REPO: 'cli'
