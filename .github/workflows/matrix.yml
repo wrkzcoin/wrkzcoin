@@ -347,10 +347,11 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: msys2/setup-msys2@v2
+      - name: Setup MSYS
+        uses: msys2/setup-msys2@v2
         with:
           msystem: MSYS
-      - shell: msys2 {0}
+        shell: bash
         run: |
           if [[ "${LABEL}" == "win64" ]]; then
             pacman --noconfirm -U mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-boost mingw-w64-x86_64-openssl git
@@ -360,6 +361,10 @@ jobs:
 
       # Configure project with cmake
       - name: Configure
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+        shell: bash
         run: |
           mkdir build
           cd build
