@@ -361,7 +361,7 @@ jobs:
 
       # Configure project with cmake
       - name: Configure
-      - uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@v2
         with:
           msystem: MSYS
         shell: bash
