@@ -305,6 +305,12 @@ else ()
     message(STATUS "OpenSSL Found: No... Skipping...")
 endif ()
 
+if (MSVC AND OPENSSL_FOUND AND (CMAKE_SIZEOF_VOID_P EQUAL 4))
+    # Disable OPENSSL_FOUND in 32 bits MSVC
+    message(STATUS "OpenSSL Found: Disabled MSVC 32 bits")
+    SET(OPENSSL_FOUND FALSE)
+endif ()
+
 add_subdirectory(external)
 add_subdirectory(src)
 
