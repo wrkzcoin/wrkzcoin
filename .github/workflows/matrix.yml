@@ -330,21 +330,28 @@ jobs:
 
   # Windows Builds on Windows Server 2019
   windows_build:
-    name: Windows
-    runs-on: windows-latest
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Add more compilers here if you need them
-        build_name: ['Win64', 'Win32']
-        include:
-          - build_name: 'Win64'
+        config:
+        - {
+            name: "Windows Latest 64 bits", artifact: "win-64", build: "release",
+            os: windows-latest,
+            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             label: win64
-          - build_name: 'Win32'
+          }
+        - {
+            name: "Windows Latest 32 bits", artifact: "win-32", build: "release",
+            os: windows-latest,
+            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat",
             label: win32
+          }
+
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
-      LABEL: ${{ matrix.label }}
+      LABEL: ${{ matrix.config.label }}
     steps:
       - uses: actions/checkout@v2
 
@@ -398,6 +405,7 @@ jobs:
         shell: bash
         id: before_deploy
         env:
+          LABEL: ${{ matrix.config.label }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           export TAG=${COMMIT_SHA::7}
@@ -432,6 +440,7 @@ jobs:
         id: s3-upload
         continue-on-error: true
         env:
+          LABEL: ${{ matrix.config.label }}
           MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
           BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
@@ -453,7 +462,7 @@ jobs:
           SHA8=${COMMIT_SHA::7}
           OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
-          BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
+          BUILD_CONTENT="$RUNNER_OS-${{ matrix.config.label }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
