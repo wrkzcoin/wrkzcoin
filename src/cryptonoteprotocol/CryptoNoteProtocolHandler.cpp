@@ -276,7 +276,7 @@ namespace CryptoNote
         std::stringstream ss;
 
         ss << std::setw(25) << std::left << "Remote Host" << std::setw(20) << "Peer ID" << std::setw(25)
-           << "Recv/Sent (inactive,sec)" << std::setw(25) << "State" << std::setw(20) << "Lifetime(seconds)" << ENDL;
+           << "Recv/Sent (inactive,sec)" << std::setw(25) << "State" << std::setw(20) << "Lifetime" << ENDL;
 
         m_p2p->for_each_connection([&](const CryptoNoteConnectionContext &cntxt, uint64_t peer_id) {
             ss << std::setw(25) << std::left
@@ -284,11 +284,10 @@ namespace CryptoNote
                       + Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port)
                << std::setw(20) << std::hex
                << peer_id
-               // << std::setw(25) << std::to_string(cntxt.m_recv_cnt) + "(" + std::to_string(time(NULL) -
-               // cntxt.m_last_recv) + ")" + "/" + std::to_string(cntxt.m_send_cnt) + "(" + std::to_string(time(NULL) -
-               // cntxt.m_last_send) + ")"
                << std::setw(25) << get_protocol_state_string(cntxt.m_state) << std::setw(20)
-               << std::to_string(time(NULL) - cntxt.m_started) << ENDL;
+               << Common::timeIntervalToString(time(NULL) - cntxt.m_started) << std::setw(20)
+               << std::to_string(cntxt.m_remote_blockchain_height)
+               << ENDL;
         });
         logger(INFO) << "Connections: " << ENDL << ss.str();
     }
