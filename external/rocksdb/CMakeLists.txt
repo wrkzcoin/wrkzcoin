@@ -52,6 +52,23 @@ if(POLICY CMP0042)
 endif()
 
 set(ARCH native CACHE STRING "CPU to build for: -march value or native")
+
+if(NOT CMAKE_BUILD_TYPE)
+  if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    set(default_build_type "Debug")
+  else()
+    set(default_build_type "RelWithDebInfo")
+  endif()
+  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING
+    "Default BUILD_TYPE is ${default_build_type}" FORCE)
+endif()
+
+find_program(CCACHE_FOUND ccache)
+if(CCACHE_FOUND)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+endif(CCACHE_FOUND)
+
 option(WITH_JEMALLOC "build with JeMalloc" OFF)
 option(WITH_SNAPPY "build with SNAPPY" OFF)
 option(WITH_LZ4 "build with lz4" OFF)
@@ -63,15 +80,26 @@ if (WITH_WINDOWS_UTF8_FILENAMES)
 endif()
 # third-party/folly is only validated to work on Linux and Windows for now.
 # So only turn it on there by default.
-if(CMAKE_SYSTEM_NAME MATCHES "Linux" OR CMAKE_SYSTEM_NAME MATCHES "Windows")
-  option(WITH_FOLLY_DISTRIBUTED_MUTEX "build with folly::DistributedMutex" ON)
+if(CMAKE_SYSTEM_NAME MATCHES "Linux|Windows")
+  if(MSVC AND MSVC_VERSION LESS 1910)
+    # Folly does not compile with MSVC older than VS2017
+    option(WITH_FOLLY_DISTRIBUTED_MUTEX "build with folly::DistributedMutex" OFF)
+  else()
+    option(WITH_FOLLY_DISTRIBUTED_MUTEX "build with folly::DistributedMutex" ON)
+  endif()
 else()
   option(WITH_FOLLY_DISTRIBUTED_MUTEX "build with folly::DistributedMutex" OFF)
 endif()
+
+if( NOT DEFINED CMAKE_CXX_STANDARD )
+  set(CMAKE_CXX_STANDARD 11)
+endif()
+
+include(CMakeDependentOption)
+CMAKE_DEPENDENT_OPTION(WITH_GFLAGS "build with GFlags" ON
+  "NOT MSVC;NOT MINGW" OFF)
+
 if(MSVC)
-  # Defaults currently different for GFLAGS.
-  #  We will address find_package work a little later
-  option(WITH_GFLAGS "build with GFlags" OFF)
   option(WITH_XPRESS "build with windows built in compression" OFF)
   include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty.inc)
 
@@ -95,7 +123,7 @@ if(MSVC)
     list(APPEND THIRDPARTY_LIBS ${ZSTD_LIBRARIES})
   endif()
 else()
-  if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD" AND NOT CMAKE_SYSTEM_NAME MATCHES "kFreeBSD")
     # FreeBSD has jemalloc as default malloc
     # but it does not have all the jemalloc files in include/...
     set(WITH_JEMALLOC ON)
@@ -107,21 +135,35 @@ else()
     endif()
   endif()
 
-  # No config file for this
-  option(WITH_GFLAGS "build with GFlags" OFF)
+  set(GFLAGS_LIB)
   if(WITH_GFLAGS)
-    find_package(gflags)
+    # Config with namespace available since gflags 2.2.2
+    option(GFLAGS_USE_TARGET_NAMESPACE "Use gflags import target with namespace." ON)
+    find_package(gflags CONFIG)
     if(gflags_FOUND)
-      add_definitions(-DGFLAGS=1)
-      include_directories(${gflags_INCLUDE_DIR})
-      list(APPEND THIRDPARTY_LIBS ${gflags_LIBRARIES})
+      if(TARGET ${GFLAGS_TARGET})
+        # Config with GFLAGS_TARGET available since gflags 2.2.0
+        set(GFLAGS_LIB ${GFLAGS_TARGET})
+      else()
+        # Config with GFLAGS_LIBRARIES available since gflags 2.1.0
+        set(GFLAGS_LIB ${GFLAGS_LIBRARIES})
+      endif()
+    else()
+      find_package(gflags REQUIRED)
+        set(GFLAGS_LIB gflags::gflags)
     endif()
+    include_directories(${GFLAGS_INCLUDE_DIR})
+    list(APPEND THIRDPARTY_LIBS ${GFLAGS_LIB})
+    add_definitions(-DGFLAGS=1)
   endif()
 
   if(WITH_SNAPPY)
-    find_package(snappy REQUIRED)
+    find_package(Snappy CONFIG)
+    if(NOT Snappy_FOUND)
+      find_package(Snappy REQUIRED)
+    endif()
     add_definitions(-DSNAPPY)
-    list(APPEND THIRDPARTY_LIBS snappy::snappy)
+    list(APPEND THIRDPARTY_LIBS Snappy::snappy)
   endif()
 
   if(WITH_ZLIB)
@@ -163,7 +205,8 @@ else()
   endif()
 endif()
 
-string(TIMESTAMP GIT_DATE_TIME "%Y/%m/%d %H:%M:%S" UTC)
+string(TIMESTAMP TS "%Y/%m/%d %H:%M:%S" UTC)
+set(GIT_DATE_TIME "${TS}" CACHE STRING "the time we first built rocksdb")
 
 find_package(Git)
 
@@ -178,17 +221,6 @@ else()
 endif()
 
 string(REGEX REPLACE "[^0-9a-f]+" "" GIT_SHA "${GIT_SHA}")
-
-
-# Read rocksdb version from version.h header file.
-file(READ include/rocksdb/version.h version_header_file)
-string(REGEX MATCH "#define ROCKSDB_MAJOR ([0-9]+)" _ ${version_header_file})
-set(ROCKSDB_VERSION_MAJOR ${CMAKE_MATCH_1})
-string(REGEX MATCH "#define ROCKSDB_MINOR ([0-9]+)" _ ${version_header_file})
-set(ROCKSDB_VERSION_MINOR ${CMAKE_MATCH_1})
-string(REGEX MATCH "#define ROCKSDB_PATCH ([0-9]+)" _ ${version_header_file})
-set(ROCKSDB_VERSION_PATCH ${CMAKE_MATCH_1})
-set(ROCKSDB_VERSION ${ROCKSDB_VERSION_MAJOR}.${ROCKSDB_VERSION_MINOR}.${ROCKSDB_VERSION_PATCH})
 
 
 option(WITH_MD_LIBRARY "build with MD" OFF)
@@ -212,10 +244,9 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wextra -Wall")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wsign-compare -Wshadow -Wno-unused-parameter -Wno-unused-variable -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers -Wno-strict-aliasing")
   if(MINGW)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format -fno-asynchronous-unwind-tables")
     add_definitions(-D_POSIX_C_SOURCE=1)
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
     include(CheckCXXCompilerFlag)
@@ -258,11 +289,29 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
 endif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
 
 option(FORCE_SSE42 "force building with SSE4.2, even when PORTABLE=ON" OFF)
+option(FORCE_AVX "force building with AVX, even when PORTABLE=ON" OFF)
+option(FORCE_AVX2 "force building with AVX2, even when PORTABLE=ON" OFF)
 if(PORTABLE)
   # MSVC does not need a separate compiler flag to enable SSE4.2; if nmmintrin.h
   # is available, it is available by default.
   if(FORCE_SSE42 AND NOT MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -mpclmul")
+  endif()
+  if(MSVC)
+    if(FORCE_AVX)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX")
+    endif()
+    # MSVC automatically enables BMI / lzcnt with AVX2.
+    if(FORCE_AVX2)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX2")
+    endif()
+  else()
+    if(FORCE_AVX)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx")
+    endif()
+    if(FORCE_AVX2)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx2 -mbmi -mlzcnt")
+    endif()
   endif()
 else()
   if(MSVC)
@@ -414,7 +463,15 @@ if(MSVC)
     message(STATUS "Debug optimization is enabled")
     set(CMAKE_CXX_FLAGS_DEBUG "/Oxt")
   else()
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /RTC1 /Gm")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Od /RTC1")
+
+    # Minimal Build is deprecated after MSVC 2015
+    if( MSVC_VERSION GREATER 1900 )
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Gm-")
+    else()
+      set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Gm")
+    endif()
+
   endif()
   if(WITH_RUNTIME_DEBUG)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /${RUNTIME_LIBRARY}d")
@@ -450,6 +507,8 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
   add_definitions(-DOS_LINUX)
 elseif(CMAKE_SYSTEM_NAME MATCHES "SunOS")
   add_definitions(-DOS_SOLARIS)
+elseif(CMAKE_SYSTEM_NAME MATCHES "kFreeBSD")
+  add_definitions(-DOS_GNU_KFREEBSD)
 elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
   add_definitions(-DOS_FREEBSD)
 elseif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
@@ -478,7 +537,7 @@ if(WITH_FALLOCATE)
 #include <linux/falloc.h>
 int main() {
  int fd = open(\"/dev/null\", 0);
- fallocate(fd, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, 0, 1024);
+ fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 1024);
 }
 " HAVE_FALLOCATE)
   if(HAVE_FALLOCATE)
@@ -528,7 +587,6 @@ endif()
 
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories(${PROJECT_SOURCE_DIR}/include)
-include_directories(SYSTEM ${PROJECT_SOURCE_DIR}/third-party/gtest-1.8.1/fused-src)
 if(WITH_FOLLY_DISTRIBUTED_MUTEX)
   include_directories(${PROJECT_SOURCE_DIR}/third-party/folly)
 endif()
@@ -543,8 +601,13 @@ set(SOURCES
         cache/sharded_cache.cc
         db/arena_wrapped_db_iter.cc
         db/blob/blob_file_addition.cc
+        db/blob/blob_file_builder.cc
         db/blob/blob_file_garbage.cc
         db/blob/blob_file_meta.cc
+        db/blob/blob_file_reader.cc
+        db/blob/blob_log_format.cc
+        db/blob/blob_log_sequential_reader.cc
+        db/blob/blob_log_writer.cc
         db/builder.cc
         db/c.cc
         db/column_family.cc
@@ -556,6 +619,7 @@ set(SOURCES
         db/compaction/compaction_picker_fifo.cc
         db/compaction/compaction_picker_level.cc
         db/compaction/compaction_picker_universal.cc
+        db/compaction/sst_partitioner.cc
         db/convenience.cc
         db/db_filesnapshot.cc
         db/db_impl/db_impl.cc
@@ -588,6 +652,8 @@ set(SOURCES
         db/memtable_list.cc
         db/merge_helper.cc
         db/merge_operator.cc
+        db/output_validator.cc
+        db/periodic_work_scheduler.cc
         db/range_del_aggregator.cc
         db/range_tombstone_fragmenter.cc
         db/repair.cc
@@ -600,6 +666,7 @@ set(SOURCES
         db/version_edit.cc
         db/version_edit_handler.cc
         db/version_set.cc
+        db/wal_edit.cc
         db/wal_manager.cc
         db/write_batch.cc
         db/write_batch_base.cc
@@ -610,6 +677,7 @@ set(SOURCES
         env/env_encryption.cc
         env/env_hdfs.cc
         env/file_system.cc
+        env/file_system_tracer.cc
         env/mock_env.cc
         file/delete_scheduler.cc
         file/file_prefetch_buffer.cc
@@ -648,6 +716,7 @@ set(SOURCES
         monitoring/thread_status_util.cc
         monitoring/thread_status_util_debug.cc
         options/cf_options.cc
+        options/configurable.cc
         options/db_options.cc
         options/options.cc
         options/options_helper.cc
@@ -695,8 +764,10 @@ set(SOURCES
         table/plain/plain_table_index.cc
         table/plain/plain_table_key_coding.cc
         table/plain/plain_table_reader.cc
+        table/sst_file_dumper.cc
         table/sst_file_reader.cc
         table/sst_file_writer.cc
+        table/table_factory.cc
         table/table_properties.cc
         table/two_level_iterator.cc
         test_util/sync_point.cc
@@ -705,12 +776,14 @@ set(SOURCES
         test_util/transaction_test_util.cc
         tools/block_cache_analyzer/block_cache_trace_analyzer.cc
         tools/dump/db_dump_tool.cc
+        tools/io_tracer_parser_tool.cc
         tools/ldb_cmd.cc
         tools/ldb_tool.cc
         tools/sst_dump_tool.cc
         tools/trace_analyzer_tool.cc
         trace_replay/trace_replay.cc
         trace_replay/block_cache_tracer.cc
+        trace_replay/io_tracer.cc
         util/coding.cc
         util/compaction_job_stats_impl.cc
         util/comparator.cc
@@ -736,9 +809,6 @@ set(SOURCES
         utilities/blob_db/blob_db_impl_filesnapshot.cc
         utilities/blob_db/blob_dump_tool.cc
         utilities/blob_db/blob_file.cc
-        utilities/blob_db/blob_log_reader.cc
-        utilities/blob_db/blob_log_writer.cc
-        utilities/blob_db/blob_log_format.cc
         utilities/cassandra/cassandra_compaction_filter.cc
         utilities/cassandra/format.cc
         utilities/cassandra/merge_operator.cc
@@ -747,6 +817,8 @@ set(SOURCES
         utilities/debug.cc
         utilities/env_mirror.cc
         utilities/env_timed.cc
+        utilities/fault_injection_env.cc
+        utilities/fault_injection_fs.cc
         utilities/leveldb_options/leveldb_options.cc
         utilities/memory/memory_util.cc
         utilities/merge_operators/bytesxor.cc
@@ -768,6 +840,8 @@ set(SOURCES
         utilities/simulator_cache/sim_cache.cc
         utilities/table_properties_collectors/compact_on_deletion_collector.cc
         utilities/trace/file_trace_reader_writer.cc
+        utilities/transactions/lock/lock_tracker.cc
+        utilities/transactions/lock/point_lock_tracker.cc
         utilities/transactions/optimistic_transaction_db_impl.cc
         utilities/transactions/optimistic_transaction.cc
         utilities/transactions/pessimistic_transaction.cc
@@ -786,19 +860,17 @@ set(SOURCES
         utilities/write_batch_with_index/write_batch_with_index_internal.cc
         $<TARGET_OBJECTS:build_version>)
 
-if(HAVE_SSE42 AND NOT FORCE_SSE42)
-  if(NOT MSVC)
-set_source_files_properties(
-  util/crc32c.cc
-      PROPERTIES COMPILE_FLAGS "-msse4.2 -mpclmul")
-  endif()
+if(HAVE_SSE42 AND NOT MSVC)
+  set_source_files_properties(
+    util/crc32c.cc
+    PROPERTIES COMPILE_FLAGS "-msse4.2 -mpclmul")
 endif()
 
-if(HAVE_POWER8)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
   list(APPEND SOURCES
     util/crc32c_ppc.c
     util/crc32c_ppc_asm.S)
-endif(HAVE_POWER8)
+endif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
 
 if(HAS_ARMV8_CRC)
   list(APPEND SOURCES
@@ -811,9 +883,13 @@ if(WIN32)
     port/win/env_win.cc
     port/win/env_default.cc
     port/win/port_win.cc
-    port/win/win_logger.cc
-    port/win/win_thread.cc)
-
+    port/win/win_logger.cc)
+  if(NOT MINGW)
+    # Mingw only supports std::thread when using
+    # posix threads.
+    list(APPEND SOURCES
+      port/win/win_thread.cc)
+  endif()
 if(WITH_XPRESS)
   list(APPEND SOURCES
     port/win/xpress_win.cc)
@@ -960,14 +1036,29 @@ if(NOT WIN32 OR ROCKSDB_INSTALL_ON_WINDOWS)
   )
 endif()
 
-option(WITH_TESTS "build with tests" OFF)
-if(WITH_TESTS)
+option(WITH_ALL_TESTS "Build all test, rather than a small subset" OFF)
+
+if(WITH_TESTS OR WITH_BENCHMARK_TOOLS)
   add_subdirectory(third-party/gtest-1.8.1/fused-src/gtest)
+  add_library(testharness STATIC
+  test_util/mock_time_env.cc
+  test_util/testharness.cc)
+  target_link_libraries(testharness gtest)
+endif()
+
+if(WITH_TESTS)
   set(TESTS
+        db/db_basic_test.cc
+        env/env_basic_test.cc
+  )
+  if(WITH_ALL_TESTS)
+    list(APPEND TESTS
         cache/cache_test.cc
         cache/lru_cache_test.cc
         db/blob/blob_file_addition_test.cc
+        db/blob/blob_file_builder_test.cc
         db/blob/blob_file_garbage_test.cc
+        db/blob/blob_file_reader_test.cc
         db/blob/db_blob_index_test.cc
         db/column_family_test.cc
         db/compact_files_test.cc
@@ -978,7 +1069,6 @@ if(WITH_TESTS)
         db/comparator_db_test.cc
         db/corruption_test.cc
         db/cuckoo_table_db_test.cc
-        db/db_basic_test.cc
         db/db_with_timestamp_basic_test.cc
         db/db_block_cache_test.cc
         db/db_bloom_filter_test.cc
@@ -1028,6 +1118,7 @@ if(WITH_TESTS)
         db/merge_test.cc
         db/options_file_test.cc
         db/perf_context_test.cc
+        db/periodic_work_scheduler_test.cc
         db/plain_table_db_test.cc
         db/prefix_test.cc
         db/range_del_aggregator_test.cc
@@ -1038,14 +1129,15 @@ if(WITH_TESTS)
         db/version_edit_test.cc
         db/version_set_test.cc
         db/wal_manager_test.cc
+        db/wal_edit_test.cc
         db/write_batch_test.cc
         db/write_callback_test.cc
         db/write_controller_test.cc
-        env/env_basic_test.cc
         env/env_test.cc
         env/io_posix_test.cc
         env/mock_env_test.cc
         file/delete_scheduler_test.cc
+        file/prefetch_test.cc
         file/random_access_file_reader_test.cc
         logging/auto_roll_logger_test.cc
         logging/env_logger_test.cc
@@ -1059,9 +1151,11 @@ if(WITH_TESTS)
         monitoring/iostats_context_test.cc
         monitoring/statistics_test.cc
         monitoring/stats_history_test.cc
+        options/configurable_test.cc
         options/options_settable_test.cc
         options/options_test.cc
         table/block_based/block_based_filter_block_test.cc
+        table/block_based/block_based_table_reader_test.cc
         table/block_based/block_test.cc
         table/block_based/data_block_hash_index_test.cc
         table/block_based/full_filter_block_test.cc
@@ -1073,7 +1167,10 @@ if(WITH_TESTS)
         table/sst_file_reader_test.cc
         table/table_test.cc
         table/block_fetcher_test.cc
+        test_util/testutil_test.cc
+        trace_replay/io_tracer_test.cc
         tools/block_cache_analyzer/block_cache_trace_analyzer_test.cc
+        tools/io_tracer_parser_test.cc
         tools/ldb_cmd_test.cc
         tools/reduce_levels_test.cc
         tools/sst_dump_test.cc
@@ -1123,6 +1220,8 @@ if(WITH_TESTS)
         utilities/ttl/ttl_test.cc
         utilities/write_batch_with_index/write_batch_with_index_test.cc
   )
+  endif()
+  
   if(WITH_LIBRADOS)
     list(APPEND TESTS utilities/env_librados_test.cc)
   endif()
@@ -1152,7 +1251,6 @@ if(WITH_TESTS)
       db/db_test_util.cc
       monitoring/thread_status_updater_debug.cc
       table/mock_table.cc
-      test_util/fault_injection_test_env.cc
       utilities/cassandra/test_utils.cc
   )
   # test utilities are only build in debug
@@ -1167,8 +1265,7 @@ if(WITH_TESTS)
         PROPERTIES EXCLUDE_FROM_DEFAULT_BUILD_RELEASE 1
         EXCLUDE_FROM_DEFAULT_BUILD_MINRELEASE 1
         EXCLUDE_FROM_DEFAULT_BUILD_RELWITHDEBINFO 1
-        )
-
+  )
   # Tests are excluded from Release builds
   set(TEST_EXES ${TESTS})
 
