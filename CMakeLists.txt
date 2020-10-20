@@ -186,6 +186,9 @@ if (NOT MSVC)
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
         set(MAES_FLAG "")
         set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
+        set(MAES_FLAG "")
+        set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
     elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
         set(MAES_FLAG "-maes")
     else ()
@@ -287,6 +290,12 @@ if (NOT OPENSSL_FOUND)
         pkg_search_module(OPENSSL openssl)
     endif()
 endif()
+
+if (MSVC AND OPENSSL_FOUND AND (("${CMAKE_GENERATOR_PLATFORM}" STREQUAL "Win32")))
+    # Disable OPENSSL_FOUND in 32 bits MSVC
+    message(STATUS "OpenSSL Found: Disabled MSVC 32 bits")
+    SET(OPENSSL_FOUND FALSE)
+endif ()
 
 if (OPENSSL_FOUND)
     ## On non MSVC build systems, we need to link ldl with the static OpenSSL library

@@ -23,7 +23,8 @@ using BFP = BloomFilterPolicy;
 
 class DBBloomFilterTest : public DBTestBase {
  public:
-  DBBloomFilterTest() : DBTestBase("/db_bloom_filter_test") {}
+  DBBloomFilterTest()
+      : DBTestBase("/db_bloom_filter_test", /*env_do_fsync=*/true) {}
 };
 
 class DBBloomFilterTestWithParam : public DBTestBase,
@@ -36,7 +37,8 @@ class DBBloomFilterTestWithParam : public DBTestBase,
   uint32_t format_version_;
 
  public:
-  DBBloomFilterTestWithParam() : DBTestBase("/db_bloom_filter_tests") {}
+  DBBloomFilterTestWithParam()
+      : DBTestBase("/db_bloom_filter_tests", /*env_do_fsync=*/true) {}
 
   ~DBBloomFilterTestWithParam() override {}
 
@@ -81,13 +83,16 @@ TEST_P(DBBloomFilterTestDefFormatVersion, KeyMayExist) {
     options_override.partition_filters = partition_filters_;
     options_override.metadata_block_size = 32;
     Options options = CurrentOptions(options_override);
-    if (partition_filters_ &&
-        static_cast<BlockBasedTableOptions*>(
-            options.table_factory->GetOptions())
-                ->index_type != BlockBasedTableOptions::kTwoLevelIndexSearch) {
-      // In the current implementation partitioned filters depend on partitioned
-      // indexes
-      continue;
+    if (partition_filters_) {
+      auto* table_options =
+          options.table_factory->GetOptions<BlockBasedTableOptions>();
+      if (table_options != nullptr &&
+          table_options->index_type !=
+              BlockBasedTableOptions::kTwoLevelIndexSearch) {
+        // In the current implementation partitioned filters depend on
+        // partitioned indexes
+        continue;
+      }
     }
     options.statistics = ROCKSDB_NAMESPACE::CreateDBStatistics();
     CreateAndReopenWithCF({"pikachu"}, options);
@@ -1039,7 +1044,7 @@ class DBBloomFilterTestVaryPrefixAndFormatVer
 
  public:
   DBBloomFilterTestVaryPrefixAndFormatVer()
-      : DBTestBase("/db_bloom_filter_tests") {}
+      : DBTestBase("/db_bloom_filter_tests", /*env_do_fsync=*/true) {}
 
   ~DBBloomFilterTestVaryPrefixAndFormatVer() override {}
 
@@ -1063,7 +1068,16 @@ TEST_P(DBBloomFilterTestVaryPrefixAndFormatVer, PartitionedMultiGet) {
   bbto.partition_filters = true;
   bbto.index_type = BlockBasedTableOptions::IndexType::kTwoLevelIndexSearch;
   bbto.whole_key_filtering = !use_prefix_;
-  bbto.metadata_block_size = 290;
+  if (use_prefix_) {  // (not related to prefix, just alternating between)
+    // Make sure code appropriately deals with metadata block size setting
+    // that is "too small" (smaller than minimum size for filter builder)
+    bbto.metadata_block_size = 63;
+  } else {
+    // Make sure the test will work even on platforms with large minimum
+    // filter size, due to large cache line size.
+    // (Largest cache line size + 10+% overhead.)
+    bbto.metadata_block_size = 290;
+  }
   options.table_factory.reset(NewBlockBasedTableFactory(bbto));
   DestroyAndReopen(options);
   ReadOptions ropts;
