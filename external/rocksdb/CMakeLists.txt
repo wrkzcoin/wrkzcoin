@@ -52,23 +52,6 @@ if(POLICY CMP0042)
 endif()
 
 set(ARCH native CACHE STRING "CPU to build for: -march value or native")
-
-if(NOT CMAKE_BUILD_TYPE)
-  if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    set(default_build_type "Debug")
-  else()
-    set(default_build_type "RelWithDebInfo")
-  endif()
-  set(CMAKE_BUILD_TYPE "${default_build_type}" CACHE STRING
-    "Default BUILD_TYPE is ${default_build_type}" FORCE)
-endif()
-
-find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
-endif(CCACHE_FOUND)
-
 option(WITH_JEMALLOC "build with JeMalloc" OFF)
 option(WITH_SNAPPY "build with SNAPPY" OFF)
 option(WITH_LZ4 "build with lz4" OFF)
@@ -100,6 +83,9 @@ CMAKE_DEPENDENT_OPTION(WITH_GFLAGS "build with GFlags" ON
   "NOT MSVC;NOT MINGW" OFF)
 
 if(MSVC)
+  # Defaults currently different for GFLAGS.
+  #  We will address find_package work a little later
+  option(WITH_GFLAGS "build with GFlags" OFF)
   option(WITH_XPRESS "build with windows built in compression" OFF)
   include(${CMAKE_CURRENT_SOURCE_DIR}/thirdparty.inc)
 
@@ -135,26 +121,15 @@ else()
     endif()
   endif()
 
-  set(GFLAGS_LIB)
+  # No config file for this
+  option(WITH_GFLAGS "build with GFlags" OFF)
   if(WITH_GFLAGS)
-    # Config with namespace available since gflags 2.2.2
-    option(GFLAGS_USE_TARGET_NAMESPACE "Use gflags import target with namespace." ON)
-    find_package(gflags CONFIG)
+    find_package(gflags)
     if(gflags_FOUND)
-      if(TARGET ${GFLAGS_TARGET})
-        # Config with GFLAGS_TARGET available since gflags 2.2.0
-        set(GFLAGS_LIB ${GFLAGS_TARGET})
-      else()
-        # Config with GFLAGS_LIBRARIES available since gflags 2.1.0
-        set(GFLAGS_LIB ${GFLAGS_LIBRARIES})
-      endif()
-    else()
-      find_package(gflags REQUIRED)
-        set(GFLAGS_LIB gflags::gflags)
+      add_definitions(-DGFLAGS=1)
+      include_directories(${gflags_INCLUDE_DIR})
+      list(APPEND THIRDPARTY_LIBS ${gflags_LIBRARIES})
     endif()
-    include_directories(${GFLAGS_INCLUDE_DIR})
-    list(APPEND THIRDPARTY_LIBS ${GFLAGS_LIB})
-    add_definitions(-DGFLAGS=1)
   endif()
 
   if(WITH_SNAPPY)
@@ -223,6 +198,17 @@ endif()
 string(REGEX REPLACE "[^0-9a-f]+" "" GIT_SHA "${GIT_SHA}")
 
 
+# Read rocksdb version from version.h header file.
+file(READ include/rocksdb/version.h version_header_file)
+string(REGEX MATCH "#define ROCKSDB_MAJOR ([0-9]+)" _ ${version_header_file})
+set(ROCKSDB_VERSION_MAJOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "#define ROCKSDB_MINOR ([0-9]+)" _ ${version_header_file})
+set(ROCKSDB_VERSION_MINOR ${CMAKE_MATCH_1})
+string(REGEX MATCH "#define ROCKSDB_PATCH ([0-9]+)" _ ${version_header_file})
+set(ROCKSDB_VERSION_PATCH ${CMAKE_MATCH_1})
+set(ROCKSDB_VERSION ${ROCKSDB_VERSION_MAJOR}.${ROCKSDB_VERSION_MINOR}.${ROCKSDB_VERSION_PATCH})
+
+
 option(WITH_MD_LIBRARY "build with MD" OFF)
 if(WIN32 AND MSVC)
   if(WITH_MD_LIBRARY)
@@ -244,7 +230,7 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wextra -Wall")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wsign-compare -Wshadow -Wno-unused-parameter -Wno-unused-variable -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers -Wno-strict-aliasing")
   if(MINGW)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format -fno-asynchronous-unwind-tables")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format")
     add_definitions(-D_POSIX_C_SOURCE=1)
   endif()
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -537,7 +523,7 @@ if(WITH_FALLOCATE)
 #include <linux/falloc.h>
 int main() {
  int fd = open(\"/dev/null\", 0);
- fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 1024);
+ fallocate(fd, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, 0, 1024);
 }
 " HAVE_FALLOCATE)
   if(HAVE_FALLOCATE)
