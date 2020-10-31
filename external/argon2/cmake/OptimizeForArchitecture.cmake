@@ -206,7 +206,7 @@ endmacro()
 macro(OFA_AutodetectHostArchitecture)
    set(TARGET_ARCHITECTURE "generic")
    set(Vc_ARCHITECTURE_FLAGS)
-   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64)")
+   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64|amd64)")
       OFA_AutodetectX86()
    elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(arm|aarch32|aarch64)")
       OFA_AutodetectArm()
@@ -567,7 +567,7 @@ macro(OFA_HandleArmOptions)
 endmacro()
 
 macro(OptimizeForArchitecture)
-   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64)")
+   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64|amd64)")
       set(TARGET_ARCHITECTURE "auto" CACHE STRING "CPU architecture to optimize for. \
 Using an incorrect setting here can result in crashes of the resulting binary because of invalid instructions used. \
 Setting the value to \"auto\" will try to optimize for the architecture where cmake is called. \
@@ -599,7 +599,7 @@ Other supported values are: \"none\", \"generic\", TODO...")
       message(STATUS "Detected Host CPU: ${TARGET_ARCHITECTURE}")
    endif()
 
-   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64)")
+   if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(x86|AMD64|amd64)")
       OFA_HandleX86Options()
    elseif("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "(arm|aarch32|aarch64)")
       OFA_HandleArmOptions()
