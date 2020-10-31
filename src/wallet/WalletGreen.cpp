@@ -1774,9 +1774,16 @@ namespace CryptoNote
 
             if (!fee.isFixedFee)
             {
-                const double feePerByte = fee.isFeePerByte
+                double feePerByte = fee.isFeePerByte
                     ? fee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+
+                if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2)
+                {
+                    feePerByte = fee.isFeePerByte
+                        ? fee.feePerByte
+                        : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                }
 
                 /* If we haven't made an estimate already */
                 if (estimatedFee == 0)

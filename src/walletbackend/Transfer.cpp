@@ -416,9 +416,16 @@ namespace SendTransaction
                         extraData.size()
                     );
 
-                    const double feePerByte = fee.isFeePerByte
+                    double feePerByte = fee.isFeePerByte
                         ? fee.feePerByte
                         : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+
+                    if (daemon->networkBlockCount() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2)
+                    {
+                        feePerByte = fee.isFeePerByte
+                            ? fee.feePerByte
+                            : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                    }
 
                     const uint64_t estimatedFee = Utilities::getTransactionFee(
                         transactionSize,
@@ -1570,9 +1577,16 @@ namespace SendTransaction
             }
             else
             {
-                const double feePerByte = expectedFee.isFeePerByte
+                double feePerByte = expectedFee.isFeePerByte
                     ? expectedFee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+                    
+                if (height > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
+                {
+                    feePerByte = expectedFee.isFeePerByte
+                        ? expectedFee.feePerByte
+                        : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                }
 
                 const size_t txSize = toBinaryArray(tx).size();
 

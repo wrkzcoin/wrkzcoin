@@ -229,7 +229,7 @@ namespace Utilities
         {
             return CryptoNote::parameters::MINIMUM_FEE_V1;
         }
-        else
+        else if (height < CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
         {
             const uint64_t numChunks = static_cast<uint64_t>(std::ceil(
                 transactionSize / static_cast<double>(CryptoNote::parameters::FEE_PER_BYTE_CHUNK_SIZE)
@@ -239,16 +239,32 @@ namespace Utilities
                 numChunks * feePerByte * CryptoNote::parameters::FEE_PER_BYTE_CHUNK_SIZE
             );
         }
+        else
+        {
+            const uint64_t numChunks = static_cast<uint64_t>(std::ceil(
+                transactionSize / static_cast<double>(CryptoNote::parameters::FEE_PER_BYTE_CHUNK_SIZE_V2)
+            ));
+
+            return static_cast<uint64_t>(
+                numChunks * feePerByte * CryptoNote::parameters::FEE_PER_BYTE_CHUNK_SIZE_V2
+            );
+        }
     }
 
     uint64_t getMinimumTransactionFee(
         const size_t transactionSize,
         const uint64_t height)
     {
+        double fee = CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+        
+        if (height > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1)
+        {
+            fee = CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+        }
         return getTransactionFee(
             transactionSize,
             height,
-            CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1
+            fee
         );
     }
 
