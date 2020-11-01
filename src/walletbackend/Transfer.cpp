@@ -172,8 +172,15 @@ namespace SendTransaction
                 continue;
             }
 
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (daemon->networkBlockCount() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             const uint64_t unlockTime = daemon->networkBlockCount()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 
             WalletTypes::TransactionResult txResult =
@@ -320,8 +327,15 @@ namespace SendTransaction
 
         if (unlockTime == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+            
+            if (daemon->networkBlockCount() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+            
             unlockTime = daemon->networkBlockCount()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 

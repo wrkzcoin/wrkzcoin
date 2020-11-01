@@ -38,11 +38,17 @@ namespace CryptoNote
          * before becoming invalid. */
         const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
 
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2 = 10;
+
         /* Transactions must have an unlock time of at least current block +
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_HEIGHT_V2 = 1500000; // TODO
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 

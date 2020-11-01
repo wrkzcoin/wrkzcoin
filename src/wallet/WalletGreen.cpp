@@ -1637,8 +1637,15 @@ namespace CryptoNote
     {
         if (transactionParameters.unlockTimestamp == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             transactionParameters.unlockTimestamp = m_node.getLastKnownBlockHeight()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 
@@ -2235,8 +2242,15 @@ namespace CryptoNote
     {
         if (sendingTransaction.unlockTimestamp == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             sendingTransaction.unlockTimestamp = m_node.getLastKnownBlockHeight()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 
