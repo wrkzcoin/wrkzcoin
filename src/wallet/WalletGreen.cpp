@@ -1785,7 +1785,7 @@ namespace CryptoNote
                     ? fee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
 
-                if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2)
+                if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
                 {
                     feePerByte = fee.isFeePerByte
                         ? fee.feePerByte

@@ -123,7 +123,7 @@ namespace CryptoNote
         const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
 
         /* Fork fee per byte v2 */
-        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 16; // TODO Fee v2 = FEE_PER_BYTE_CHUNK_SIZE / 16
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 128; // TODO Fee v2 = FEE_PER_BYTE_CHUNK_SIZE
 
         /* Fee to charge per byte of transaction. Will be applied in chunks, see
          * above. This value comes out to 1.953125. We use this value instead of
@@ -132,7 +132,7 @@ namespace CryptoNote
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
 
-        const double MINIMUM_FEE_PER_BYTE_V2 = 50.00 / FEE_PER_BYTE_CHUNK_SIZE_V2; // TODO Fee v2 = MINIMUM_FEE_PER_BYTE_V1 / 10
+        const double MINIMUM_FEE_PER_BYTE_V2 = 10.00 / FEE_PER_BYTE_CHUNK_SIZE_V2; // TODO Fee v2 = MINIMUM_FEE_PER_BYTE_V1
 
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
