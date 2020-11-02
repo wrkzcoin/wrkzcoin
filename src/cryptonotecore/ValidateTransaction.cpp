@@ -425,6 +425,7 @@ bool ValidateTransaction::validateTransactionFee()
     {
         validFee = fee != 0;
 
+        /* getMinimumTransactionFee shall get fee dynamically for v1 and v2 */
         if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
         {
             const auto minFee = Utilities::getMinimumTransactionFee(

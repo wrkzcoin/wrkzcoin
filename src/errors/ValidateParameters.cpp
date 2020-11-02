@@ -251,7 +251,14 @@ Error validateAmount(
     }
 
     /* Using a fee per byte, and doesn't meet the min fee per byte requirement. */
-    if (fee.isFeePerByte && fee.feePerByte < CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1)
+    double min_fee = CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+    
+    if (currentHeight > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
+    {
+        min_fee = CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+    }
+
+    if (fee.isFeePerByte && fee.feePerByte < min_fee)
     {
         return FEE_TOO_SMALL;
     }

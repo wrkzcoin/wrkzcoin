@@ -172,8 +172,15 @@ namespace SendTransaction
                 continue;
             }
 
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (daemon->networkBlockCount() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             const uint64_t unlockTime = daemon->networkBlockCount()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 
             WalletTypes::TransactionResult txResult =
@@ -320,8 +327,15 @@ namespace SendTransaction
 
         if (unlockTime == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+            
+            if (daemon->networkBlockCount() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+            
             unlockTime = daemon->networkBlockCount()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 
@@ -416,9 +430,16 @@ namespace SendTransaction
                         extraData.size()
                     );
 
-                    const double feePerByte = fee.isFeePerByte
+                    double feePerByte = fee.isFeePerByte
                         ? fee.feePerByte
                         : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+
+                    if (daemon->networkBlockCount() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
+                    {
+                        feePerByte = fee.isFeePerByte
+                            ? fee.feePerByte
+                            : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                    }
 
                     const uint64_t estimatedFee = Utilities::getTransactionFee(
                         transactionSize,
@@ -1570,9 +1591,16 @@ namespace SendTransaction
             }
             else
             {
-                const double feePerByte = expectedFee.isFeePerByte
+                double feePerByte = expectedFee.isFeePerByte
                     ? expectedFee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+                    
+                if (height > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
+                {
+                    feePerByte = expectedFee.isFeePerByte
+                        ? expectedFee.feePerByte
+                        : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                }
 
                 const size_t txSize = toBinaryArray(tx).size();
 

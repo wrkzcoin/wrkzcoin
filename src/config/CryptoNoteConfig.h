@@ -38,11 +38,17 @@ namespace CryptoNote
          * before becoming invalid. */
         const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
 
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2 = 20;
+
         /* Transactions must have an unlock time of at least current block +
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_HEIGHT_V2 = 1500000; // TODO
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
@@ -116,6 +122,9 @@ namespace CryptoNote
          * to the underlying storage cost / page sizes for storing a transaction. */
         const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
 
+        /* Fork fee per byte v2 */
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 128; // TODO Fee v2 = FEE_PER_BYTE_CHUNK_SIZE
+
         /* Fee to charge per byte of transaction. Will be applied in chunks, see
          * above. This value comes out to 1.953125. We use this value instead of
          * something like 2 because it makes for pretty resulting fees
@@ -123,8 +132,13 @@ namespace CryptoNote
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
 
+        const double MINIMUM_FEE_PER_BYTE_V2 = 10.00 / FEE_PER_BYTE_CHUNK_SIZE_V2; // TODO Fee v2 = MINIMUM_FEE_PER_BYTE_V1
+
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
+        
+        /* Fork fee per byte v2 */
+        const uint64_t MINIMUM_FEE_PER_BYTE_V2_HEIGHT  = 1500000; // TODO Fee v2
 
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
@@ -436,7 +450,7 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 32; // 32 MB
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 4; // 4 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
     const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads

@@ -1637,8 +1637,15 @@ namespace CryptoNote
     {
         if (transactionParameters.unlockTimestamp == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             transactionParameters.unlockTimestamp = m_node.getLastKnownBlockHeight()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 
@@ -1774,9 +1781,16 @@ namespace CryptoNote
 
             if (!fee.isFixedFee)
             {
-                const double feePerByte = fee.isFeePerByte
+                double feePerByte = fee.isFeePerByte
                     ? fee.feePerByte
                     : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1;
+
+                if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2_HEIGHT)
+                {
+                    feePerByte = fee.isFeePerByte
+                        ? fee.feePerByte
+                        : CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V2;
+                }
 
                 /* If we haven't made an estimate already */
                 if (estimatedFee == 0)
@@ -2228,8 +2242,15 @@ namespace CryptoNote
     {
         if (sendingTransaction.unlockTimestamp == 0)
         {
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (m_node.getLastKnownBlockHeight() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
             sendingTransaction.unlockTimestamp = m_node.getLastKnownBlockHeight()
-                + CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW
+                + unlock_blocks
                 + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         }
 
