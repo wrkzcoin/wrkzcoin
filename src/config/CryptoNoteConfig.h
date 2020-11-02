@@ -39,7 +39,7 @@ namespace CryptoNote
         const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
 
         /* Unlock V2 */
-        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2 = 15;
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2 = 20;
 
         /* Transactions must have an unlock time of at least current block +
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
