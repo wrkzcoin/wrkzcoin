@@ -49,6 +49,10 @@ void TransactionMonitor::start()
 
             m_queuedTransactions.deleteFront();
         }
+        else
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }        
     }
 
     m_walletBackend->m_eventHandler->onTransaction.unsubscribe();
