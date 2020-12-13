@@ -79,6 +79,10 @@ namespace CryptoNote
 
         static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 
+        const uint64_t FIXED_REWARD_V1 = 1000000; // TODO: 10,000
+
+        const uint64_t FIXED_REWARD_V1_HEIGHT = 1500000; // TODO: Next fork
+
         const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(MONEY_SUPPLY * 3 / 100);
 
         const char GENESIS_COINBASE_TX_HEX[] =
@@ -348,11 +352,12 @@ namespace CryptoNote
             1000000,  // 11
             1123000,  // 12
             1200000,  // 13
-            1500000,  // 14  // TODO: Update fork height
+            1500000,  // 14
+            1800000,  // 15  // TODO: Update fork height
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 13;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 14;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 

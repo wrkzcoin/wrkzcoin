@@ -80,11 +80,6 @@ namespace CryptoNote
             return m_moneySupply;
         }
 
-        unsigned int emissionSpeedFactor() const
-        {
-            return m_emissionSpeedFactor;
-        }
-
         uint64_t genesisBlockReward() const
         {
             return m_genesisBlockReward;
@@ -298,6 +293,7 @@ namespace CryptoNote
             size_t currentBlockSize,
             uint64_t alreadyGeneratedCoins,
             uint64_t fee,
+            const uint64_t blockHeight,
             uint64_t &reward,
             int64_t &emissionChange) const;
 
@@ -387,8 +383,6 @@ namespace CryptoNote
         uint64_t m_blockFutureTimeLimit;
 
         uint64_t m_moneySupply;
-
-        unsigned int m_emissionSpeedFactor;
 
         uint64_t m_genesisBlockReward;
 
@@ -535,8 +529,6 @@ namespace CryptoNote
             m_currency.m_moneySupply = val;
             return *this;
         }
-
-        CurrencyBuilder &emissionSpeedFactor(unsigned int val);
 
         CurrencyBuilder &genesisBlockReward(uint64_t val)
         {
