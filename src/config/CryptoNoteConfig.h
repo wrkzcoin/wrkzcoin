@@ -441,7 +441,7 @@ namespace CryptoNote
     const uint8_t P2P_UPGRADE_WINDOW = 2;
 
     const size_t P2P_CONNECTION_MAX_WRITE_BUFFER_SIZE = 32 * 1024 * 1024; // 32 MB
-    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 8;
+    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 12;
 
     const size_t P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT = 70;
 
@@ -473,9 +473,9 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "176.9.145.124:17855",        // myexplorer.wrkz.work
+        "135.181.23.12:17855",        // myexplorer.wrkz.work
         "51.15.243.43:17855",         // arm-node.wrkz.work
-        "135.181.32.181:17855",       // web eu
+        "95.217.121.35:17855",        // node-fin.wrkz.work
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };
