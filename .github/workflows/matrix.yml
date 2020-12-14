@@ -386,7 +386,6 @@ jobs:
         run: |
           mkdir build
           cd build
-          set BOOST_ROOT=%BOOST_ROOT_1_72_0%
           if ($env:LABEL -imatch "win64") {
             cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
           }
