@@ -379,7 +379,7 @@ jobs:
           $path = "C:\boost.exe"
           [Net.WebClient]::new().DownloadFile($link, $path)
           Start-Process C:\boost.exe -ArgumentList "/DIR=C:\local\boost_1_69_0","/VERYSILENT" -Wait
-          Get-ChildItem C:\boost
+          Get-ChildItem C:\local\boost_1_69_0
 
       # Configure project with cmake
       - name: Configure
