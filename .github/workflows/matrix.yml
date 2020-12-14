@@ -367,6 +367,20 @@ jobs:
       - name: Install OpenSSL
         run: choco install openssl
 
+      # Install boost
+      - name: Setup binary boost 1.69.0
+        run: |
+          if ($env:LABEL -imatch "win64") {
+            $link = "https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-64.exe"
+          }
+          else {
+            $link = "https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-32.exe"
+          }
+          $path = "C:\boost.exe"
+          [Net.WebClient]::new().DownloadFile($link, $path)
+          Start-Process C:\boost.exe -ArgumentList "/DIR=C:\local\boost_1_69_0","/VERYSILENT" -Wait
+          Get-ChildItem C:\boost
+
       # Configure project with cmake
       - name: Configure
         run: |
@@ -374,12 +388,11 @@ jobs:
           cd build
           set BOOST_ROOT=%BOOST_ROOT_1_72_0%
           if ($env:LABEL -imatch "win64") {
-            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_72_0" -DBOOST_INCLUDEDIR="$env:BOOST_ROOT_1_72_0"\boost\include -DBOOST_LIBRARYDIR="$env:BOOST_ROOT_1_72_0"\lib
+            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
           }
           else {
-            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT="$env:BOOST_ROOT_1_72_0" -DBOOST_INCLUDEDIR="$env:BOOST_ROOT_1_72_0"\boost\include -DBOOST_LIBRARYDIR="$env:BOOST_ROOT_1_72_0"\lib
+            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
           }
-          
 
       # Build for Windows
       - name: Build
