@@ -238,6 +238,11 @@ namespace CryptoNote
 
         const uint64_t TRANSACTION_POW_HEIGHT = 1123000;
 
+        /* If a user decide to pay for a fee of this, Tx PoW doesn't need except fusion Tx */
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE_HEIGHT = 1500000; // TODO: Check before fork
+
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE = 10000; // TODO: Check before fork. Proposing 100.00 WRKZ
+
         /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
         const uint64_t TRANSACTION_POW_DIFFICULTY = 20000;
 
