@@ -460,7 +460,7 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 2 // 2 MB
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 2; // 2 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
     const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
