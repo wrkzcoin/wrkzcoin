@@ -2901,7 +2901,18 @@ namespace CryptoNote
         }
 
         uint32_t height = m_node.getLastKnownBlockHeight();
-        tx->generateTxProofOfWork(height);
+
+        if (height < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE_HEIGHT)
+        {
+            tx->generateTxProofOfWork(height);
+        }
+        else
+        {
+            if (tx->getInputTotalAmount() - tx->getOutputTotalAmount() < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+            {
+                tx->generateTxProofOfWork(height);
+            }
+        }
 
         size_t i = 0;
         for (auto &input : keysInfo)

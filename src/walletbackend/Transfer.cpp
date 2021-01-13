@@ -1495,7 +1495,22 @@ namespace SendTransaction
 
             time (&time_begin); // note time before execution
 
-            setupTX.extra = generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+            if (daemon->networkBlockCount() < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE_HEIGHT)
+            {
+                setupTX.extra = generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+            } else
+            {
+                const uint64_t actualFee = sumTransactionFee(setupTX);
+
+                if (actualFee >= CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+                {
+                    /* If fee passes */
+                    setupTX.extra = extra;
+                } else
+                {
+                    setupTX.extra = generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+                }
+            }
 
             time (&time_end); // note time after execution
 
