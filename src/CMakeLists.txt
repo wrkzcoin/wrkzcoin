@@ -13,6 +13,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 include_directories(${CMAKE_SOURCE_DIR}/external/snappy)
+include_directories(${CMAKE_SOURCE_DIR}/external/turtlecoin-crypto/include)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
@@ -141,7 +142,7 @@ endif ()
 
 # Add the dependencies we need
 target_link_libraries(Common __filesystem)
-target_link_libraries(Crypto argon2)
+target_link_libraries(Crypto argon2 turtlecoin-crypto)
 target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System ${Boost_LIBRARIES} WalletBackend)
 target_link_libraries(cryptotest Crypto Common)
 target_link_libraries(Errors Crypto SubWallets Utilities)

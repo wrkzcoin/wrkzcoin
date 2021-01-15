@@ -14,13 +14,14 @@ add_subdirectory(cryptopp)
 add_subdirectory(argon2)
 add_subdirectory(zstd)
 add_subdirectory(snappy)
+add_subdirectory(turtlecoin-crypto)
 
 if (MSVC)
     add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
     add_subdirectory(levelDB EXCLUDE_FROM_ALL)
-    set_property(TARGET upnpc-static cryptopp-static rocksdb leveldb snappy zstd argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static rocksdb leveldb snappy zstd argon2 turtlecoin-crypto PROPERTY FOLDER "external")
 elseif (NOT MSVC)
-    set_property(TARGET upnpc-static cryptopp-static snappy zstd argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static snappy zstd argon2 turtlecoin-crypto PROPERTY FOLDER "external")
     add_custom_target(
             rocksdb
             COMMAND $(MAKE) rocksdb
