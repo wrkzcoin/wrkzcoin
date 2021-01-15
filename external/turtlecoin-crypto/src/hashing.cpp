@@ -40,7 +40,7 @@ static inline std::vector<crypto_hash_t> slice(const std::vector<crypto_hash_t> 
     return results;
 }
 
-namespace Crypto::Hashing
+namespace TurtleCoinCrypto::Hashing
 {
     namespace Merkle
     {
@@ -227,4 +227,4 @@ namespace Crypto::Hashing
 
         return result;
     }
-} // namespace Crypto::Hashing
+} // namespace TurtleCoinCrypto::Hashing

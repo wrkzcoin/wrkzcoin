@@ -30,7 +30,7 @@
 #include "crypto_common.h"
 #include "scalar_transcript.h"
 
-namespace Crypto::RingSignature::Borromean
+namespace TurtleCoinCrypto::RingSignature::Borromean
 {
     /**
      * Checks the Borromean ring signature presented
@@ -101,6 +101,6 @@ namespace Crypto::RingSignature::Borromean
         const crypto_key_image_t &key_image,
         const std::vector<crypto_public_key_t> &public_keys,
         size_t real_output_index);
-} // namespace Crypto::RingSignature::Borromean
+} // namespace TurtleCoinCrypto::RingSignature::Borromean
 
 #endif // CRYPTO_RING_SIGNATURE_BORROMEAN_H

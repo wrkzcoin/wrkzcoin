@@ -30,7 +30,7 @@ static const crypto_scalar_t SIGNATURE_DOMAIN_0 = {0x20, 0x20, 0x49, 0x20, 0x41,
                                                    0x54, 0x48, 0x41, 0x54, 0x20, 0x49, 0x20, 0x48, 0x41, 0x56, 0x45,
                                                    0x20, 0x54, 0x48, 0x45, 0x20, 0x4b, 0x45, 0x59, 0x20, 0x20};
 
-namespace Crypto::Signature
+namespace TurtleCoinCrypto::Signature
 {
     bool check_signature(
         const crypto_hash_t &message_digest,
@@ -53,7 +53,7 @@ namespace Crypto::Signature
     {
         auto finalized_signature = signature;
 
-        if (partial_signing_scalars.empty() && signing_scalar != Crypto::ZERO)
+        if (partial_signing_scalars.empty() && signing_scalar != TurtleCoinCrypto::ZERO)
         {
             finalized_signature.LR.R -= (signature.LR.L * signing_scalar);
         }
@@ -106,7 +106,7 @@ namespace Crypto::Signature
     crypto_signature_t prepare_signature(const crypto_hash_t &message_digest, const crypto_public_key_t &public_key)
     {
         // help to provide stronger RNG for the alpha scalar
-        crypto_scalar_transcript_t alpha_transcript(message_digest, public_key, Crypto::random_scalar());
+        crypto_scalar_transcript_t alpha_transcript(message_digest, public_key, TurtleCoinCrypto::random_scalar());
 
         const auto alpha_scalar = alpha_transcript.challenge();
 
@@ -123,4 +123,4 @@ namespace Crypto::Signature
 
         return signature;
     }
-} // namespace Crypto::Signature
+} // namespace TurtleCoinCrypto::Signature

@@ -174,7 +174,7 @@ typedef struct Hash
      */
     [[nodiscard]] std::string to_string() const
     {
-        return Crypto::StringTools::to_hex(bytes, sizeof(bytes));
+        return TurtleCoinCrypto::StringTools::to_hex(bytes, sizeof(bytes));
     }
 
     uint8_t bytes[32] = {0};
@@ -182,7 +182,7 @@ typedef struct Hash
   private:
     void from_string(const std::string &s)
     {
-        const auto input = Crypto::StringTools::from_hex(s);
+        const auto input = TurtleCoinCrypto::StringTools::from_hex(s);
 
         if (input.size() < size())
             throw std::runtime_error("Could not load scalar");
@@ -201,7 +201,7 @@ namespace std
     }
 } // namespace std
 
-namespace Crypto::Hashing
+namespace TurtleCoinCrypto::Hashing
 {
     namespace Merkle
     {
@@ -294,6 +294,6 @@ namespace Crypto::Hashing
     {
         return sha3_slow_hash(input.data(), input.size(), iterations);
     }
-} // namespace Crypto::Hashing
+} // namespace TurtleCoinCrypto::Hashing
 
 #endif // CRYPTO_HASHING_H

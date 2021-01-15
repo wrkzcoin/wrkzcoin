@@ -41,7 +41,7 @@ typedef struct CLSAGSignature
     CLSAGSignature(
         std::vector<crypto_scalar_t> scalars,
         const crypto_scalar_t challenge,
-        const crypto_key_image_t &commitment_image = Crypto::Z):
+        const crypto_key_image_t &commitment_image = TurtleCoinCrypto::Z):
         scalars(std::move(scalars)), challenge(challenge), commitment_image(commitment_image)
     {
     }
@@ -63,7 +63,7 @@ typedef struct CLSAGSignature
 
     CLSAGSignature(const std::string &input)
     {
-        const auto string = Crypto::StringTools::from_hex(input);
+        const auto string = TurtleCoinCrypto::StringTools::from_hex(input);
 
         deserialize(string);
     }
@@ -84,7 +84,7 @@ typedef struct CLSAGSignature
 
         writer.key(challenge);
 
-        if (commitment_image != Crypto::Z)
+        if (commitment_image != TurtleCoinCrypto::Z)
         {
             writer.boolean(true);
 
@@ -118,7 +118,7 @@ typedef struct CLSAGSignature
             writer.Key("challenge");
             challenge.toJSON(writer);
 
-            if (commitment_image != Crypto::Z)
+            if (commitment_image != TurtleCoinCrypto::Z)
             {
                 writer.Key("commitment_image");
                 commitment_image.toJSON(writer);
@@ -131,7 +131,7 @@ typedef struct CLSAGSignature
     {
         const auto bytes = serialize();
 
-        return Crypto::StringTools::to_hex(bytes.data(), bytes.size());
+        return TurtleCoinCrypto::StringTools::to_hex(bytes.data(), bytes.size());
     }
 
     std::vector<crypto_scalar_t> scalars;
@@ -179,7 +179,7 @@ typedef struct CLSAGSignature
     }
 } crypto_clsag_signature_t;
 
-namespace Crypto::RingSignature::CLSAG
+namespace TurtleCoinCrypto::RingSignature::CLSAG
 {
     /**
      * Checks the CLSAG ring signature presented
@@ -197,7 +197,7 @@ namespace Crypto::RingSignature::CLSAG
         const std::vector<crypto_public_key_t> &public_keys,
         const crypto_clsag_signature_t &signature,
         const std::vector<crypto_pedersen_commitment_t> &commitments = {},
-        const crypto_pedersen_commitment_t &pseudo_commitment = Crypto::Z);
+        const crypto_pedersen_commitment_t &pseudo_commitment = TurtleCoinCrypto::Z);
 
     /**
      * Completes the prepared CLSAG ring signature
@@ -242,10 +242,10 @@ namespace Crypto::RingSignature::CLSAG
         const crypto_hash_t &message_digest,
         const crypto_secret_key_t &secret_ephemeral,
         const std::vector<crypto_public_key_t> &public_keys,
-        const crypto_blinding_factor_t &input_blinding_factor = Crypto::ZERO,
+        const crypto_blinding_factor_t &input_blinding_factor = TurtleCoinCrypto::ZERO,
         const std::vector<crypto_pedersen_commitment_t> &public_commitments = {},
-        const crypto_blinding_factor_t &pseudo_blinding_factor = Crypto::ZERO,
-        const crypto_pedersen_commitment_t &pseudo_commitment = Crypto::Z);
+        const crypto_blinding_factor_t &pseudo_blinding_factor = TurtleCoinCrypto::ZERO,
+        const crypto_pedersen_commitment_t &pseudo_commitment = TurtleCoinCrypto::Z);
 
     /**
      * Prepares CLSAG ring signature using the primitive values provided
@@ -265,11 +265,11 @@ namespace Crypto::RingSignature::CLSAG
         const crypto_key_image_t &key_image,
         const std::vector<crypto_public_key_t> &public_keys,
         size_t real_output_index = 0,
-        const crypto_blinding_factor_t &input_blinding_factor = Crypto::ZERO,
+        const crypto_blinding_factor_t &input_blinding_factor = TurtleCoinCrypto::ZERO,
         const std::vector<crypto_pedersen_commitment_t> &public_commitments = {},
-        const crypto_blinding_factor_t &pseudo_blinding_factor = Crypto::ZERO,
-        const crypto_pedersen_commitment_t &pseudo_commitment = Crypto::Z);
-} // namespace Crypto::RingSignature::CLSAG
+        const crypto_blinding_factor_t &pseudo_blinding_factor = TurtleCoinCrypto::ZERO,
+        const crypto_pedersen_commitment_t &pseudo_commitment = TurtleCoinCrypto::Z);
+} // namespace TurtleCoinCrypto::RingSignature::CLSAG
 
 namespace std
 {
@@ -282,7 +282,7 @@ namespace std
 
         os << "\tchallenge: " << value.challenge << std::endl;
 
-        if (value.commitment_image != Crypto::Z)
+        if (value.commitment_image != TurtleCoinCrypto::Z)
             os << "\tcommitment_image: " << value.commitment_image << std::endl;
 
         return os;

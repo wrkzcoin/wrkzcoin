@@ -34,7 +34,7 @@ static const crypto_scalar_t TRANSCRIPT_BASE = {0x20, 0x20, 0x20, 0x20, 0x69, 0x
                                                 0x63, 0x64, 0x40, 0x74, 0x75, 0x72, 0x74, 0x6c, 0x65, 0x63, 0x6f,
                                                 0x69, 0x6e, 0x2e, 0x64, 0x65, 0x76, 0x20, 0x20, 0x20, 0x20};
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     /**
      * Structure provides a transcript for hashing arbitrary values in a determinisic way
@@ -94,7 +94,7 @@ namespace Crypto
 
             std::memmove(buf.input, input.data(), sizeof(buf.input));
 
-            state = Crypto::hash_to_scalar(&buf, sizeof(buf));
+            state = TurtleCoinCrypto::hash_to_scalar(&buf, sizeof(buf));
         }
 
         template<typename T, typename U> void update(const T &input, const U &input2)
@@ -112,7 +112,7 @@ namespace Crypto
 
             std::memmove(buf.input2, input2.data(), sizeof(buf.input2));
 
-            state = Crypto::hash_to_scalar(&buf, sizeof(buf));
+            state = TurtleCoinCrypto::hash_to_scalar(&buf, sizeof(buf));
         }
 
         template<typename T, typename U, typename V> void update(const T &input, const U &input2, const V &input3)
@@ -133,7 +133,7 @@ namespace Crypto
 
             std::memmove(buf.input3, input3.data(), sizeof(buf.input3));
 
-            state = Crypto::hash_to_scalar(&buf, sizeof(buf));
+            state = TurtleCoinCrypto::hash_to_scalar(&buf, sizeof(buf));
         }
 
         template<typename T, typename U, typename V, typename W>
@@ -158,7 +158,7 @@ namespace Crypto
 
             std::memmove(buf.input4, input4.data(), sizeof(buf.input4));
 
-            state = Crypto::hash_to_scalar(&buf, sizeof(buf));
+            state = TurtleCoinCrypto::hash_to_scalar(&buf, sizeof(buf));
         }
 
         void update(const std::vector<crypto_scalar_t> &input)
@@ -169,7 +169,7 @@ namespace Crypto
 
             std::copy(input.begin(), input.end(), tmp.begin() + 1);
 
-            state = Crypto::hash_to_scalar(tmp.data(), tmp.size() * sizeof(crypto_scalar_t));
+            state = TurtleCoinCrypto::hash_to_scalar(tmp.data(), tmp.size() * sizeof(crypto_scalar_t));
         }
 
         void update(const std::vector<crypto_point_t> &input)
@@ -179,13 +179,13 @@ namespace Crypto
             for (const auto &point : input)
                 tmp.push_back(PointToScalar(point));
 
-            state = Crypto::hash_to_scalar(tmp.data(), tmp.size() * sizeof(crypto_scalar_t));
+            state = TurtleCoinCrypto::hash_to_scalar(tmp.data(), tmp.size() * sizeof(crypto_scalar_t));
         }
 
       private:
         // default seed state for scalar transcripts
         crypto_scalar_t state = TRANSCRIPT_BASE;
     } crypto_scalar_transcript_t;
-} // namespace Crypto
+} // namespace TurtleCoinCrypto
 
 #endif // CRYPTO_SCALAR_TRANSCRIPT_H

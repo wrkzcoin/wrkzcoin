@@ -13,6 +13,9 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 include_directories(${CMAKE_SOURCE_DIR}/external/snappy)
+include_directories(${CMAKE_SOURCE_DIR}/external/ed25519)
+include_directories(${CMAKE_SOURCE_DIR}/external/emsdk)
+include_directories(${CMAKE_SOURCE_DIR}/external/sha3)
 include_directories(${CMAKE_SOURCE_DIR}/external/turtlecoin-crypto/include)
 
 # Show cmake where the source files are

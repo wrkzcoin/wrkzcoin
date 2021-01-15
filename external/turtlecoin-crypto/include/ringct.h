@@ -30,7 +30,7 @@
 #include "crypto_common.h"
 #include "scalar_transcript.h"
 
-namespace Crypto::RingCT
+namespace TurtleCoinCrypto::RingCT
 {
     /**
      * Verifies that the sum of the pseudo commitments is equal to the sum
@@ -89,6 +89,6 @@ namespace Crypto::RingCT
      * @return
      */
     crypto_scalar_t toggle_masked_amount(const crypto_scalar_t &amount_mask, const crypto_scalar_t &amount);
-} // namespace Crypto::RingCT
+} // namespace TurtleCoinCrypto::RingCT
 
 #endif // CRYPTO_RINGCT_H

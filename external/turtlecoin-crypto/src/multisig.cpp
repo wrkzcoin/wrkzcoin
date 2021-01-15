@@ -26,7 +26,7 @@
 
 #include "multisig.h"
 
-namespace Crypto::Multisig
+namespace TurtleCoinCrypto::Multisig
 {
     crypto_secret_key_t generate_multisig_secret_key(
         const crypto_public_key_t &their_public_key,
@@ -98,4 +98,4 @@ namespace Crypto::Multisig
     {
         return participants - threshold + 1;
     }
-} // namespace Crypto::Multisig
+} // namespace TurtleCoinCrypto::Multisig

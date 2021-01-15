@@ -30,7 +30,7 @@
 #include "crypto_common.h"
 #include "scalar_transcript.h"
 
-namespace Crypto::Signature
+namespace TurtleCoinCrypto::Signature
 {
     /**
      * Checks that the supplied signature was generated with the private key for the given public key
@@ -83,6 +83,6 @@ namespace Crypto::Signature
      * @return
      */
     crypto_signature_t prepare_signature(const crypto_hash_t &message_digest, const crypto_public_key_t &public_key);
-} // namespace Crypto::Signature
+} // namespace TurtleCoinCrypto::Signature
 
 #endif // CRYPTO_SIGNATURE_H

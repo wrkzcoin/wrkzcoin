@@ -24,17 +24,17 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "crypto.h"
+#include "crypto_bp.h"
 
 static const crypto_scalar_t DERIVATION_DOMAIN_0 = {0x79, 0x6f, 0x75, 0x20, 0x66, 0x75, 0x6e, 0x64, 0x73, 0x20, 0x61,
                                                     0x72, 0x65, 0x20, 0x69, 0x6e, 0x73, 0x69, 0x64, 0x65, 0x20, 0x74,
                                                     0x68, 0x69, 0x73, 0x20, 0x62, 0x6f, 0x78, 0x20, 0x20, 0x20};
 
-static const crypto_scalar_t SUBWALLET_DOMAIN_0 = Crypto::hash_to_scalar(DERIVATION_DOMAIN_0);
+static const crypto_scalar_t SUBWALLET_DOMAIN_0 = TurtleCoinCrypto::hash_to_scalar(DERIVATION_DOMAIN_0);
 
-static const crypto_scalar_t VIEWKEY_DOMAIN_0 = Crypto::hash_to_scalar(SUBWALLET_DOMAIN_0);
+static const crypto_scalar_t VIEWKEY_DOMAIN_0 = TurtleCoinCrypto::hash_to_scalar(SUBWALLET_DOMAIN_0);
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     crypto_scalar_t derivation_to_scalar(const crypto_derivation_t &derivation, uint64_t output_index)
     {
@@ -158,7 +158,7 @@ namespace Crypto
 
     crypto_scalar_t hash_to_scalar(const void *data, size_t length)
     {
-        return crypto_scalar_t(Crypto::Hashing::sha3(data, length).bytes, true);
+        return crypto_scalar_t(TurtleCoinCrypto::Hashing::sha3(data, length).bytes, true);
     }
 
     size_t pow2_round(size_t value)
@@ -235,4 +235,4 @@ namespace Crypto
         // A = [P - (Ds * G)] mod l
         return public_ephemeral - (scalar * G);
     }
-} // namespace Crypto
+} // namespace TurtleCoinCrypto

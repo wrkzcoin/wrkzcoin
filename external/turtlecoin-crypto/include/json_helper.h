@@ -30,10 +30,10 @@
 #ifndef CRYPTO_JSON_HELPER_H
 #define CRYPTO_JSON_HELPER_H
 
-#include <rapidjson/include/rapidjson/document.h>
-#include <rapidjson/include/rapidjson/reader.h>
-#include <rapidjson/include/rapidjson/stringbuffer.h>
-#include <rapidjson/include/rapidjson/writer.h>
+#include <rapidjson/document.h>
+#include <rapidjson/reader.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 #include <stdexcept>
 
 typedef rapidjson::GenericObject<
@@ -44,7 +44,7 @@ typedef rapidjson::GenericObject<
 typedef rapidjson::GenericValue<rapidjson::UTF8<char>, rapidjson::MemoryPoolAllocator<rapidjson::CrtAllocator>>
     JSONValue;
 
-static const std::string kTypeNames[] = {"Null", "False", "True", "Object", "Array", "String", "Number", "Double"};
+static const std::string kTypeNamesJH[] = {"Null", "False", "True", "Object", "Array", "String", "Number", "Double"};
 
 /**
  * Checks if the specified property is in the value/document provided
@@ -86,7 +86,7 @@ template<typename T> const rapidjson::Value &get_json_value(const T &j, const st
 template<typename T> bool get_json_bool(const T &j)
 {
     if (!j.IsBool())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected bool, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected bool, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetBool();
 }
@@ -114,7 +114,7 @@ template<typename T> bool get_json_bool(const T &j, const std::string &key)
 template<typename T> int64_t get_json_int64_t(const T &j)
 {
     if (!j.IsInt64())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected int64_t, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected int64_t, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetInt64();
 }
@@ -142,7 +142,7 @@ template<typename T> int64_t get_json_int64_t(const T &j, const std::string &key
 template<typename T> uint64_t get_json_uint64_t(const T &j)
 {
     if (!j.IsUint64())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected uint64_t, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected uint64_t, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetUint64();
 }
@@ -170,7 +170,7 @@ template<typename T> uint64_t get_json_uint64_t(const T &j, const std::string &k
 template<typename T> uint32_t get_json_uint32_t(const T &j)
 {
     if (!j.IsUint())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected uint32_t, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected uint32_t, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetUint();
 }
@@ -198,7 +198,7 @@ template<typename T> uint32_t get_json_uint32_t(const T &j, const std::string &k
 template<typename T> double get_json_double(const T &j)
 {
     if (!j.IsDouble())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected double, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected double, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetDouble();
 }
@@ -227,7 +227,7 @@ template<typename T> std::string get_json_string(const T &j)
 {
     if (!j.IsString())
         throw std::invalid_argument(
-            "JSON parameter is wrong type. Expected std::string, got " + kTypeNames[j.GetType()]);
+            "JSON parameter is wrong type. Expected std::string, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetString();
 }
@@ -255,7 +255,7 @@ template<typename T> std::string get_json_string(const T &j, const std::string &
 template<typename T> auto get_json_array(const T &j)
 {
     if (!j.IsArray())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected Array, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected Array, got " + kTypeNamesJH[j.GetType()]);
 
     return j.GetArray();
 }
@@ -283,7 +283,7 @@ template<typename T> auto get_json_array(const T &j, const std::string &key)
 template<typename T> JSONObject get_json_object(const T &j)
 {
     if (!j.IsObject())
-        throw std::invalid_argument("JSON parameter is wrong type. Expected Object, got " + kTypeNames[j.GetType()]);
+        throw std::invalid_argument("JSON parameter is wrong type. Expected Object, got " + kTypeNamesJH[j.GetType()]);
 
     return j.Get_Object();
 }

@@ -74,7 +74,7 @@ typedef struct Bulletproof
 
     Bulletproof(const std::string &input)
     {
-        const auto string = Crypto::StringTools::from_hex(input);
+        const auto string = TurtleCoinCrypto::StringTools::from_hex(input);
 
         deserialize(string);
     }
@@ -194,7 +194,7 @@ typedef struct Bulletproof
     {
         const auto bytes = serialize();
 
-        return Crypto::StringTools::to_hex(bytes.data(), bytes.size());
+        return TurtleCoinCrypto::StringTools::to_hex(bytes.data(), bytes.size());
     }
 
     crypto_point_t A, S, T1, T2;
@@ -312,7 +312,7 @@ typedef struct Bulletproof
     }
 } crypto_bulletproof_t;
 
-namespace Crypto::RangeProofs::Bulletproofs
+namespace TurtleCoinCrypto::RangeProofs::Bulletproofs
 {
     /**
      * Generates a Bulletproof range proof and the related pedersen commitments
@@ -352,7 +352,7 @@ namespace Crypto::RangeProofs::Bulletproofs
         const crypto_bulletproof_t &proof,
         const std::vector<crypto_pedersen_commitment_t> &commitments,
         size_t N = 64);
-} // namespace Crypto::RangeProofs::Bulletproofs
+} // namespace TurtleCoinCrypto::RangeProofs::Bulletproofs
 
 namespace std
 {

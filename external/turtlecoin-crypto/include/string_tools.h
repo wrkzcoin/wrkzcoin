@@ -38,7 +38,7 @@
 #include <utility>
 #include <vector>
 
-namespace Crypto::StringTools
+namespace TurtleCoinCrypto::StringTools
 {
     /**
      * Converts a hexadecimal string to a vector of uint8_t
@@ -54,6 +54,6 @@ namespace Crypto::StringTools
      * @return
      */
     std::string to_hex(const void *data, size_t length);
-} // namespace Crypto::StringTools
+} // namespace TurtleCoinCrypto::StringTools
 
 #endif // CRYPTO_STRING_TOOLS_H

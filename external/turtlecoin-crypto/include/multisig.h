@@ -29,7 +29,7 @@
 
 #include "crypto_common.h"
 
-namespace Crypto::Multisig
+namespace TurtleCoinCrypto::Multisig
 {
     /**
      * Generates a multisig secret key using our secret key and their public key
@@ -75,6 +75,6 @@ namespace Crypto::Multisig
      * @return
      */
     size_t rounds_required(size_t participants, size_t threshold);
-} // namespace Crypto::Multisig
+} // namespace TurtleCoinCrypto::Multisig
 
 #endif // CRYPTO_MULTISIG_H

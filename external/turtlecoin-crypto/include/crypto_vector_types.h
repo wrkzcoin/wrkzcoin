@@ -31,7 +31,7 @@
 
 #include <set>
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     /**
      * Removes duplicates from a vector of keys and sorts them by value
@@ -49,7 +49,7 @@ namespace Crypto
 
         return result;
     }
-} // namespace Crypto
+} // namespace TurtleCoinCrypto
 
 typedef struct EllipticCurvePointVector
 {
@@ -62,7 +62,7 @@ typedef struct EllipticCurvePointVector
      * @param size
      * @param value
      */
-    EllipticCurvePointVector(size_t size, const EllipticCurvePoint &value = Crypto::Z)
+    EllipticCurvePointVector(size_t size, const EllipticCurvePoint &value = TurtleCoinCrypto::Z)
     {
         points = std::vector<EllipticCurvePoint>(size, value);
     }
@@ -162,7 +162,7 @@ typedef struct EllipticCurvePointVector
      */
     [[nodiscard]] EllipticCurvePointVector dedupe_sort() const
     {
-        return Crypto::dedupe_and_sort_keys(points);
+        return TurtleCoinCrypto::dedupe_and_sort_keys(points);
     }
 
     /**
@@ -227,7 +227,7 @@ typedef struct EllipticCurvePointVector
      */
     [[nodiscard]] EllipticCurvePoint sum() const
     {
-        auto result = Crypto::Z;
+        auto result = TurtleCoinCrypto::Z;
 
         for (const auto &point : points)
             result += point;
@@ -249,7 +249,7 @@ typedef struct EllipticCurveScalarVector
      * @param size
      * @param value
      */
-    EllipticCurveScalarVector(size_t size, const EllipticCurveScalar &value = Crypto::ZERO)
+    EllipticCurveScalarVector(size_t size, const EllipticCurveScalar &value = TurtleCoinCrypto::ZERO)
     {
         scalars = std::vector<EllipticCurveScalar>(size, value);
     }
@@ -418,7 +418,7 @@ typedef struct EllipticCurveScalarVector
      */
     [[nodiscard]] EllipticCurveScalarVector dedupe_sort() const
     {
-        return Crypto::dedupe_and_sort_keys(scalars);
+        return TurtleCoinCrypto::dedupe_and_sort_keys(scalars);
     }
 
     /**
@@ -502,7 +502,7 @@ typedef struct EllipticCurveScalarVector
             /**
              * When we get back the point (0,0) we need to convert it to a neutral point (0,1)
              */
-            points[i] = point != Crypto::U ? point : Crypto::Z;
+            points[i] = point != TurtleCoinCrypto::U ? point : TurtleCoinCrypto::Z;
         }
 
         /**
@@ -553,13 +553,13 @@ typedef struct EllipticCurveScalarVector
 
             const auto n = inputs.size();
 
-            std::vector<EllipticCurveScalar> scratch(n, Crypto::ONE);
+            std::vector<EllipticCurveScalar> scratch(n, TurtleCoinCrypto::ONE);
 
-            auto acc = Crypto::ONE;
+            auto acc = TurtleCoinCrypto::ONE;
 
             for (size_t i = 0; i < n; ++i)
             {
-                if (inputs[i] == Crypto::ZERO)
+                if (inputs[i] == TurtleCoinCrypto::ZERO)
                     throw std::range_error("cannot divide by 0");
 
                 scratch[i] = acc;
@@ -625,7 +625,7 @@ typedef struct EllipticCurveScalarVector
      */
     [[nodiscard]] EllipticCurveScalar sum() const
     {
-        auto result = Crypto::ZERO;
+        auto result = TurtleCoinCrypto::ZERO;
 
         for (const auto &scalar : scalars)
             result += scalar;

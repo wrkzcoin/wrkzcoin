@@ -215,7 +215,7 @@ typedef struct Serializer
      */
     void hex(const std::string &value)
     {
-        const auto bytes = Crypto::StringTools::from_hex(value);
+        const auto bytes = TurtleCoinCrypto::StringTools::from_hex(value);
 
         extend(bytes);
     }
@@ -255,7 +255,7 @@ typedef struct Serializer
      */
     std::string to_string() const
     {
-        return Crypto::StringTools::to_hex(buffer.data(), buffer.size());
+        return TurtleCoinCrypto::StringTools::to_hex(buffer.data(), buffer.size());
     }
 
     /**
@@ -345,7 +345,7 @@ typedef struct DeSerializer
 
     DeSerializer(const std::string &input)
     {
-        buffer = Crypto::StringTools::from_hex(input);
+        buffer = TurtleCoinCrypto::StringTools::from_hex(input);
     }
 
     /**
@@ -401,7 +401,7 @@ typedef struct DeSerializer
     {
         const auto temp = bytes(length, peek);
 
-        return Crypto::StringTools::to_hex(temp.data(), temp.size());
+        return TurtleCoinCrypto::StringTools::to_hex(temp.data(), temp.size());
     }
 
     /**
@@ -453,7 +453,7 @@ typedef struct DeSerializer
      */
     std::string to_string() const
     {
-        return Crypto::StringTools::to_hex(buffer.data(), buffer.size());
+        return TurtleCoinCrypto::StringTools::to_hex(buffer.data(), buffer.size());
     }
 
     /**

@@ -30,7 +30,7 @@ static const crypto_scalar_t BORROMEAN_DOMAIN_0 = {0x77, 0x69, 0x74, 0x68, 0x69,
                                                    0x68, 0x65, 0x20, 0x73, 0x70, 0x65, 0x6e, 0x64, 0x20, 0x6f, 0x66,
                                                    0x20, 0x61, 0x20, 0x66, 0x72, 0x69, 0x65, 0x6e, 0x64, 0x20};
 
-namespace Crypto::RingSignature::Borromean
+namespace TurtleCoinCrypto::RingSignature::Borromean
 {
     bool check_ring_signature(
         const crypto_hash_t &message_digest,
@@ -181,7 +181,7 @@ namespace Crypto::RingSignature::Borromean
             return {false, {}};
 
         // help to provide stronger RNG for the alpha scalar
-        crypto_scalar_transcript_t alpha_transcript(message_digest, key_image, Crypto::random_scalar());
+        crypto_scalar_transcript_t alpha_transcript(message_digest, key_image, TurtleCoinCrypto::random_scalar());
 
         alpha_transcript.update(public_keys);
 
@@ -205,7 +205,7 @@ namespace Crypto::RingSignature::Borromean
             crypto_point_t L, R;
 
             // HP = [Hp(P)] mod l
-            const auto HP = Crypto::hash_to_point(public_keys[i]);
+            const auto HP = TurtleCoinCrypto::hash_to_point(public_keys[i]);
 
             if (i == real_output_index)
             {
@@ -242,4 +242,4 @@ namespace Crypto::RingSignature::Borromean
 
         return {true, signature};
     }
-} // namespace Crypto::RingSignature::Borromean
+} // namespace TurtleCoinCrypto::RingSignature::Borromean

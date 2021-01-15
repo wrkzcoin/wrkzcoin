@@ -24,7 +24,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "crypto.h"
+#include "crypto_bp.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/bind.h>
@@ -457,7 +457,7 @@ EMS_METHOD(bulletproofs_prove)
 
         if (!amounts.empty() && !blinding_factors.empty())
         {
-            const auto [proof, commitments] = Crypto::RangeProofs::Bulletproofs::prove(amounts, blinding_factors, N);
+            const auto [proof, commitments] = TurtleCoinCrypto::RangeProofs::Bulletproofs::prove(amounts, blinding_factors, N);
 
             return prepare(true, proof, commitments);
         }
@@ -487,7 +487,7 @@ EMS_METHOD(bulletproofs_verify)
 
         if (!proofs.empty() && !commitments.empty())
         {
-            const auto success = Crypto::RangeProofs::Bulletproofs::verify(proofs, commitments, N);
+            const auto success = TurtleCoinCrypto::RangeProofs::Bulletproofs::verify(proofs, commitments, N);
 
             return prepare(!success);
         }
@@ -522,7 +522,7 @@ EMS_METHOD(bulletproofsplus_prove)
         if (!amounts.empty() && !blinding_factors.empty())
         {
             const auto [proof, commitments] =
-                Crypto::RangeProofs::BulletproofsPlus::prove(amounts, blinding_factors, N);
+                TurtleCoinCrypto::RangeProofs::BulletproofsPlus::prove(amounts, blinding_factors, N);
 
             return prepare(true, proof, commitments);
         }
@@ -552,7 +552,7 @@ EMS_METHOD(bulletproofsplus_verify)
 
         if (!proofs.empty() && !commitments.empty())
         {
-            const auto success = Crypto::RangeProofs::BulletproofsPlus::verify(proofs, commitments, N);
+            const auto success = TurtleCoinCrypto::RangeProofs::BulletproofsPlus::verify(proofs, commitments, N);
 
             return prepare(!success);
         }
@@ -579,7 +579,7 @@ EMS_METHOD(check_point)
 
         if (!point.empty())
         {
-            const auto success = Crypto::check_point(point);
+            const auto success = TurtleCoinCrypto::check_point(point);
 
             return prepare(!success);
         }
@@ -602,7 +602,7 @@ EMS_METHOD(check_scalar)
 
         if (!scalar.empty())
         {
-            const auto success = Crypto::check_scalar(scalar);
+            const auto success = TurtleCoinCrypto::check_scalar(scalar);
 
             return prepare(!success);
         }
@@ -627,7 +627,7 @@ EMS_METHOD(derivation_to_scalar)
 
         if (!derivation.empty())
         {
-            const auto scalar = Crypto::derivation_to_scalar(derivation, output_index);
+            const auto scalar = TurtleCoinCrypto::derivation_to_scalar(derivation, output_index);
 
             return prepare(true, scalar.to_string());
         }
@@ -652,7 +652,7 @@ EMS_METHOD(derive_public_key)
 
         if (!derivation.empty() && !public_key.empty())
         {
-            const auto key = Crypto::derive_public_key(derivation, public_key);
+            const auto key = TurtleCoinCrypto::derive_public_key(derivation, public_key);
 
             return prepare(true, key.to_string());
         }
@@ -677,7 +677,7 @@ EMS_METHOD(derive_secret_key)
 
         if (!derivation.empty() && !secret_key.empty())
         {
-            const auto key = Crypto::derive_secret_key(derivation, secret_key);
+            const auto key = TurtleCoinCrypto::derive_secret_key(derivation, secret_key);
 
             return prepare(true, key.to_string());
         }
@@ -702,7 +702,7 @@ EMS_METHOD(generate_key_derivation)
 
         if (!public_key.empty() && !secret_key.empty())
         {
-            const auto key = Crypto::generate_key_derivation(public_key, secret_key);
+            const auto key = TurtleCoinCrypto::generate_key_derivation(public_key, secret_key);
 
             return prepare(true, key.to_string());
         }
@@ -729,7 +729,7 @@ EMS_METHOD(generate_key_image)
 
         if (!public_key.empty() && !secret_key.empty())
         {
-            const auto key = Crypto::generate_key_image(public_key, secret_key, partial_key_images);
+            const auto key = TurtleCoinCrypto::generate_key_image(public_key, secret_key, partial_key_images);
 
             return prepare(true, key.to_string());
         }
@@ -746,7 +746,7 @@ EMS_METHOD(generate_keys)
 {
     try
     {
-        const auto [public_key, secret_key] = Crypto::generate_keys();
+        const auto [public_key, secret_key] = TurtleCoinCrypto::generate_keys();
 
         return prepare(true, public_key.to_string(), secret_key.to_string());
     }
@@ -768,7 +768,7 @@ EMS_METHOD(generate_subwallet_keys)
 
         if (!spend_secret_key.empty())
         {
-            const auto [public_key, secret_key] = Crypto::generate_subwallet_keys(spend_secret_key, subwallet_index);
+            const auto [public_key, secret_key] = TurtleCoinCrypto::generate_subwallet_keys(spend_secret_key, subwallet_index);
 
             return prepare(true, public_key.to_string(), secret_key.to_string());
         }
@@ -791,7 +791,7 @@ EMS_METHOD(generate_view_from_spend)
 
         if (!spend_secret_key.empty())
         {
-            const auto view_secret_key = Crypto::generate_view_from_spend(spend_secret_key);
+            const auto view_secret_key = TurtleCoinCrypto::generate_view_from_spend(spend_secret_key);
 
             return prepare(true, view_secret_key.to_string());
         }
@@ -814,9 +814,9 @@ EMS_METHOD(hash_to_point)
 
         if (!data.empty())
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto result = Crypto::hash_to_point(input.data(), input.size());
+            const auto result = TurtleCoinCrypto::hash_to_point(input.data(), input.size());
 
             return prepare(true, result.to_string());
         }
@@ -839,9 +839,9 @@ EMS_METHOD(hash_to_scalar)
 
         if (!data.empty())
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto result = Crypto::hash_to_scalar(input.data(), input.size());
+            const auto result = TurtleCoinCrypto::hash_to_scalar(input.data(), input.size());
 
             return prepare(true, result.to_string());
         }
@@ -862,7 +862,7 @@ EMS_METHOD(pow2_round)
 
         const auto input = get<uint32_t>(info, 0);
 
-        const auto result = Crypto::pow2_round(input);
+        const auto result = TurtleCoinCrypto::pow2_round(input);
 
         return prepare(true, result);
     }
@@ -876,7 +876,7 @@ EMS_METHOD(random_point)
 {
     try
     {
-        const auto result = Crypto::random_point();
+        const auto result = TurtleCoinCrypto::random_point();
 
         return prepare(true, result.to_string());
     }
@@ -894,7 +894,7 @@ EMS_METHOD(random_points)
 
         const auto count = get<uint32_t>(info, 0);
 
-        const auto results = Crypto::random_points(count);
+        const auto results = TurtleCoinCrypto::random_points(count);
 
         return prepare(true, results);
     }
@@ -908,7 +908,7 @@ EMS_METHOD(random_scalar)
 {
     try
     {
-        const auto result = Crypto::random_scalar();
+        const auto result = TurtleCoinCrypto::random_scalar();
 
         return prepare(true, result.to_string());
     }
@@ -926,7 +926,7 @@ EMS_METHOD(random_scalars)
 
         const auto count = get<uint32_t>(info, 0);
 
-        const auto results = Crypto::random_scalars(count);
+        const auto results = TurtleCoinCrypto::random_scalars(count);
 
         return prepare(true, results);
     }
@@ -946,7 +946,7 @@ EMS_METHOD(secret_key_to_public_key)
 
         if (!secret_key.empty())
         {
-            const auto public_key = Crypto::secret_key_to_public_key(secret_key);
+            const auto public_key = TurtleCoinCrypto::secret_key_to_public_key(secret_key);
 
             return prepare(true, public_key.to_string());
         }
@@ -973,7 +973,7 @@ EMS_METHOD(underive_public_key)
 
         if (!derivation.empty() && !public_ephemeral.empty())
         {
-            const auto public_key = Crypto::underive_public_key(derivation, output_index, public_ephemeral);
+            const auto public_key = TurtleCoinCrypto::underive_public_key(derivation, output_index, public_ephemeral);
 
             return prepare(true, public_key.to_string());
         }
@@ -1000,9 +1000,9 @@ EMS_METHOD(sha3)
 
         if (!data.empty())
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto result = Crypto::Hashing::sha3(input.data(), input.size());
+            const auto result = TurtleCoinCrypto::Hashing::sha3(input.data(), input.size());
 
             return prepare(true, result.to_string());
         }
@@ -1027,9 +1027,9 @@ EMS_METHOD(sha3_slow_hash)
 
         if (!data.empty())
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto result = Crypto::Hashing::sha3_slow_hash(input.data(), input.size(), iterations);
+            const auto result = TurtleCoinCrypto::Hashing::sha3_slow_hash(input.data(), input.size(), iterations);
 
             return prepare(true, result.to_string());
         }
@@ -1052,7 +1052,7 @@ EMS_METHOD(tree_branch)
 
         if (!hashes.empty())
         {
-            const auto tree_branches = Crypto::Hashing::Merkle::tree_branch(hashes);
+            const auto tree_branches = TurtleCoinCrypto::Hashing::Merkle::tree_branch(hashes);
 
             return prepare(true, tree_branches);
         }
@@ -1073,7 +1073,7 @@ EMS_METHOD(tree_depth)
 
         const auto count = get<uint32_t>(info, 0);
 
-        const auto depth = uint32_t(Crypto::Hashing::Merkle::tree_depth(count));
+        const auto depth = uint32_t(TurtleCoinCrypto::Hashing::Merkle::tree_depth(count));
 
         return prepare(true, depth);
     }
@@ -1093,7 +1093,7 @@ EMS_METHOD(root_hash)
 
         if (!hashes.empty())
         {
-            const auto root_hash = Crypto::Hashing::Merkle::root_hash(hashes);
+            const auto root_hash = TurtleCoinCrypto::Hashing::Merkle::root_hash(hashes);
 
             return prepare(true, root_hash.to_string());
         }
@@ -1122,7 +1122,7 @@ EMS_METHOD(root_hash_from_branch)
 
         if (!hashes.empty() && !leaf.empty() && path <= 1)
         {
-            const auto root_hash = Crypto::Hashing::Merkle::root_hash_from_branch(hashes, depth, leaf, path);
+            const auto root_hash = TurtleCoinCrypto::Hashing::Merkle::root_hash_from_branch(hashes, depth, leaf, path);
 
             return prepare(true, root_hash.to_string());
         }
@@ -1151,7 +1151,7 @@ EMS_METHOD(generate_multisig_secret_key)
 
         if (!their_public_key.empty() && !our_secret_key.empty())
         {
-            const auto secret_key = Crypto::Multisig::generate_multisig_secret_key(their_public_key, our_secret_key);
+            const auto secret_key = TurtleCoinCrypto::Multisig::generate_multisig_secret_key(their_public_key, our_secret_key);
 
             return prepare(true, secret_key.to_string());
         }
@@ -1176,7 +1176,7 @@ EMS_METHOD(generate_multisig_secret_keys)
 
         if (!their_public_keys.empty() && !our_secret_key.empty())
         {
-            const auto secret_keys = Crypto::Multisig::generate_multisig_secret_keys(their_public_keys, our_secret_key);
+            const auto secret_keys = TurtleCoinCrypto::Multisig::generate_multisig_secret_keys(their_public_keys, our_secret_key);
 
             return prepare(true, secret_keys);
         }
@@ -1199,7 +1199,7 @@ EMS_METHOD(generate_shared_public_key)
 
         if (!keys.empty())
         {
-            const auto key = Crypto::Multisig::generate_shared_public_key(keys);
+            const auto key = TurtleCoinCrypto::Multisig::generate_shared_public_key(keys);
 
             return prepare(true, key.to_string());
         }
@@ -1222,7 +1222,7 @@ EMS_METHOD(generate_shared_secret_key)
 
         if (!keys.empty())
         {
-            const auto key = Crypto::Multisig::generate_shared_secret_key(keys);
+            const auto key = TurtleCoinCrypto::Multisig::generate_shared_secret_key(keys);
 
             return prepare(true, key.to_string());
         }
@@ -1245,7 +1245,7 @@ EMS_METHOD(rounds_required)
 
         const auto threshold = get<uint32_t>(info, 1);
 
-        const auto rounds = uint32_t(Crypto::Multisig::rounds_required(participants, threshold));
+        const auto rounds = uint32_t(TurtleCoinCrypto::Multisig::rounds_required(participants, threshold));
 
         return prepare(true, rounds);
     }
@@ -1274,7 +1274,7 @@ EMS_METHOD(check_commitments_parity)
         if (!pseudo_commitments.empty() && !output_commitments.empty())
         {
             const auto success =
-                Crypto::RingCT::check_commitments_parity(pseudo_commitments, output_commitments, transaction_fee);
+                TurtleCoinCrypto::RingCT::check_commitments_parity(pseudo_commitments, output_commitments, transaction_fee);
 
             return prepare(!success);
         }
@@ -1297,7 +1297,7 @@ EMS_METHOD(generate_amount_mask)
 
         if (!derivation_scalar.empty())
         {
-            const auto result = Crypto::RingCT::generate_amount_mask(derivation_scalar);
+            const auto result = TurtleCoinCrypto::RingCT::generate_amount_mask(derivation_scalar);
 
             return prepare(true, result.to_string());
         }
@@ -1320,7 +1320,7 @@ EMS_METHOD(generate_commitment_blinding_factor)
 
         if (!derivation_scalar.empty())
         {
-            const auto result = Crypto::RingCT::generate_commitment_blinding_factor(derivation_scalar);
+            const auto result = TurtleCoinCrypto::RingCT::generate_commitment_blinding_factor(derivation_scalar);
 
             return prepare(true, result.to_string());
         }
@@ -1345,7 +1345,7 @@ EMS_METHOD(generate_pedersen_commitment)
 
         if (!blinding_factor.empty())
         {
-            const auto result = Crypto::RingCT::generate_pedersen_commitment(blinding_factor, amount);
+            const auto result = TurtleCoinCrypto::RingCT::generate_pedersen_commitment(blinding_factor, amount);
 
             return prepare(true, result.to_string());
         }
@@ -1371,7 +1371,7 @@ EMS_METHOD(generate_pseudo_commitments)
         if (!input_amounts.empty() && !output_blinding_factors.empty())
         {
             const auto [blinding_factors, commitments] =
-                Crypto::RingCT::generate_pseudo_commitments(input_amounts, output_blinding_factors);
+                TurtleCoinCrypto::RingCT::generate_pseudo_commitments(input_amounts, output_blinding_factors);
 
             return prepare(true, blinding_factors, commitments);
         }
@@ -1400,20 +1400,20 @@ EMS_METHOD(toggle_masked_amount)
         {
             if (!amount_hex.empty())
             {
-                const auto amount_bytes = Crypto::StringTools::from_hex(amount_hex);
+                const auto amount_bytes = TurtleCoinCrypto::StringTools::from_hex(amount_hex);
 
                 const auto masked_amount =
-                    Crypto::RingCT::toggle_masked_amount(amount_mask, amount_bytes).to_uint64_t();
+                    TurtleCoinCrypto::RingCT::toggle_masked_amount(amount_mask, amount_bytes).to_uint64_t();
 
-                const auto result = Crypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t));
+                const auto result = TurtleCoinCrypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t));
 
                 return prepare(true, result);
             }
             else
             {
-                const auto masked_amount = Crypto::RingCT::toggle_masked_amount(amount_mask, amount).to_uint64_t();
+                const auto masked_amount = TurtleCoinCrypto::RingCT::toggle_masked_amount(amount_mask, amount).to_uint64_t();
 
-                const auto result = Crypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t));
+                const auto result = TurtleCoinCrypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t));
 
                 return prepare(true, result);
             }
@@ -1447,7 +1447,7 @@ EMS_METHOD(borromean_check_ring_signature)
 
         if (!message_digest.empty() && !key_image.empty() && !public_keys.empty() && !signature.empty())
         {
-            const auto success = Crypto::RingSignature::Borromean::check_ring_signature(
+            const auto success = TurtleCoinCrypto::RingSignature::Borromean::check_ring_signature(
                 message_digest, key_image, public_keys, signature);
 
             return prepare(!success);
@@ -1477,7 +1477,7 @@ EMS_METHOD(borromean_complete_ring_signature)
 
         if (!signing_scalar.empty() && !signing_scalar.empty())
         {
-            const auto [success, sigs] = Crypto::RingSignature::Borromean::complete_ring_signature(
+            const auto [success, sigs] = TurtleCoinCrypto::RingSignature::Borromean::complete_ring_signature(
                 signing_scalar, real_output_index, signature, partial_signing_scalars);
 
             if (success)
@@ -1506,7 +1506,7 @@ EMS_METHOD(borromean_generate_partial_signing_scalar)
 
         if (!signature.empty() && !spend_secret_key.empty())
         {
-            const auto partial_signing_scalar = Crypto::RingSignature::Borromean::generate_partial_signing_scalar(
+            const auto partial_signing_scalar = TurtleCoinCrypto::RingSignature::Borromean::generate_partial_signing_scalar(
                 real_output_index, signature, spend_secret_key);
 
             return prepare(true, partial_signing_scalar.to_string());
@@ -1534,7 +1534,7 @@ EMS_METHOD(borromean_generate_ring_signature)
 
         if (!message_digest.empty() && !secret_ephemeral.empty() && !public_keys.empty())
         {
-            const auto [success, signature] = Crypto::RingSignature::Borromean::generate_ring_signature(
+            const auto [success, signature] = TurtleCoinCrypto::RingSignature::Borromean::generate_ring_signature(
                 message_digest, secret_ephemeral, public_keys);
 
             if (success)
@@ -1565,7 +1565,7 @@ EMS_METHOD(borromean_prepare_ring_signature)
 
         if (!message_digest.empty() && !key_image.empty() && !public_keys.empty())
         {
-            const auto [success, signature] = Crypto::RingSignature::Borromean::prepare_ring_signature(
+            const auto [success, signature] = TurtleCoinCrypto::RingSignature::Borromean::prepare_ring_signature(
                 message_digest, key_image, public_keys, real_output_index);
 
             if (success)
@@ -1604,7 +1604,7 @@ EMS_METHOD(clsag_check_ring_signature)
 
         if (!message_digest.empty() && !key_image.empty() && !public_keys.empty())
         {
-            const auto success = Crypto::RingSignature::CLSAG::check_ring_signature(
+            const auto success = TurtleCoinCrypto::RingSignature::CLSAG::check_ring_signature(
                 message_digest, key_image, public_keys, signature, commitments, pseudo_commitment);
 
             return prepare(!success);
@@ -1638,7 +1638,7 @@ EMS_METHOD(clsag_complete_ring_signature)
 
         if (!signing_scalar.empty() && !h.empty() && !mu_P.empty())
         {
-            const auto [success, sig] = Crypto::RingSignature::CLSAG::complete_ring_signature(
+            const auto [success, sig] = TurtleCoinCrypto::RingSignature::CLSAG::complete_ring_signature(
                 signing_scalar, real_output_index, signature, h, mu_P, partial_signing_scalars);
 
             if (success)
@@ -1666,7 +1666,7 @@ EMS_METHOD(clsag_generate_partial_signing_scalar)
         if (!mu_P.empty() && !spend_secret_key.empty())
         {
             const auto partial_signing_key =
-                Crypto::RingSignature::CLSAG::generate_partial_signing_scalar(mu_P, spend_secret_key);
+                TurtleCoinCrypto::RingSignature::CLSAG::generate_partial_signing_scalar(mu_P, spend_secret_key);
 
             return prepare(true, partial_signing_key.to_string());
         }
@@ -1701,7 +1701,7 @@ EMS_METHOD(clsag_generate_ring_signature)
 
         if (!message_digest.empty() && !secret_ephemeral.empty() && !public_keys.empty())
         {
-            const auto [success, signature] = Crypto::RingSignature::CLSAG::generate_ring_signature(
+            const auto [success, signature] = TurtleCoinCrypto::RingSignature::CLSAG::generate_ring_signature(
                 message_digest,
                 secret_ephemeral,
                 public_keys,
@@ -1746,7 +1746,7 @@ EMS_METHOD(clsag_prepare_ring_signature)
 
         if (!message_digest.empty() && !key_image.empty() && !public_keys.empty())
         {
-            const auto [success, signature, h, mu_P] = Crypto::RingSignature::CLSAG::prepare_ring_signature(
+            const auto [success, signature, h, mu_P] = TurtleCoinCrypto::RingSignature::CLSAG::prepare_ring_signature(
                 message_digest,
                 key_image,
                 public_keys,
@@ -1786,7 +1786,7 @@ EMS_METHOD(check_signature)
 
         if (!message_digest.empty() && !public_key.empty() && !signature.empty())
         {
-            const auto success = Crypto::Signature::check_signature(message_digest, public_key, signature);
+            const auto success = TurtleCoinCrypto::Signature::check_signature(message_digest, public_key, signature);
 
             return prepare(!success);
         }
@@ -1813,7 +1813,7 @@ EMS_METHOD(complete_signature)
 
         if (!signing_scalar.empty() && !signature.empty())
         {
-            const auto sig = Crypto::Signature::complete_signature(signing_scalar, signature, partial_signing_scalars);
+            const auto sig = TurtleCoinCrypto::Signature::complete_signature(signing_scalar, signature, partial_signing_scalars);
 
             return prepare(true, sig.to_string());
         }
@@ -1839,7 +1839,7 @@ EMS_METHOD(generate_partial_signing_scalar)
         if (!signature.empty() && !spend_secret_key.empty())
         {
             const auto partial_signing_scalar =
-                Crypto::Signature::generate_partial_signing_scalar(signature, spend_secret_key);
+                TurtleCoinCrypto::Signature::generate_partial_signing_scalar(signature, spend_secret_key);
 
             return prepare(true, partial_signing_scalar.to_string());
         }
@@ -1864,7 +1864,7 @@ EMS_METHOD(generate_signature)
 
         if (!message_digest.empty() && !secret_key.empty())
         {
-            const auto signature = Crypto::Signature::generate_signature(message_digest, secret_key);
+            const auto signature = TurtleCoinCrypto::Signature::generate_signature(message_digest, secret_key);
 
             return prepare(true, signature.to_string());
         }
@@ -1889,7 +1889,7 @@ EMS_METHOD(prepare_signature)
 
         if (!message_digest.empty() && !public_key.empty())
         {
-            const auto signature = Crypto::Signature::prepare_signature(message_digest, public_key);
+            const auto signature = TurtleCoinCrypto::Signature::prepare_signature(message_digest, public_key);
 
             return prepare(true, signature.to_string());
         }

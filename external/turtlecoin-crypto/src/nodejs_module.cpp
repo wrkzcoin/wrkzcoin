@@ -24,7 +24,7 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "crypto.h"
+#include "crypto_bp.h"
 
 #include <nan.h>
 #include <v8.h>
@@ -406,7 +406,7 @@ static inline v8::Local<v8::Object> to_v8_object(const crypto_clsag_signature_t 
 
     Nan::Set(jsonObject, STR_TO_NAN_VAL("challenge"), STR_TO_NAN_VAL(signature.challenge.to_string()));
 
-    if (signature.commitment_image != Crypto::Z)
+    if (signature.commitment_image != TurtleCoinCrypto::Z)
         Nan::Set(
             jsonObject, STR_TO_NAN_VAL("commitment_image"), STR_TO_NAN_VAL(signature.commitment_image.to_string()));
 
@@ -489,7 +489,7 @@ NAN_METHOD(bulletproofs_prove)
     if (!amounts.empty() && !blinding_factors.empty())
         try
         {
-            const auto [proof, commitments] = Crypto::RangeProofs::Bulletproofs::prove(amounts, blinding_factors, N);
+            const auto [proof, commitments] = TurtleCoinCrypto::RangeProofs::Bulletproofs::prove(amounts, blinding_factors, N);
 
             Nan::Set(result, 0, Nan::New(false));
 
@@ -515,7 +515,7 @@ NAN_METHOD(bulletproofs_verify)
     if (!proofs.empty() && !commitments.empty())
         try
         {
-            const auto success = Crypto::RangeProofs::Bulletproofs::verify(proofs, commitments);
+            const auto success = TurtleCoinCrypto::RangeProofs::Bulletproofs::verify(proofs, commitments);
 
             result = Nan::New(success);
         }
@@ -551,7 +551,7 @@ NAN_METHOD(bulletproofsplus_prove)
         try
         {
             const auto [proof, commitments] =
-                Crypto::RangeProofs::BulletproofsPlus::prove(amounts, blinding_factors, N);
+                TurtleCoinCrypto::RangeProofs::BulletproofsPlus::prove(amounts, blinding_factors, N);
 
             Nan::Set(result, 0, Nan::New(false));
 
@@ -577,7 +577,7 @@ NAN_METHOD(bulletproofsplus_verify)
     if (!proofs.empty() && !commitments.empty())
         try
         {
-            const auto success = Crypto::RangeProofs::BulletproofsPlus::verify(proofs, commitments);
+            const auto success = TurtleCoinCrypto::RangeProofs::BulletproofsPlus::verify(proofs, commitments);
 
             result = Nan::New(success);
         }
@@ -596,7 +596,7 @@ NAN_METHOD(check_point)
 {
     const auto point = get<std::string>(info, 0);
 
-    const auto success = Crypto::check_point(point);
+    const auto success = TurtleCoinCrypto::check_point(point);
 
     info.GetReturnValue().Set(Nan::New(success));
 }
@@ -605,7 +605,7 @@ NAN_METHOD(check_scalar)
 {
     const auto scalar = get<std::string>(info, 0);
 
-    const auto success = Crypto::check_scalar(scalar);
+    const auto success = TurtleCoinCrypto::check_scalar(scalar);
 
     info.GetReturnValue().Set(Nan::New(success));
 }
@@ -623,7 +623,7 @@ NAN_METHOD(derivation_to_scalar)
     if (!derivation.empty())
         try
         {
-            const auto scalar = Crypto::derivation_to_scalar(derivation, output_index);
+            const auto scalar = TurtleCoinCrypto::derivation_to_scalar(derivation, output_index);
 
             result = STR_TO_NAN_VAL(scalar.to_string());
 
@@ -649,7 +649,7 @@ NAN_METHOD(derive_public_key)
     if (!derivation_scalar.empty() && !public_key.empty())
         try
         {
-            const auto key = Crypto::derive_public_key(derivation_scalar, public_key);
+            const auto key = TurtleCoinCrypto::derive_public_key(derivation_scalar, public_key);
 
             result = STR_TO_NAN_VAL(key.to_string());
 
@@ -675,7 +675,7 @@ NAN_METHOD(derive_secret_key)
     if (!derivation_scalar.empty() && !secret_key.empty())
         try
         {
-            const auto key = Crypto::derive_secret_key(derivation_scalar, secret_key);
+            const auto key = TurtleCoinCrypto::derive_secret_key(derivation_scalar, secret_key);
 
             result = STR_TO_NAN_VAL(key.to_string());
 
@@ -701,7 +701,7 @@ NAN_METHOD(generate_key_derivation)
     if (!public_key.empty() && !secret_key.empty())
         try
         {
-            const auto key = Crypto::generate_key_derivation(public_key, secret_key);
+            const auto key = TurtleCoinCrypto::generate_key_derivation(public_key, secret_key);
 
             result = STR_TO_NAN_VAL(key.to_string());
 
@@ -730,7 +730,7 @@ NAN_METHOD(generate_key_image)
     if (!public_key.empty() && !secret_key.empty())
         try
         {
-            const auto key = Crypto::generate_key_image(public_key, secret_key, partial_key_images);
+            const auto key = TurtleCoinCrypto::generate_key_image(public_key, secret_key, partial_key_images);
 
             result = STR_TO_NAN_VAL(key.to_string());
 
@@ -751,7 +751,7 @@ NAN_METHOD(generate_keys)
 
     try
     {
-        const auto [public_key, secret_key] = Crypto::generate_keys();
+        const auto [public_key, secret_key] = TurtleCoinCrypto::generate_keys();
 
         Nan::Set(result, 0, Nan::New(false));
 
@@ -779,7 +779,7 @@ NAN_METHOD(generate_subwallet_keys)
     if (!spend_secret_key.empty())
         try
         {
-            const auto [public_key, secret_key] = Crypto::generate_subwallet_keys(spend_secret_key, subwallet_index);
+            const auto [public_key, secret_key] = TurtleCoinCrypto::generate_subwallet_keys(spend_secret_key, subwallet_index);
 
             Nan::Set(result, 0, Nan::New(false));
 
@@ -805,7 +805,7 @@ NAN_METHOD(generate_view_from_spend)
     if (!spend_secret_key.empty())
         try
         {
-            const auto view_secret_key = Crypto::generate_view_from_spend(spend_secret_key);
+            const auto view_secret_key = TurtleCoinCrypto::generate_view_from_spend(spend_secret_key);
 
             result = STR_TO_NAN_VAL(view_secret_key.to_string());
 
@@ -829,9 +829,9 @@ NAN_METHOD(hash_to_point)
     if (!data.empty())
         try
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto point = Crypto::hash_to_point(input.data(), sizeof(input.data()));
+            const auto point = TurtleCoinCrypto::hash_to_point(input.data(), sizeof(input.data()));
 
             result = STR_TO_NAN_VAL(point.to_string());
 
@@ -855,9 +855,9 @@ NAN_METHOD(hash_to_scalar)
     if (!data.empty())
         try
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto scalar = Crypto::hash_to_scalar(input.data(), sizeof(input.data()));
+            const auto scalar = TurtleCoinCrypto::hash_to_scalar(input.data(), sizeof(input.data()));
 
             result = STR_TO_NAN_VAL(scalar.to_string());
 
@@ -880,7 +880,7 @@ NAN_METHOD(pow2_round)
 
     try
     {
-        const auto value = uint32_t(Crypto::pow2_round(input));
+        const auto value = uint32_t(TurtleCoinCrypto::pow2_round(input));
 
         result = Nan::New(value);
 
@@ -895,7 +895,7 @@ NAN_METHOD(pow2_round)
 
 NAN_METHOD(random_point)
 {
-    v8::Local<v8::Value> result = STR_TO_NAN_VAL(Crypto::random_point().to_string());
+    v8::Local<v8::Value> result = STR_TO_NAN_VAL(TurtleCoinCrypto::random_point().to_string());
 
     info.GetReturnValue().Set(prepare(true, result));
 }
@@ -910,7 +910,7 @@ NAN_METHOD(random_points)
 
     try
     {
-        const auto points = Crypto::random_points(count);
+        const auto points = TurtleCoinCrypto::random_points(count);
 
         result = to_v8_array(points);
 
@@ -925,7 +925,7 @@ NAN_METHOD(random_points)
 
 NAN_METHOD(random_scalar)
 {
-    v8::Local<v8::Value> result = STR_TO_NAN_VAL(Crypto::random_scalar().to_string());
+    v8::Local<v8::Value> result = STR_TO_NAN_VAL(TurtleCoinCrypto::random_scalar().to_string());
 
     info.GetReturnValue().Set(prepare(true, result));
 }
@@ -940,7 +940,7 @@ NAN_METHOD(random_scalars)
 
     try
     {
-        const auto scalars = Crypto::random_scalars(count);
+        const auto scalars = TurtleCoinCrypto::random_scalars(count);
 
         result = to_v8_array(scalars);
 
@@ -964,7 +964,7 @@ NAN_METHOD(secret_key_to_public_key)
     if (!secret_key.empty())
         try
         {
-            const auto public_key = Crypto::secret_key_to_public_key(secret_key);
+            const auto public_key = TurtleCoinCrypto::secret_key_to_public_key(secret_key);
 
             result = STR_TO_NAN_VAL(public_key.to_string());
 
@@ -992,7 +992,7 @@ NAN_METHOD(underive_public_key)
     if (!derivation.empty() && !public_ephemeral.empty())
         try
         {
-            const auto public_key = Crypto::underive_public_key(derivation, output_index, public_ephemeral);
+            const auto public_key = TurtleCoinCrypto::underive_public_key(derivation, output_index, public_ephemeral);
 
             result = STR_TO_NAN_VAL(public_key.to_string());
 
@@ -1020,9 +1020,9 @@ NAN_METHOD(sha3)
     if (!data.empty())
         try
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto hash = Crypto::Hashing::sha3(input.data(), input.size());
+            const auto hash = TurtleCoinCrypto::Hashing::sha3(input.data(), input.size());
 
             result = STR_TO_NAN_VAL(hash.to_string());
 
@@ -1048,9 +1048,9 @@ NAN_METHOD(sha3_slow_hash)
     if (!data.empty())
         try
         {
-            const auto input = Crypto::StringTools::from_hex(data);
+            const auto input = TurtleCoinCrypto::StringTools::from_hex(data);
 
-            const auto hash = Crypto::Hashing::sha3_slow_hash(input.data(), input.size(), iterations);
+            const auto hash = TurtleCoinCrypto::Hashing::sha3_slow_hash(input.data(), input.size(), iterations);
 
             result = STR_TO_NAN_VAL(hash.to_string());
 
@@ -1074,7 +1074,7 @@ NAN_METHOD(tree_branch)
     if (!hashes.empty())
         try
         {
-            const auto tree_branches = Crypto::Hashing::Merkle::tree_branch(hashes);
+            const auto tree_branches = TurtleCoinCrypto::Hashing::Merkle::tree_branch(hashes);
 
             result = to_v8_array(tree_branches);
 
@@ -1091,7 +1091,7 @@ NAN_METHOD(tree_depth)
 {
     const auto count = get<uint32_t>(info, 0);
 
-    const auto depth = uint32_t(Crypto::Hashing::Merkle::tree_depth(count));
+    const auto depth = uint32_t(TurtleCoinCrypto::Hashing::Merkle::tree_depth(count));
 
     info.GetReturnValue().Set(prepare(true, Nan::New(depth)));
 }
@@ -1107,7 +1107,7 @@ NAN_METHOD(root_hash)
     if (!hashes.empty())
         try
         {
-            const auto root_hash = Crypto::Hashing::Merkle::root_hash(hashes);
+            const auto root_hash = TurtleCoinCrypto::Hashing::Merkle::root_hash(hashes);
 
             result = STR_TO_NAN_VAL(root_hash.to_string());
 
@@ -1137,7 +1137,7 @@ NAN_METHOD(root_hash_from_branch)
     if (!hashes.empty() && !leaf.empty() && path <= 1)
         try
         {
-            const auto root_hash = Crypto::Hashing::Merkle::root_hash_from_branch(hashes, depth, leaf, path);
+            const auto root_hash = TurtleCoinCrypto::Hashing::Merkle::root_hash_from_branch(hashes, depth, leaf, path);
 
             result = STR_TO_NAN_VAL(root_hash.to_string());
 
@@ -1167,7 +1167,7 @@ NAN_METHOD(generate_multisig_secret_key)
     if (!their_public_key.empty() && !our_secret_key.empty())
         try
         {
-            const auto secret_key = Crypto::Multisig::generate_multisig_secret_key(their_public_key, our_secret_key);
+            const auto secret_key = TurtleCoinCrypto::Multisig::generate_multisig_secret_key(their_public_key, our_secret_key);
 
             result = STR_TO_NAN_VAL(secret_key.to_string());
 
@@ -1193,7 +1193,7 @@ NAN_METHOD(generate_multisig_secret_keys)
     if (!their_public_keys.empty() && !our_secret_key.empty())
         try
         {
-            const auto secret_keys = Crypto::Multisig::generate_multisig_secret_keys(their_public_keys, our_secret_key);
+            const auto secret_keys = TurtleCoinCrypto::Multisig::generate_multisig_secret_keys(their_public_keys, our_secret_key);
 
             result = to_v8_array(secret_keys);
 
@@ -1217,7 +1217,7 @@ NAN_METHOD(generate_shared_public_key)
     if (!public_keys.empty())
         try
         {
-            const auto public_key = Crypto::Multisig::generate_shared_public_key(public_keys);
+            const auto public_key = TurtleCoinCrypto::Multisig::generate_shared_public_key(public_keys);
 
             result = STR_TO_NAN_VAL(public_key.to_string());
 
@@ -1241,7 +1241,7 @@ NAN_METHOD(generate_shared_secret_key)
     if (!secret_keys.empty())
         try
         {
-            const auto secret_key = Crypto::Multisig::generate_shared_secret_key(secret_keys);
+            const auto secret_key = TurtleCoinCrypto::Multisig::generate_shared_secret_key(secret_keys);
 
             result = STR_TO_NAN_VAL(secret_key.to_string());
 
@@ -1262,7 +1262,7 @@ NAN_METHOD(rounds_required)
 
     const auto threshold = get<uint32_t>(info, 1);
 
-    const auto rounds = uint32_t(Crypto::Multisig::rounds_required(participants, threshold));
+    const auto rounds = uint32_t(TurtleCoinCrypto::Multisig::rounds_required(participants, threshold));
 
     result = Nan::New(rounds);
 
@@ -1285,7 +1285,7 @@ NAN_METHOD(check_commitments_parity)
 
     try
     {
-        success = Crypto::RingCT::check_commitments_parity(pseudo_commitments, output_commitments, transaction_fee);
+        success = TurtleCoinCrypto::RingCT::check_commitments_parity(pseudo_commitments, output_commitments, transaction_fee);
     }
     catch (...)
     {
@@ -1305,7 +1305,7 @@ NAN_METHOD(generate_amount_mask)
     if (!derivation_scalar.empty())
         try
         {
-            const auto amount_mask = Crypto::RingCT::generate_amount_mask(derivation_scalar);
+            const auto amount_mask = TurtleCoinCrypto::RingCT::generate_amount_mask(derivation_scalar);
 
             result = STR_TO_NAN_VAL(amount_mask.to_string());
 
@@ -1329,7 +1329,7 @@ NAN_METHOD(generate_commitment_blinding_factor)
     if (!derivation_scalar.empty())
         try
         {
-            const auto blinding_factor = Crypto::RingCT::generate_commitment_blinding_factor(derivation_scalar);
+            const auto blinding_factor = TurtleCoinCrypto::RingCT::generate_commitment_blinding_factor(derivation_scalar);
 
             result = STR_TO_NAN_VAL(blinding_factor.to_string());
 
@@ -1355,7 +1355,7 @@ NAN_METHOD(generate_pedersen_commitment)
     if (!blinding_factor.empty())
         try
         {
-            const auto commitment = Crypto::RingCT::generate_pedersen_commitment(blinding_factor, amount);
+            const auto commitment = TurtleCoinCrypto::RingCT::generate_pedersen_commitment(blinding_factor, amount);
 
             result = STR_TO_NAN_VAL(commitment.to_string());
 
@@ -1382,7 +1382,7 @@ NAN_METHOD(generate_pseudo_commitments)
         try
         {
             const auto [blinding_factors, commitments] =
-                Crypto::RingCT::generate_pseudo_commitments(input_amounts, output_blinding_factors);
+                TurtleCoinCrypto::RingCT::generate_pseudo_commitments(input_amounts, output_blinding_factors);
 
             Nan::Set(result, 0, Nan::New(false));
 
@@ -1414,20 +1414,20 @@ NAN_METHOD(toggle_masked_amount)
         {
             if (!amount_hex.empty())
             {
-                const auto amount_bytes = Crypto::StringTools::from_hex(amount_hex);
+                const auto amount_bytes = TurtleCoinCrypto::StringTools::from_hex(amount_hex);
 
                 const auto masked_amount =
-                    Crypto::RingCT::toggle_masked_amount(amount_mask, amount_bytes).to_uint64_t();
+                    TurtleCoinCrypto::RingCT::toggle_masked_amount(amount_mask, amount_bytes).to_uint64_t();
 
-                result = STR_TO_NAN_VAL(Crypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t)));
+                result = STR_TO_NAN_VAL(TurtleCoinCrypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t)));
 
                 success = true;
             }
             else
             {
-                const auto masked_amount = Crypto::RingCT::toggle_masked_amount(amount_mask, amount).to_uint64_t();
+                const auto masked_amount = TurtleCoinCrypto::RingCT::toggle_masked_amount(amount_mask, amount).to_uint64_t();
 
-                result = STR_TO_NAN_VAL(Crypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t)));
+                result = STR_TO_NAN_VAL(TurtleCoinCrypto::StringTools::to_hex(&masked_amount, sizeof(uint64_t)));
 
                 success = true;
             }
@@ -1458,7 +1458,7 @@ NAN_METHOD(borromean_check_ring_signature)
     if (!message_digest.empty() && !key_image.empty() && !public_keys.empty() && !signature.empty())
         try
         {
-            success = Crypto::RingSignature::Borromean::check_ring_signature(
+            success = TurtleCoinCrypto::RingSignature::Borromean::check_ring_signature(
                 message_digest, key_image, public_keys, signature);
         }
         catch (...)
@@ -1485,7 +1485,7 @@ NAN_METHOD(borromean_complete_ring_signature)
     if (!signing_scalar.empty() && !signature.empty())
         try
         {
-            const auto [method_success, sigs] = Crypto::RingSignature::Borromean::complete_ring_signature(
+            const auto [method_success, sigs] = TurtleCoinCrypto::RingSignature::Borromean::complete_ring_signature(
                 signing_scalar, real_output_index, signature, partial_signing_scalars);
 
             if (method_success)
@@ -1515,7 +1515,7 @@ NAN_METHOD(borromean_generate_partial_signing_scalar)
     if (!signature.empty() && !spend_secret_key.empty())
         try
         {
-            const auto partial_signing_scalar = Crypto::RingSignature::Borromean::generate_partial_signing_scalar(
+            const auto partial_signing_scalar = TurtleCoinCrypto::RingSignature::Borromean::generate_partial_signing_scalar(
                 real_output_index, signature, spend_secret_key);
 
             result = STR_TO_NAN_VAL(partial_signing_scalar.to_string());
@@ -1544,7 +1544,7 @@ NAN_METHOD(borromean_generate_ring_signature)
     if (!message_digest.empty() && !secret_ephemeral.empty() && !public_keys.empty())
         try
         {
-            const auto [method_success, signature] = Crypto::RingSignature::Borromean::generate_ring_signature(
+            const auto [method_success, signature] = TurtleCoinCrypto::RingSignature::Borromean::generate_ring_signature(
                 message_digest, secret_ephemeral, public_keys);
 
             if (method_success)
@@ -1576,7 +1576,7 @@ NAN_METHOD(borromean_prepare_ring_signature)
     if (!message_digest.empty() && !key_image.empty() && !public_keys.empty())
         try
         {
-            const auto [method_success, signature] = Crypto::RingSignature::Borromean::prepare_ring_signature(
+            const auto [method_success, signature] = TurtleCoinCrypto::RingSignature::Borromean::prepare_ring_signature(
                 message_digest, key_image, public_keys, real_output_index);
 
             if (method_success)
@@ -1619,7 +1619,7 @@ NAN_METHOD(clsag_check_ring_signature)
                 get_crypto_t<crypto_scalar_t>(signature_obj, "challenge"),
                 get_crypto_t<crypto_key_image_t>(signature_obj, "commitment_image"));
 
-            success = Crypto::RingSignature::CLSAG::check_ring_signature(
+            success = TurtleCoinCrypto::RingSignature::CLSAG::check_ring_signature(
                 message_digest, key_image, public_keys, signature, commitments, pseudo_commitment);
         }
         catch (...)
@@ -1655,7 +1655,7 @@ NAN_METHOD(clsag_complete_ring_signature)
                 get_crypto_t<crypto_scalar_t>(signature_obj, "challenge"),
                 get_crypto_t<crypto_key_image_t>(signature_obj, "commitment_image"));
 
-            const auto [method_success, sig] = Crypto::RingSignature::CLSAG::complete_ring_signature(
+            const auto [method_success, sig] = TurtleCoinCrypto::RingSignature::CLSAG::complete_ring_signature(
                 signing_scalar, real_output_index, signature, h, mu_P, partial_signing_scalars);
 
             if (method_success)
@@ -1684,7 +1684,7 @@ NAN_METHOD(clsag_generate_partial_signing_scalar)
         try
         {
             const auto partial_signing_key =
-                Crypto::RingSignature::CLSAG::generate_partial_signing_scalar(mu_P, spend_secret_key);
+                TurtleCoinCrypto::RingSignature::CLSAG::generate_partial_signing_scalar(mu_P, spend_secret_key);
 
             result = STR_TO_NAN_VAL(partial_signing_key.to_string());
 
@@ -1720,7 +1720,7 @@ NAN_METHOD(clsag_generate_ring_signature)
     if (!message_digest.empty() && !secret_ephemeral.empty() && !public_keys.empty())
         try
         {
-            const auto [method_success, signature] = Crypto::RingSignature::CLSAG::generate_ring_signature(
+            const auto [method_success, signature] = TurtleCoinCrypto::RingSignature::CLSAG::generate_ring_signature(
                 message_digest,
                 secret_ephemeral,
                 public_keys,
@@ -1766,7 +1766,7 @@ NAN_METHOD(clsag_prepare_ring_signature)
     if (!message_digest.empty() && !key_image.empty() && !public_keys.empty())
         try
         {
-            const auto [method_success, signature, h, mu_P] = Crypto::RingSignature::CLSAG::prepare_ring_signature(
+            const auto [method_success, signature, h, mu_P] = TurtleCoinCrypto::RingSignature::CLSAG::prepare_ring_signature(
                 message_digest,
                 key_image,
                 public_keys,
@@ -1811,7 +1811,7 @@ NAN_METHOD(check_signature)
     if (!message_digest.empty() && !public_key.empty() && !signature.empty())
         try
         {
-            const auto success = Crypto::Signature::check_signature(message_digest, public_key, signature);
+            const auto success = TurtleCoinCrypto::Signature::check_signature(message_digest, public_key, signature);
 
             result = Nan::New(success);
         }
@@ -1837,7 +1837,7 @@ NAN_METHOD(complete_signature)
     if (!signing_scalar.empty() && !signature.empty())
         try
         {
-            const auto sig = Crypto::Signature::complete_signature(signing_scalar, signature, partial_signing_scalars);
+            const auto sig = TurtleCoinCrypto::Signature::complete_signature(signing_scalar, signature, partial_signing_scalars);
 
             result = STR_TO_NAN_VAL(sig.to_string());
 
@@ -1864,7 +1864,7 @@ NAN_METHOD(generate_partial_signing_scalar)
         try
         {
             const auto partial_signing_scalar =
-                Crypto::Signature::generate_partial_signing_scalar(signature, spend_secret_key);
+                TurtleCoinCrypto::Signature::generate_partial_signing_scalar(signature, spend_secret_key);
 
             result = STR_TO_NAN_VAL(partial_signing_scalar.to_string());
 
@@ -1890,7 +1890,7 @@ NAN_METHOD(generate_signature)
     if (!message_digest.empty() && !secret_key.empty())
         try
         {
-            const auto signature = Crypto::Signature::generate_signature(message_digest, secret_key);
+            const auto signature = TurtleCoinCrypto::Signature::generate_signature(message_digest, secret_key);
 
             result = STR_TO_NAN_VAL(signature.to_string());
 
@@ -1916,7 +1916,7 @@ NAN_METHOD(prepare_signature)
     if (!message_digest.empty() && !public_key.empty())
         try
         {
-            const auto signature = Crypto::Signature::prepare_signature(message_digest, public_key);
+            const auto signature = TurtleCoinCrypto::Signature::prepare_signature(message_digest, public_key);
 
             result = STR_TO_NAN_VAL(signature.to_string());
 

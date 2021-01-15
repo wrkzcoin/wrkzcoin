@@ -393,7 +393,7 @@ typedef struct EllipticCurvePoint
      */
     std::string to_string() const
     {
-        return Crypto::StringTools::to_hex(bytes, sizeof(bytes));
+        return TurtleCoinCrypto::StringTools::to_hex(bytes, sizeof(bytes));
     }
 
   private:
@@ -403,7 +403,7 @@ typedef struct EllipticCurvePoint
      */
     void from_string(const std::string &s)
     {
-        const auto input = Crypto::StringTools::from_hex(s);
+        const auto input = TurtleCoinCrypto::StringTools::from_hex(s);
 
         if (input.size() < size())
             throw std::runtime_error("could not load point");
@@ -423,7 +423,7 @@ typedef struct EllipticCurvePoint
     ge_cached cached_point;
 } crypto_point_t;
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     // Primary Generator Point (x,-4/5)
     const crypto_point_t G = {0x58, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
@@ -444,7 +444,7 @@ namespace Crypto
     const crypto_point_t Z = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                               0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-} // namespace Crypto
+} // namespace TurtleCoinCrypto
 
 typedef struct EllipticCurveScalar
 {
@@ -642,7 +642,7 @@ typedef struct EllipticCurveScalar
 
         ge_p1p1 temp_p1p1;
 
-        if (point == Crypto::G) // If we're multiplying by G, use the base method, it's faster
+        if (point == TurtleCoinCrypto::G) // If we're multiplying by G, use the base method, it's faster
         {
             ge_scalarmult_base(&temp_p1p1, bytes);
 
@@ -674,7 +674,7 @@ typedef struct EllipticCurveScalar
 
         ge_p1p1 temp_p1p1;
 
-        if (other == Crypto::G) // If we're multiplying by G, use the base method, it's faster
+        if (other == TurtleCoinCrypto::G) // If we're multiplying by G, use the base method, it's faster
         {
             ge_scalarmult_base(&temp_p1p1, bytes);
 
@@ -980,7 +980,7 @@ typedef struct EllipticCurveScalar
         if (byte_length > 32)
             throw std::range_error("length cannot exceed the size of the scalar");
 
-        return Crypto::StringTools::to_hex(bytes, byte_length);
+        return TurtleCoinCrypto::StringTools::to_hex(bytes, byte_length);
     }
 
     /**
@@ -1064,7 +1064,7 @@ typedef struct EllipticCurveScalar
      */
     void from_string(const std::string &s)
     {
-        const auto input = Crypto::StringTools::from_hex(s);
+        const auto input = TurtleCoinCrypto::StringTools::from_hex(s);
 
         if (input.size() < size())
             throw std::runtime_error("Could not load scalar");
@@ -1073,7 +1073,7 @@ typedef struct EllipticCurveScalar
     }
 } crypto_scalar_t;
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     // Commonly used Scalar values (0, 1, 2, 8, 1/8)
     const crypto_scalar_t ZERO = {0}, ONE(1), TWO(2), EIGHT(8), INV_EIGHT = EIGHT.invert();
@@ -1081,7 +1081,7 @@ namespace Crypto
     const crypto_scalar_t L = {0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7,
                                0xa2, 0xde, 0xf9, 0xde, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10};
-} // namespace Crypto
+} // namespace TurtleCoinCrypto
 
 /**
  * Converts an EllipticCurvePoint to an EllipticCurveScalar
@@ -1217,7 +1217,7 @@ typedef struct Signature
      */
     std::string to_string() const
     {
-        return Crypto::StringTools::to_hex(bytes, sizeof(bytes));
+        return TurtleCoinCrypto::StringTools::to_hex(bytes, sizeof(bytes));
     }
 
   private:
@@ -1227,7 +1227,7 @@ typedef struct Signature
      */
     void from_string(const std::string &s)
     {
-        const auto input = Crypto::StringTools::from_hex(s);
+        const auto input = TurtleCoinCrypto::StringTools::from_hex(s);
 
         if (input.size() < size())
             throw std::runtime_error("Could not load signature");

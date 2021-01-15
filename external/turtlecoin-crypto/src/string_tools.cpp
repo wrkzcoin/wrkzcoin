@@ -56,7 +56,7 @@ static inline uint8_t char_2_uint8t(char character)
     return value;
 }
 
-namespace Crypto::StringTools
+namespace TurtleCoinCrypto::StringTools
 {
     std::string to_hex(const void *data, size_t length)
     {
@@ -92,4 +92,4 @@ namespace Crypto::StringTools
 
         return result;
     }
-} // namespace Crypto::StringTools
+} // namespace TurtleCoinCrypto::StringTools

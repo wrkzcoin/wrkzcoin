@@ -30,7 +30,7 @@
 #include "crypto_vector_types.h"
 #include "random.h"
 
-namespace Crypto
+namespace TurtleCoinCrypto
 {
     /**
      * Checks to validate that the given value is a point on the curve
@@ -243,6 +243,6 @@ namespace Crypto
         const crypto_derivation_t &derivation,
         uint8_t output_index,
         const crypto_public_key_t &public_ephemeral);
-} // namespace Crypto
+} // namespace TurtleCoinCrypto
 
 #endif // CRYPTO_COMMON_H

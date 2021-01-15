@@ -30,9 +30,9 @@ static const crypto_scalar_t DOMAIN_COMMITMENT_MASK = {0x20, 0x20, 0x20, 0x54, 0
                                                        0x69, 0x6e, 0x20, 0x43, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x6d, 0x65,
                                                        0x6e, 0x74, 0x20, 0x4d, 0x61, 0x73, 0x6b, 0x20, 0x20, 0x20};
 
-static const crypto_scalar_t DOMAIN_AMOUNT_MASK = Crypto::hash_to_scalar(DOMAIN_COMMITMENT_MASK);
+static const crypto_scalar_t DOMAIN_AMOUNT_MASK = TurtleCoinCrypto::hash_to_scalar(DOMAIN_COMMITMENT_MASK);
 
-namespace Crypto::RingCT
+namespace TurtleCoinCrypto::RingCT
 {
     bool check_commitments_parity(
         const std::vector<crypto_pedersen_commitment_t> &pseudo_commitments,
@@ -126,4 +126,4 @@ namespace Crypto::RingCT
 
         return temp;
     }
-} // namespace Crypto::RingCT
+} // namespace TurtleCoinCrypto::RingCT

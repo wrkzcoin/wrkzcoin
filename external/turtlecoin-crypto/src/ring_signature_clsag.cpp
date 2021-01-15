@@ -38,11 +38,11 @@ static const crypto_scalar_t CLSAG_DOMAIN_0 = {0x20, 0x20, 0x20, 0x20, 0x20, 0x2
                                                0x6f, 0x6e, 0x27, 0x74, 0x20, 0x50, 0x61, 0x6e, 0x69, 0x63, 0x2e,
                                                0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20};
 
-static const crypto_scalar_t CLSAG_DOMAIN_1 = Crypto::hash_to_scalar(CLSAG_DOMAIN_0);
+static const crypto_scalar_t CLSAG_DOMAIN_1 = TurtleCoinCrypto::hash_to_scalar(CLSAG_DOMAIN_0);
 
-static const crypto_scalar_t CLSAG_DOMAIN_2 = Crypto::hash_to_scalar(CLSAG_DOMAIN_1);
+static const crypto_scalar_t CLSAG_DOMAIN_2 = TurtleCoinCrypto::hash_to_scalar(CLSAG_DOMAIN_1);
 
-namespace Crypto::RingSignature::CLSAG
+namespace TurtleCoinCrypto::RingSignature::CLSAG
 {
     bool check_ring_signature(
         const crypto_hash_t &message_digest,
@@ -53,8 +53,8 @@ namespace Crypto::RingSignature::CLSAG
         const crypto_pedersen_commitment_t &pseudo_commitment)
     {
         const auto use_commitments =
-            (signature.commitment_image != Crypto::Z && commitments.size() == public_keys.size()
-             && pseudo_commitment != Crypto::Z);
+            (signature.commitment_image != TurtleCoinCrypto::Z && commitments.size() == public_keys.size()
+             && pseudo_commitment != TurtleCoinCrypto::Z);
 
         const auto ring_size = public_keys.size();
 
@@ -141,7 +141,7 @@ namespace Crypto::RingSignature::CLSAG
             auto L = (r * public_keys[idx]) + (signature.scalars[idx] * G);
 
             // HP = [Hp(P[idx])] mod l
-            const auto HP = Crypto::hash_to_point(public_keys[idx]);
+            const auto HP = TurtleCoinCrypto::hash_to_point(public_keys[idx]);
 
             // R = [(s[idx] * HP) + (r * I)] mod l
             auto R = (signature.scalars[idx] * HP) + (r * key_image);
@@ -240,8 +240,8 @@ namespace Crypto::RingSignature::CLSAG
         const crypto_pedersen_commitment_t &pseudo_commitment)
     {
         const auto use_commitments =
-            (input_blinding_factor != Crypto::ZERO && public_commitments.size() == public_keys.size()
-             && pseudo_blinding_factor != Crypto::ZERO && pseudo_commitment != Crypto::Z);
+            (input_blinding_factor != TurtleCoinCrypto::ZERO && public_commitments.size() == public_keys.size()
+             && pseudo_blinding_factor != TurtleCoinCrypto::ZERO && pseudo_commitment != TurtleCoinCrypto::Z);
 
         const auto ring_size = public_keys.size();
 
@@ -249,13 +249,13 @@ namespace Crypto::RingSignature::CLSAG
         size_t real_output_index = -1;
 
         // P = (p * G) mod l
-        const auto public_ephemeral = secret_ephemeral * Crypto::G;
+        const auto public_ephemeral = secret_ephemeral * TurtleCoinCrypto::G;
 
         for (size_t i = 0; i < ring_size; i++)
         {
             if (use_commitments)
             {
-                const auto public_commitment = (input_blinding_factor - pseudo_blinding_factor) * Crypto::G;
+                const auto public_commitment = (input_blinding_factor - pseudo_blinding_factor) * TurtleCoinCrypto::G;
 
                 const auto derived_commitment = public_commitments[i] - pseudo_commitment;
 
@@ -276,7 +276,7 @@ namespace Crypto::RingSignature::CLSAG
         if (real_output_index == -1)
             return {false, {}};
 
-        const auto key_image = Crypto::generate_key_image(public_ephemeral, secret_ephemeral);
+        const auto key_image = TurtleCoinCrypto::generate_key_image(public_ephemeral, secret_ephemeral);
 
         const auto [prep_success, signature, h, mu_P] = prepare_ring_signature(
             message_digest,
@@ -307,8 +307,8 @@ namespace Crypto::RingSignature::CLSAG
         const auto ring_size = public_keys.size();
 
         const auto use_commitments =
-            (input_blinding_factor != Crypto::ZERO && public_commitments.size() == public_keys.size()
-             && pseudo_blinding_factor != Crypto::ZERO && pseudo_commitment != Crypto::Z);
+            (input_blinding_factor != TurtleCoinCrypto::ZERO && public_commitments.size() == public_keys.size()
+             && pseudo_blinding_factor != TurtleCoinCrypto::ZERO && pseudo_commitment != TurtleCoinCrypto::Z);
 
         if (real_output_index >= ring_size)
             return {false, {}, {}, {0}};
@@ -317,7 +317,7 @@ namespace Crypto::RingSignature::CLSAG
             return {false, {}, {}, {0}};
 
         // help to provide stronger RNG for the alpha scalar
-        crypto_scalar_transcript_t alpha_transcript(message_digest, key_image, Crypto::random_scalar());
+        crypto_scalar_transcript_t alpha_transcript(message_digest, key_image, TurtleCoinCrypto::random_scalar());
 
         alpha_transcript.update(input_blinding_factor, pseudo_blinding_factor, pseudo_commitment);
 
@@ -325,7 +325,7 @@ namespace Crypto::RingSignature::CLSAG
 
         const auto alpha_scalar = alpha_transcript.challenge();
 
-        auto signature = Crypto::random_scalars(ring_size);
+        auto signature = TurtleCoinCrypto::random_scalars(ring_size);
 
         // See below for more detail
         const auto z = (input_blinding_factor - pseudo_blinding_factor);
@@ -348,7 +348,7 @@ namespace Crypto::RingSignature::CLSAG
              * Quick sanity check to make sure that the computed z value (blinding scalar) delta
              * resulting public point is the same as the commitment that we can sign for above
              */
-            if (commitment != z * Crypto::G)
+            if (commitment != z * TurtleCoinCrypto::G)
                 return {false, {}, {}, {0}};
 
             /**
@@ -356,7 +356,7 @@ namespace Crypto::RingSignature::CLSAG
              * the public output key not the commitment point to prevent a whole bunch
              * of frivolous math that only makes this far worse later
              */
-            commitment_image = Crypto::generate_key_image(public_keys[real_output_index], z);
+            commitment_image = TurtleCoinCrypto::generate_key_image(public_keys[real_output_index], z);
         }
 
         std::vector<crypto_scalar_t> h(ring_size);
@@ -420,7 +420,7 @@ namespace Crypto::RingSignature::CLSAG
             const auto L = alpha_scalar * G;
 
             // HP = [Hp(P)] mod l
-            const auto HP = Crypto::hash_to_point(public_keys[real_output_index]);
+            const auto HP = TurtleCoinCrypto::hash_to_point(public_keys[real_output_index]);
 
             // R = (alpha * HP) mod l
             const auto R = alpha_scalar * HP;
@@ -445,7 +445,7 @@ namespace Crypto::RingSignature::CLSAG
                 auto L = (r * public_keys[idx]) + (signature[idx] * G);
 
                 // HP = [Hp(P)] mod l
-                const auto HP = Crypto::hash_to_point(public_keys[idx]);
+                const auto HP = TurtleCoinCrypto::hash_to_point(public_keys[idx]);
 
                 // R = [(s[idx] * HP) + (r * I)] mod l
                 auto R = (signature[idx] * HP) + (r * key_image);
@@ -487,4 +487,4 @@ namespace Crypto::RingSignature::CLSAG
 
         return {true, crypto_clsag_signature_t(signature, h[0], commitment_image), h, mu_P};
     }
-} // namespace Crypto::RingSignature::CLSAG
+} // namespace TurtleCoinCrypto::RingSignature::CLSAG

@@ -33,9 +33,9 @@ static const crypto_scalar_t BULLETPROOFS_DOMAIN_0 = {0x20, 0x20, 0x50, 0x72, 0x
                                                       0x6d, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x20, 0x74, 0x68, 0x65, 0x20,
                                                       0x54, 0x52, 0x54, 0x4c, 0x20, 0x77, 0x61, 0x79, 0x20, 0x20};
 
-static const auto BULLETPROOFS_DOMAIN_1 = Crypto::hash_to_point(BULLETPROOFS_DOMAIN_0);
+static const auto BULLETPROOFS_DOMAIN_1 = TurtleCoinCrypto::hash_to_point(BULLETPROOFS_DOMAIN_0);
 
-static const auto BULLETPROOFS_DOMAIN_2 = Crypto::hash_to_point(BULLETPROOFS_DOMAIN_1);
+static const auto BULLETPROOFS_DOMAIN_2 = TurtleCoinCrypto::hash_to_point(BULLETPROOFS_DOMAIN_1);
 
 /**
  * Generates the general bulletproof exponents up through the given count
@@ -68,17 +68,17 @@ static std::tuple<crypto_point_vector_t, crypto_point_vector_t> generate_exponen
 
         buffer.base_point = BULLETPROOFS_DOMAIN_1;
 
-        L_cached.append(Crypto::hash_to_point(&buffer, sizeof(buffer)));
+        L_cached.append(TurtleCoinCrypto::hash_to_point(&buffer, sizeof(buffer)));
 
         buffer.base_point = BULLETPROOFS_DOMAIN_2;
 
-        R_cached.append(Crypto::hash_to_point(&buffer, sizeof(buffer)));
+        R_cached.append(TurtleCoinCrypto::hash_to_point(&buffer, sizeof(buffer)));
     }
 
     return {L_cached, R_cached};
 }
 
-namespace Crypto::RangeProofs::Bulletproofs
+namespace TurtleCoinCrypto::RangeProofs::Bulletproofs
 {
     /**
      * Helps to calculate an inner product round
@@ -91,7 +91,7 @@ namespace Crypto::RangeProofs::Bulletproofs
             const crypto_point_t &U,
             crypto_scalar_vector_t a,
             crypto_scalar_vector_t b,
-            const Crypto::crypto_scalar_transcript_t &tr):
+            const TurtleCoinCrypto::crypto_scalar_transcript_t &tr):
             G(std::move(G)), H(std::move(H)), U(U), a(std::move(a)), b(std::move(b)), tr(tr)
         {
         }
@@ -121,9 +121,9 @@ namespace Crypto::RangeProofs::Bulletproofs
 
                 const auto cL = a1.inner_product(b2), cR = a2.inner_product(b1);
 
-                L.append(Crypto::INV_EIGHT * (a1.inner_product(g2) + b2.inner_product(h1) + (cL * U)));
+                L.append(TurtleCoinCrypto::INV_EIGHT * (a1.inner_product(g2) + b2.inner_product(h1) + (cL * U)));
 
-                R.append(Crypto::INV_EIGHT * (a2.inner_product(g1) + b1.inner_product(h2) + (cR * U)));
+                R.append(TurtleCoinCrypto::INV_EIGHT * (a2.inner_product(g1) + b1.inner_product(h2) + (cR * U)));
 
                 tr.update(L.back());
 
@@ -131,7 +131,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
                 const auto x = tr.challenge();
 
-                if (x == Crypto::ZERO)
+                if (x == TurtleCoinCrypto::ZERO)
                     throw std::runtime_error("x cannot be zero");
 
                 G = (g1 * x.invert()) + (g2 * x);
@@ -150,7 +150,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
       private:
         bool done = false;
-        Crypto::crypto_scalar_transcript_t tr;
+        TurtleCoinCrypto::crypto_scalar_transcript_t tr;
         crypto_point_vector_t G, H;
         crypto_point_t U;
         crypto_point_vector_t L, R;
@@ -180,7 +180,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         const auto M = amounts.size();
 
-        N = Crypto::pow2_round(N);
+        N = TurtleCoinCrypto::pow2_round(N);
 
         const auto MN = M * N;
 
@@ -192,28 +192,28 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         for (size_t i = 0; i < M; ++i)
         {
-            V.append(Crypto::RingCT::generate_pedersen_commitment(blinding_factors[i], amounts[i]));
+            V.append(TurtleCoinCrypto::RingCT::generate_pedersen_commitment(blinding_factors[i], amounts[i]));
 
             aL.extend(crypto_scalar_t(amounts[i]).to_bits(N));
         }
 
         for (const auto &bit : aL.scalars)
-            aR.append(bit - Crypto::ONE);
+            aR.append(bit - TurtleCoinCrypto::ONE);
 
     try_again:
-        const auto alpha = Crypto::random_scalar();
+        const auto alpha = TurtleCoinCrypto::random_scalar();
 
         crypto_scalar_transcript_t tr(BULLETPROOFS_DOMAIN_0);
 
         tr.update(V.points);
 
-        const auto A = Crypto::INV_EIGHT * (aL.inner_product(Gi) + aR.inner_product(Hi) + (alpha * G));
+        const auto A = TurtleCoinCrypto::INV_EIGHT * (aL.inner_product(Gi) + aR.inner_product(Hi) + (alpha * G));
 
-        crypto_scalar_vector_t sL(Crypto::random_scalars(MN)), sR(Crypto::random_scalars(MN));
+        crypto_scalar_vector_t sL(TurtleCoinCrypto::random_scalars(MN)), sR(TurtleCoinCrypto::random_scalars(MN));
 
-        const auto rho = Crypto::random_scalar();
+        const auto rho = TurtleCoinCrypto::random_scalar();
 
-        const auto S = Crypto::INV_EIGHT * (sL.inner_product(Gi) + sR.inner_product(Hi) + (rho * G));
+        const auto S = TurtleCoinCrypto::INV_EIGHT * (sL.inner_product(Gi) + sR.inner_product(Hi) + (rho * G));
 
         tr.update(A);
 
@@ -221,14 +221,14 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         const auto y = tr.challenge();
 
-        if (y == Crypto::ZERO)
+        if (y == TurtleCoinCrypto::ZERO)
             goto try_again;
 
         tr.update(y);
 
         const auto z = tr.challenge();
 
-        if (z == Crypto::ZERO)
+        if (z == TurtleCoinCrypto::ZERO)
             goto try_again;
 
         const auto y_inv = y.invert();
@@ -244,7 +244,7 @@ namespace Crypto::RangeProofs::Bulletproofs
         for (size_t j = 0; j < M; ++j)
         {
             for (size_t i = 0; i < N; ++i)
-                zeros_twos.append(z_cache * Crypto::TWO.pow(i));
+                zeros_twos.append(z_cache * TurtleCoinCrypto::TWO.pow(i));
 
             z_cache *= z;
         }
@@ -261,11 +261,11 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         const auto t2 = l1.inner_product(r1);
 
-        const auto tau1 = Crypto::random_scalar(), tau2 = Crypto::random_scalar();
+        const auto tau1 = TurtleCoinCrypto::random_scalar(), tau2 = TurtleCoinCrypto::random_scalar();
 
-        const auto T1 = Crypto::INV_EIGHT * ((t1 * Crypto::H) + (tau1 * G));
+        const auto T1 = TurtleCoinCrypto::INV_EIGHT * ((t1 * TurtleCoinCrypto::H) + (tau1 * G));
 
-        const auto T2 = Crypto::INV_EIGHT * ((t2 * Crypto::H) + (tau2 * G));
+        const auto T2 = TurtleCoinCrypto::INV_EIGHT * ((t2 * TurtleCoinCrypto::H) + (tau2 * G));
 
         tr.update(T1);
 
@@ -273,7 +273,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         const auto x = tr.challenge();
 
-        if (x == Crypto::ZERO)
+        if (x == TurtleCoinCrypto::ZERO)
             goto try_again;
 
         auto taux = (tau1 * x) + (tau2 * x.squared());
@@ -297,7 +297,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         const auto x_ip = tr.challenge();
 
-        if (x_ip == Crypto::ZERO)
+        if (x_ip == TurtleCoinCrypto::ZERO)
             goto try_again;
 
         crypto_point_vector_t Hi_points(Hi.size());
@@ -333,20 +333,20 @@ namespace Crypto::RangeProofs::Bulletproofs
         if (proofs.size() != commitments.size())
             return false;
 
-        N = Crypto::pow2_round(N);
+        N = TurtleCoinCrypto::pow2_round(N);
 
         size_t max_M = 0;
 
         for (const auto &proof : proofs)
             max_M = std::max(max_M, proof.L.size());
 
-        const size_t max_MN = size_t(Crypto::TWO.pow(max_M).to_uint64_t());
+        const size_t max_MN = size_t(TurtleCoinCrypto::TWO.pow(max_M).to_uint64_t());
 
         const auto [Gi, Hi] = generate_exponents(max_MN);
 
-        auto y0 = Crypto::ZERO, y1 = Crypto::ZERO, z1 = Crypto::ZERO, z3 = Crypto::ZERO;
+        auto y0 = TurtleCoinCrypto::ZERO, y1 = TurtleCoinCrypto::ZERO, z1 = TurtleCoinCrypto::ZERO, z3 = TurtleCoinCrypto::ZERO;
 
-        std::vector<crypto_scalar_t> Gi_scalars(max_MN, Crypto::ZERO), Hi_scalars(max_MN, Crypto::ZERO);
+        std::vector<crypto_scalar_t> Gi_scalars(max_MN, TurtleCoinCrypto::ZERO), Hi_scalars(max_MN, TurtleCoinCrypto::ZERO);
 
         crypto_scalar_vector_t scalars;
 
@@ -366,11 +366,11 @@ namespace Crypto::RangeProofs::Bulletproofs
             if (proof.L.size() != proof.R.size())
                 return false;
 
-            const auto M = size_t(Crypto::TWO.pow(proof.L.size()).to_uint64_t()) / N;
+            const auto M = size_t(TurtleCoinCrypto::TWO.pow(proof.L.size()).to_uint64_t()) / N;
 
             const auto MN = M * N;
 
-            const auto weight_y = Crypto::random_scalar(), weight_z = Crypto::random_scalar();
+            const auto weight_y = TurtleCoinCrypto::random_scalar(), weight_z = TurtleCoinCrypto::random_scalar();
 
             crypto_scalar_transcript_t tr(BULLETPROOFS_DOMAIN_0);
 
@@ -382,7 +382,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
             const auto y = tr.challenge();
 
-            if (y == Crypto::ZERO)
+            if (y == TurtleCoinCrypto::ZERO)
                 return false;
 
             const auto y_inv = y.invert();
@@ -391,7 +391,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
             const auto z = tr.challenge();
 
-            if (z == Crypto::ZERO)
+            if (z == TurtleCoinCrypto::ZERO)
                 return false;
 
             tr.update(proof.T1);
@@ -400,7 +400,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
             const auto x = tr.challenge();
 
-            if (x == Crypto::ZERO)
+            if (x == TurtleCoinCrypto::ZERO)
                 return false;
 
             tr.update(proof.taux);
@@ -411,7 +411,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
             const auto x_ip = tr.challenge();
 
-            if (x_ip == Crypto::ZERO)
+            if (x_ip == TurtleCoinCrypto::ZERO)
                 return false;
 
             y0 += (proof.taux * weight_y);
@@ -419,7 +419,7 @@ namespace Crypto::RangeProofs::Bulletproofs
             auto k = (z - z.squared()) * y.pow_sum(MN);
 
             for (size_t j = 1; j < M + 1; ++j)
-                k -= (z.pow(j + 2) * Crypto::TWO.pow_sum(N));
+                k -= (z.pow(j + 2) * TurtleCoinCrypto::TWO.pow_sum(N));
 
             y1 += (proof.t - k) * weight_y;
 
@@ -432,19 +432,19 @@ namespace Crypto::RangeProofs::Bulletproofs
 
             scalars.append(x * weight_y);
 
-            points.append(Crypto::EIGHT * proof.T1);
+            points.append(TurtleCoinCrypto::EIGHT * proof.T1);
 
             scalars.append(x.squared() * weight_y);
 
-            points.append(Crypto::EIGHT * proof.T2);
+            points.append(TurtleCoinCrypto::EIGHT * proof.T2);
 
             scalars.append(weight_z);
 
-            points.append(Crypto::EIGHT * proof.A);
+            points.append(TurtleCoinCrypto::EIGHT * proof.A);
 
             scalars.append(x * weight_z);
 
-            points.append(Crypto::EIGHT * proof.S);
+            points.append(TurtleCoinCrypto::EIGHT * proof.S);
 
             crypto_scalar_vector_t challenges;
 
@@ -456,7 +456,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
                 const auto challenge = tr.challenge();
 
-                if (challenge == Crypto::ZERO)
+                if (challenge == TurtleCoinCrypto::ZERO)
                     return false;
 
                 challenges.append(challenge);
@@ -476,7 +476,7 @@ namespace Crypto::RangeProofs::Bulletproofs
                 {
                     const auto J = challenges.size() - j - 1;
 
-                    const size_t base_power = size_t(Crypto::TWO.pow(j).to_uint64_t());
+                    const size_t base_power = size_t(TurtleCoinCrypto::TWO.pow(j).to_uint64_t());
 
                     if (index / base_power == 0)
                     {
@@ -496,7 +496,7 @@ namespace Crypto::RangeProofs::Bulletproofs
 
                 g += z;
 
-                h -= ((z * y.pow(i)) + (z.pow(2 + i / N) * Crypto::TWO.pow(i % N))) * y_inv.pow(i);
+                h -= ((z * y.pow(i)) + (z.pow(2 + i / N) * TurtleCoinCrypto::TWO.pow(i % N))) * y_inv.pow(i);
 
                 Gi_scalars[i] += g * weight_z;
 
@@ -509,11 +509,11 @@ namespace Crypto::RangeProofs::Bulletproofs
             {
                 scalars.append(challenges[i].squared() * weight_z);
 
-                points.append(Crypto::EIGHT * proof.L[i]);
+                points.append(TurtleCoinCrypto::EIGHT * proof.L[i]);
 
                 scalars.append(challenges_inv[i].squared() * weight_z);
 
-                points.append(Crypto::EIGHT * proof.R[i]);
+                points.append(TurtleCoinCrypto::EIGHT * proof.R[i]);
             }
 
             z3 += (proof.t - proof.g * proof.h) * x_ip * weight_z;
@@ -521,11 +521,11 @@ namespace Crypto::RangeProofs::Bulletproofs
 
         scalars.append(y0.negate() - z1);
 
-        points.append(Crypto::G);
+        points.append(TurtleCoinCrypto::G);
 
         scalars.append(y1.negate() + z3);
 
-        points.append(Crypto::H);
+        points.append(TurtleCoinCrypto::H);
 
         for (size_t i = 0; i < max_MN; ++i)
         {
@@ -538,7 +538,7 @@ namespace Crypto::RangeProofs::Bulletproofs
             points.append(Hi[i]);
         }
 
-        return scalars.inner_product(points) == Crypto::Z;
+        return scalars.inner_product(points) == TurtleCoinCrypto::Z;
     }
 
     bool verify(
@@ -551,4 +551,4 @@ namespace Crypto::RangeProofs::Bulletproofs
             std::vector<std::vector<crypto_pedersen_commitment_t>>(1, commitments),
             N);
     }
-} // namespace Crypto::RangeProofs::Bulletproofs
+} // namespace TurtleCoinCrypto::RangeProofs::Bulletproofs
