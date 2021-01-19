@@ -425,6 +425,7 @@ bool ValidateTransaction::validateTransactionFee()
     {
         validFee = fee != 0;
 
+        /* getMinimumTransactionFee shall get fee dynamically for v1 and v2 */
         if (m_blockHeight >= CryptoNote::parameters::MINIMUM_FEE_PER_BYTE_V1_HEIGHT)
         {
             const auto minFee = Utilities::getMinimumTransactionFee(
@@ -604,6 +605,19 @@ bool ValidateTransaction::validateTransactionPoW()
     if (CryptoNote::check_hash(hash, diff))
     {
         return true;
+    } else {
+        /* Check if there is a fee bigger than required to pass Tx PoW */
+        if (m_blockHeight >= CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE_HEIGHT)
+        {
+            const uint64_t fee = m_sumOfInputs - m_sumOfOutputs;
+
+            const bool validFee = fee >= CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
+
+            if (!isFusion && validFee)
+            {
+                return true;
+            }
+        }
     }
 
 

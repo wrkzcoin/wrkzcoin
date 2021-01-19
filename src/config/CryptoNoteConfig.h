@@ -38,11 +38,17 @@ namespace CryptoNote
          * before becoming invalid. */
         const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW = 40;
 
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2 = 20;
+
         /* Transactions must have an unlock time of at least current block +
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
+
+        /* Unlock V2 */
+        const uint64_t UNLOCK_TIME_HEIGHT_V2 = 1500000;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
@@ -72,6 +78,10 @@ namespace CryptoNote
         const unsigned EMISSION_SPEED_FACTOR = 22;
 
         static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
+
+        const uint64_t FIXED_REWARD_V1 = 1000000;
+
+        const uint64_t FIXED_REWARD_V1_HEIGHT = 1500000;
 
         const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(MONEY_SUPPLY * 3 / 100);
 
@@ -116,6 +126,9 @@ namespace CryptoNote
          * to the underlying storage cost / page sizes for storing a transaction. */
         const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
 
+        /* Fork fee per byte v2 */
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 128;
+
         /* Fee to charge per byte of transaction. Will be applied in chunks, see
          * above. This value comes out to 1.953125. We use this value instead of
          * something like 2 because it makes for pretty resulting fees
@@ -123,8 +136,13 @@ namespace CryptoNote
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
 
+        const double MINIMUM_FEE_PER_BYTE_V2 = 10.00 / FEE_PER_BYTE_CHUNK_SIZE_V2;
+
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
+        
+        /* Fork fee per byte v2 */
+        const uint64_t MINIMUM_FEE_PER_BYTE_V2_HEIGHT  = 1500000;
 
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
@@ -219,6 +237,11 @@ namespace CryptoNote
         const uint64_t MAX_EXTRA_SIZE_V2_HEIGHT = 543000;
 
         const uint64_t TRANSACTION_POW_HEIGHT = 1123000;
+
+        /* If a user decide to pay for a fee of this, Tx PoW doesn't need except fusion Tx */
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE_HEIGHT = 1500000;
+
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE = 10000;
 
         /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
         const uint64_t TRANSACTION_POW_DIFFICULTY = 20000;
@@ -334,11 +357,12 @@ namespace CryptoNote
             1000000,  // 11
             1123000,  // 12
             1200000,  // 13
-            1500000,  // 14  // TODO: Update fork height
+            1500000,  // 14
+            1800000,  // 15  // TODO: Update fork height
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 13;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 14;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -410,9 +434,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 15;
+    const uint8_t P2P_CURRENT_VERSION = 16;
 
-    const uint8_t P2P_MINIMUM_VERSION = 14;
+    const uint8_t P2P_MINIMUM_VERSION = 15;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -422,7 +446,7 @@ namespace CryptoNote
     const uint8_t P2P_UPGRADE_WINDOW = 2;
 
     const size_t P2P_CONNECTION_MAX_WRITE_BUFFER_SIZE = 32 * 1024 * 1024; // 32 MB
-    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 8;
+    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 12;
 
     const size_t P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT = 70;
 
@@ -436,12 +460,12 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 32; // 32 MB
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 2; // 2 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
     const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
 
-    const uint64_t LEVELDB_WRITE_BUFFER_MB = 4; // 4 MB
+    const uint64_t LEVELDB_WRITE_BUFFER_MB = 2; // 2 MB
     const uint64_t LEVELDB_READ_BUFFER_MB = 128; // 128 MB
     const uint64_t LEVELDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
@@ -454,9 +478,9 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "176.9.145.124:17855",        // myexplorer.wrkz.work
+        "176.9.124.189:17855",        // myexplorer.wrkz.work
         "51.15.243.43:17855",         // arm-node.wrkz.work
-        "135.181.32.181:17855",       // web eu
+        "95.217.121.35:17855",        // node-fin.wrkz.work
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };

@@ -188,6 +188,7 @@ namespace CryptoNote
                     cumulativeSize,
                     alreadyGeneratedCoins,
                     cumulativeFee,
+                    previousBlockIndex+1,
                     reward,
                     emissionChange))
             {
@@ -1276,6 +1277,7 @@ namespace CryptoNote
                 cumulativeBlockSize,
                 alreadyGeneratedCoins,
                 cumulativeFee,
+                cachedBlock.getBlockIndex(),
                 reward,
                 emissionChange))
         {
@@ -2734,7 +2736,7 @@ namespace CryptoNote
 
         std::cout << "Existing DB has currentIndex: " << currentIndex << std::endl;
 
-        std::ifstream blockchainDump(filePath);
+        std::ifstream blockchainDump(filePath, std::ios::in | std::ios_base::binary);
 
         if (!blockchainDump)
         {
@@ -3539,6 +3541,7 @@ namespace CryptoNote
             0,
             prevBlockGeneratedCoins,
             0,
+            blockIndex,
             blockDetails.baseReward,
             emissionChange);
         if (result)
@@ -3553,6 +3556,7 @@ namespace CryptoNote
             blockDetails.transactionsCumulativeSize,
             prevBlockGeneratedCoins,
             0,
+            blockIndex,
             currentReward,
             emissionChange);
         assert(result);
