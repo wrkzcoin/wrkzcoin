@@ -48,7 +48,7 @@ namespace CryptoNote
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
 
         /* Unlock V2 */
-        const uint64_t UNLOCK_TIME_HEIGHT_V2 = 1500000; // TODO
+        const uint64_t UNLOCK_TIME_HEIGHT_V2 = 1500000;
 
         const uint64_t CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT = 60 * 60 * 2;
 
@@ -79,9 +79,9 @@ namespace CryptoNote
 
         static_assert(EMISSION_SPEED_FACTOR <= 8 * sizeof(uint64_t), "Bad EMISSION_SPEED_FACTOR");
 
-        const uint64_t FIXED_REWARD_V1 = 1000000; // TODO: 10,000
+        const uint64_t FIXED_REWARD_V1 = 1000000;
 
-        const uint64_t FIXED_REWARD_V1_HEIGHT = 1500000; // TODO: Next fork
+        const uint64_t FIXED_REWARD_V1_HEIGHT = 1500000;
 
         const uint64_t GENESIS_BLOCK_REWARD = UINT64_C(MONEY_SUPPLY * 3 / 100);
 
@@ -127,7 +127,7 @@ namespace CryptoNote
         const uint64_t FEE_PER_BYTE_CHUNK_SIZE = 256;
 
         /* Fork fee per byte v2 */
-        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 128; // TODO Fee v2 = FEE_PER_BYTE_CHUNK_SIZE
+        const uint64_t FEE_PER_BYTE_CHUNK_SIZE_V2 = 128;
 
         /* Fee to charge per byte of transaction. Will be applied in chunks, see
          * above. This value comes out to 1.953125. We use this value instead of
@@ -136,13 +136,13 @@ namespace CryptoNote
          * is 500 atomic units. The fee per byte is 500 / chunk size. */
         const double MINIMUM_FEE_PER_BYTE_V1 = 500.00 / FEE_PER_BYTE_CHUNK_SIZE;
 
-        const double MINIMUM_FEE_PER_BYTE_V2 = 10.00 / FEE_PER_BYTE_CHUNK_SIZE_V2; // TODO Fee v2 = MINIMUM_FEE_PER_BYTE_V1
+        const double MINIMUM_FEE_PER_BYTE_V2 = 10.00 / FEE_PER_BYTE_CHUNK_SIZE_V2;
 
         /* Height for our first fee to byte change to take effect. */
         const uint64_t MINIMUM_FEE_PER_BYTE_V1_HEIGHT  = 832000;
         
         /* Fork fee per byte v2 */
-        const uint64_t MINIMUM_FEE_PER_BYTE_V2_HEIGHT  = 1500000; // TODO Fee v2
+        const uint64_t MINIMUM_FEE_PER_BYTE_V2_HEIGHT  = 1500000;
 
         /* This section defines our minimum and maximum mixin counts required for transactions */
         const uint64_t MINIMUM_MIXIN_V1 = 0;
@@ -239,9 +239,9 @@ namespace CryptoNote
         const uint64_t TRANSACTION_POW_HEIGHT = 1123000;
 
         /* If a user decide to pay for a fee of this, Tx PoW doesn't need except fusion Tx */
-        const uint64_t TRANSACTION_POW_PASS_WITH_FEE_HEIGHT = 1500000; // TODO: Check before fork
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE_HEIGHT = 1500000;
 
-        const uint64_t TRANSACTION_POW_PASS_WITH_FEE = 10000; // TODO: Check before fork. Proposing 100.00 WRKZ
+        const uint64_t TRANSACTION_POW_PASS_WITH_FEE = 10000;
 
         /* Higher difficulty = More PoW (and thus time) to generate a transaction. */
         const uint64_t TRANSACTION_POW_DIFFICULTY = 20000;
@@ -434,9 +434,9 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 15;
+    const uint8_t P2P_CURRENT_VERSION = 16;
 
-    const uint8_t P2P_MINIMUM_VERSION = 14;
+    const uint8_t P2P_MINIMUM_VERSION = 15;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
