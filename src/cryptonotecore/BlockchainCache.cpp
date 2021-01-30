@@ -581,7 +581,7 @@ namespace CryptoNote
         }
 
         assert(blockIndex - startIndex < blockInfos.size());
-        return blockInfos.get<BlockIndexTag>()[blockIndex - startIndex].blockHash;
+        return blockInfos.get<BlockIndexTag>().at(blockIndex - startIndex).blockHash;
     }
 
     std::vector<Crypto::Hash> BlockchainCache::getBlockHashes(uint32_t startBlockIndex, size_t maxCount) const
