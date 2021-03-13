@@ -446,7 +446,7 @@ namespace CryptoNote
     const uint8_t P2P_UPGRADE_WINDOW = 2;
 
     const size_t P2P_CONNECTION_MAX_WRITE_BUFFER_SIZE = 32 * 1024 * 1024; // 32 MB
-    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 12;
+    const uint32_t P2P_DEFAULT_CONNECTIONS_COUNT = 15;
 
     const size_t P2P_DEFAULT_WHITELIST_CONNECTIONS_PERCENT = 70;
 
