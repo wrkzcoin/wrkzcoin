@@ -19,13 +19,13 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 10', 'Ubuntu GCC 8', 'Ubuntu GCC 8 x86', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
+        build_name: ['Ubuntu GCC 9', 'Ubuntu GCC 8', 'Ubuntu GCC 8 x86', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
-          - build_name: 'Ubuntu GCC 10'
-            package_name: 'gcc-10 g++-10'
-            cc: gcc-10
-            cxx: g++-10
-            label: gcc-10
+          - build_name: 'Ubuntu GCC 9'
+            package_name: 'gcc-9 g++-9'
+            cc: gcc-9
+            cxx: g++-9
+            label: gcc-9
             deployable: true
           - build_name: 'Ubuntu GCC 8'
             package_name: 'gcc-8 g++-8'
