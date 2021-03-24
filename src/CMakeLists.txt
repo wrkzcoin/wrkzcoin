@@ -13,6 +13,7 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 include_directories(${CMAKE_SOURCE_DIR}/external/snappy)
+include_directories(${CMAKE_SOURCE_DIR}/external/ghc-filesystem)
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
@@ -50,6 +51,8 @@ if (MSVC)
     file(GLOB_RECURSE System system/* platform/windows/system/*)
 elseif (APPLE)
     file(GLOB_RECURSE System system/* platform/osx/system/* platform/posix/system/*)
+elseif (ANDROID)
+    file(GLOB_RECURSE System system/* platform/android/system/* platform/posix/system/*)
 else ()
     file(GLOB_RECURSE System system/* platform/linux/system/* platform/posix/system/*)
 endif ()
@@ -129,7 +132,7 @@ add_library(__filesystem INTERFACE)
 # Windows works out of the box
 if (APPLE)
     target_link_libraries(__filesystem INTERFACE /usr/local/opt/llvm/lib/libc++fs.a)
-elseif (UNIX)
+elseif (UNIX AND NOT ANDROID)
     target_link_libraries(__filesystem INTERFACE stdc++fs)
 endif ()
 
