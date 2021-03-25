@@ -1,6 +1,6 @@
 FROM debian:stretch
 
-RUN apt-get update && apt-get install -y unzip automake build-essential curl file pkg-config git python libtool libtinfo5 wget
+RUN apt-get update && apt-get install -y unzip automake build-essential curl file pkg-config git python libtool libtinfo5 wget openjdk-8-jdk
 
 WORKDIR /opt/android
 ## INSTALL ANDROID SDK
@@ -42,11 +42,11 @@ ENV WORKDIR /opt/android
 ENV ANDROID_NDK_ROOT ${WORKDIR}/android-ndk-r${ANDROID_NDK_REVISION}
 ENV ANDROID_NDK_HOME ${WORKDIR}/android-ndk-r${ANDROID_NDK_REVISION}
 ENV PREFIX /opt/android/prefix
-
+ENV ANDROID_API 21
 ENV TOOLCHAIN_DIR ${WORKDIR}/toolchain-arm64
 RUN ${ANDROID_NDK_ROOT}/build/tools/make_standalone_toolchain.py \
          --arch arm64 \
-         --api 28 \
+         --api ${ANDROID_API} \
          --install-dir ${TOOLCHAIN_DIR} \
          --stl=libc++
 
@@ -93,7 +93,6 @@ RUN cd boost_${BOOST_VERSION} \
 # openssl
 ARG OPENSSL_VERSION=1.1.1j
 ARG OPENSSL_HASH=aaf2fcb575cdf6491b98ab4829abf78a3dec8402b8b81efc8f23c00d443981bf
-ENV ANDROID_API 28
 ENV PATH ${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
 RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz \
     && echo "${OPENSSL_HASH}  openssl-${OPENSSL_VERSION}.tar.gz" | sha256sum -c \
