@@ -153,6 +153,14 @@ endif ()
 
 if (GHC_USE_STD_FS OR ANDROID)
     add_definitions(-DGHC_USE_STD_FS)
+    #From Android 5: "only position independent executables (PIE) are supported" 
+    message(STATUS "Enabling PIE executable")
+    set(PIC_FLAG "")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -pie")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=user-defined-warnings")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti -fexceptions")
 endif ()
 
 if (NOT MSVC)
@@ -247,7 +255,7 @@ if (NOT MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
 
     ## Statically link our binaries
-    if (NOT APPLE)
+    if (NOT APPLE AND NOT ANDROID)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
     endif ()
 endif ()

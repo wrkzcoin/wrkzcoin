@@ -31,10 +31,10 @@ RUN $ANDROID_HOME/tools/bin/sdkmanager "tools" "platform-tools" && \
     $ANDROID_HOME/tools/bin/sdkmanager "extras;android;m2repository" "extras;google;m2repository"
 
 ## INSTALL ANDROID NDK
-ENV ANDROID_NDK_REVISION 21e
-ENV ANDROID_NDK_HASH c3ebc83c96a4d7f539bd72c241b2be9dcd29bda9
+ENV ANDROID_NDK_REVISION 17b
+ENV ANDROID_NDK_HASH 5dfbbdc2d3ba859fed90d0e978af87c71a91a5be1f6e1c40ba697503d48ccecd
 RUN curl -s -O https://dl.google.com/android/repository/android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip \
-    && echo "${ANDROID_NDK_HASH}  android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip" | sha1sum -c \
+    && echo "${ANDROID_NDK_HASH}  android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip" | sha256sum  -c \
     && unzip android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip \
     && rm -f android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip
 
@@ -99,13 +99,8 @@ RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz 
     && tar -xzf openssl-${OPENSSL_VERSION}.tar.gz \
     && rm openssl-${OPENSSL_VERSION}.tar.gz \
     && cd openssl-${OPENSSL_VERSION} \
-    && export OPENSSL_CONFIGURE_OPTIONS="no-asm no-shared  no-pic no-idea no-camellia \
-        no-tests no-unit-test no-fuzz-libfuzzer no-fuzz-afl no-seed no-bf no-cast no-rc2 no-rc4 no-rc5 no-md2 \
-        no-md4 no-sock no-ssl3 \
-        no-dsa no-tls1 \
-        no-rfc3779 no-whirlpool no-srp \
-        no-mdc2 no-engine \
-        no-comp no-hw no-srtp -fPIC" \
+    && export OPENSSL_CONFIGURE_OPTIONS="no-asm no-shared \
+        no-tests no-unit-test no-fuzz-libfuzzer no-fuzz-afl" \
     && ./Configure android-arm64 \
             --static \
            -D__ANDROID_API__=${ANDROID_API}  ${OPENSSL_CONFIGURE_OPTIONS} \
@@ -115,15 +110,20 @@ RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz 
 
 ADD . /src
 ENV ANDROID_NDK_ROOT ${WORKDIR}/android-ndk-r${ANDROID_NDK_REVISION}
-ENV PATH ${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+#ENV PATH ${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
+ENV PATH $TOOLCHAIN_DIR/aarch64-linux-android/bin:$TOOLCHAIN_DIR/bin:$PATH
 ENV ANDROID_SYSROOT="$ANDROID_NDK_ROOT/platforms/android-$ANDROID_API/arch-arm64"
 ENV CROSS_SYSROOT="$ANDROID_SYSROOT"
 ENV NDK_SYSROOT="$ANDROID_SYSROOT"
+ENV LABEL="aarch64"
 RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && cd /src \
     && mkdir build && cd build \
     && CMAKE_INCLUDE_PATH="${PREFIX}/include" \
        CMAKE_LIBRARY_PATH="${PREFIX}/lib" \
-       CC=clang CXX=clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true -DANDROID=true \
+       ANDROID_STL=c++_static \
+       AR=aarch64-linux-android-ar LD=aarch64-linux-android-ld AS=aarch64-linux-android-as \
+       RANLIB=aarch64-linux-android-ranlib STRIP=aarch64-linux-android-strip \
+       CC=aarch64-linux-android-clang CXX=aarch64-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
     && echo "\e[32mdone building WrkzCoin\e[39m"
