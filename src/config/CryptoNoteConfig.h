@@ -479,7 +479,7 @@ namespace CryptoNote
 
     const char *const SEED_NODES[] = {
         "95.216.115.140:17855",       // myexplorer.wrkz.work
-        "95.217.121.35:17855",        // node-fin.wrkz.work
+        "65.21.105.254:17855",        // node-fin.wrkz.work
         "94.113.119.122:17855",       // publicnode.ydns.eu
         "178.238.236.173:17855"       // wrkz.xyz
     };
