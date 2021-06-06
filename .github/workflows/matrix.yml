@@ -377,10 +377,10 @@ jobs:
       - name: Setup binary boost 1.69.0
         run: |
           if ($env:LABEL -imatch "win64") {
-            $link = "https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-64.exe"
+            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-64.exe"
           }
           else {
-            $link = "https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-32.exe"
+            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-32.exe"
           }
           $path = "C:\boost.exe"
           [Net.WebClient]::new().DownloadFile($link, $path)
