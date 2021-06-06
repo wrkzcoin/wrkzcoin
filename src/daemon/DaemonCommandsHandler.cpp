@@ -462,7 +462,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
     statusTable.push_back({"DB Engine",             m_config.enableLevelDB ? "LevelDB" : "RocksDB"});
-    statusTable.push_back({PROJECT_NAME + " Version", PROJECT_VERSION});
+    statusTable.push_back({"WrkzCoin Version", PROJECT_VERSION});
 
     size_t longestValue = 0;
     size_t longestDescription = 0;
