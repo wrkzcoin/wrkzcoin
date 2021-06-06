@@ -452,7 +452,8 @@ jobs:
         run: |
           export PATH=~/.local/bin:$PATH
           pip3 install --user pipenv pipx
-          pipx install awscli awscli-plugin-endpoint
+          pipx install awscli
+          pipx install awscli-plugin-endpoint
       - name: S3 Upload
         id: s3-upload
         continue-on-error: true
