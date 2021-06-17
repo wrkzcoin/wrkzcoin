@@ -480,7 +480,8 @@ namespace CryptoNote
     const char *const SEED_NODES[] = {
         "95.216.115.140:17855",       // myexplorer.wrkz.work
         "65.21.105.254:17855",        // node-fin.wrkz.work
-        "94.113.119.122:17855",       // publicnode.ydns.eu
+        "89.203.235.107:17855",       // CuveeBits Seed CZ
+        "46.214.70.196:17855",        // CuveeBits Seed RO
         "178.238.236.173:17855"       // wrkz.xyz
     };
 } // namespace CryptoNote
