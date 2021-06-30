@@ -478,7 +478,7 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "95.216.115.140:17855",       // myexplorer.wrkz.work
+        "65.21.139.37:17855",       // myexplorer.wrkz.work
         "65.21.105.254:17855",        // node-fin.wrkz.work
         "89.203.235.107:17855",       // CuveeBits Seed CZ
         "46.214.70.196:17855",        // CuveeBits Seed RO
