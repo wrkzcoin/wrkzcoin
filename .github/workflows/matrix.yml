@@ -439,23 +439,11 @@ jobs:
           cp wrkzcoin-${LABEL}-${TAG}.zip builds/
           echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.zip
 
-      # Upload to S3
-      - name: Set up Python
+      - name: S3 Upload
+        id: s3-upload
         uses: actions/setup-python@v2
         with:
           python-version: 3.8 # Or other version
-
-      - name: Install awscli via pipx # Isolates dependencies
-        id: install-s3
-        continue-on-error: true
-        shell: bash
-        run: |
-          export PATH=~/.local/bin:$PATH
-          pip3 install --user pipenv pipx
-          pipx install --include-deps awscli
-          pipx install --include-deps awscli-plugin-endpoint
-      - name: S3 Upload
-        id: s3-upload
         continue-on-error: true
         env:
           PIPX_BIN: "C:/Program Files (x86)/pipx_bin"
@@ -483,9 +471,10 @@ jobs:
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.config.label }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ]; then
-            python3 -m venv venv3
-            venv3/Scripts/Activate.ps1
-            python3 -m pip install awscli awscli-plugin-endpoint
+            export PATH=~/.local/bin:$PATH
+            pip3 install --user pipenv pipx
+            pipx install --include-deps awscli
+            pipx install --include-deps awscli-plugin-endpoint
             aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
             aws configure set default.region ${AWS_REGION}
