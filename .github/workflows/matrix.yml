@@ -473,7 +473,7 @@ jobs:
             pip3 install awscli awscli-plugin-endpoint
             venv/Scripts/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             venv/Scripts/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            venv/Scripts\aws configure set default.region ${AWS_REGION}
+            venv/Scripts/aws configure set default.region ${AWS_REGION}
             venv/Scripts/aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
             venv/Scripts/aws configure set aws_access_key_id null
             venv/Scripts/aws configure set aws_secret_access_key null
