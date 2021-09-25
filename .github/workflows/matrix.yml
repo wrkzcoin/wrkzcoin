@@ -441,9 +441,6 @@ jobs:
 
       - name: S3 Upload
         id: s3-upload
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8 # Or other version
         continue-on-error: true
         env:
           PIPX_BIN: "C:/Program Files (x86)/pipx_bin"
