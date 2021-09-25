@@ -276,7 +276,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=power8")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=power8")
   endif(HAS_ALTIVEC)
-endif(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
+endif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
 
 option(PORTABLE "build a portable binary" ON)
 
@@ -350,18 +350,46 @@ if(NOT "${ARCH}" STREQUAL "default")
   endif()
 endif()
 
-if(NOT "${ARCH}" STREQUAL "default")
+if (WITH_LIBURING)
+  set(CMAKE_REQUIRED_FLAGS "-luring")
   CHECK_CXX_SOURCE_COMPILES("
-  #if defined(_MSC_VER) && !defined(__thread)
-  #define __thread __declspec(thread)
-  #endif
-  int main() {
-    static __thread int tls;
-  }
-  " HAVE_THREAD_LOCAL)
-  if(HAVE_THREAD_LOCAL)
-    add_definitions(-DROCKSDB_SUPPORT_THREAD_LOCAL)
+#include <liburing.h>
+int main() {
+  struct io_uring ring;
+  io_uring_queue_init(1, &ring, 0);
+  return 0;
+}
+" HAS_LIBURING)
+  if (HAS_LIBURING)
+    add_definitions(-DROCKSDB_IOURING_PRESENT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -luring")
   endif()
+endif()
+
+# Reset the required flags
+set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+
+CHECK_CXX_SOURCE_COMPILES("
+#if defined(_MSC_VER) && !defined(__thread)
+#define __thread __declspec(thread)
+#endif
+int main() {
+  static __thread int tls;
+  (void)tls;
+}
+" HAVE_THREAD_LOCAL)
+if(HAVE_THREAD_LOCAL)
+  add_definitions(-DROCKSDB_SUPPORT_THREAD_LOCAL)
+endif()
+
+option(WITH_IOSTATS_CONTEXT "Enable IO stats context" ON)
+if (NOT WITH_IOSTATS_CONTEXT)
+  add_definitions(-DNIOSTATS_CONTEXT)
+endif()
+
+option(WITH_PERF_CONTEXT "Enable perf context" ON)
+if (NOT WITH_PERF_CONTEXT)
+  add_definitions(-DNPERF_CONTEXT)
 endif()
 
 option(FAIL_ON_WARNINGS "Treat compile warnings as errors" OFF)
