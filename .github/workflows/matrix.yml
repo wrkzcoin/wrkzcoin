@@ -444,7 +444,7 @@ jobs:
         id: s3-upload
         continue-on-error: true
         env:
-          PIPX_BIN: "C:/Program Files (x86)/pipx_bin"
+          PY_SCRYPTS: $APPDATA/Python/Python37/Scripts
           LABEL: ${{ matrix.config.label }}
           MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
@@ -469,17 +469,17 @@ jobs:
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.config.label }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ]; then
-            export PATH=~/.local/bin:$PATH
+            export PATH=$PY_SCRYPTS:$PATH
             pip3 install --user pipenv pipx
             pipx install --include-deps awscli
             pipx install --include-deps awscli-plugin-endpoint
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            aws configure set default.region ${AWS_REGION}
-            aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
-            aws configure set aws_access_key_id null
-            aws configure set aws_secret_access_key null
-            aws configure set default.region null
+            "$PY_SCRYPTS/aws" configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            "$PY_SCRYPTS/aws" configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            "$PY_SCRYPTS/aws" configure set default.region ${AWS_REGION}
+            "$PY_SCRYPTS/aws" s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
+            "$PY_SCRYPTS/aws" configure set aws_access_key_id null
+            "$PY_SCRYPTS/aws" configure set aws_secret_access_key null
+            "$PY_SCRYPTS/aws" configure set default.region null
           elif [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
