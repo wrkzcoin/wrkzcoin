@@ -371,7 +371,13 @@ jobs:
           key: clcache-windows
 
       - name: Install OpenSSL
-        run: choco install openssl
+        run: |
+          if ($env:LABEL -imatch "win64") {
+            choco install openssl
+          }
+          else {
+            choco install --x86 --force openssl
+          }
 
       # Install boost
       - name: Setup binary boost 1.69.0
