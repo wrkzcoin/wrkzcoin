@@ -444,7 +444,7 @@ jobs:
         id: s3-upload
         continue-on-error: true
         env:
-          PY_SCRYPTS: $APPDATA/Python/Python37/Scripts
+          PY_SCRYPTS: "C:/Users/runneradmin/AppData/Roaming/Python/Python37/Scripts"
           LABEL: ${{ matrix.config.label }}
           MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
