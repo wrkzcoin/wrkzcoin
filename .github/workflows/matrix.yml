@@ -401,6 +401,7 @@ jobs:
 
       # Build for Windows
       - name: Build
+        id: build-cli
         run: |
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
@@ -458,7 +459,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           REPO: 'cli'
         shell: bash
-        if: steps.install-s3.outcome == 'success' && steps.install-s3.conclusion == 'success'
+        if: steps.build-cli.outcome == 'success' && steps.build-cli.conclusion == 'success'
         run: |
           FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
