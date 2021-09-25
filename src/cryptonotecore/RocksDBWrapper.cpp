@@ -271,7 +271,7 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     fOptions.target_file_size_base = config.writeBufferSize / 10;
     // make Level1 size equal to Level0 size, so that L0->L1 compactions are fast
     fOptions.max_bytes_for_level_base = config.writeBufferSize;
-    fOptions.num_levels = 10;
+    fOptions.num_levels = 7;
     fOptions.target_file_size_multiplier = 2;
     // level style compaction
     fOptions.compaction_style = rocksdb::kCompactionStyleLevel;
@@ -289,7 +289,7 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     }
 
     // bottom most use kZSTD
-    fOptions.bottommost_compression = compressionLevel;
+    fOptions.bottommost_compression = rocksdb::kNoCompression;
 
     rocksdb::BlockBasedTableOptions tableOptions;
     tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize);

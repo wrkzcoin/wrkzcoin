@@ -371,7 +371,13 @@ jobs:
           key: clcache-windows
 
       - name: Install OpenSSL
-        run: choco install openssl
+        run: |
+          if ($env:LABEL -imatch "win64") {
+            choco install openssl
+          }
+          else {
+            choco install --x86 --force openssl
+          }
 
       # Install boost
       - name: Setup binary boost 1.69.0
@@ -401,6 +407,7 @@ jobs:
 
       # Build for Windows
       - name: Build
+        id: build-cli
         run: |
           $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
@@ -439,26 +446,10 @@ jobs:
           cp wrkzcoin-${LABEL}-${TAG}.zip builds/
           echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.zip
 
-      # Upload to S3
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8 # Or other version
-
-      - name: Install awscli via pipx # Isolates dependencies
-        id: install-s3
-        continue-on-error: true
-        shell: bash
-        run: |
-          export PATH=~/.local/bin:$PATH
-          pip3 install --user pipenv pipx
-          pipx install --include-deps awscli
-          pipx install --include-deps awscli-plugin-endpoint
       - name: S3 Upload
         id: s3-upload
         continue-on-error: true
         env:
-          PIPX_BIN: "C:/Program Files (x86)/pipx_bin"
           LABEL: ${{ matrix.config.label }}
           MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
@@ -473,7 +464,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
           REPO: 'cli'
         shell: bash
-        if: steps.install-s3.outcome == 'success' && steps.install-s3.conclusion == 'success'
+        if: steps.build-cli.outcome == 'success' && steps.build-cli.conclusion == 'success'
         run: |
           FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
           FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
@@ -483,14 +474,16 @@ jobs:
           URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
           BUILD_CONTENT="$RUNNER_OS-${{ matrix.config.label }}-$SHA8 Size: $FILESIZE "$URL_FILE
           if [ "$RUNNER_OS" == "Windows" ]; then
-            export PATH=$PIPX_BIN:$PATH
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            aws configure set default.region ${AWS_REGION}
-            aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
-            aws configure set aws_access_key_id null
-            aws configure set aws_secret_access_key null
-            aws configure set default.region null
+            py -m venv venv
+            source venv/Scripts/activate
+            pip3 install awscli awscli-plugin-endpoint
+            venv/Scripts/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            venv/Scripts/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            venv/Scripts/aws configure set default.region ${AWS_REGION}
+            venv/Scripts/aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
+            venv/Scripts/aws configure set aws_access_key_id null
+            venv/Scripts/aws configure set aws_secret_access_key null
+            venv/Scripts/aws configure set default.region null
           elif [ "$RUNNER_OS" == "macOS" ]; then
             ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
             ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
