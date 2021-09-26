@@ -63,7 +63,7 @@ ARG BOOST_VERSION=1_68_0
 ARG BOOST_VERSION_DOT=1.68.0
 ARG BOOST_HASH=da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf
 RUN set -ex \
-    && curl -s -L -o  boost_${BOOST_VERSION}.tar.gz http://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION_DOT}/${BOOST_VERSION}.tar.gz \
+    && wget http://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION_DOT}/boost_${BOOST_VERSION}.tar.gz \
     && echo "${BOOST_HASH}  boost_${BOOST_VERSION}.tar.gz" | sha256sum -c \
     && tar zxvf boost_${BOOST_VERSION}.tar.gz >/dev/null \
     && rm -f boost_${BOOST_VERSION}.tar.gz \
