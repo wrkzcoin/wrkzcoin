@@ -128,4 +128,4 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && make -j${NPROC} \
     && echo "\e[32mdone building WrkzCoin\e[39m" \
     && mkdir binary-android-arm64 \
-    && cp ./{cryptotest,miner,wallet-upgrader,Wrkzd,wrkz-service,wrkz-wallet,wrkz-wallet-api} binary-android-arm64/
+    && cp ./src/{cryptotest,miner,wallet-upgrader,Wrkzd,wrkz-service,wrkz-wallet,wrkz-wallet-api} binary-android-arm64/
