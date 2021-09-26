@@ -127,6 +127,6 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
        CC=i686-linux-android-clang CXX=i686-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
     && echo "\e[32mdone building WrkzCoin\e[39m" \
-    && mkdir ${BIN_PATH} \
     && cd ./src \
-    && cp Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader ../${BIN_PATH}/
+    && mkdir ${BIN_PATH} \
+    && cp Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader ./${BIN_PATH}/
