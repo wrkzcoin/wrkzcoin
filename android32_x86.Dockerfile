@@ -9,7 +9,7 @@ ENV ANDROID_SDK_HASH 92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df310
 RUN mkdir -p /usr/local/android-sdk-linux \
     && curl -s -O https://dl.google.com/android/repository/sdk-tools-linux-${ANDROID_SDK_REVISION}.zip \
     && echo "${ANDROID_SDK_HASH}  sdk-tools-linux-${ANDROID_SDK_REVISION}.zip" | sha256sum -c \
-    && unzip sdk-tools-linux-${ANDROID_SDK_REVISION}.zip -d /usr/local/android-sdk-linux \
+    && unzip -q sdk-tools-linux-${ANDROID_SDK_REVISION}.zip -d /usr/local/android-sdk-linux \
     && rm -f sdk-tools-linux-${ANDROID_SDK_REVISION}.zip
 
 # Set environment variable
@@ -35,7 +35,7 @@ ENV ANDROID_NDK_REVISION 17b
 ENV ANDROID_NDK_HASH 5dfbbdc2d3ba859fed90d0e978af87c71a91a5be1f6e1c40ba697503d48ccecd
 RUN curl -s -O https://dl.google.com/android/repository/android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip \
     && echo "${ANDROID_NDK_HASH}  android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip" | sha256sum  -c \
-    && unzip android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip \
+    && unzip -q android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip \
     && rm -f android-ndk-r${ANDROID_NDK_REVISION}-linux-x86_64.zip
 
 ENV WORKDIR /opt/android
@@ -101,7 +101,7 @@ RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz 
     && cd openssl-${OPENSSL_VERSION} \
     && export OPENSSL_CONFIGURE_OPTIONS="no-asm no-shared \
         no-tests no-unit-test no-fuzz-libfuzzer no-fuzz-afl" \
-    && ./Configure android \
+    && ./Configure android-x86 \
             --static \
            -D__ANDROID_API__=${ANDROID_API}  ${OPENSSL_CONFIGURE_OPTIONS} \
            --prefix=${PREFIX} --openssldir=${PREFIX} \
