@@ -13,6 +13,18 @@ env:
 jobs:
   android_build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add more compilers here if you need them
+        build_name: ['android64', 'android32_x86']
+        include:
+          - build_name: 'android64'
+            label: android64
+          - build_name: 'android32_x86'
+            label: android32_x86
+    env:
+      CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
       -
         name: Checkout
@@ -29,11 +41,11 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           export TAG=${COMMIT_SHA::7}
-          docker build -f android_arm64.Dockerfile -t android-arm64 .
-          docker create -it --name android-arm64 android-arm64 bash
-          docker cp android-arm64:/src/build/src/binary-android-arm64 wrkzcoin-android-arm64-${TAG}
-          tar cvfz wrkzcoin-android-arm64-${TAG}.tar.gz wrkzcoin-android-arm64-${TAG}
-          echo ::set-output name=file_name::wrkzcoin-android-arm64-${TAG}.tar.gz
+          docker build -f ${{ matrix.build_name }}.Dockerfile -t ${{ matrix.build_name }} .
+          docker create -it --name ${{ matrix.build_name }} ${{ matrix.build_name }} bash
+          docker cp ${{ matrix.build_name }}:/src/build/src/${{ matrix.build_name }} wrkzcoin-${{ matrix.build_name }}-${TAG}
+          tar cvfz wrkzcoin-${{ matrix.build_name }}-${TAG}.tar.gz wrkzcoin-${{ matrix.build_name }}-${TAG}
+          echo ::set-output name=file_name::wrkzcoin-${{ matrix.build_name }}-${TAG}.tar.gz
       -
         name: Set up Python
         uses: actions/setup-python@v2

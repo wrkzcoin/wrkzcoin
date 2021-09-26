@@ -116,6 +116,8 @@ ENV ANDROID_SYSROOT="$ANDROID_NDK_ROOT/platforms/android-$ANDROID_API/arch-arm64
 ENV CROSS_SYSROOT="$ANDROID_SYSROOT"
 ENV NDK_SYSROOT="$ANDROID_SYSROOT"
 ENV LABEL="aarch64"
+ENV BIN_PATH="android64"
+
 RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && cd /src \
     && mkdir build && cd build \
@@ -127,5 +129,6 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
        CC=aarch64-linux-android-clang CXX=aarch64-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
     && echo "\e[32mdone building WrkzCoin\e[39m" \
-    && mkdir binary-android-arm64 \
-    && cp ./src/{cryptotest,miner,wallet-upgrader,Wrkzd,wrkz-service,wrkz-wallet,wrkz-wallet-api} binary-android-arm64/
+    && mkdir ${BIN_PATH} \
+    && cd ./src \
+    && cp Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader ../${BIN_PATH}/
