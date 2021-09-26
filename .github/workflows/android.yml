@@ -1,0 +1,89 @@
+name: Build Android
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
+  schedule:
+    - cron: '30 3 * * 0'
+
+env:
+  TAG: ${{ github.ref }}
+
+jobs:
+    buildx:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+      -
+        uses: docker/setup-buildx-action@v1
+        id: buildx
+        with:
+          install: true
+      -
+        name: Build
+        id: build_android
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          export TAG=${COMMIT_SHA::7}
+          docker build -f android_arm64.Dockerfile -t android-arm64 .
+          docker create -it --name android-arm64 android-arm64 bash
+          docker cp android-arm64:/src/build/src/binary-android-arm64 wrkzcoin-android-arm64-${TAG}
+          tar cvfz wrkzcoin-android-arm64-${TAG}.tar.gz wrkzcoin-android-arm64-${TAG}
+          echo ::set-output name=file_name::wrkzcoin-android-arm64-${TAG}.tar.gz
+      -
+        name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8 # Or other version
+
+      - 
+        name: Install awscli via pipx # Isolates dependencies
+        id: install-s3
+        continue-on-error: true
+        shell: bash
+        if: steps.build_android.outcome == 'success' && steps.build_android.conclusion == 'success'
+        run: |
+          export PATH=~/.local/bin:$PATH
+          pip install --user pipx
+          pipx install awscli
+          pip install --user pipx awscli-plugin-endpoint
+      -
+        name: S3 Upload
+        id: s3-upload
+        continue-on-error: true
+        env:
+          BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
+          BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }} # optional: defaults to us-east-1
+          AWS_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          DEST_DIR: 'cli'
+          COMMIT_SHA: ${{ github.sha }}
+          REPO: 'cli'
+        shell: bash
+        if: steps.build_android.outcome == 'success' && steps.build_android.conclusion == 'success'
+        run: |
+          FILENAME="./${{ steps.build_android.outputs.file_name }}"
+          FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
+          DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.build_android.outputs.file_name }}"
+          URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
+          BUILD_CONTENT="$RUNNER_OS-${{ steps.build_android.outputs.file_name }} Size: $FILESIZE "$URL_FILE
+          if [ "$RUNNER_OS" == "Linux" ]; then
+            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            aws configure set default.region ${AWS_REGION}
+            aws s3 cp "./${{ steps.build_android.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
+            aws configure set aws_access_key_id null
+            aws configure set aws_secret_access_key null
+            aws configure set default.region null
+          fi
+          if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "macOS" ]; then
+            curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
+          fi

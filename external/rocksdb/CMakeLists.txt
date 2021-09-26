@@ -555,6 +555,10 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   endif()
 endif()
 
+if (ANDROID)
+  add_definitions(-DOS_ANDROID)
+endif()
+
 if(NOT WIN32)
   add_definitions(-DROCKSDB_PLATFORM_POSIX -DROCKSDB_LIB_IO_POSIX)
 endif()

@@ -143,10 +143,24 @@ elseif (APPLE)
     enable_language(ASM)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/osx)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
-
+elseif (ANDROID)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/android)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
 else ()
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
+endif ()
+
+if (GHC_USE_STD_FS OR ANDROID)
+    add_definitions(-DGHC_USE_STD_FS)
+    #From Android 5: "only position independent executables (PIE) are supported" 
+    message(STATUS "Enabling PIE executable")
+    set(PIC_FLAG "")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -pie")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=user-defined-warnings")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti -fexceptions")
 endif ()
 
 if (NOT MSVC)
@@ -211,7 +225,7 @@ if (NOT MSVC)
         endif ()
     endif ()
 
-    if (NOT APPLE)
+    if (NOT APPLE AND NOT ANDROID)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
 
@@ -241,7 +255,7 @@ if (NOT MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
 
     ## Statically link our binaries
-    if (NOT APPLE)
+    if (NOT APPLE AND NOT ANDROID)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
     endif ()
 endif ()
@@ -255,7 +269,7 @@ message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 if (APPLE)
     set(Boost_LIBRARIES "${Boost_LIBRARIES}")
-elseif (NOT MSVC)
+elseif (NOT MSVC AND NOT ANDROID)
     set(Boost_LIBRARIES "${Boost_LIBRARIES};rt")
 endif ()
 
@@ -315,8 +329,15 @@ if (NOT MSVC)
     )
     set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/leveldb/libleveldb.a")
 
-    execute_process(
-        COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DARCH=${ARCH} -DWITH_ZSTD=ON -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -DUSE_RTTI=ON -B${PROJECT_BINARY_DIR}/rocksdb
-    )
+    if (ANDROID)
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DARCH=${ARCH} -DWITH_ZSTD=ON -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -DUSE_RTTI=OFF -DANDROID=ON -B${PROJECT_BINARY_DIR}/rocksdb
+        )
+    else ()
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DARCH=${ARCH} -DWITH_ZSTD=ON -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -DUSE_RTTI=ON -B${PROJECT_BINARY_DIR}/rocksdb
+        )
+    endif ()
+
     set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
 endif ()
