@@ -17,12 +17,14 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['android64', 'android32_x86']
+        build_name: ['android64', 'android32_x86', 'android64_x86']
         include:
           - build_name: 'android64'
             label: android64
           - build_name: 'android32_x86'
             label: android32_x86
+          - build_name: 'android64_x86'
+            label: android64_x86
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
