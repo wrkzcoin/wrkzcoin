@@ -1,4 +1,4 @@
-FROM debian:stretch
+FROM debian:stretch AS build-stage
 
 RUN apt-get update && apt-get install -y unzip automake build-essential curl file pkg-config git python libtool libtinfo5 wget openjdk-8-jdk
 
@@ -114,7 +114,6 @@ ENV PATH $TOOLCHAIN_DIR/i686-linux-android/bin:$TOOLCHAIN_DIR/bin:$PATH
 ENV ANDROID_SYSROOT="$ANDROID_NDK_ROOT/platforms/android-$ANDROID_API/arch-x86"
 ENV CROSS_SYSROOT="$ANDROID_SYSROOT"
 ENV NDK_SYSROOT="$ANDROID_SYSROOT"
-ENV BIN_PATH="android32_x86"
 
 RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && cd /src \
@@ -126,7 +125,7 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
        RANLIB=i686-linux-android-ranlib STRIP=i686-linux-android-strip \
        CC=i686-linux-android-clang CXX=i686-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
-    && echo "\e[32mdone building WrkzCoin\e[39m" \
-    && cd ./src \
-    && mkdir ${BIN_PATH} \
-    && cp Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader ./${BIN_PATH}/
+    && echo "\e[32mdone building WrkzCoin\e[39m"
+
+FROM scratch AS export-stage
+COPY --from=build-stage /src/build/ /

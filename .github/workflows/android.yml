@@ -41,10 +41,13 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           export TAG=${COMMIT_SHA::7}
-          docker build -f ${{ matrix.build_name }}.Dockerfile -t ${{ matrix.build_name }} .
-          docker create --name ${{ matrix.build_name }} ${{ matrix.build_name }}
-          docker cp ${{ matrix.build_name }}:/src/build/src/${{ matrix.build_name }} wrkzcoin-${{ matrix.build_name }}-${TAG}
-          docker rm ${{ matrix.build_name }}
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          docker build -f ${{ matrix.build_name }}.Dockerfile -t ${{ matrix.build_name }} -o out .
+          mkdir wrkzcoin-${{ matrix.build_name }}-${TAG}/
+          cd out/src/
+          cp ${TARGETS} ../../wrkzcoin-${{ matrix.build_name }}-${TAG}/
+          cd ../../
+          cp LICENSE wrkzcoin-${{ matrix.build_name }}-${TAG}/
           tar cvfz wrkzcoin-${{ matrix.build_name }}-${TAG}.tar.gz wrkzcoin-${{ matrix.build_name }}-${TAG}
           echo ::set-output name=file_name::wrkzcoin-${{ matrix.build_name }}-${TAG}.tar.gz
       -
