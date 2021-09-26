@@ -61,12 +61,12 @@ ENV PATH /usr/cmake-${CMAKE_VERSION}-Linux-x86_64/bin:$PATH
 ## Boost
 ARG BOOST_VERSION=1_68_0
 ARG BOOST_VERSION_DOT=1.68.0
-ARG BOOST_HASH=7f6130bc3cf65f56a618888ce9d5ea704fa10b462be126ad053e80e553d6d8b7
+ARG BOOST_HASH=da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf
 RUN set -ex \
-    && curl -s -L -o  boost_${BOOST_VERSION}.tar.bz2 https://boostorg.jfrog.io/native/main/release/${BOOST_VERSION_DOT}/source/boost_${BOOST_VERSION}.tar.bz2 \
-    && echo "${BOOST_HASH}  boost_${BOOST_VERSION}.tar.bz2" | sha256sum -c \
-    && tar -xvf boost_${BOOST_VERSION}.tar.bz2 \
-    && rm -f boost_${BOOST_VERSION}.tar.bz2 \
+    && curl -s -L -o  boost_${BOOST_VERSION}.tar.gz http://sourceforge.net/projects/boost/files/boost/${BOOST_VERSION_DOT}/${BOOST_VERSION}.tar.gz \
+    && echo "${BOOST_HASH}  boost_${BOOST_VERSION}.tar.gz" | sha256sum -c \
+    && tar zxvf boost_${BOOST_VERSION}.tar.gz >/dev/null \
+    && rm -f boost_${BOOST_VERSION}.tar.gz \
     && cd boost_${BOOST_VERSION} \
     && ./bootstrap.sh --prefix=${PREFIX}
 
