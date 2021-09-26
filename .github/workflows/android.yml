@@ -11,7 +11,7 @@ env:
   TAG: ${{ github.ref }}
 
 jobs:
-    buildx:
+  android_build:
     runs-on: ubuntu-latest
     steps:
       -
