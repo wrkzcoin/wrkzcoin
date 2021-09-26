@@ -125,9 +125,8 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
        RANLIB=i686-linux-android-ranlib STRIP=i686-linux-android-strip \
        CC=i686-linux-android-clang CXX=i686-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
-    && TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader" \
     && cd src/ \
-    && ${STRIP} ${TARGETS} \
+    && i686-linux-android-strip "Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader" \
     && echo "\e[32mdone building WrkzCoin\e[39m"
 
 FROM scratch AS export-stage
