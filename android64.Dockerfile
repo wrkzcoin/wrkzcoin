@@ -122,7 +122,7 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && mkdir build && cd build \
     && CMAKE_INCLUDE_PATH="${PREFIX}/include" \
        CMAKE_LIBRARY_PATH="${PREFIX}/lib" \
-       ANDROID_STL=c++_static \\
+       ANDROID_STL=c++_static \
        APP_ABI=arm64-v8a \
        AR=aarch64-linux-android-ar LD=aarch64-linux-android-ld AS=aarch64-linux-android-as \
        RANLIB=aarch64-linux-android-ranlib STRIP=aarch64-linux-android-strip \
