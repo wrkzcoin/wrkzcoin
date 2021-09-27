@@ -319,6 +319,13 @@ else ()
     message(STATUS "OpenSSL Found: No... Skipping...")
 endif ()
 
+# Add sysroot for Android
+if (ANDROID)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIE")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIE")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_CXX_FLAGS} -fPIE -pie -static-libstdc++")    
+endif (ANDROID)
+
 add_subdirectory(external)
 add_subdirectory(src)
 

@@ -120,7 +120,8 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && mkdir build && cd build \
     && CMAKE_INCLUDE_PATH="${PREFIX}/include" \
        CMAKE_LIBRARY_PATH="${PREFIX}/lib" \
-       ANDROID_STL=c++_shared \
+       ANDROID_STL=c++_static \
+       APP_ABI=x86 \
        AR=i686-linux-android-ar LD=i686-linux-android-ld AS=i686-linux-android-as \
        RANLIB=i686-linux-android-ranlib STRIP=i686-linux-android-strip \
        CC=i686-linux-android-clang CXX=i686-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
