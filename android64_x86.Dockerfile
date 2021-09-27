@@ -25,10 +25,10 @@ RUN mkdir $ANDROID_HOME/licenses && \
     echo 84831b9409646a918e30573bab4c9c91346d8abd > $ANDROID_HOME/licenses/android-sdk-preview-license
 
 # Update and install using sdkmanager
-RUN $ANDROID_HOME/tools/bin/sdkmanager "tools" "platform-tools" && \
-    $ANDROID_HOME/tools/bin/sdkmanager "build-tools;29.0.2" "build-tools;28.0.3" "build-tools;27.0.3" && \
-    $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-29" "platforms;android-28" "platforms;android-27" && \
-    $ANDROID_HOME/tools/bin/sdkmanager "extras;android;m2repository" "extras;google;m2repository"
+RUN $ANDROID_HOME/tools/bin/sdkmanager "tools" "platform-tools" >/dev/null && \
+    $ANDROID_HOME/tools/bin/sdkmanager "build-tools;29.0.2" "build-tools;28.0.3" "build-tools;27.0.3" >/dev/null && \
+    $ANDROID_HOME/tools/bin/sdkmanager "platforms;android-29" "platforms;android-28" "platforms;android-27" >/dev/null && \
+    $ANDROID_HOME/tools/bin/sdkmanager "extras;android;m2repository" "extras;google;m2repository" >/dev/null
 
 ## INSTALL ANDROID NDK
 ENV ANDROID_NDK_REVISION 17b
@@ -88,7 +88,7 @@ RUN curl -s -O http://ftp.gnu.org/pub/gnu/libiconv/libiconv-${ICONV_VERSION}.tar
 
 ## Build BOOST
 RUN cd boost_${BOOST_VERSION} \
-    && ./b2 --build-type=minimal link=static runtime-link=static --with-chrono --with-date_time --with-filesystem --with-program_options --with-regex --with-serialization --with-system --with-thread --with-locale --build-dir=android --stagedir=android toolset=clang threading=multi threadapi=pthread target-os=android -sICONV_PATH=${PREFIX} install -j${NPROC}
+    && ./b2 --build-type=minimal link=static runtime-link=static --with-chrono --with-date_time --with-filesystem --with-program_options --with-regex --with-serialization --with-system --with-thread --with-locale --build-dir=android --stagedir=android toolset=clang threading=multi threadapi=pthread target-os=android -sICONV_PATH=${PREFIX} install -j${NPROC} >/dev/null
 
 # openssl
 ARG OPENSSL_VERSION=1.1.1j
@@ -104,9 +104,9 @@ RUN curl -s -O https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz 
     && ./Configure android-x86_64 \
             --static \
            -D__ANDROID_API__=${ANDROID_API}  ${OPENSSL_CONFIGURE_OPTIONS} \
-           --prefix=${PREFIX} --openssldir=${PREFIX} \
+           --prefix=${PREFIX} --openssldir=${PREFIX} >/dev/null \
     && make -j${NPROC} \
-    && make install
+    && make install >/dev/null
 
 ADD . /src
 ENV ANDROID_NDK_ROOT ${WORKDIR}/android-ndk-r${ANDROID_NDK_REVISION}
@@ -126,7 +126,7 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
        CC=x86_64-linux-android-clang CXX=x86_64-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
     && make -j${NPROC} \
     && cd src/ \
-    && x86_64-linux-android-strip "Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader" \
+    && x86_64-linux-android-strip Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader \
     && echo "\e[32mdone building WrkzCoin\e[39m"
 
 FROM scratch AS export-stage
