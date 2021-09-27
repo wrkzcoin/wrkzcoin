@@ -84,7 +84,7 @@ RUN curl -s -O http://ftp.gnu.org/pub/gnu/libiconv/libiconv-${ICONV_VERSION}.tar
     && rm -f libiconv-${ICONV_VERSION}.tar.gz \
     && cd libiconv-${ICONV_VERSION} \
     && CC=aarch64-linux-android-clang CXX=aarch64-linux-android-clang++ ./configure --build=x86_64-linux-gnu --host=arm-eabi --prefix=${PREFIX} --disable-rpath \
-    && make -j${NPROC} && make install
+    && make -j${NPROC} >/dev/null && make install >/dev/null
 
 ## Build BOOST
 RUN cd boost_${BOOST_VERSION} \
@@ -122,7 +122,7 @@ RUN echo "\e[32mbuilding: WrkzCoin\e[39m" \
     && mkdir build && cd build \
     && CMAKE_INCLUDE_PATH="${PREFIX}/include" \
        CMAKE_LIBRARY_PATH="${PREFIX}/lib" \
-       ANDROID_STL=c++_static \
+       ANDROID_STL=c++_shared \
        AR=aarch64-linux-android-ar LD=aarch64-linux-android-ld AS=aarch64-linux-android-as \
        RANLIB=aarch64-linux-android-ranlib STRIP=aarch64-linux-android-strip \
        CC=aarch64-linux-android-clang CXX=aarch64-linux-android-clang++ cmake .. -DARCH=default -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSTATIC=true -DANDROID=true \
