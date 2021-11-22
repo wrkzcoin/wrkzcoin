@@ -4,12 +4,20 @@
 
 /// \file config_asm.h
 /// \brief Library configuration file
+/// \details <tt>config_asm.h</tt> provides defines for instruction set
+///  architectures
+///  and inline assembly.
 /// \details <tt>config.h</tt> was split into components in May 2019 to better
-///  integrate with Autoconf and its feature tests. The splitting occured so
+///  integrate with Autoconf and its feature tests. The splitting occurred so
 ///  users could continue to include <tt>config.h</tt> while allowing Autoconf
 ///  to write new <tt>config_asm.h</tt> and new <tt>config_cxx.h</tt> using
 ///  its feature tests.
-/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835</A>
+/// \note You should include <tt>config.h</tt> rather than <tt>config_asm.h</tt>
+///  directly.
+/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835,
+///  Make config.h more autoconf friendly</A>,
+///  <A HREF="https://www.cryptopp.com/wiki/Configure.sh">Configure.sh script</A>
+///  on the Crypto++ wiki
 /// \since Crypto++ 8.3
 
 #ifndef CRYPTOPP_CONFIG_ASM_H
@@ -23,7 +31,7 @@
 // compiled using C++ only. The library code will not include SSE2 (and
 // above), NEON, Aarch32, Aarch64, or Altivec (and above). Note the compiler
 // may use higher ISAs depending on compiler options, but the library will not
-// explictly use the ISAs. When disabling ASM, it is best to do it from
+// explicitly use the ISAs. When disabling ASM, it is best to do it from
 // config.h to ensure the library and all programs share the setting.
 // #define CRYPTOPP_DISABLE_ASM 1
 
@@ -39,7 +47,7 @@
 // Also see https://bugs.llvm.org/show_bug.cgi?id=39895 .
 // #define CRYPTOPP_DISABLE_MIXED_ASM 1
 
-#if defined(__clang__)
+#if defined(__clang__) || (defined(__APPLE__) && defined(__GNUC__)) || defined(__SUNPRO_CC)
 # undef CRYPTOPP_DISABLE_MIXED_ASM
 # define CRYPTOPP_DISABLE_MIXED_ASM 1
 #endif
@@ -100,7 +108,7 @@
 # endif
 #endif
 
-// Intrinsics availible in GCC 4.3 (http://gcc.gnu.org/gcc-4.3/changes.html) and
+// Intrinsics available in GCC 4.3 (http://gcc.gnu.org/gcc-4.3/changes.html) and
 // MSVC 2008 (http://msdn.microsoft.com/en-us/library/bb892950%28v=vs.90%29.aspx)
 // SunCC could generate SSE4 at 12.1, but the intrinsics are missing until 12.4.
 #if !defined(CRYPTOPP_DISABLE_SSE4) && defined(CRYPTOPP_SSSE3_AVAILABLE) && \
@@ -166,17 +174,13 @@
 
 // RDRAND uses byte codes. All we need is x86 ASM for it.
 // However tie it to AES-NI since SecureKey was available with it.
-#if !defined(CRYPTOPP_DISABLE_RDRAND) && defined(CRYPTOPP_AESNI_AVAILABLE) && \
-	!(defined(__ANDROID__) || defined(ANDROID)) && \
-	defined(CRYPTOPP_X86_ASM_AVAILABLE)
+#if !defined(CRYPTOPP_DISABLE_RDRAND) && defined(CRYPTOPP_AESNI_AVAILABLE)
 	#define CRYPTOPP_RDRAND_AVAILABLE 1
 #endif
 
 // RDSEED uses byte codes. All we need is x86 ASM for it.
 // However tie it to AES-NI since SecureKey was available with it.
-#if !defined(CRYPTOPP_DISABLE_RDSEED) && defined(CRYPTOPP_AESNI_AVAILABLE) && \
-	!(defined(__ANDROID__) || defined(ANDROID)) && \
-	defined(CRYPTOPP_X86_ASM_AVAILABLE)
+#if !defined(CRYPTOPP_DISABLE_RDSEED) && defined(CRYPTOPP_AESNI_AVAILABLE)
 	#define CRYPTOPP_RDSEED_AVAILABLE 1
 #endif
 
@@ -193,6 +197,7 @@
 #endif
 
 // Fixup Android and SSE, Crypto. It may be enabled based on compiler version.
+// Also see https://developer.android.com/ndk/guides/abis
 #if defined(__ANDROID__) || defined(ANDROID)
 # if (CRYPTOPP_BOOL_X86)
 #  undef CRYPTOPP_SSE41_AVAILABLE
@@ -200,6 +205,8 @@
 #  undef CRYPTOPP_CLMUL_AVAILABLE
 #  undef CRYPTOPP_AESNI_AVAILABLE
 #  undef CRYPTOPP_SHANI_AVAILABLE
+#  undef CRYPTOPP_RDRAND_AVAILABLE
+#  undef CRYPTOPP_RDSEED_AVAILABLE
 #  undef CRYPTOPP_AVX_AVAILABLE
 #  undef CRYPTOPP_AVX2_AVAILABLE
 # endif
@@ -207,6 +214,8 @@
 #  undef CRYPTOPP_CLMUL_AVAILABLE
 #  undef CRYPTOPP_AESNI_AVAILABLE
 #  undef CRYPTOPP_SHANI_AVAILABLE
+#  undef CRYPTOPP_RDRAND_AVAILABLE
+#  undef CRYPTOPP_RDSEED_AVAILABLE
 #  undef CRYPTOPP_AVX_AVAILABLE
 #  undef CRYPTOPP_AVX2_AVAILABLE
 # endif
@@ -217,7 +226,7 @@
 # undef CRYPTOPP_AESNI_AVAILABLE
 #endif
 
-// Fixup for SunCC 12.1-12.6. Compiler crash on GCM_Reduce_CLMUL and friends.
+// Fixup for SunCC 12.1-12.6. Compiler crash on GCM_Reduce_CLMUL.
 // http://github.com/weidai11/cryptopp/issues/226
 #if defined(__SUNPRO_CC) && (__SUNPRO_CC <= 0x5150)
 # undef CRYPTOPP_CLMUL_AVAILABLE
@@ -278,18 +287,6 @@
 # endif  // Platforms
 #endif
 
-// ARMv8 and ASIMD. -march=armv8-a+crypto or above must be present
-// Requires GCC 4.8, Clang 3.3 or Visual Studio 2017
-// Do not use APPLE_CLANG_VERSION; use __ARM_FEATURE_XXX instead.
-#if !defined(CRYPTOPP_ARM_PMULL_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ARM_PMULL)
-# if defined(__aarch32__) || defined(__aarch64__) || defined(_M_ARM64)
-#  if defined(__ARM_FEATURE_CRYPTO) || (CRYPTOPP_GCC_VERSION >= 40800) || \
-      (CRYPTOPP_LLVM_CLANG_VERSION >= 30300) || (CRYPTOPP_MSC_VERSION >= 1916)
-#   define CRYPTOPP_ARM_PMULL_AVAILABLE 1
-#  endif  // Compilers
-# endif  // Platforms
-#endif
-
 // ARMv8 and AES. -march=armv8-a+crypto or above must be present
 // Requires GCC 4.8, Clang 3.3 or Visual Studio 2017
 // Do not use APPLE_CLANG_VERSION; use __ARM_FEATURE_XXX instead.
@@ -298,6 +295,18 @@
 #  if defined(__ARM_FEATURE_CRYPTO) || (CRYPTOPP_GCC_VERSION >= 40800) || \
       (CRYPTOPP_LLVM_CLANG_VERSION >= 30300) || (CRYPTOPP_MSC_VERSION >= 1916)
 #   define CRYPTOPP_ARM_AES_AVAILABLE 1
+#  endif  // Compilers
+# endif  // Platforms
+#endif
+
+// ARMv8 and PMULL. -march=armv8-a+crypto or above must be present
+// Requires GCC 4.8, Clang 3.3 or Visual Studio 2017
+// Do not use APPLE_CLANG_VERSION; use __ARM_FEATURE_XXX instead.
+#if !defined(CRYPTOPP_ARM_PMULL_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ARM_PMULL)
+# if defined(__aarch32__) || defined(__aarch64__) || defined(_M_ARM64)
+#  if defined(__ARM_FEATURE_CRYPTO) || (CRYPTOPP_GCC_VERSION >= 40800) || \
+      (CRYPTOPP_LLVM_CLANG_VERSION >= 30300) || (CRYPTOPP_MSC_VERSION >= 1916)
+#   define CRYPTOPP_ARM_PMULL_AVAILABLE 1
 #  endif  // Compilers
 # endif  // Platforms
 #endif
@@ -315,19 +324,19 @@
 # endif  // Platforms
 #endif
 
-// ARMv8 and SHA-512, SHA-3. -march=armv8.4-a+crypto or above must be present
+// ARMv8 and SHA-512, SHA-3. -march=armv8.2-a+crypto or above must be present
 // Requires GCC 8.0, Clang ??? or Visual Studio 20??
 // Do not use APPLE_CLANG_VERSION; use __ARM_FEATURE_XXX instead.
 #if !defined(CRYPTOPP_ARM_SHA3_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ARM_SHA)
 # if defined(__aarch32__) || defined(__aarch64__) || defined(_M_ARM64)
-#  if defined(__ARM_FEATURE_SHA3) || (CRYPTOPP_GCC_VERSION >= 80000)
+#  if defined(__ARM_FEATURE_SHA3) || (CRYPTOPP_GCC_VERSION >= 80000) || (CRYPTOPP_APPLE_CLANG_VERSION >= 120000) || (CRYPTOPP_LLVM_CLANG_VERSION >= 110000)
 #   define CRYPTOPP_ARM_SHA512_AVAILABLE 1
 #   define CRYPTOPP_ARM_SHA3_AVAILABLE 1
 #  endif  // Compilers
 # endif  // Platforms
 #endif
 
-// ARMv8 and SM3, SM4. -march=armv8.4-a+crypto or above must be present
+// ARMv8 and SM3, SM4. -march=armv8.2-a+crypto or above must be present
 // Requires GCC 8.0, Clang ??? or Visual Studio 20??
 // Do not use APPLE_CLANG_VERSION; use __ARM_FEATURE_XXX instead.
 #if !defined(CRYPTOPP_ARM_SM3_AVAILABLE) && !defined(CRYPTOPP_DISABLE_ARM_SM3)
@@ -351,19 +360,26 @@
 // Limit the <arm_acle.h> include.
 #if !defined(CRYPTOPP_ARM_ACLE_HEADER)
 # if defined(__aarch32__) || defined(__aarch64__) || (__ARM_ARCH >= 8) || defined(__ARM_ACLE)
-#  if !defined(__ANDROID__) && !defined(ANDROID) && !defined(__APPLE__)
-#   define CRYPTOPP_ARM_ACLE_HEADER 1
-#  endif
+#  define CRYPTOPP_ARM_ACLE_HEADER 1
 # endif
 #endif
 
-// Fixup Apple Clang and PMULL. Apple defines __ARM_FEATURE_CRYPTO for Xcode 6
-// but does not provide PMULL. TODO: determine when PMULL is available.
-#if defined(CRYPTOPP_APPLE_CLANG_VERSION) && (CRYPTOPP_APPLE_CLANG_VERSION < 70000)
-# undef CRYPTOPP_ARM_PMULL_AVAILABLE
+// Apple M1 hack. Xcode cross-compiles for iOS lack
+// arm_acle.h. Apple M1 needs arm_acle.h. The problem
+// in practice is, we can't get CRYPTOPP_ARM_ACLE_HEADER
+// quite right based on ARM preprocessor macros.
+#if defined(__APPLE__) && !defined(__ARM_FEATURE_CRC32)
+# undef CRYPTOPP_ARM_ACLE_HEADER
 #endif
 
-// Disable for Android
+// Android hack. TODO: look at this in more detail
+// now that Android has switched over to Clang.
+#if defined(__ANDROID__) || defined(ANDROID)
+# undef CRYPTOPP_ARM_ACLE_HEADER
+#endif
+
+// Disable for Android. Android only offers the base Aarch64 architecture.
+// Also see https://developer.android.com/ndk/guides/abis
 #if defined(__ANDROID__) || defined(ANDROID)
 # undef CRYPTOPP_ARM_CRC32_AVAILABLE
 # undef CRYPTOPP_ARM_PMULL_AVAILABLE

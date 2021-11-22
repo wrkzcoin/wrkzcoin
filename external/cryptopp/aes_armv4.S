@@ -183,14 +183,14 @@ AES_Te:
 .word	0x1B000000, 0x36000000, 0, 0, 0, 0, 0, 0
 .size	AES_Te,.-AES_Te
 
-@ void AES_encrypt(const unsigned char *in, unsigned char *out,
+@ void cryptogams_AES_encrypt_block(const unsigned char *in, unsigned char *out,
 @ 		 const AES_KEY *key) {
-.globl	AES_encrypt
-.type	AES_encrypt,%function
+.globl	cryptogams_AES_encrypt_block
+.type	cryptogams_AES_encrypt_block,%function
 .align	5
-AES_encrypt:
+cryptogams_AES_encrypt_block:
 #ifndef	__thumb2__
-	sub	r3,pc,#8		@ AES_encrypt
+	sub	r3,pc,#8		@ cryptogams_AES_encrypt_block
 #else
 	adr	r3,.
 #endif
@@ -198,7 +198,7 @@ AES_encrypt:
 #if defined(__thumb2__) || defined(__APPLE__)
 	adr	r10,AES_Te
 #else
-	sub	r10,r3,#AES_encrypt-AES_Te	@ Te
+	sub	r10,r3,#cryptogams_AES_encrypt_block-AES_Te	@ Te
 #endif
 	mov	r12,r0		@ inp
 	mov	r11,r2
@@ -243,7 +243,7 @@ AES_encrypt:
 	rev	r3,r3
 #endif
 #endif
-	bl	_armv4_AES_encrypt
+	bl	_cryptogams_armv4_AES_encrypt_block
 
 	ldr	r12,[sp],#4		@ pop out
 #if __ARM_ARCH__>=7
@@ -295,11 +295,11 @@ AES_encrypt:
 	moveq	pc,lr			@ be binary compatible with V4, yet
 .word	0xe12fff1e			@ interoperable with Thumb ISA:-)
 #endif
-.size	AES_encrypt,.-AES_encrypt
+.size	cryptogams_AES_encrypt_block,.-cryptogams_AES_encrypt_block
 
-.type	_armv4_AES_encrypt,%function
+.type	_cryptogams_armv4_AES_encrypt_block,%function
 .align	2
-_armv4_AES_encrypt:
+_cryptogams_armv4_AES_encrypt_block:
 	str	lr,[sp,#-4]!		@ push lr
 	ldmia	r11!,{r4,r5,r6,r7}
 	eor	r0,r0,r4
@@ -432,12 +432,12 @@ _armv4_AES_encrypt:
 
 	sub	r10,r10,#2
 	ldr	pc,[sp],#4		@ pop and return
-.size	_armv4_AES_encrypt,.-_armv4_AES_encrypt
+.size	_cryptogams_armv4_AES_encrypt_block,.-_cryptogams_armv4_AES_encrypt_block
 
-.globl	AES_set_encrypt_key
-.type	AES_set_encrypt_key,%function
+.globl	cryptogams_AES_set_encrypt_key
+.type	cryptogams_AES_set_encrypt_key,%function
 .align	5
-AES_set_encrypt_key:
+cryptogams_AES_set_encrypt_key:
 _armv4_AES_set_encrypt_key:
 #ifndef	__thumb2__
 	sub	r3,pc,#8		@ AES_set_encrypt_key
@@ -738,12 +738,12 @@ _armv4_AES_set_encrypt_key:
 	moveq	pc,lr			@ be binary compatible with V4, yet
 .word	0xe12fff1e			@ interoperable with Thumb ISA:-)
 #endif
-.size	AES_set_encrypt_key,.-AES_set_encrypt_key
+.size	cryptogams_AES_set_encrypt_key,.-cryptogams_AES_set_encrypt_key
 
-.globl	AES_set_decrypt_key
-.type	AES_set_decrypt_key,%function
+.globl	cryptogams_AES_set_decrypt_key
+.type	cryptogams_AES_set_decrypt_key,%function
 .align	5
-AES_set_decrypt_key:
+cryptogams_AES_set_decrypt_key:
 	str	lr,[sp,#-4]!            @ push lr
 	bl	_armv4_AES_set_encrypt_key
 	teq	r0,#0
@@ -753,13 +753,13 @@ AES_set_decrypt_key:
 	mov	r0,r2			@ AES_set_encrypt_key preserves r2,
 	mov	r1,r2			@ which is AES_KEY *key
 	b	_armv4_AES_set_enc2dec_key
-.size	AES_set_decrypt_key,.-AES_set_decrypt_key
+.size	cryptogams_AES_set_decrypt_key,.-cryptogams_AES_set_decrypt_key
 
-@ void AES_set_enc2dec_key(const AES_KEY *inp,AES_KEY *out)
-.globl	AES_set_enc2dec_key
-.type	AES_set_enc2dec_key,%function
+@ void cryptogams_AES_set_enc2dec_key(const AES_KEY *inp,AES_KEY *out)
+.globl	cryptogams_AES_set_enc2dec_key
+.type	cryptogams_AES_set_enc2dec_key,%function
 .align	5
-AES_set_enc2dec_key:
+cryptogams_AES_set_enc2dec_key:
 _armv4_AES_set_enc2dec_key:
 	stmdb	sp!,{r4,r5,r6,r7,r8,r9,r10,r11,r12,lr}
 
@@ -850,7 +850,7 @@ _armv4_AES_set_enc2dec_key:
 	moveq	pc,lr			@ be binary compatible with V4, yet
 .word	0xe12fff1e			@ interoperable with Thumb ISA:-)
 #endif
-.size	AES_set_enc2dec_key,.-AES_set_enc2dec_key
+.size	cryptogams_AES_set_enc2dec_key,.-cryptogams_AES_set_enc2dec_key
 
 .type	AES_Td,%object
 .align	5
@@ -954,14 +954,14 @@ AES_Td:
 .byte	0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 .size	AES_Td,.-AES_Td
 
-@ void AES_decrypt(const unsigned char *in, unsigned char *out,
+@ void cryptogams_AES_decrypt_block(const unsigned char *in, unsigned char *out,
 @ 		 const AES_KEY *key) {
-.globl	AES_decrypt
-.type	AES_decrypt,%function
+.globl	cryptogams_AES_decrypt_block
+.type	cryptogams_AES_decrypt_block,%function
 .align	5
-AES_decrypt:
+cryptogams_AES_decrypt_block:
 #ifndef	__thumb2__
-	sub	r3,pc,#8		@ AES_decrypt
+	sub	r3,pc,#8		@ cryptogams_AES_decrypt_block
 #else
 	adr	r3,.
 #endif
@@ -969,7 +969,7 @@ AES_decrypt:
 #if defined(__thumb2__) || defined(__APPLE__)
 	adr	r10,AES_Td
 #else
-	sub	r10,r3,#AES_decrypt-AES_Td	@ Td
+	sub	r10,r3,#cryptogams_AES_decrypt_block-AES_Td	@ Td
 #endif
 	mov	r12,r0		@ inp
 	mov	r11,r2
@@ -1014,7 +1014,7 @@ AES_decrypt:
 	rev	r3,r3
 #endif
 #endif
-	bl	_armv4_AES_decrypt
+	bl	_cryptogams_armv4_AES_decrypt_block
 
 	ldr	r12,[sp],#4		@ pop out
 #if __ARM_ARCH__>=7
@@ -1066,11 +1066,11 @@ AES_decrypt:
 	moveq	pc,lr			@ be binary compatible with V4, yet
 .word	0xe12fff1e			@ interoperable with Thumb ISA:-)
 #endif
-.size	AES_decrypt,.-AES_decrypt
+.size	cryptogams_AES_decrypt_block,.-cryptogams_AES_decrypt_block
 
-.type	_armv4_AES_decrypt,%function
+.type	_cryptogams_armv4_AES_decrypt_block,%function
 .align	2
-_armv4_AES_decrypt:
+_cryptogams_armv4_AES_decrypt_block:
 	str	lr,[sp,#-4]!		@ push lr
 	ldmia	r11!,{r4,r5,r6,r7}
 	eor	r0,r0,r4
@@ -1212,4 +1212,4 @@ _armv4_AES_decrypt:
 
 	sub	r10,r10,#1024
 	ldr	pc,[sp],#4		@ pop and return
-.size	_armv4_AES_decrypt,.-_armv4_AES_decrypt
+.size	_cryptogams_armv4_AES_decrypt_block,.-_cryptogams_armv4_AES_decrypt_block

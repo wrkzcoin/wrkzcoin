@@ -1,5 +1,8 @@
 // iterhash.h - originally written and placed in the public domain by Wei Dai
 
+/// \file iterhash.h
+/// \brief Base classes for iterated hashes
+
 #ifndef CRYPTOPP_ITERHASH_H
 #define CRYPTOPP_ITERHASH_H
 
@@ -138,7 +141,7 @@ public:
 	unsigned int BlockSize() const {return T_BlockSize;}
 
 	/// \brief Provides the byte order of the hash
-	/// \returns the byte order of the hash as an enumeration
+	/// \return the byte order of the hash as an enumeration
 	/// \details GetByteOrder() returns <tt>T_Endianness::ToEnum()</tt>.
 	/// \sa ByteOrder()
 	ByteOrder GetByteOrder() const {return T_Endianness::ToEnum();}

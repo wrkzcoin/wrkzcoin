@@ -4,12 +4,18 @@
 
 /// \file config_misc.h
 /// \brief Library configuration file
+/// \details <tt>config_misc.h</tt> provides miscellaneous defines.
 /// \details <tt>config.h</tt> was split into components in May 2019 to better
-///  integrate with Autoconf and its feature tests. The splitting occured so
+///  integrate with Autoconf and its feature tests. The splitting occurred so
 ///  users could continue to include <tt>config.h</tt> while allowing Autoconf
 ///  to write new <tt>config_asm.h</tt> and new <tt>config_cxx.h</tt> using
 ///  its feature tests.
-/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835</A>
+/// \note You should include <tt>config.h</tt> rather than <tt>config_misc.h</tt>
+///  directly.
+/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835,
+///  Make config.h more autoconf friendly</A>,
+///  <A HREF="https://www.cryptopp.com/wiki/Configure.sh">Configure.sh script</A>
+///  on the Crypto++ wiki
 /// \since Crypto++ 8.3
 
 #ifndef CRYPTOPP_CONFIG_MISC_H
@@ -66,9 +72,12 @@
 // raises a SIGTRAP (Unix) or calls DebugBreak() (Windows). CRYPTOPP_ASSERT
 // is only in effect when CRYPTOPP_DEBUG, DEBUG or _DEBUG is defined. Unlike
 // Posix assert, CRYPTOPP_ASSERT is not affected by NDEBUG (or failure to
-// define it).
-// Also see http://github.com/weidai11/cryptopp/issues/277, CVE-2016-7420
-#if (defined(DEBUG) || defined(_DEBUG)) && !defined(CRYPTOPP_DEBUG)
+// define it). According to the ndk-build docs, Android use NDK_DEBUG=1 to
+// signal a DEBUG build (and NDK_DEBUG=0 to signal non-DEBUG build).
+// Also see http://github.com/weidai11/cryptopp/issues/277, CVE-2016-7420 and
+// https://developer.android.com/ndk/guides/ndk-build
+#if (defined(DEBUG) || defined(_DEBUG)) || (defined(NDK_DEBUG) && (NDK_DEBUG > 0))
+# undef CRYPTOPP_DEBUG
 # define CRYPTOPP_DEBUG 1
 #endif
 
@@ -146,7 +155,7 @@
 
 #if defined(CRYPTOPP_DOXYGEN_PROCESSING)
 # define CRYPTOPP_CONSTANT(x) static const int x
-#elif defined(CRYPTOPP_CXX11_ENUM)
+#elif defined(CRYPTOPP_CXX11_STRONG_ENUM)
 # define CRYPTOPP_CONSTANT(x) enum : int { x }
 #elif defined(CRYPTOPP_CXX11_CONSTEXPR)
 # define CRYPTOPP_CONSTANT(x) constexpr static int x
@@ -161,6 +170,11 @@
 	// 4661: no suitable definition provided for explicit template instantiation request
 	// 4910: '__declspec(dllexport)' and 'extern' are incompatible on an explicit instantiation
 #	pragma warning(disable: 4127 4512 4661 4910)
+	// _MSC_VER 1920 is VS2019
+#	if _MSC_VER >= 1920
+		// 5054: operator '|': deprecated between enumerations of different types
+#		pragma warning(disable: 5054)
+#	endif
 	// Security related, possible defects
 	// http://blogs.msdn.com/b/vcblog/archive/2010/12/14/off-by-default-compiler-warnings-in-visual-c.aspx
 #	pragma warning(once: 4191 4242 4263 4264 4266 4302 4826 4905 4906 4928)

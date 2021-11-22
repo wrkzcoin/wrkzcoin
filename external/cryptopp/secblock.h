@@ -58,14 +58,14 @@ public:
 	static const size_type ELEMS_MAX = ...;
 #elif defined(_MSC_VER) && (_MSC_VER <= 1400)
 	static const size_type ELEMS_MAX = (~(size_type)0)/sizeof(T);
-#elif defined(CRYPTOPP_CXX11_ENUM)
+#elif defined(CRYPTOPP_CXX11_STRONG_ENUM)
 	enum : size_type {ELEMS_MAX = SIZE_MAX/sizeof(T)};
 #else
 	static const size_type ELEMS_MAX = SIZE_MAX/sizeof(T);
 #endif
 
 	/// \brief Returns the maximum number of elements the allocator can provide
-	/// \returns the maximum number of elements the allocator can provide
+	/// \return the maximum number of elements the allocator can provide
 	/// \details Internally, preprocessor macros are used rather than std::numeric_limits
 	///  because the latter is not a constexpr. Some compilers, like Clang, do not
 	///  optimize it well under all circumstances. Compilers like GCC, ICC and MSVC appear
@@ -103,7 +103,7 @@ protected:
 
 	/// \brief Verifies the allocator can satisfy a request based on size
 	/// \param size the size of the allocation, in elements
-	/// \throws InvalidArgument
+	/// \throw InvalidArgument
 	/// \details CheckSize verifies the number of elements requested is valid.
 	/// \details If size is greater than max_size(), then InvalidArgument is thrown.
 	///  The library throws InvalidArgument if the size is too large to satisfy.
@@ -126,14 +126,14 @@ protected:
 	}
 };
 
-#define CRYPTOPP_INHERIT_ALLOCATOR_TYPES	\
-typedef typename AllocatorBase<T>::value_type value_type;\
-typedef typename AllocatorBase<T>::size_type size_type;\
-typedef typename AllocatorBase<T>::difference_type difference_type;\
-typedef typename AllocatorBase<T>::pointer pointer;\
-typedef typename AllocatorBase<T>::const_pointer const_pointer;\
-typedef typename AllocatorBase<T>::reference reference;\
-typedef typename AllocatorBase<T>::const_reference const_reference;
+#define CRYPTOPP_INHERIT_ALLOCATOR_TYPES(T_type)	\
+	typedef typename AllocatorBase<T_type>::value_type value_type;\
+	typedef typename AllocatorBase<T_type>::size_type size_type;\
+	typedef typename AllocatorBase<T_type>::difference_type difference_type;\
+	typedef typename AllocatorBase<T_type>::pointer pointer;\
+	typedef typename AllocatorBase<T_type>::const_pointer const_pointer;\
+	typedef typename AllocatorBase<T_type>::reference reference;\
+	typedef typename AllocatorBase<T_type>::const_reference const_reference;
 
 /// \brief Reallocation function
 /// \tparam T the class or type
@@ -155,16 +155,16 @@ typename A::pointer StandardReallocate(A& alloc, T *oldPtr, typename A::size_typ
 
 	if (preserve)
 	{
-		typename A::pointer newPointer = alloc.allocate(newSize, NULLPTR);
+		typename A::pointer newPtr = alloc.allocate(newSize, NULLPTR);
 		const typename A::size_type copySize = STDMIN(oldSize, newSize) * sizeof(T);
 
-		if (oldPtr && newPointer)
-			memcpy_s(newPointer, copySize, oldPtr, copySize);
+		if (oldPtr && newPtr)
+			memcpy_s(newPtr, copySize, oldPtr, copySize);
 
 		if (oldPtr)
 			alloc.deallocate(oldPtr, oldSize);
 
-		return newPointer;
+		return newPtr;
 	}
 	else
 	{
@@ -187,13 +187,13 @@ template <class T, bool T_Align16 = false>
 class AllocatorWithCleanup : public AllocatorBase<T>
 {
 public:
-	CRYPTOPP_INHERIT_ALLOCATOR_TYPES
+	CRYPTOPP_INHERIT_ALLOCATOR_TYPES(T)
 
 	/// \brief Allocates a block of memory
 	/// \param ptr the size of the allocation
 	/// \param size the size of the allocation, in elements
-	/// \returns a memory block
-	/// \throws InvalidArgument
+	/// \return a memory block
+	/// \throw InvalidArgument
 	/// \details allocate() first checks the size of the request. If it is non-0
 	///  and less than max_size(), then an attempt is made to fulfill the request
 	///  using either AlignedAllocate() or UnalignedAllocate(). AlignedAllocate() is
@@ -248,7 +248,7 @@ public:
 	/// \param oldSize the size of the previous allocation
 	/// \param newSize the new, requested size
 	/// \param preserve flag that indicates if the old allocation should be preserved
-	/// \returns pointer to the new memory block
+	/// \return pointer to the new memory block
 	/// \details Internally, reallocate() calls StandardReallocate().
 	/// \details If preserve is true, then index 0 is used to begin copying the
 	///  old memory block to the new one. If the block grows, then the old array
@@ -299,7 +299,7 @@ class NullAllocator : public AllocatorBase<T>
 {
 public:
 	//LCOV_EXCL_START
-	CRYPTOPP_INHERIT_ALLOCATOR_TYPES
+	CRYPTOPP_INHERIT_ALLOCATOR_TYPES(T)
 
 	// TODO: should this return NULL or throw bad_alloc? Non-Windows C++ standard
 	// libraries always throw. And late mode Windows throws. Early model Windows
@@ -336,10 +336,8 @@ template <class T, size_t S, class A = NullAllocator<T>, bool T_Align16 = false>
 class FixedSizeAllocatorWithCleanup : public AllocatorBase<T>
 {
 	// The body of FixedSizeAllocatorWithCleanup is provided in the two
-	// partial specializations that follow. The two specialiations
-	// pivot on the boolean template parameter T_Align16. AIX, Solaris,
-	// IBM XLC and SunCC receive a little extra help. We managed to
-	// clear most of the warnings.
+	// partial specializations that follow. The two specializations
+	// pivot on the boolean template parameter T_Align16.
 };
 
 /// \brief Static secure memory block with cleanup
@@ -356,7 +354,7 @@ template <class T, size_t S, class A>
 class FixedSizeAllocatorWithCleanup<T, S, A, true> : public AllocatorBase<T>
 {
 public:
-	CRYPTOPP_INHERIT_ALLOCATOR_TYPES
+	CRYPTOPP_INHERIT_ALLOCATOR_TYPES(T)
 
 	/// \brief Constructs a FixedSizeAllocatorWithCleanup
 	FixedSizeAllocatorWithCleanup() : m_allocated(false) {}
@@ -401,6 +399,8 @@ public:
 	/// \sa reallocate(), SecBlockWithHint
 	pointer allocate(size_type size, const void *hint)
 	{
+		CRYPTOPP_ASSERT(IsAlignedOn(m_array, 8));
+
 		if (size <= S && !m_allocated)
 		{
 			m_allocated = true;
@@ -427,7 +427,7 @@ public:
 			// If the m_allocated assert fires then the bit twiddling for
 			// GetAlignedArray() is probably incorrect for the platform.
 			// Be sure to check CRYPTOPP_ALIGN_DATA(8). The platform may
-			// not have a way to declaritively align data to 8.
+			// not have a way to declaratively align data to 8.
 			CRYPTOPP_ASSERT(size <= S);
 			CRYPTOPP_ASSERT(m_allocated);
 			m_allocated = false;
@@ -446,7 +446,7 @@ public:
 	/// \param newSize the new, requested size
 	/// \param preserve flag that indicates if the old allocation should
 	///  be preserved
-	/// \returns pointer to the new memory block
+	/// \return pointer to the new memory block
 	/// \details FixedSizeAllocatorWithCleanup provides a fixed-size, stack-
 	///  based allocation at compile time. If size is less than or equal to
 	///  S, then a pointer to the static array is returned.
@@ -468,14 +468,15 @@ public:
 			return oldPtr;
 		}
 
-		pointer newPointer = allocate(newSize, NULLPTR);
+		pointer newPtr = allocate(newSize, NULLPTR);
 		if (preserve && newSize)
 		{
 			const size_type copySize = STDMIN(oldSize, newSize);
-			memcpy_s(newPointer, sizeof(T)*newSize, oldPtr, sizeof(T)*copySize);
+			if (newPtr && oldPtr)  // GCC analyzer warning
+				memcpy_s(newPtr, sizeof(T)*newSize, oldPtr, sizeof(T)*copySize);
 		}
 		deallocate(oldPtr, oldSize);
-		return newPointer;
+		return newPtr;
 	}
 
 	CRYPTOPP_CONSTEXPR size_type max_size() const
@@ -485,60 +486,77 @@ public:
 
 private:
 
-#if defined(CRYPTOPP_BOOL_ALIGN16) && (defined(_M_X64) || defined(__x86_64__))
-	// Before we can add additional platforms we need to check the
-	// linker documentation for alignment behavior for stack variables.
-	// CRYPTOPP_ALIGN_DATA(16) is known OK on Linux, OS X, Solaris.
-	// Also see http://stackoverflow.com/a/1468656/608639.
-	T* GetAlignedArray() {
-		CRYPTOPP_ASSERT(IsAlignedOn(m_array, 16));
-		return m_array;
-	}
-	CRYPTOPP_ALIGN_DATA(16) T m_array[S];
-
-#elif defined(CRYPTOPP_BOOL_ALIGN16)
+#if CRYPTOPP_BOOL_ALIGN16
 
 	// There be demons here... We cannot use CRYPTOPP_ALIGN_DATA(16)
-	// because linkers on 32-bit machines (and some 64-bit machines)
-	// align the stack to 8-bytes or less by default, not 16-bytes as
-	// requested. Additionally, the AIX linker seems to use 4-bytes
-	// by default. However, all linkers tested appear to honor
-	// CRYPTOPP_ALIGN_DATA(8). Also see
-	// http://stackoverflow.com/a/1468656/608639.
+	// because linkers on 32-bit machines and some 64-bit machines
+	// align the stack to 8-bytes or less, and not 16-bytes as
+	// requested. We can only count on a smaller alignment. All
+	// toolchains tested appear to honor CRYPTOPP_ALIGN_DATA(8). Also
+	// see http://stackoverflow.com/a/1468656/608639.
 	//
 	// The 16-byte alignment is achieved by padding the requested
-	// size with extra elements so we have at least 16-bytes of slack
-	// to work with. Then the pointer is moved down to achieve a
-	// 16-byte alignment (stacks grow down).
+	// size with extra elements so we have at least 8-bytes of slack
+	// to work with. Then the array pointer is moved to achieve a
+	// 16-byte alignment.
 	//
-	// The additional 16-bytes introduces a small secondary issue.
+	// The additional 8-bytes introduces a small secondary issue.
 	// The secondary issue is, a large T results in 0 = 8/sizeof(T).
 	// The library is OK but users may hit it. So we need to guard
-	// for a large T, and that is what PAD achieves.
+	// for a large T, and that is what the enum and PAD achieves.
 	T* GetAlignedArray() {
-		T* p_array = reinterpret_cast<T*>(static_cast<void*>((reinterpret_cast<byte*>(m_array)) + (0-reinterpret_cast<size_t>(m_array))%16));
-		// Verify the 16-byte alignment
-		CRYPTOPP_ASSERT(IsAlignedOn(p_array, 16));
-		// Verify allocated array with pad is large enough.
-		CRYPTOPP_ASSERT(p_array+S <= m_array+(S+PAD));
-		return p_array;
+
+		// m_array is aligned on 8 byte boundaries due to
+		// CRYPTOPP_ALIGN_DATA(8). If m_array%16 is 0, then the buffer
+		// is 16-byte aligned and nothing needs to be done. if
+		// m_array%16 is 8, then the buffer is not 16-byte aligned and
+		// we need to add 8. 8 has that nice symmetric property.
+		//
+		// If we needed to use CRYPTOPP_ALIGN_DATA(4) due to toolchain
+		// limitations, then the calculation would be slightly more
+		// costly: ptr = m_array + (16 - (m_array % 16)) % 16;
+		CRYPTOPP_ASSERT(IsAlignedOn(m_array, 8));
+		int off = reinterpret_cast<uintptr_t>(m_array) % 16;
+		byte* ptr = reinterpret_cast<byte*>(m_array) + off;
+
+		// Verify the 16-byte alignment. This is the point
+		// of these extra gyrations.
+		CRYPTOPP_ASSERT(IsAlignedOn(ptr, 16));
+		// Verify the lower bound. This is Issue 982/988.
+		CRYPTOPP_ASSERT(
+			reinterpret_cast<uintptr_t>(ptr) >=
+			  reinterpret_cast<uintptr_t>(m_array)
+		);
+		// Verify the upper bound. Allocated array with
+		// pad is large enough.
+		CRYPTOPP_ASSERT(
+			reinterpret_cast<uintptr_t>(ptr+S*sizeof(T)) <=
+			  reinterpret_cast<uintptr_t>(m_array+(S+PAD))
+		);
+
+		// void* to silence Clang warnings
+		return reinterpret_cast<T*>(
+		  static_cast<void*>(ptr)
+		);
 	}
 
-#   if defined(_AIX)
-	// PAD is elements, not bytes, and rounded up to ensure no overflow.
-	enum { Q = sizeof(T), PAD = (Q >= 16) ? 1 : (Q >= 8) ? 2 : (Q >= 4) ? 4 : (Q >= 2) ? 8 : 16 };
-	CRYPTOPP_ALIGN_DATA(8) T m_array[S+PAD];
-#   else
 	// PAD is elements, not bytes, and rounded up to ensure no overflow.
 	enum { Q = sizeof(T), PAD = (Q >= 8) ? 1 : (Q >= 4) ? 2 : (Q >= 2) ? 4 : 8 };
+	// enum { Q = sizeof(T), PAD = (Q >= 16) ? 1 : (Q >= 8) ? 2 : (Q >= 4) ? 4 : (Q >= 2) ? 8 : 16 };
 	CRYPTOPP_ALIGN_DATA(8) T m_array[S+PAD];
-#   endif
 
 #else
 
-	// CRYPTOPP_BOOL_ALIGN16 is 0. Use natural alignment of T.
+	// CRYPTOPP_BOOL_ALIGN16 is 0. If we are here then the user
+	// probably compiled with CRYPTOPP_DISABLE_ASM. Normally we
+	// would use the natural alignment of T. The problem we are
+	// having is, some toolchains are changing the boundary for
+	// 64-bit arrays. 64-bit elements require 8-byte alignment,
+	// but the toolchain is laying the array out on a 4 byte
+	// boundary. See GH #992 for mystery alignment,
+	// https://github.com/weidai11/cryptopp/issues/992
 	T* GetAlignedArray() {return m_array;}
-	CRYPTOPP_ALIGN_DATA(4) T m_array[S];
+	CRYPTOPP_ALIGN_DATA(8) T m_array[S];
 
 #endif
 
@@ -560,7 +578,7 @@ template <class T, size_t S, class A>
 class FixedSizeAllocatorWithCleanup<T, S, A, false> : public AllocatorBase<T>
 {
 public:
-	CRYPTOPP_INHERIT_ALLOCATOR_TYPES
+	CRYPTOPP_INHERIT_ALLOCATOR_TYPES(T)
 
 	/// \brief Constructs a FixedSizeAllocatorWithCleanup
 	FixedSizeAllocatorWithCleanup() : m_allocated(false) {}
@@ -649,7 +667,7 @@ public:
 	/// \param newSize the new, requested size
 	/// \param preserve flag that indicates if the old allocation should
 	///  be preserved
-	/// \returns pointer to the new memory block
+	/// \return pointer to the new memory block
 	/// \details FixedSizeAllocatorWithCleanup provides a fixed-size, stack-
 	///  based allocation at compile time. If size is less than or equal to
 	///  S, then a pointer to the static array is returned.
@@ -671,14 +689,15 @@ public:
 			return oldPtr;
 		}
 
-		pointer newPointer = allocate(newSize, NULLPTR);
+		pointer newPtr = allocate(newSize, NULLPTR);
 		if (preserve && newSize)
 		{
 			const size_type copySize = STDMIN(oldSize, newSize);
-			memcpy_s(newPointer, sizeof(T)*newSize, oldPtr, sizeof(T)*copySize);
+			if (newPtr && oldPtr)  // GCC analyzer warning
+				memcpy_s(newPtr, sizeof(T)*newSize, oldPtr, sizeof(T)*copySize);
 		}
 		deallocate(oldPtr, oldSize);
-		return newPointer;
+		return newPtr;
 	}
 
 	CRYPTOPP_CONSTEXPR size_type max_size() const
@@ -688,11 +707,12 @@ public:
 
 private:
 
-	// The 8-byte alignments follows convention of Linux and Windows.
-	// Linux and Windows receives most testing. Duplicate it here for
-	// other platforms like AIX and Solaris. AIX and Solaris often use
-	// alignments smaller than expected. In fact AIX caught us by
-	// surprise with word16 and word32.
+	// T_Align16 is false. Normally we would use the natural
+	// alignment of T. The problem we are having is, some toolchains
+	// are changing the boundary for 64-bit arrays. 64-bit elements
+	// require 8-byte alignment, but the toolchain is laying the array
+	// out on a 4 byte boundary. See GH #992 for mystery alignment,
+	// https://github.com/weidai11/cryptopp/issues/992
 	T* GetAlignedArray() {return m_array;}
 	CRYPTOPP_ALIGN_DATA(8) T m_array[S];
 
@@ -728,7 +748,7 @@ public:
 	static const size_type ELEMS_MAX = ...;
 #elif defined(_MSC_VER) && (_MSC_VER <= 1400)
 	static const size_type ELEMS_MAX = (~(size_type)0)/sizeof(T);
-#elif defined(CRYPTOPP_CXX11_ENUM)
+#elif defined(CRYPTOPP_CXX11_STRONG_ENUM)
 	enum : size_type {ELEMS_MAX = A::ELEMS_MAX};
 #else
 	static const size_type ELEMS_MAX = SIZE_MAX/sizeof(T);
@@ -736,7 +756,7 @@ public:
 
 	/// \brief Construct a SecBlock with space for size elements.
 	/// \param size the size of the allocation, in elements
-	/// \throws std::bad_alloc
+	/// \throw std::bad_alloc
 	/// \details The elements are not initialized.
 	/// \note size is the count of elements, and not the number of bytes
 	explicit SecBlock(size_type size=0)
@@ -744,17 +764,18 @@ public:
 
 	/// \brief Copy construct a SecBlock from another SecBlock
 	/// \param t the other SecBlock
-	/// \throws std::bad_alloc
+	/// \throw std::bad_alloc
 	SecBlock(const SecBlock<T, A> &t)
 		: m_mark(t.m_mark), m_size(t.m_size), m_ptr(m_alloc.allocate(t.m_size, NULLPTR)) {
 			CRYPTOPP_ASSERT((!t.m_ptr && !m_size) || (t.m_ptr && m_size));
-			if (t.m_ptr) {memcpy_s(m_ptr, m_size*sizeof(T), t.m_ptr, t.m_size*sizeof(T));}
+			if (m_ptr && t.m_ptr)
+				memcpy_s(m_ptr, m_size*sizeof(T), t.m_ptr, t.m_size*sizeof(T));
 		}
 
 	/// \brief Construct a SecBlock from an array of elements.
 	/// \param ptr a pointer to an array of T
 	/// \param len the number of elements in the memory block
-	/// \throws std::bad_alloc
+	/// \throw std::bad_alloc
 	/// \details If <tt>ptr!=NULL</tt> and <tt>len!=0</tt>, then the block is initialized from the pointer
 	///  <tt>ptr</tt>. If <tt>ptr==NULL</tt> and <tt>len!=0</tt>, then the block is initialized to 0.
 	///  Otherwise, the block is empty and not initialized.
@@ -762,9 +783,9 @@ public:
 	SecBlock(const T *ptr, size_type len)
 		: m_mark(ELEMS_MAX), m_size(len), m_ptr(m_alloc.allocate(len, NULLPTR)) {
 			CRYPTOPP_ASSERT((!m_ptr && !m_size) || (m_ptr && m_size));
-			if (ptr && m_ptr)
+			if (m_ptr && ptr)
 				memcpy_s(m_ptr, m_size*sizeof(T), ptr, len*sizeof(T));
-			else if (m_size)
+			else if (m_ptr && m_size)
 				memset(m_ptr, 0, m_size*sizeof(T));
 		}
 
@@ -773,68 +794,68 @@ public:
 
 #ifdef __BORLANDC__
 	/// \brief Cast operator
-        /// \returns block pointer cast to non-const <tt>T *</tt>
+        /// \return block pointer cast to non-const <tt>T *</tt>
 	operator T *() const
 		{return (T*)m_ptr;}
 #else
 	/// \brief Cast operator
-        /// \returns block pointer cast to <tt>const void *</tt>
+        /// \return block pointer cast to <tt>const void *</tt>
 	operator const void *() const
 		{return m_ptr;}
 
 	/// \brief Cast operator
-        /// \returns block pointer cast to non-const <tt>void *</tt>
+        /// \return block pointer cast to non-const <tt>void *</tt>
 	operator void *()
 		{return m_ptr;}
 
 	/// \brief Cast operator
-        /// \returns block pointer cast to <tt>const T *</tt>
+        /// \return block pointer cast to <tt>const T *</tt>
 	operator const T *() const
 		{return m_ptr;}
 
 	/// \brief Cast operator
-        /// \returns block pointer cast to non-const <tt>T *</tt>
+        /// \return block pointer cast to non-const <tt>T *</tt>
 	operator T *()
 		{return m_ptr;}
 #endif
 
 	/// \brief Provides an iterator pointing to the first element in the memory block
-	/// \returns iterator pointing to the first element in the memory block
+	/// \return iterator pointing to the first element in the memory block
 	iterator begin()
 		{return m_ptr;}
 	/// \brief Provides a constant iterator pointing to the first element in the memory block
-	/// \returns constant iterator pointing to the first element in the memory block
+	/// \return constant iterator pointing to the first element in the memory block
 	const_iterator begin() const
 		{return m_ptr;}
 	/// \brief Provides an iterator pointing beyond the last element in the memory block
-	/// \returns iterator pointing beyond the last element in the memory block
+	/// \return iterator pointing beyond the last element in the memory block
 	iterator end()
 		{return m_ptr+m_size;}
 	/// \brief Provides a constant iterator pointing beyond the last element in the memory block
-	/// \returns constant iterator pointing beyond the last element in the memory block
+	/// \return constant iterator pointing beyond the last element in the memory block
 	const_iterator end() const
 		{return m_ptr+m_size;}
 
 	/// \brief Provides a pointer to the first element in the memory block
-	/// \returns pointer to the first element in the memory block
+	/// \return pointer to the first element in the memory block
 	typename A::pointer data() {return m_ptr;}
 	/// \brief Provides a pointer to the first element in the memory block
-	/// \returns constant pointer to the first element in the memory block
+	/// \return constant pointer to the first element in the memory block
 	typename A::const_pointer data() const {return m_ptr;}
 
 	/// \brief Provides the count of elements in the SecBlock
-	/// \returns number of elements in the memory block
+	/// \return number of elements in the memory block
 	/// \note the return value is the count of elements, and not the number of bytes
 	size_type size() const {return m_size;}
 	/// \brief Determines if the SecBlock is empty
-	/// \returns true if number of elements in the memory block is 0, false otherwise
+	/// \return true if number of elements in the memory block is 0, false otherwise
 	bool empty() const {return m_size == 0;}
 
 	/// \brief Provides a byte pointer to the first element in the memory block
-	/// \returns byte pointer to the first element in the memory block
+	/// \return byte pointer to the first element in the memory block
 	byte * BytePtr() {return (byte *)m_ptr;}
 	/// \brief Return a byte pointer to the first element in the memory block
-	/// \returns constant byte pointer to the first element in the memory block
+	/// \return constant byte pointer to the first element in the memory block
 	const byte * BytePtr() const {return (const byte *)m_ptr;}
 	/// \brief Provides the number of bytes in the SecBlock
 	/// \return the number of bytes in the memory block
@@ -872,8 +893,8 @@ public:
 	void Assign(const T *ptr, size_type len)
 	{
 		New(len);
-		if (m_ptr && ptr)
-			{memcpy_s(m_ptr, m_size*sizeof(T), ptr, len*sizeof(T));}
+		if (m_ptr && ptr)  // GCC analyzer warning
+			memcpy_s(m_ptr, m_size*sizeof(T), ptr, len*sizeof(T));
 		m_mark = ELEMS_MAX;
 	}
 
@@ -902,8 +923,8 @@ public:
 		if (this != &t)
 		{
 			New(t.m_size);
-			if (m_ptr && t.m_ptr)
-				{memcpy_s(m_ptr, m_size*sizeof(T), t, t.m_size*sizeof(T));}
+			if (m_ptr && t.m_ptr)  // GCC analyzer warning
+				memcpy_s(m_ptr, m_size*sizeof(T), t, t.m_size*sizeof(T));
 		}
 		m_mark = ELEMS_MAX;
 	}
@@ -933,12 +954,14 @@ public:
 			if (this != &t)  // s += t
 			{
 				Grow(m_size+t.m_size);
-				memcpy_s(m_ptr+oldSize, (m_size-oldSize)*sizeof(T), t.m_ptr, t.m_size*sizeof(T));
+				if (m_ptr && t.m_ptr)  // GCC analyzer warning
+					memcpy_s(m_ptr+oldSize, (m_size-oldSize)*sizeof(T), t.m_ptr, t.m_size*sizeof(T));
 			}
 			else            // t += t
 			{
 				Grow(m_size*2);
-				memcpy_s(m_ptr+oldSize, (m_size-oldSize)*sizeof(T), m_ptr, oldSize*sizeof(T));
+				if (m_ptr && t.m_ptr)  // GCC analyzer warning
+					memcpy_s(m_ptr+oldSize, (m_size-oldSize)*sizeof(T), m_ptr, oldSize*sizeof(T));
 			}
 		}
 		m_mark = ELEMS_MAX;
@@ -947,7 +970,7 @@ public:
 
 	/// \brief Construct a SecBlock from this and another SecBlock
 	/// \param t the other SecBlock
-	/// \returns a newly constructed SecBlock that is a conacentation of this and t
+	/// \return a newly constructed SecBlock that is a conacentation of this and t
 	/// \details Internally, a new SecBlock is created from this and a concatenation of t.
 	SecBlock<T, A> operator+(const SecBlock<T, A> &t)
 	{
@@ -956,14 +979,16 @@ public:
 		if(!t.m_size) return SecBlock(*this);
 
 		SecBlock<T, A> result(m_size+t.m_size);
-		if (m_size) {memcpy_s(result.m_ptr, result.m_size*sizeof(T), m_ptr, m_size*sizeof(T));}
-		memcpy_s(result.m_ptr+m_size, (result.m_size-m_size)*sizeof(T), t.m_ptr, t.m_size*sizeof(T));
+		if (m_size)
+			memcpy_s(result.m_ptr, result.m_size*sizeof(T), m_ptr, m_size*sizeof(T));
+		if (result.m_ptr && t.m_ptr)  // GCC analyzer warning
+			memcpy_s(result.m_ptr+m_size, (result.m_size-m_size)*sizeof(T), t.m_ptr, t.m_size*sizeof(T));
 		return result;
 	}
 
 	/// \brief Bitwise compare two SecBlocks
 	/// \param t the other SecBlock
-	/// \returns true if the size and bits are equal, false otherwise
+	/// \return true if the size and bits are equal, false otherwise
 	/// \details Uses a constant time compare if the arrays are equal size. The constant time
 	///  compare is VerifyBufsEqual() found in misc.h.
 	/// \sa operator!=()
@@ -976,7 +1001,7 @@ public:
 
 	/// \brief Bitwise compare two SecBlocks
 	/// \param t the other SecBlock
-	/// \returns true if the size and bits are equal, false otherwise
+	/// \return true if the size and bits are equal, false otherwise
 	/// \details Uses a constant time compare if the arrays are equal size. The constant time
 	///  compare is VerifyBufsEqual() found in misc.h.
 	/// \details Internally, operator!=() returns the inverse of operator==().

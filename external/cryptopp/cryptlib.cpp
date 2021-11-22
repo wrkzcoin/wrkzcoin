@@ -647,7 +647,12 @@ size_t BufferedTransformation::TransferMessagesTo2(BufferedTransformation &targe
 
 			while (AnyRetrievable())
 			{
-				transferredBytes = LWORD_MAX;
+				// MaxRetrievable() instead of LWORD_MAX due to GH #962. If
+				// the target calls CreatePutSpace(), then the allocation
+				// size will be LWORD_MAX. That happens when target is a
+				// ByteQueue. Maybe ByteQueue should check the size, and if
+				// it is LWORD_MAX or -1, then use a default like 4096.
+				transferredBytes = MaxRetrievable();
 				blockedBytes = TransferTo2(target, transferredBytes, channel, blocking);
 				if (blockedBytes > 0)
 					return blockedBytes;
@@ -1013,7 +1018,7 @@ int LibraryVersion(CRYPTOPP_NOINLINE_DOTDOTDOT)
 class NullNameValuePairs : public NameValuePairs
 {
 public:
-	NullNameValuePairs() {}    //  Clang complains a default ctor must be avilable
+	NullNameValuePairs() {}    //  Clang complains a default ctor must be available
 	bool GetVoidValue(const char *name, const std::type_info &valueType, void *pValue) const
 		{CRYPTOPP_UNUSED(name); CRYPTOPP_UNUSED(valueType); CRYPTOPP_UNUSED(pValue); return false;}
 };
