@@ -8,7 +8,7 @@
 #include "cpu.h"
 
 // Uncomment for benchmarking C++ against SSE or NEON.
-// Do so in both speck.cpp and speck-simd.cpp.
+// Do so in both speck.cpp and speck_simd.cpp.
 // #undef CRYPTOPP_SSSE3_AVAILABLE
 // #undef CRYPTOPP_SSE41_AVAILABLE
 // #undef CRYPTOPP_ARM_NEON_AVAILABLE
@@ -171,12 +171,6 @@ ANONYMOUS_NAMESPACE_END
 NAMESPACE_BEGIN(CryptoPP)
 
 #if (CRYPTOPP_ARM_NEON_AVAILABLE)
-extern size_t SPECK64_Enc_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-
-extern size_t SPECK64_Dec_AdvancedProcessBlocks_NEON(const word32* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-
 extern size_t SPECK128_Enc_AdvancedProcessBlocks_NEON(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 
@@ -200,71 +194,21 @@ extern size_t SPECK128_Dec_AdvancedProcessBlocks_SSSE3(const word64* subKeys, si
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
-#if (CRYPTOPP_POWER7_AVAILABLE)
-extern size_t SPECK64_Enc_AdvancedProcessBlocks_POWER7(const word32* subKeys, size_t rounds,
+#if (CRYPTOPP_ALTIVEC_AVAILABLE)
+extern size_t SPECK128_Enc_AdvancedProcessBlocks_ALTIVEC(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 
-extern size_t SPECK64_Dec_AdvancedProcessBlocks_POWER7(const word32* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-#elif (CRYPTOPP_ALTIVEC_AVAILABLE)
-extern size_t SPECK64_Enc_AdvancedProcessBlocks_ALTIVEC(const word32* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-
-extern size_t SPECK64_Dec_AdvancedProcessBlocks_ALTIVEC(const word32* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-#endif
-
-#if (CRYPTOPP_POWER8_AVAILABLE)
-extern size_t SPECK128_Enc_AdvancedProcessBlocks_POWER8(const word64* subKeys, size_t rounds,
-    const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
-
-extern size_t SPECK128_Dec_AdvancedProcessBlocks_POWER8(const word64* subKeys, size_t rounds,
+extern size_t SPECK128_Dec_AdvancedProcessBlocks_ALTIVEC(const word64* subKeys, size_t rounds,
     const byte *inBlocks, const byte *xorBlocks, byte *outBlocks, size_t length, word32 flags);
 #endif
 
 std::string SPECK64::Base::AlgorithmProvider() const
 {
-#if (CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS)
-# if (CRYPTOPP_SSE41_AVAILABLE)
-    if (HasSSE41())
-        return "SSE4.1";
-# endif
-# if (CRYPTOPP_ARM_NEON_AVAILABLE)
-    if (HasNEON())
-        return "NEON";
-# endif
-# if (CRYPTOPP_POWER7_AVAILABLE)
-    if (HasPower7())
-        return "Power7";
-# endif
-# if (CRYPTOPP_ALTIVEC_AVAILABLE)
-    if (HasAltivec())
-        return "Altivec";
-# endif
-#endif
     return "C++";
 }
 
 unsigned int SPECK64::Base::OptimalDataAlignment() const
 {
-#if (CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS)
-# if (CRYPTOPP_SSE41_AVAILABLE)
-    if (HasSSE41())
-        return 16;
-# endif
-# if (CRYPTOPP_ARM_NEON_AVAILABLE)
-    if (HasNEON())
-        return 4;
-# endif
-# if (CRYPTOPP_POWER7_AVAILABLE)
-    if (HasPower7())
-        return 4;
-# endif
-# if (CRYPTOPP_ALTIVEC_AVAILABLE)
-    if (HasAltivec())
-        return 16;
-# endif
-#endif
     return GetAlignmentOf<word32>();
 }
 
@@ -297,17 +241,6 @@ void SPECK64::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength,
     default:
         CRYPTOPP_ASSERT(0);
     }
-
-    // Pre-splat the round keys for Altivec forward transformation
-#if CRYPTOPP_ALTIVEC_AVAILABLE
-    if (IsForwardTransformation() && HasAltivec())
-    {
-        AlignedSecBlock presplat(m_rkeys.size()*4);
-        for (size_t i=0, j=0; i<m_rkeys.size(); i++, j+=4)
-            presplat[j+0] = presplat[j+1] = presplat[j+2] = presplat[j+3] = m_rkeys[i];
-        m_rkeys.swap(presplat);
-    }
-#endif
 }
 
 void SPECK64::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
@@ -369,9 +302,9 @@ std::string SPECK128::Base::AlgorithmProvider() const
     if (HasNEON())
         return "NEON";
 # endif
-# if (CRYPTOPP_POWER8_AVAILABLE)
-    if (HasPower8())
-        return "Power8";
+# if (CRYPTOPP_ALTIVEC_AVAILABLE)
+    if (HasAltivec())
+        return "Altivec";
 # endif
 #endif
     return "C++";
@@ -382,15 +315,15 @@ unsigned int SPECK128::Base::OptimalDataAlignment() const
 #if (CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS)
 # if (CRYPTOPP_SSSE3_AVAILABLE)
     if (HasSSSE3())
-        return 16;
+        return 16;  // load __m128i
 # endif
 # if (CRYPTOPP_ARM_NEON_AVAILABLE)
     if (HasNEON())
-        return 8;
+        return 8;  // load uint64x2_t
 # endif
-# if (CRYPTOPP_POWER8_AVAILABLE)
-    if (HasPower8())
-        return 8;
+# if (CRYPTOPP_ALTIVEC_AVAILABLE)
+    if (HasAltivec())
+        return 16;  // load uint64x2_p
 # endif
 #endif
     return GetAlignmentOf<word64>();
@@ -431,9 +364,19 @@ void SPECK128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
         CRYPTOPP_ASSERT(0);
     }
 
-    // Pre-splat the round keys for Power8 forward transformation
-#if CRYPTOPP_POWER8_AVAILABLE
-    if (IsForwardTransformation() && HasPower8())
+#if CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS
+
+    // Pre-splat the round keys for Altivec forward transformation
+#if CRYPTOPP_ALTIVEC_AVAILABLE
+    if (IsForwardTransformation() && HasAltivec())
+    {
+        AlignedSecBlock presplat(m_rkeys.size()*2);
+        for (size_t i=0, j=0; i<m_rkeys.size(); i++, j+=2)
+            presplat[j+0] = presplat[j+1] = m_rkeys[i];
+        m_rkeys.swap(presplat);
+    }
+#elif CRYPTOPP_SSSE3_AVAILABLE
+    if (IsForwardTransformation() && HasSSSE3())
     {
         AlignedSecBlock presplat(m_rkeys.size()*2);
         for (size_t i=0, j=0; i<m_rkeys.size(); i++, j+=2)
@@ -441,6 +384,8 @@ void SPECK128::Base::UncheckedSetKey(const byte *userKey, unsigned int keyLength
         m_rkeys.swap(presplat);
     }
 #endif
+
+#endif  // CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS
 }
 
 void SPECK128::Enc::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock, byte *outBlock) const
@@ -495,58 +440,6 @@ void SPECK128::Dec::ProcessAndXorBlock(const byte *inBlock, const byte *xorBlock
     OutBlock oblk(xorBlock, outBlock); oblk(m_wspace[3])(m_wspace[2]);
 }
 
-#if (CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS)
-size_t SPECK64::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
-        byte *outBlocks, size_t length, word32 flags) const
-{
-#if (CRYPTOPP_SSE41_AVAILABLE)
-    if (HasSSE41())
-        return SPECK64_Enc_AdvancedProcessBlocks_SSE41(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
-    if (HasNEON())
-        return SPECK64_Enc_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-#if (CRYPTOPP_POWER7_AVAILABLE)
-    if (HasPower7())
-        return SPECK64_Enc_AdvancedProcessBlocks_POWER7(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#elif (CRYPTOPP_ALTIVEC_AVAILABLE)
-    if (HasAltivec())
-        return SPECK64_Enc_AdvancedProcessBlocks_ALTIVEC(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-    return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
-}
-
-size_t SPECK64::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
-        byte *outBlocks, size_t length, word32 flags) const
-{
-#if (CRYPTOPP_SSE41_AVAILABLE)
-    if (HasSSE41())
-        return SPECK64_Dec_AdvancedProcessBlocks_SSE41(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-#if (CRYPTOPP_ARM_NEON_AVAILABLE)
-    if (HasNEON())
-        return SPECK64_Dec_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-#if (CRYPTOPP_POWER7_AVAILABLE)
-    if (HasPower7())
-        return SPECK64_Dec_AdvancedProcessBlocks_POWER7(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#elif (CRYPTOPP_ALTIVEC_AVAILABLE)
-    if (HasAltivec())
-        return SPECK64_Dec_AdvancedProcessBlocks_ALTIVEC(m_rkeys, (size_t)m_rounds,
-            inBlocks, xorBlocks, outBlocks, length, flags);
-#endif
-    return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
-}
-#endif  // CRYPTOPP_SPECK64_ADVANCED_PROCESS_BLOCKS
-
 #if (CRYPTOPP_SPECK128_ADVANCED_PROCESS_BLOCKS)
 size_t SPECK128::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xorBlocks,
         byte *outBlocks, size_t length, word32 flags) const
@@ -561,9 +454,9 @@ size_t SPECK128::Enc::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
         return SPECK128_Enc_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
             inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
-#if (CRYPTOPP_POWER8_AVAILABLE)
-    if (HasPower8())
-        return SPECK128_Enc_AdvancedProcessBlocks_POWER8(m_rkeys, (size_t)m_rounds,
+#if (CRYPTOPP_ALTIVEC_AVAILABLE)
+    if (HasAltivec())
+        return SPECK128_Enc_AdvancedProcessBlocks_ALTIVEC(m_rkeys, (size_t)m_rounds,
             inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
     return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);
@@ -582,9 +475,9 @@ size_t SPECK128::Dec::AdvancedProcessBlocks(const byte *inBlocks, const byte *xo
         return SPECK128_Dec_AdvancedProcessBlocks_NEON(m_rkeys, (size_t)m_rounds,
             inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
-#if (CRYPTOPP_POWER8_AVAILABLE)
-    if (HasPower8())
-        return SPECK128_Dec_AdvancedProcessBlocks_POWER8(m_rkeys, (size_t)m_rounds,
+#if (CRYPTOPP_ALTIVEC_AVAILABLE)
+    if (HasAltivec())
+        return SPECK128_Dec_AdvancedProcessBlocks_ALTIVEC(m_rkeys, (size_t)m_rounds,
             inBlocks, xorBlocks, outBlocks, length, flags);
 #endif
     return BlockTransformation::AdvancedProcessBlocks(inBlocks, xorBlocks, outBlocks, length, flags);

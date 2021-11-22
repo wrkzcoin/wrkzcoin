@@ -300,7 +300,7 @@ void BenchMarkKeyAgreement(const char *filename, const char *name, double timeTo
 	BenchMarkAgreement(name, d, timeTotal);
 }
 
-void Benchmark3(double t, double hertz)
+void BenchmarkPublicKeyAlgorithms(double t, double hertz)
 {
 	g_allocatedTime = t;
 	g_hertz = hertz;
@@ -370,7 +370,7 @@ void Benchmark3(double t, double hertz)
 	std::cout << "\n</TABLE>" << std::endl;
 }
 
-void Benchmark4(double t, double hertz)
+void BenchmarkEllipticCurveAlgorithms(double t, double hertz)
 {
 	g_allocatedTime = t;
 	g_hertz = hertz;
@@ -426,7 +426,7 @@ void Benchmark4(double t, double hertz)
 		ECDSA<ECP, SHA1>::Signer spriv(cpriv);
 		ECDSA<ECP, SHA1>::Verifier spub(spriv);
 		ECDSA_RFC6979<ECP, SHA1>::Signer spriv2(cpriv);
-		ECDSA_RFC6979<ECP, SHA1>::Verifier spub2(spriv);
+		ECDSA_RFC6979<ECP, SHA1>::Verifier spub2(spriv2);
 		ECGDSA<ECP, SHA1>::Signer spriv3(Test::GlobalRNG(), ASN1::secp256k1());
 		ECGDSA<ECP, SHA1>::Verifier spub3(spriv3);
 		ECDH<ECP>::Domain ecdhc(ASN1::secp256k1());
@@ -453,7 +453,7 @@ void Benchmark4(double t, double hertz)
 		ECDSA<EC2N, SHA1>::Signer spriv(cpriv);
 		ECDSA<EC2N, SHA1>::Verifier spub(spriv);
 		ECDSA_RFC6979<EC2N, SHA1>::Signer spriv2(cpriv);
-		ECDSA_RFC6979<EC2N, SHA1>::Verifier spub2(spriv);
+		ECDSA_RFC6979<EC2N, SHA1>::Verifier spub2(spriv2);
 		ECGDSA<EC2N, SHA1>::Signer spriv3(Test::GlobalRNG(), ASN1::sect233r1());
 		ECGDSA<EC2N, SHA1>::Verifier spub3(spriv3);
 		ECDH<EC2N>::Domain ecdhc(ASN1::sect233r1());

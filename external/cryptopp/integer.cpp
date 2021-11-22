@@ -3471,8 +3471,8 @@ void Integer::BERDecodeAsOctetString(BufferedTransformation &bt, size_t length)
 
 size_t Integer::OpenPGPEncode(byte *output, size_t bufferSize) const
 {
-	CRYPTOPP_ASSERT(output && bufferSize);            // NULL buffer
-	CRYPTOPP_ASSERT(bufferSize >= MinEncodedSize());  // Undersized buffer
+	CRYPTOPP_ASSERT(output && bufferSize);         // NULL buffer
+	CRYPTOPP_ASSERT(bufferSize >= 2+ByteCount());  // Undersized buffer
 	ArraySink sink(output, bufferSize);
 	return OpenPGPEncode(sink);
 }
@@ -4857,7 +4857,7 @@ const Integer &Integer::Zero()
 {
 #if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
 	return g_zero;
-#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+#elif defined(CRYPTOPP_CXX11_STATIC_INIT)
 	static const Integer s_zero(0L);
 	return s_zero;
 #else  // Potential memory leak. Avoid if possible.
@@ -4869,7 +4869,7 @@ const Integer &Integer::One()
 {
 #if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
 	return g_one;
-#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+#elif defined(CRYPTOPP_CXX11_STATIC_INIT)
 	static const Integer s_one(1L);
 	return s_one;
 #else  // Potential memory leak. Avoid if possible.
@@ -4881,7 +4881,7 @@ const Integer &Integer::Two()
 {
 #if defined(HAVE_GCC_INIT_PRIORITY) || defined(HAVE_MSC_INIT_PRIORITY) || defined(HAVE_XLC_INIT_PRIORITY)
 	return g_two;
-#elif defined(CRYPTOPP_CXX11_DYNAMIC_INIT)
+#elif defined(CRYPTOPP_CXX11_STATIC_INIT)
 	static const Integer s_two(2L);
 	return s_two;
 #else  // Potential memory leak. Avoid if possible.

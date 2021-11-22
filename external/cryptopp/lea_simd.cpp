@@ -12,7 +12,7 @@
 #include "misc.h"
 
 // Uncomment for benchmarking C++ against SSE or NEON.
-// Do so in both simon.cpp and simon-simd.cpp.
+// Do so in both simon.cpp and simon_simd.cpp.
 // #undef CRYPTOPP_SSSE3_AVAILABLE
 // #undef CRYPTOPP_ARM_NEON_AVAILABLE
 
@@ -183,6 +183,9 @@ inline uint32x4_t UnpackNEON(const uint32x4_t& a, const uint32x4_t& b, const uin
 {
     // Should not be instantiated
     CRYPTOPP_ASSERT(0);
+
+    CRYPTOPP_UNUSED(a); CRYPTOPP_UNUSED(b);
+    CRYPTOPP_UNUSED(c); CRYPTOPP_UNUSED(d);
     return vmovq_n_u32(0);
 }
 
@@ -223,6 +226,8 @@ inline uint32x4_t UnpackNEON(const uint32x4_t& v)
 {
     // Should not be instantiated
     CRYPTOPP_ASSERT(0);
+
+    CRYPTOPP_UNUSED(v);
     return vmovq_n_u32(0);
 }
 

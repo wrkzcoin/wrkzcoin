@@ -4,12 +4,20 @@
 
 /// \file config_cxx.h
 /// \brief Library configuration file
+/// \details <tt>config_cxx.h</tt> provides defines for C++ language and
+///  runtime library
+///  features.
 /// \details <tt>config.h</tt> was split into components in May 2019 to better
-///  integrate with Autoconf and its feature tests. The splitting occured so
+///  integrate with Autoconf and its feature tests. The splitting occurred so
 ///  users could continue to include <tt>config.h</tt> while allowing Autoconf
 ///  to write new <tt>config_asm.h</tt> and new <tt>config_cxx.h</tt> using
 ///  its feature tests.
-/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835</A>
+/// \note You should include <tt>config.h</tt> rather than <tt>config_cxx.h</tt>
+///  directly.
+/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835,
+///  Make config.h more autoconf friendly</A>,
+///  <A HREF="https://www.cryptopp.com/wiki/Configure.sh">Configure.sh script</A>
+///  on the Crypto++ wiki
 /// \since Crypto++ 8.3
 
 // Visual Studio began at VS2010, http://msdn.microsoft.com/en-us/library/hh567368%28v=vs.110%29.aspx
@@ -25,15 +33,20 @@
 #include "config_cpu.h"
 #include "config_ver.h"
 
+// https://github.com/weidai11/cryptopp/issues/960
+#include <string>
+#include <exception>
+
 // You may need to force include a C++ header on Android when using STLPort
 // to ensure _STLPORT_VERSION is defined
 #if (defined(_MSC_VER) && _MSC_VER <= 1300) || defined(__MWERKS__) || (defined(_STLPORT_VERSION) && ((_STLPORT_VERSION < 0x450) || defined(_STLP_NO_UNCAUGHT_EXCEPT_SUPPORT)))
 #define CRYPTOPP_DISABLE_UNCAUGHT_EXCEPTION
 #endif
 
-// Ancient Crypto++ define, dating back to C++98 and C++03.
+// Ancient Crypto++ define, dating back to C++98.
 #ifndef CRYPTOPP_DISABLE_UNCAUGHT_EXCEPTION
 # define CRYPTOPP_UNCAUGHT_EXCEPTION_AVAILABLE 1
+# define CRYPTOPP_CXX98_UNCAUGHT_EXCEPTION 1
 #endif
 
 // Compatibility with non-clang compilers.
@@ -44,11 +57,7 @@
 // Define CRYPTOPP_NO_CXX11 to avoid C++11 related features shown at the
 // end of this file. Some compilers and standard C++ headers advertise C++11
 // but they are really just C++03 with some additional C++11 headers and
-// non-conforming classes. You might also consider `-std=c++03` or
-// `-std=gnu++03`, but they are required options when building the library
-// and all programs. CRYPTOPP_NO_CXX11 is probably easier to manage but it may
-// cause -Wterminate warnings under GCC. MSVC++ has a similar warning.
-// Also see https://github.com/weidai11/cryptopp/issues/529
+// non-conforming classes. Also see Issues 529.
 // #define CRYPTOPP_NO_CXX11 1
 
 // Define CRYPTOPP_NO_CXX17 to avoid C++17 related features shown at the end of
@@ -95,7 +104,7 @@
 // atomics: MS at VS2012 (17.00); GCC at 4.4; Clang at 3.1/3.2; Intel 13.0; SunCC 5.14.
 #if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_atomic) || \
 	(__INTEL_COMPILER >= 1300) || (CRYPTOPP_GCC_VERSION >= 40400) || (__SUNPRO_CC >= 0x5140)
-# define CRYPTOPP_CXX11_ATOMICS 1
+# define CRYPTOPP_CXX11_ATOMIC 1
 #endif // atomics
 
 // synchronization: MS at VS2012 (17.00); GCC at 4.4; Clang at 3.3; Xcode 5.0; Intel 12.0; SunCC 5.13.
@@ -118,11 +127,12 @@
 // MS at VS2015 with Vista (19.00); GCC at 4.3; LLVM Clang at 2.9; Apple Clang at 4.0; Intel 11.1; SunCC 5.13.
 // Microsoft's implementation only works for Vista and above, so its further
 // limited. http://connect.microsoft.com/VisualStudio/feedback/details/1789709
+// Clang may not support this as early as we indicate. Also see https://bugs.llvm.org/show_bug.cgi?id=47012.
 #if (__cpp_threadsafe_static_init >= 200806) || \
 	(CRYPTOPP_MSC_VERSION >= 1900) && ((WINVER >= 0x0600) || (_WIN32_WINNT >= 0x0600)) || \
 	(CRYPTOPP_LLVM_CLANG_VERSION >= 20900) || (CRYPTOPP_APPLE_CLANG_VERSION >= 40000)  || \
 	(__INTEL_COMPILER >= 1110) || (CRYPTOPP_GCC_VERSION >= 40300) || (__SUNPRO_CC >= 0x5130)
-# define CRYPTOPP_CXX11_DYNAMIC_INIT 1
+# define CRYPTOPP_CXX11_STATIC_INIT 1
 #endif // Dynamic Initialization compilers
 
 // deleted functions: MS at VS2013 (18.00); GCC at 4.3; Clang at 2.9; Intel 12.1; SunCC 5.13.
@@ -143,6 +153,13 @@
 	(__INTEL_COMPILER >= 1500) || (CRYPTOPP_GCC_VERSION >= 40500) || (__SUNPRO_CC >= 0x5130)
 #  define CRYPTOPP_CXX11_ALIGNOF 1
 #endif // alignof
+
+// initializer lists: MS at VS2013 (18.00); GCC at 4.4; Clang at 3.1; Intel 14.0; SunCC 5.13.
+#if (CRYPTOPP_MSC_VERSION >= 1800) || (CRYPTOPP_LLVM_CLANG_VERSION >= 30100) || \
+	(CRYPTOPP_APPLE_CLANG_VERSION >= 40000) || (__INTEL_COMPILER >= 1400) || \
+	(CRYPTOPP_GCC_VERSION >= 40400) || (__SUNPRO_CC >= 0x5130)
+#  define CRYPTOPP_CXX11_INITIALIZER_LIST 1
+#endif // alignas
 
 // lambdas: MS at VS2012 (17.00); GCC at 4.9; Clang at 3.3; Intel 12.0; SunCC 5.14.
 #if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_lambdas) || \
@@ -175,7 +192,7 @@
 // Mircorosft and Intel had partial support earlier, but we require full support.
 #if (CRYPTOPP_MSC_VERSION >= 1700) || __has_feature(cxx_strong_enums) || \
 	(__INTEL_COMPILER >= 1400) || (CRYPTOPP_GCC_VERSION >= 40400) || (__SUNPRO_CC >= 0x5120)
-# define CRYPTOPP_CXX11_ENUM 1
+# define CRYPTOPP_CXX11_STRONG_ENUM 1
 #endif // constexpr compilers
 
 // nullptr_t: MS at VS2010 (16.00); GCC at 4.6; Clang at 3.3; Intel 10.0; SunCC 5.13.
@@ -194,7 +211,7 @@
 // Extended static_assert with one argument
 // Microsoft cannot handle the single argument static_assert as of VS2019 (cl.exe 19.00)
 #if (__cpp_static_assert >= 201411)
-# define CRYPTOPP_CXX14_STATIC_ASSERT 1
+# define CRYPTOPP_CXX17_STATIC_ASSERT 1
 #endif // static_assert
 
 #endif
@@ -206,15 +223,18 @@
 
 // C++17 uncaught_exceptions: MS at VS2015 (19.00); GCC at 6.0; Clang at 3.5; Intel 18.0.
 // Clang and __EXCEPTIONS see http://releases.llvm.org/3.6.0/tools/clang/docs/ReleaseNotes.html
+// Also see https://github.com/weidai11/cryptopp/issues/980. I'm not sure what
+// to do when the compiler defines __cpp_lib_uncaught_exceptions but the platform
+// does not support std::uncaught_exceptions. What was Apple thinking???
 #if defined(__clang__)
 # if __EXCEPTIONS && __has_feature(cxx_exceptions)
-#  if __cpp_lib_uncaught_exceptions
-#   define CRYPTOPP_CXX17_EXCEPTIONS 1
+#  if __cpp_lib_uncaught_exceptions >= 201411L
+#   define CRYPTOPP_CXX17_UNCAUGHT_EXCEPTIONS 1
 #  endif
 # endif
 #elif (CRYPTOPP_MSC_VERSION >= 1900) || (__INTEL_COMPILER >= 1800) || \
-      (CRYPTOPP_GCC_VERSION >= 60000) || (__cpp_lib_uncaught_exceptions)
-# define CRYPTOPP_CXX17_EXCEPTIONS 1
+      (CRYPTOPP_GCC_VERSION >= 60000) || (__cpp_lib_uncaught_exceptions >= 201411L)
+# define CRYPTOPP_CXX17_UNCAUGHT_EXCEPTIONS 1
 #endif // uncaught_exceptions compilers
 
 #endif  // CRYPTOPP_CXX17

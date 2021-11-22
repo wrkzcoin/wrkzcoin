@@ -253,6 +253,20 @@ bool TestSettings()
 		pass = false;
 	}
 
+	if (sizeof(void*) == 8)
+	{
+		std::cout << "passed:  Your machine is 64-bit.\n";
+	}
+	else if (sizeof(void*) == 4)
+	{
+		std::cout << "passed:  Your machine is 32-bit.\n";
+	}
+	else
+	{
+		std::cout << "FAILED:  Your machine is neither 32-bit nor 64-bit.\n";
+		pass = false;
+	}
+
 #if defined(CRYPTOPP_EXTENDED_VALIDATION)
 	// App and library versions, http://github.com/weidai11/cryptopp/issues/371
 	const int v1 = LibraryVersion();
@@ -266,9 +280,6 @@ bool TestSettings()
 	}
 	std::cout << "Library version (library): " << v1 << ", header version (app): " << v2 << "\n";
 #endif
-
-	// CRYPTOPP_ALLOW_UNALIGNED_DATA_ACCESS removed at Issue 682.
-	std::cout << "passed:  Aligned data access.\n";
 
 	if (sizeof(byte) == 1)
 		std::cout << "passed:  ";
@@ -380,16 +391,16 @@ bool TestSettings()
 	bool hasAES = HasAES();
 	bool hasSHA1 = HasSHA1();
 	bool hasSHA2 = HasSHA2();
-	bool hasSHA512 = HasSHA512();
 	bool hasSHA3 = HasSHA3();
+	bool hasSHA512 = HasSHA512();
 	bool hasSM3 = HasSM3();
 	bool hasSM4 = HasSM4();
 
-	std::cout << "passed:  ";
+	std::cout << "passed:  hasASIMD == 1";
 	std::cout << ", hasCRC32 == " << hasCRC32 << ", hasAES == " << hasAES;
 	std::cout << ", hasPMULL == " << hasPMULL << ", hasSHA1 == " << hasSHA1;
-	std::cout << ", hasSHA2 == " << hasSHA2 << ", hasSHA512 == " << hasSHA512;
-	std::cout << ", hasSHA3 == " << hasSHA3 << ", hasSM3 == " << hasSM3;
+	std::cout << ", hasSHA2 == " << hasSHA2 << ", hasSHA3 == " << hasSHA3;
+	std::cout << ", hasSHA512 == " << hasSHA512 << ", hasSM3 == " << hasSM3;
 	std::cout << ", hasSM4 == " << hasSM4 << "\n";
 # endif
 
@@ -398,16 +409,18 @@ bool TestSettings()
 	const bool hasPower7 = HasPower7();
 	const bool hasPower8 = HasPower8();
 	const bool hasPower9 = HasPower9();
-	const bool hasPMULL = HasPMULL();
 	const bool hasAES = HasAES();
+	const bool hasPMULL = HasPMULL();
 	const bool hasSHA256 = HasSHA256();
 	const bool hasSHA512 = HasSHA512();
+	const bool hasDARN = HasDARN();
 
 	std::cout << "passed:  ";
 	std::cout << "hasAltivec == " << hasAltivec << ", hasPower7 == " << hasPower7;
 	std::cout << ", hasPower8 == " << hasPower8 << ", hasPower9 == " << hasPower9;
-	std::cout << ", hasPMULL == " << hasPMULL << ", hasAES == " << hasAES;
-	std::cout << ", hasSHA256 == " << hasSHA256 << ", hasSHA512 == " << hasSHA512 << "\n";
+	std::cout << ", hasAES == " << hasAES << ", hasPMULL == " << hasPMULL;
+	std::cout << ", hasSHA256 == " << hasSHA256 << ", hasSHA512 == " << hasSHA512;
+	std::cout << ", hasDARN == " << hasDARN << "\n";
 
 #endif
 

@@ -1,34 +1,33 @@
-#define GNUC_VERSION (__GNUC__*1000 + __GNUC_MAJOR__*10)
-#if (GNUC_VERSION >= 4060) || defined(__clang__)
+#if defined(__GNUC__)
+# define GNUC_VERSION (__GNUC__*1000 + __GNUC_MINOR__*10)
+#endif
+
+#if defined(__clang__) && defined(__apple_build_version__)
+# undef GNUC_VERSION
+# define APPLE_VERSION (__clang_major__*1000 + __clang_minor__*10)
+#elif defined(__clang__)
+# undef GNUC_VERSION
+# define LLVM_VERSION (__clang_major__*1000 + __clang_minor__*10)
+#endif
+
+#if (GNUC_VERSION >= 4060) || (LLVM_VERSION >= 1070) || (APPLE_VERSION >= 2000)
 # pragma GCC diagnostic ignored "-Wdeprecated"
 #endif
 
 #include <altivec.h>
 int main(int argc, char* argv[])
 {
-#if 0
-	const unsigned char b = (unsigned char)argc;
-	const unsigned int r = (0xf << 24) | (0x3 << 16) | (0xf << 8) | (0x3 << 0);
-#if defined(__clang__)
-	bool x = __builtin_altivec_byte_in_range(b, r);
-#elif defined(__GNUC__)
-	bool x = __builtin_byte_in_range(b, r);
-#else
-	int XXX[-1];
-#endif
-#endif
-
 #if defined(_ARCH_PWR9)
     __vector unsigned int v = vec_xl_be(0, (unsigned int*)argv[0]);
 #else
-	int XXX[-1];
+    int XXX[-1];
 #endif
 
 #if defined(__GNUC__) || defined(__IBM_GCC_ASM)
-	unsigned int y = __builtin_darn_32();
+    unsigned int y = __builtin_darn_32();
 #else
-	int XXX[-1];
+    int XXX[-1];
 #endif
 
-	return 0;
+    return 0;
 }

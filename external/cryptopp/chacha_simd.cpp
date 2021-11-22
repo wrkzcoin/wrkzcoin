@@ -211,7 +211,7 @@ inline __m128i RotateLeft<16>(const __m128i val)
 
 #if (CRYPTOPP_ALTIVEC_AVAILABLE)
 
-// ChaCha_OperateKeystream_POWER7 is optimized for POWER7. However, Altivec
+// ChaCha_OperateKeystream is optimized for Altivec. However, Altivec
 // is supported by using vec_ld and vec_st, and using a composite VecAdd
 // that supports 64-bit element adds. vec_ld and vec_st add significant
 // overhead when memory is not aligned. Despite the drawbacks Altivec
@@ -223,6 +223,7 @@ inline __m128i RotateLeft<16>(const __m128i val)
 using CryptoPP::uint8x16_p;
 using CryptoPP::uint32x4_p;
 using CryptoPP::VecLoad;
+using CryptoPP::VecLoadAligned;
 using CryptoPP::VecStore;
 using CryptoPP::VecPermute;
 
@@ -825,7 +826,7 @@ void ChaCha_OperateKeystream_SSE2(const word32 *state, const byte* input, byte *
 
 #endif  // CRYPTOPP_SSE2_INTRIN_AVAILABLE
 
-#if (CRYPTOPP_POWER7_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE)
+#if (CRYPTOPP_ALTIVEC_AVAILABLE)
 
 // ChaCha_OperateKeystream_CORE will use either POWER7 or ALTIVEC,
 // depending on the flags used to compile this source file. The
@@ -834,10 +835,10 @@ void ChaCha_OperateKeystream_SSE2(const word32 *state, const byte* input, byte *
 // time to better support distros.
 inline void ChaCha_OperateKeystream_CORE(const word32 *state, const byte* input, byte *output, unsigned int rounds)
 {
-    const uint32x4_p state0 = VecLoad(state + 0*4);
-    const uint32x4_p state1 = VecLoad(state + 1*4);
-    const uint32x4_p state2 = VecLoad(state + 2*4);
-    const uint32x4_p state3 = VecLoad(state + 3*4);
+    const uint32x4_p state0 = VecLoadAligned(state + 0*4);
+    const uint32x4_p state1 = VecLoadAligned(state + 1*4);
+    const uint32x4_p state2 = VecLoadAligned(state + 2*4);
+    const uint32x4_p state3 = VecLoadAligned(state + 3*4);
 
     const uint32x4_p CTRS[3] = {
         {1,0,0,0}, {2,0,0,0}, {3,0,0,0}
@@ -1094,16 +1095,9 @@ inline void ChaCha_OperateKeystream_CORE(const word32 *state, const byte* input,
     VecStore32LE(output + 15*16, r3_3);
 }
 
-#endif  // CRYPTOPP_POWER7_AVAILABLE || CRYPTOPP_ALTIVEC_AVAILABLE
+#endif  // CRYPTOPP_ALTIVEC_AVAILABLE
 
-#if (CRYPTOPP_POWER7_AVAILABLE)
-
-void ChaCha_OperateKeystream_POWER7(const word32 *state, const byte* input, byte *output, unsigned int rounds)
-{
-    ChaCha_OperateKeystream_CORE(state, input, output, rounds);
-}
-
-#elif (CRYPTOPP_ALTIVEC_AVAILABLE)
+#if (CRYPTOPP_ALTIVEC_AVAILABLE)
 
 void ChaCha_OperateKeystream_ALTIVEC(const word32 *state, const byte* input, byte *output, unsigned int rounds)
 {

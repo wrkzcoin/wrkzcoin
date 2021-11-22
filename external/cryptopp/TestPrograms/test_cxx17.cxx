@@ -1,5 +1,9 @@
-#include <exception>
 int main(int argc, char* argv[])
 {
-	return 0 == std::uncaught_exceptions() ? 0 : 1;
+#if __cplusplus >= 201703L
+    int x[1];
+#else
+    int x[-1];
+#endif
+    return 0;
 }
