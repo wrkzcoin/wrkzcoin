@@ -210,14 +210,26 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macos-latest
+    runs-on: macos-10.15
     env:
-      CC: clang
-      CXX: clang++
+      CC: /usr/local/opt/llvm@8/bin/clang
+      CXX: /usr/local/opt/llvm@8/bin/clang++
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
       - uses: actions/checkout@v2
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '11.0'
+
+      # Fetch Dependencies
+      - name: Dependencies
+        run: |
+          brew uninstall llvm
+          brew install --force boost llvm@8 ccache
+          brew link --overwrite llvm@8
+          ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
 
       - name: Retrieve ccache
         uses: actions/cache@v1
