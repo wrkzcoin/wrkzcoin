@@ -221,7 +221,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '11.0'
+          xcode-version: '11.2.1'
 
       # Fetch Dependencies
       - name: Dependencies
