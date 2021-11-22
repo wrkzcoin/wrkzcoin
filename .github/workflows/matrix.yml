@@ -212,20 +212,12 @@ jobs:
     name: macOS
     runs-on: macos-latest
     env:
-      CC: /usr/local/opt/llvm@8/bin/clang
-      CXX: /usr/local/opt/llvm@8/bin/clang++
+      CC: clang
+      CXX: clang++
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
       - uses: actions/checkout@v2
-
-      # Fetch Dependencies
-      - name: Dependencies
-        run: |
-          brew uninstall llvm
-          brew install --force boost llvm@8 ccache
-          brew link --overwrite llvm@8
-          ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
 
       - name: Retrieve ccache
         uses: actions/cache@v1
