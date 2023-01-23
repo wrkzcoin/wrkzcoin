@@ -1,7 +1,7 @@
 
 # BanocoinTipbot
 
-[![Discord]https://discord.gg/fuckcoin[![GitHub All Releases]
+[![Discord ] https://discord.gg/fuckcoin  
 
 ### Master Build Status
 
