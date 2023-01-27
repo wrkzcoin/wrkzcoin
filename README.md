@@ -3,6 +3,19 @@
 [![Discord](https://img.shields.io/discord/460755304863498250?label=WrkzCoin%20Discord)](https://chat.wrkz.work) [![GitHub All Releases](https://img.shields.io/github/downloads/wrkzcoin/wrkzcoin/total.svg?include_prereleases)](https://latest.wrkz.work/) [![GitHub contributors](https://img.shields.io/github/contributors-anon/wrkzcoin/wrkzcoin?label=Contributors)](https://github.com/wrkzcoin/wrkzcoin/graphs/contributors) [![GitHub issues](https://img.shields.io/github/issues/wrkzcoin/wrkzcoin?label=Issues)](https://github.com/wrkzcoin/wrkzcoin/issues) ![GitHub stars](https://img.shields.io/github/stars/wrkzcoin/wrkzcoin?label=Github%20Stars)
 ![Version](https://img.shields.io/github/v/release/wrkzcoin/wrkzcoin?include_prereleases)
 
+<!-- Table of Contents -->
+
+<summary><h2 style="display: inline-block">Table of Contents</h2></summary>
+<ul>
+    <li><a href="#master-build-status">Master Build Status</a></li>
+    <li><a href="#development-build-status">Development Build Status</a></li>
+    <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
+    <li><a href="#getting-started-fast">Getting Started Fast</a></li>
+    <li><a href="#a-note-for-contributing-developers">A note for contributing developers</a></li>
+    <li><a href="#contributing-projects">Contributing Projects</a></li>
+    <li><a href="#our-discord">Our Discord</a></li>
+</ul>
+
 ### Master Build Status
 
 ![Master Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=master)
@@ -45,3 +58,10 @@ See [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/com
 
 [![cryptonote](https://user-images.githubusercontent.com/34389545/72484723-d84bf700-37ca-11ea-812e-e24cd7bf9fca.png)](https://cryptonote.org/)[![bytecoin](https://user-images.githubusercontent.com/34389545/72484467-ef3e1980-37c9-11ea-903d-3d1266e9c4c2.png)](https://bytecoin.org/)[![monero](https://user-images.githubusercontent.com/34389545/72484448-e0576700-37c9-11ea-934a-15a7d9231709.png)](https://web.getmonero.org/)[![forknote](https://user-images.githubusercontent.com/34389545/72484430-d59cd200-37c9-11ea-8529-e06ae2426dca.png)](http://forknote.net/)[![turtlecoin](https://user-images.githubusercontent.com/34389545/72484404-c0c03e80-37c9-11ea-8754-0b5a8e797965.png)](https://turtlecoin.lol)
 
+### Our Discord
+
+* WrkzCoin: <https://discordapp.com/invite/GpHzURM>
+
+### Stars
+
+[![Star History Chart](https://api.star-history.com/svg?repos=wrkzcoin/wrkzcoin&type=Date)](https://star-history.com/#wrkzcoin/wrkzcoin&Date)
