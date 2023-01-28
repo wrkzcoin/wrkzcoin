@@ -19,25 +19,13 @@ jobs:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 9', 'Ubuntu GCC 8', 'Ubuntu GCC 8 x86', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
+        build_name: ['Ubuntu GCC 9', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
           - build_name: 'Ubuntu GCC 9'
             package_name: 'gcc-9 g++-9'
             cc: gcc-9
             cxx: g++-9
             label: gcc-9
-            deployable: true
-          - build_name: 'Ubuntu GCC 8'
-            package_name: 'gcc-8 g++-8'
-            cc: gcc-8
-            cxx: g++-8
-            label: linux
-            deployable: true
-          - build_name: 'Ubuntu GCC 8 x86'
-            package_name: 'gcc-8 g++-8'
-            cc: gcc-8
-            cxx: g++-8
-            label: linux-86
             deployable: true
           - build_name: 'aarch64'
             label: aarch64
@@ -56,7 +44,7 @@ jobs:
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'Ubuntu GCC 8 x86'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -226,7 +214,9 @@ jobs:
       # Fetch Dependencies
       - name: Dependencies
         run: |
-          brew uninstall llvm
+          brew uninstall --force llvm
+          brew cleanup -s llvm
+          brew cleanup --prune-prefix
           brew install --force boost llvm@8 ccache
           brew link --overwrite llvm@8
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
