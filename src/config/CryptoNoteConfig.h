@@ -481,7 +481,7 @@ namespace CryptoNote
 
     const char *const SEED_NODES[] = {
         "88.198.24.3:17855",       // node-fin.wrkz.work
-        "138.201.94.61:17855",     // node-wrkz.btipz.com
+        "78.46.65.183:17855",      // node-wrkz.btipz.com
         "161.97.81.2:17855"        // wrkz.xyz
     };
 } // namespace CryptoNote
