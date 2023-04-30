@@ -358,11 +358,13 @@ namespace CryptoNote
             1123000,  // 12
             1200000,  // 13
             1500000,  // 14
-            1800000,  // 15  // TODO: Update fork height
+            1800000,  // 15
+            2500000,  // 16
+            2800000,  // 17
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 14;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 16;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -478,10 +480,8 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "65.21.91.167:17855",         // myexplorer.wrkz.work
-        "65.21.105.254:17855",        // node-fin.wrkz.work
-        "89.203.235.107:17855",       // CuveeBits Seed CZ
-        "46.214.70.196:17855",        // CuveeBits Seed RO
-        "178.238.236.173:17855"       // wrkz.xyz
+        "88.198.24.3:17855",       // node-fin.wrkz.work
+        "78.46.65.183:17855",      // node-wrkz.btipz.com
+        "161.97.81.2:17855"        // wrkz.xyz
     };
 } // namespace CryptoNote
