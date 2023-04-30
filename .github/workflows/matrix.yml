@@ -12,7 +12,7 @@ env:
 
 jobs:
   # Common Build matrix for builds on Ubuntu VM
-  ubuntu_build:
+  ubuntu_build_20:
     name: ${{ matrix.build_name }}
     runs-on: ubuntu-20.04
     strategy:
@@ -195,7 +195,7 @@ jobs:
             curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
           fi
 
-  ubuntu_build:
+  ubuntu_build_22:
     name: ${{ matrix.build_name }}
     runs-on: ubuntu-22.04
     strategy:
