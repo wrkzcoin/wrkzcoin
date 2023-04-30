@@ -3,7 +3,7 @@
 /// \file cryptlib.h
 /// \brief Abstract base classes that provide a uniform interface to this library.
 
-/*!	\mainpage Crypto++ Library 8.3 API Reference
+/*!	\mainpage Crypto++ Library 8.5 API Reference
 <dl>
 <dt>Abstract Base Classes<dd>
 	cryptlib.h
@@ -446,7 +446,7 @@ public:
 	/// \param name the name of the value
 	/// \param stored the type that was stored for the name
 	/// \param retrieving the type that is being retrieved for the name
-	/// \throws ValueTypeMismatch
+	/// \throw ValueTypeMismatch
 	/// \details ThrowIfTypeMismatch() effectively performs a type safety check.
 	///  stored and retrieving are C++ mangled names for the type.
 	/// \sa GetValue(), GetValueWithDefault(), GetIntValue(), GetIntValueWithDefault(),
@@ -459,7 +459,7 @@ public:
 	/// \param className the name of the class
 	/// \param name the name of the value
 	/// \param value reference to a variable to receive the value
-	/// \throws InvalidArgument
+	/// \throw InvalidArgument
 	/// \details GetRequiredParameter() throws InvalidArgument if the name
 	///  is not present or not of the expected type T.
 	/// \sa GetValue(), GetValueWithDefault(), GetIntValue(), GetIntValueWithDefault(),
@@ -475,7 +475,7 @@ public:
 	/// \param className the name of the class
 	/// \param name the name of the value
 	/// \param value reference to a variable to receive the value
-	/// \throws InvalidArgument
+	/// \throw InvalidArgument
 	/// \details GetRequiredParameter() throws InvalidArgument if the name
 	///  is not present or not of the expected type T.
 	/// \sa GetValue(), GetValueWithDefault(), GetIntValue(), GetIntValueWithDefault(),
@@ -588,7 +588,7 @@ public:
 
 	/// \brief Copies  this object
 	/// \return a copy of this object
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \note this is \a not implemented by most classes
 	/// \sa NotCopyable
 	virtual Clonable* Clone() const {throw NotImplemented("Clone() is not implemented yet.");}	// TODO: make this =0
@@ -756,7 +756,7 @@ public:
 
 	/// \brief Returns length of the IV accepted by this object
 	/// \return the size of an IV, in bytes
-	/// \throws NotImplemented() if the object does not support resynchronization
+	/// \throw NotImplemented() if the object does not support resynchronization
 	/// \details The default implementation throws NotImplemented
 	virtual unsigned int IVSize() const
 		{throw NotImplemented(GetAlgorithm().AlgorithmName() + ": this object doesn't support resynchronization");}
@@ -767,19 +767,19 @@ public:
 
 	/// \brief Provides the minimum size of an IV
 	/// \return minimal length of IVs accepted by this object, in bytes
-	/// \throws NotImplemented() if the object does not support resynchronization
+	/// \throw NotImplemented() if the object does not support resynchronization
 	virtual unsigned int MinIVLength() const {return IVSize();}
 
 	/// \brief Provides the maximum size of an IV
 	/// \return maximal length of IVs accepted by this object, in bytes
-	/// \throws NotImplemented() if the object does not support resynchronization
+	/// \throw NotImplemented() if the object does not support resynchronization
 	virtual unsigned int MaxIVLength() const {return IVSize();}
 
 	/// \brief Resynchronize with an IV
 	/// \param iv the initialization vector
 	/// \param ivLength the size of the initialization vector, in bytes
 	/// \details Resynchronize() resynchronizes with an IV provided by the caller. <tt>ivLength=-1</tt> means use IVSize().
-	/// \throws NotImplemented() if the object does not support resynchronization
+	/// \throw NotImplemented() if the object does not support resynchronization
 	virtual void Resynchronize(const byte *iv, int ivLength=-1) {
 		CRYPTOPP_UNUSED(iv); CRYPTOPP_UNUSED(ivLength);
 		throw NotImplemented(GetAlgorithm().AlgorithmName() + ": this object doesn't support resynchronization");
@@ -810,11 +810,11 @@ protected:
 
 	/// \brief Validates the key length
 	/// \param length the size of the keying material, in bytes
-	/// \throws InvalidKeyLength if the key length is invalid
+	/// \throw InvalidKeyLength if the key length is invalid
 	void ThrowIfInvalidKeyLength(size_t length);
 
 	/// \brief Validates the object
-	/// \throws InvalidArgument if the IV is present
+	/// \throw InvalidArgument if the IV is present
 	/// \details Internally, the default implementation calls IsResynchronizable() and throws
 	///  InvalidArgument if the function returns  true.
 	/// \note called when no IV is passed
@@ -822,7 +822,7 @@ protected:
 
 	/// \brief Validates the IV
 	/// \param iv the IV with a length of IVSize, in bytes
-	/// \throws InvalidArgument on failure
+	/// \throw InvalidArgument on failure
 	/// \details Internally, the default implementation checks the iv. If iv is not NULL or nullptr,
 	///  then the function succeeds. If iv is NULL, then IVRequirement is checked against
 	///  UNPREDICTABLE_RANDOM_IV. If IVRequirement is UNPREDICTABLE_RANDOM_IV, then
@@ -831,14 +831,14 @@ protected:
 
 	/// \brief Validates the IV length
 	/// \param length the size of an IV, in bytes
-	/// \throws InvalidArgument if the IV length is invalid
+	/// \throw InvalidArgument if the IV length is invalid
 	size_t ThrowIfInvalidIVLength(int length);
 
 	/// \brief Retrieves and validates the IV
 	/// \param params NameValuePairs with the IV supplied as a ConstByteArrayParameter
 	/// \param size the length of the IV, in bytes
 	/// \return a pointer to the first byte of the IV
-	/// \throws InvalidArgument if the number of rounds are invalid
+	/// \throw InvalidArgument if the number of rounds are invalid
 	const byte * GetIVAndThrowIfInvalid(const NameValuePairs &params, size_t &size);
 
 	/// \brief Validates the key length
@@ -1080,7 +1080,7 @@ public:
 
 	/// \brief Seek to an absolute position
 	/// \param pos position to seek
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \details The base class implementation throws NotImplemented. The function
 	///  \ref CRYPTOPP_ASSERT "asserts" IsRandomAccess() in debug builds.
 	virtual void Seek(lword pos)
@@ -1137,7 +1137,7 @@ public:
 	/// \brief Computes the hash of the current message
 	/// \param digest a pointer to the buffer to receive the hash
 	/// \details Final() restarts the hash for a new message.
-	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
+	/// \pre <tt>COUNTOF(digest) <= DigestSize()</tt> or <tt>COUNTOF(digest) <= HASH::DIGESTSIZE</tt> ensures
 	///  the output byte buffer is large enough for the digest.
 	virtual void Final(byte *digest)
 		{TruncatedFinal(digest, DigestSize());}
@@ -1184,19 +1184,19 @@ public:
 	///  and Final() separately
 	/// \details CalculateDigest() restarts the hash for the next message.
 	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
-	///  the output byte buffer is large enough for the digest.
+	///  the output byte buffer is a valid size.
 	virtual void CalculateDigest(byte *digest, const byte *input, size_t length)
 		{Update(input, length); Final(digest);}
 
 	/// \brief Verifies the hash of the current message
 	/// \param digest a pointer to the buffer of an \a existing hash
 	/// \return \p true if the existing hash matches the computed hash, \p false otherwise
-	/// \throws ThrowIfInvalidTruncatedSize() if the existing hash's size exceeds DigestSize()
+	/// \throw InvalidArgument() if the existing hash's size exceeds DigestSize()
 	/// \details Verify() performs a bitwise compare on the buffers using VerifyBufsEqual(), which is
 	///  a constant time comparison function. digestLength cannot exceed DigestSize().
 	/// \details Verify() restarts the hash for the next message.
 	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
-	///  the output byte buffer is large enough for the digest.
+	///  the input byte buffer is a valid size.
 	virtual bool Verify(const byte *digest)
 		{return TruncatedVerify(digest, DigestSize());}
 
@@ -1205,14 +1205,14 @@ public:
 	/// \param input the additional input as a buffer
 	/// \param length the size of the buffer, in bytes
 	/// \return \p true if the existing hash matches the computed hash, \p false otherwise
-	/// \throws ThrowIfInvalidTruncatedSize() if the existing hash's size exceeds DigestSize()
+	/// \throw InvalidArgument() if the existing hash's size exceeds DigestSize()
 	/// \details Use this if your input is in one piece and you don't want to call Update()
 	///  and Verify() separately
 	/// \details VerifyDigest() performs a bitwise compare on the buffers using VerifyBufsEqual(),
-	///  which is a constant time comparison function. digestLength cannot exceed DigestSize().
+	///  which is a constant time comparison function.
 	/// \details VerifyDigest() restarts the hash for the next message.
 	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
-	///  the output byte buffer is large enough for the digest.
+	///  the output byte buffer is a valid size.
 	virtual bool VerifyDigest(const byte *digest, const byte *input, size_t length)
 		{Update(input, length); return Verify(digest);}
 
@@ -1221,6 +1221,8 @@ public:
 	/// \param digestSize the size of the truncated digest, in bytes
 	/// \details TruncatedFinal() call Final() and then copies digestSize bytes to digest.
 	///  The hash is restarted the hash for the next message.
+	/// \pre <tt>COUNTOF(digest) <= DigestSize()</tt> or <tt>COUNTOF(digest) <= HASH::DIGESTSIZE</tt> ensures
+	///  the output byte buffer is a valid size.
 	virtual void TruncatedFinal(byte *digest, size_t digestSize) =0;
 
 	/// \brief Updates the hash with additional input and computes the hash of the current message
@@ -1231,8 +1233,8 @@ public:
 	/// \details Use this if your input is in one piece and you don't want to call Update()
 	///  and CalculateDigest() separately.
 	/// \details CalculateTruncatedDigest() restarts the hash for the next message.
-	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
-	///  the output byte buffer is large enough for the digest.
+	/// \pre <tt>digestSize <= DigestSize()</tt> or <tt>digestSize <= HASH::DIGESTSIZE</tt> ensures
+	///  the output byte buffer is a valid size.
 	virtual void CalculateTruncatedDigest(byte *digest, size_t digestSize, const byte *input, size_t length)
 		{Update(input, length); TruncatedFinal(digest, digestSize);}
 
@@ -1240,12 +1242,14 @@ public:
 	/// \param digest a pointer to the buffer of an \a existing hash
 	/// \param digestLength the size of the truncated hash, in bytes
 	/// \return \p true if the existing hash matches the computed hash, \p false otherwise
-	/// \throws ThrowIfInvalidTruncatedSize() if digestLength exceeds DigestSize()
+	/// \throw InvalidArgument() if digestLength exceeds DigestSize()
 	/// \details TruncatedVerify() is a truncated version of Verify(). It can operate on a
 	///  buffer smaller than DigestSize(). However, digestLength cannot exceed DigestSize().
 	/// \details Verify() performs a bitwise compare on the buffers using VerifyBufsEqual(), which is
 	///  a constant time comparison function. digestLength cannot exceed DigestSize().
 	/// \details TruncatedVerify() restarts the hash for the next message.
+	/// \pre <tt>digestLength <= DigestSize()</tt> or <tt>digestLength <= HASH::DIGESTSIZE</tt> ensures
+	///  the input byte buffer is a valid size.
 	virtual bool TruncatedVerify(const byte *digest, size_t digestLength);
 
 	/// \brief Updates the hash with additional input and verifies the hash of the current message
@@ -1254,21 +1258,21 @@ public:
 	/// \param input the additional input as a buffer
 	/// \param length the size of the buffer, in bytes
 	/// \return \p true if the existing hash matches the computed hash, \p false otherwise
-	/// \throws ThrowIfInvalidTruncatedSize() if digestLength exceeds DigestSize()
+	/// \throw InvalidArgument() if digestLength exceeds DigestSize()
 	/// \details Use this if your input is in one piece and you don't want to call Update()
 	///  and TruncatedVerify() separately.
 	/// \details VerifyTruncatedDigest() is a truncated version of VerifyDigest(). It can operate
 	///  on a buffer smaller than DigestSize(). However, digestLength cannot exceed DigestSize().
 	/// \details VerifyTruncatedDigest() restarts the hash for the next message.
-	/// \pre <tt>COUNTOF(digest) == DigestSize()</tt> or <tt>COUNTOF(digest) == HASH::DIGESTSIZE</tt> ensures
-	///  the output byte buffer is large enough for the digest.
+	/// \pre <tt>digestLength <= DigestSize()</tt> or <tt>digestLength <= HASH::DIGESTSIZE</tt> ensures
+	///  the input byte buffer is a valid size.
 	virtual bool VerifyTruncatedDigest(const byte *digest, size_t digestLength, const byte *input, size_t length)
 		{Update(input, length); return TruncatedVerify(digest, digestLength);}
 
 protected:
 	/// \brief Validates a truncated digest size
 	/// \param size the requested digest size
-	/// \throws InvalidArgument if the algorithm's digest size cannot be truncated to the requested size
+	/// \throw InvalidArgument if the algorithm's digest size cannot be truncated to the requested size
 	/// \details Throws an exception when the truncated digest size is greater than DigestSize()
 	void ThrowIfInvalidTruncatedSize(size_t size) const;
 };
@@ -1336,7 +1340,7 @@ public:
 	/// \return the maximum length of encrypted data
 	virtual lword MaxMessageLength() const =0;
 
-	/// \brief Provides the the maximum length of AAD
+	/// \brief Provides the maximum length of AAD
 	/// \return the maximum length of AAD that can be input after the encrypted data
 	virtual lword MaxFooterLength() const {return 0;}
 
@@ -1418,7 +1422,7 @@ public:
 	/// \brief Update RNG state with additional unpredictable values
 	/// \param input the entropy to add to the generator
 	/// \param length the size of the input buffer
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \details A generator may or may not accept additional entropy. Call CanIncorporateEntropy()
 	///  to test for the ability to use additional entropy.
 	/// \details If a derived class does not override IncorporateEntropy(), then the base class
@@ -1535,7 +1539,7 @@ public:
 	/// \param secretLen the size of the secret buffer, in bytes
 	/// \param params additional initialization parameters to configure this object
 	/// \return the number of iterations performed
-	/// \throws InvalidDerivedKeyLength if <tt>derivedLen</tt> is invalid for the scheme
+	/// \throw InvalidDerivedKeyLength if <tt>derivedLen</tt> is invalid for the scheme
 	/// \details DeriveKey() provides a standard interface to derive a key from
 	///  a secret seed and other parameters. Each class that derives from KeyDerivationFunction
 	///  provides an overload that accepts most parameters used by the derivation function.
@@ -1556,7 +1560,7 @@ protected:
 
 	/// \brief Validates the derived key length
 	/// \param length the size of the derived key material, in bytes
-	/// \throws InvalidKeyLength if the key length is invalid
+	/// \throw InvalidKeyLength if the key length is invalid
 	void ThrowIfInvalidDerivedKeyLength(size_t length) const;
 };
 
@@ -1784,7 +1788,7 @@ public:
 
 		/// \brief Initialize or reinitialize this object, without signal propagation
 		/// \param parameters a set of NameValuePairs to initialize this object
-		/// \throws NotImplemented
+		/// \throw NotImplemented
 		/// \details IsolatedInitialize() is used to initialize or reinitialize an object using a variable
 		///  number of arbitrarily typed arguments. The function avoids the need for multiple constructors providing
 		///  all possible combintations of configurable parameters.
@@ -1871,8 +1875,12 @@ public:
 
 		/// \brief Provides the number of bytes ready for retrieval
 		/// \return the number of bytes ready for retrieval
-		/// \details All retrieval functions return the actual number of bytes retrieved, which is
-		///  the lesser of the request number and  MaxRetrievable()
+		/// \details The number of bytes available are dependent on the source. If an exact value is
+		///  available, then the exact value is returned. The exact value can include 0 if the source
+		///  is exhausted.
+		/// \details Some stream-based sources do not allow seeking() on the underlying stream, such
+		///  as some FileSource(). If the stream does not allow seeking() then MaxRetrievable()
+		///  returns LWORD_MAX to indicate there are still bytes to be retrieved.
 		virtual lword MaxRetrievable() const;
 
 		/// \brief Determines whether bytes are ready for retrieval
@@ -2324,7 +2332,7 @@ public:
 
 		/// \brief Delete the current attachment chain and attach a new one
 		/// \param newAttachment the new BufferedTransformation to attach
-		/// \throws NotImplemented
+		/// \throw NotImplemented
 		/// \details Detach() deletes the current attachment chain and replace it with an optional newAttachment
 		/// \details If a derived class does not override Detach(), then the base class throws
 		///  NotImplemented.
@@ -2396,7 +2404,7 @@ public:
 	/// \brief Check this object for errors
 	/// \param rng a RandomNumberGenerator for objects which use randomized testing
 	/// \param level the level of thoroughness
-	/// \throws InvalidMaterial
+	/// \throw InvalidMaterial
 	/// \details Internally, ThrowIfInvalid() calls Validate() and throws InvalidMaterial() if validation fails.
 	/// \sa Validate()
 	virtual void ThrowIfInvalid(RandomNumberGenerator &rng, unsigned int level) const
@@ -2404,7 +2412,7 @@ public:
 
 	/// \brief Saves a key to a BufferedTransformation
 	/// \param bt the destination BufferedTransformation
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \details Save() writes the material to a BufferedTransformation.
 	/// \details If the material is a key, then the key is written with ASN.1 DER encoding. The key
 	///  includes an object identifier with an algorthm id, like a subjectPublicKeyInfo.
@@ -2416,7 +2424,7 @@ public:
 
 	/// \brief Loads a key from a BufferedTransformation
 	/// \param bt the source BufferedTransformation
-	/// \throws KeyingErr
+	/// \throw KeyingErr
 	/// \details Load() attempts to read material from a BufferedTransformation. If the
 	///  material is a key that was generated outside the library, then the following
 	///  usually applies:
@@ -2438,7 +2446,7 @@ public:
 
 	/// \brief Perform precomputation
 	/// \param precomputationStorage the suggested number of objects for the precompute table
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \details The exact semantics of Precompute() varies, but it typically means calculate
 	///  a table of n objects that can be used later to speed up computation.
 	/// \details If a derived class does not override Precompute(), then the base class throws
@@ -2451,14 +2459,14 @@ public:
 
 	/// \brief Retrieve previously saved precomputation
 	/// \param storedPrecomputation BufferedTransformation with the saved precomputation
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \sa SupportsPrecomputation(), Precompute()
 	virtual void LoadPrecomputation(BufferedTransformation &storedPrecomputation)
 		{CRYPTOPP_UNUSED(storedPrecomputation); CRYPTOPP_ASSERT(!SupportsPrecomputation()); throw NotImplemented("CryptoMaterial: this object does not support precomputation");}
 
 	/// \brief Save precomputation for later use
 	/// \param storedPrecomputation BufferedTransformation to write the precomputation
-	/// \throws NotImplemented
+	/// \throw NotImplemented
 	/// \sa SupportsPrecomputation(), Precompute()
 	virtual void SavePrecomputation(BufferedTransformation &storedPrecomputation) const
 		{CRYPTOPP_UNUSED(storedPrecomputation); CRYPTOPP_ASSERT(!SupportsPrecomputation()); throw NotImplemented("CryptoMaterial: this object does not support precomputation");}
@@ -2489,7 +2497,7 @@ public:
 	/// \brief Generate a random key or crypto parameters
 	/// \param rng a RandomNumberGenerator to produce keying material
 	/// \param params additional initialization parameters
-	/// \throws KeyingErr if a key can't be generated or algorithm parameters are invalid
+	/// \throw KeyingErr if a key can't be generated or algorithm parameters are invalid
 	/// \details If a derived class does not override GenerateRandom(), then the base class throws
 	///  NotImplemented.
 	virtual void GenerateRandom(RandomNumberGenerator &rng, const NameValuePairs &params = g_nullNameValuePairs) {
@@ -2500,7 +2508,7 @@ public:
 	/// \brief Generate a random key or crypto parameters
 	/// \param rng a RandomNumberGenerator to produce keying material
 	/// \param keySize the size of the key, in bits
-	/// \throws KeyingErr if a key can't be generated or algorithm parameters are invalid
+	/// \throw KeyingErr if a key can't be generated or algorithm parameters are invalid
 	/// \details GenerateRandomWithKeySize calls GenerateRandom() with a NameValuePairs
 	///  object with only "KeySize"
 	void GenerateRandomWithKeySize(RandomNumberGenerator &rng, unsigned int keySize);
@@ -2529,7 +2537,7 @@ class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE Certificate : virtual public CryptoMateria
 /// \brief Interface for asymmetric algorithms
 /// \details BERDecode() and DEREncode() were removed under Issue 569
 ///  and Commit 9b174e84de7a. Programs should use <tt>AccessMaterial().Load(bt)</tt>
-///  or <tt>AccessMaterial().Save(bt)</tt> instead.
+///  or <tt>GetMaterial().Save(bt)</tt> instead.
 /// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/569">Issue 569</A>
 class CRYPTOPP_DLL CRYPTOPP_NO_VTABLE AsymmetricAlgorithm : public Algorithm
 {
@@ -2717,7 +2725,7 @@ public:
 	/// \param parameters a set of NameValuePairs to initialize this object
 	/// \return the result of the decryption operation
 	/// \details If DecodingResult::isValidCoding is true, then DecodingResult::messageLength
-	///  is valid and holds the the actual length of the plaintext recovered. The result is undefined
+	///  is valid and holds the actual length of the plaintext recovered. The result is undefined
 	///  if decryption failed. If DecodingResult::isValidCoding is false, then DecodingResult::messageLength
 	///  is undefined.
 	/// \pre <tt>COUNTOF(plaintext) == MaxPlaintextLength(ciphertextLength)</tt> ensures the output
@@ -2743,7 +2751,7 @@ public:
 	/// \param parameters a set of NameValuePairs to initialize this object
 	/// \return the result of the decryption operation
 	/// \details If DecodingResult::isValidCoding is true, then DecodingResult::messageLength
-	///  is valid and holds the the actual length of the plaintext recovered. The result is undefined
+	///  is valid and holds the actual length of the plaintext recovered. The result is undefined
 	///  if decryption failed. If DecodingResult::isValidCoding is false, then DecodingResult::messageLength
 	///  is undefined.
 	/// \pre <tt>COUNTOF(plaintext) == MaxPlaintextLength(ciphertextLength)</tt> ensures the output

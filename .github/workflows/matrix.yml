@@ -12,32 +12,20 @@ env:
 
 jobs:
   # Common Build matrix for builds on Ubuntu VM
-  ubuntu_build:
+  ubuntu_build_20:
     name: ${{ matrix.build_name }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
         # Add more compilers here if you need them
-        build_name: ['Ubuntu GCC 9', 'Ubuntu GCC 8', 'Ubuntu GCC 8 x86', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
+        build_name: ['Ubuntu 20 GCC 9', 'aarch64', 'aarch32-linux-gnueabihf', 'aarch32-linux-gnueabi']
         include:
-          - build_name: 'Ubuntu GCC 9'
+          - build_name: 'Ubuntu 20 GCC 9'
             package_name: 'gcc-9 g++-9'
             cc: gcc-9
             cxx: g++-9
-            label: gcc-9
-            deployable: true
-          - build_name: 'Ubuntu GCC 8'
-            package_name: 'gcc-8 g++-8'
-            cc: gcc-8
-            cxx: g++-8
-            label: linux
-            deployable: true
-          - build_name: 'Ubuntu GCC 8 x86'
-            package_name: 'gcc-8 g++-8'
-            cc: gcc-8
-            cxx: g++-8
-            label: linux-86
+            label: u20-gcc-9
             deployable: true
           - build_name: 'aarch64'
             label: aarch64
@@ -52,11 +40,11 @@ jobs:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
       LABEL: ${{ matrix.label }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # Fetch Dependencies
       - name: Dependencies
-        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi' && matrix.build_name != 'Ubuntu GCC 8 x86'
+        if: matrix.build_name != 'aarch64' && matrix.build_name != 'aarch32-linux-gnueabihf' && matrix.build_name != 'aarch32-linux-gnueabi'
         run: |
           sudo apt update
           sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
@@ -66,7 +54,7 @@ jobs:
           sudo apt install ccache
 
       - name: Retrieve ccache
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: .ccache
           key: ccache-${{ matrix.label }}
@@ -166,7 +154,156 @@ jobs:
         continue-on-error: true
         env:
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
-          BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
+          BINARY_UPLOAD: ${{ secrets.BINARY_URL_S3 }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }} # optional: defaults to us-east-1
+          AWS_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          SOURCE_DIR: 'build/src/' # optional: defaults to entire repository
+          DEST_DIR: 'cli'
+          COMMIT_SHA: ${{ github.sha }}
+          REPO: 'cli'
+        shell: bash
+        if: steps.install-s3.outcome == 'success' && steps.install-s3.conclusion == 'success'
+        run: |
+          FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
+          FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
+          DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
+          SHA8=${COMMIT_SHA::7}
+          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
+          URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
+          BUILD_CONTENT="$RUNNER_OS-${{ matrix.build_name }}-$SHA8 Size: $FILESIZE "$URL_FILE
+          if [ "$RUNNER_OS" == "Windows" ] || [ "$RUNNER_OS" == "macOS" ]; then
+            ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            ~/.local/bin/aws configure set default.region ${AWS_REGION}
+            ~/.local/bin/aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
+            ~/.local/bin/aws configure set aws_access_key_id null
+            ~/.local/bin/aws configure set aws_secret_access_key null
+            ~/.local/bin/aws configure set default.region null
+          elif [ "$RUNNER_OS" == "Linux" ]; then
+            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+            aws configure set default.region ${AWS_REGION}
+            aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
+            aws configure set aws_access_key_id null
+            aws configure set aws_secret_access_key null
+            aws configure set default.region null
+          fi
+          if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "macOS" ]; then
+            curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
+          fi
+
+  ubuntu_build_22:
+    name: ${{ matrix.build_name }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add more compilers here if you need them
+        build_name: ['Ubuntu 22 GCC 9']
+        include:
+          - build_name: 'Ubuntu 22 GCC 9'
+            package_name: 'gcc-9 g++-9'
+            cc: gcc-9
+            cxx: g++-9
+            label: u22-gcc-9
+            deployable: true
+    env:
+      CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
+      LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v3
+
+      # Fetch Dependencies
+      - name: Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y libboost-all-dev libssl-dev ${{ matrix.package_name }}
+
+      - name: Setup ccache
+        run: |
+          sudo apt install ccache
+
+      - name: Retrieve ccache
+        uses: actions/cache@v2
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.label }}
+
+      # Configure the project with cmake
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          if [[ "${LABEL}" == "linux-86" ]]
+          then
+            source scripts/pre-linux-32.sh
+            mkdir build && cd build
+            export CXXFLAGS=-m32
+            export CFLAGS=-m32
+            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=i686 -DSTATIC=true ..
+          else
+            mkdir build && cd build
+            cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+          fi
+
+      # Build for linux
+      - name: Build
+        run: |
+          cd build
+          make -j2
+
+      # Test the crypto
+      - name: Test Crypto
+        run: |
+          cd build/src
+          ./cryptotest
+
+      # Prepare for deploy
+      - name: Prepare for Deploy
+        id: before_deploy
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          export TAG=${COMMIT_SHA::7}
+          cd build/src
+          TARGETS="Wrkzd miner wrkz-wallet wrkz-service cryptotest wrkz-wallet-api wallet-upgrader"
+          if [[ "${LABEL}" != "aarch64" && "${LABEL}" != "aarch32-linux-gnueabi" && "${LABEL}" != "aarch32-linux-gnueabihf" ]]; then strip ${TARGETS}; fi
+          rm -rf wrkzcoin-${TAG}
+          mkdir wrkzcoin-${TAG}
+          cp ${TARGETS} wrkzcoin-${TAG}/
+          cp ../../LICENSE wrkzcoin-${TAG}/
+          tar cvfz wrkzcoin-${LABEL}-${TAG}.tar.gz wrkzcoin-${TAG}/
+          rm -rf builds
+          mkdir builds
+          cp wrkzcoin-${LABEL}-${TAG}.tar.gz builds/
+          echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.tar.gz
+
+      # Upload to S3
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8 # Or other version
+
+      - name: Install awscli via pipx # Isolates dependencies
+        id: install-s3
+        continue-on-error: true
+        shell: bash
+        run: |
+          export PATH=~/.local/bin:$PATH
+          pip install --user pipx
+          pipx install awscli
+          pip install --user pipx awscli-plugin-endpoint
+
+      - name: S3 Upload
+        id: s3-upload
+        continue-on-error: true
+        env:
+          BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
+          BINARY_UPLOAD: ${{ secrets.BINARY_URL_S3 }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -210,25 +347,31 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macos-latest
+    runs-on: macos-10.15
     env:
       CC: /usr/local/opt/llvm@8/bin/clang
       CXX: /usr/local/opt/llvm@8/bin/clang++
       LABEL: osx
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '11.2.1'
 
       # Fetch Dependencies
       - name: Dependencies
         run: |
-          brew uninstall llvm
+          brew uninstall --force llvm
+          brew cleanup -s llvm
+          brew cleanup --prune-prefix
           brew install --force boost llvm@8 ccache
           brew link --overwrite llvm@8
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
 
       - name: Retrieve ccache
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: .ccache
           key: ccache-osx
@@ -293,7 +436,7 @@ jobs:
         continue-on-error: true
         env:
           BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
-          BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
+          BINARY_UPLOAD: ${{ secrets.BINARY_URL_S3 }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -334,181 +477,3 @@ jobs:
             curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}
           fi
 
-  # Windows Builds on Windows Server 2019
-  windows_build:
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-        - {
-            name: "Windows Latest 64 bits", artifact: "win-64", build: "release",
-            os: windows-latest,
-            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
-            label: win64
-          }
-        - {
-            name: "Windows Latest 32 bits", artifact: "win-32", build: "release",
-            os: windows-latest,
-            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat",
-            label: win32
-          }
-
-    env:
-      MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
-      LABEL: ${{ matrix.config.label }}
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Setup clcache
-        run: pip install clcache
-
-      - name: Retrieve clcache
-        uses: actions/cache@v1
-        with:
-          path: clcache
-          key: clcache-windows
-
-      - name: Install OpenSSL
-        run: choco install openssl
-
-      # Install boost
-      - name: Setup binary boost 1.69.0
-        run: |
-          if ($env:LABEL -imatch "win64") {
-            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-64.exe"
-          }
-          else {
-            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-32.exe"
-          }
-          $path = "C:\boost.exe"
-          [Net.WebClient]::new().DownloadFile($link, $path)
-          Start-Process C:\boost.exe -ArgumentList "/DIR=C:\local\boost_1_69_0","/VERYSILENT" -Wait
-          Get-ChildItem C:\local\boost_1_69_0
-
-      # Configure project with cmake
-      - name: Configure
-        run: |
-          mkdir build
-          cd build
-          if ($env:LABEL -imatch "win64") {
-            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
-          }
-          else {
-            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
-          }
-
-      # Build for Windows
-      - name: Build
-        run: |
-          $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
-          $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
-          cd build
-          if ($env:LABEL -imatch "win64") {
-            MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
-          }
-          else {
-            MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m
-          }
-
-      # Test the crypto
-      - name: Test Crypto
-        shell: bash
-        run: |
-          cd build/src/Release
-          ./cryptotest.exe
-
-      # Prepare for deploy
-      - name: Prepare for Deploy
-        shell: bash
-        id: before_deploy
-        env:
-          LABEL: ${{ matrix.config.label }}
-          COMMIT_SHA: ${{ github.sha }}
-        run: |
-          export TAG=${COMMIT_SHA::7}
-          cd build/src/Release
-          rm -rf wrkzcoin-${TAG}
-          mkdir wrkzcoin-${TAG}
-          cp *.exe wrkzcoin-${TAG}/
-          cp ../../../LICENSE wrkzcoin-${TAG}/
-          7z a wrkzcoin-${LABEL}-${TAG}.zip wrkzcoin-${TAG}/
-          rm -rf builds
-          mkdir builds
-          cp wrkzcoin-${LABEL}-${TAG}.zip builds/
-          echo ::set-output name=file_name::wrkzcoin-${LABEL}-${TAG}.zip
-
-      # Upload to S3
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.8 # Or other version
-
-      - name: Install awscli via pipx # Isolates dependencies
-        id: install-s3
-        continue-on-error: true
-        shell: bash
-        run: |
-          export PATH=~/.local/bin:$PATH
-          pip3 install --user pipenv pipx
-          pipx install --include-deps awscli
-          pipx install --include-deps awscli-plugin-endpoint
-      - name: S3 Upload
-        id: s3-upload
-        continue-on-error: true
-        env:
-          PIPX_BIN: "C:/Program Files (x86)/pipx_bin"
-          LABEL: ${{ matrix.config.label }}
-          MINGW64_PATH: 'C:/Program Files/Git/mingw64/bin'
-          BINARY_DISCORD_HOOK: ${{ secrets.DISCORD_HOOK }}
-          BINARY_UPLOAD: 'https://wrkzcoin.s3.fr-par.scw.cloud/'
-          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }} # optional: defaults to us-east-1
-          AWS_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-          SOURCE_DIR: 'build/src/Release' # optional: defaults to entire repository
-          DEST_DIR: 'cli'
-          COMMIT_SHA: ${{ github.sha }}
-          REPO: 'cli'
-        shell: bash
-        if: steps.install-s3.outcome == 'success' && steps.install-s3.conclusion == 'success'
-        run: |
-          FILENAME="./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}"
-          FILESIZE=$(ls -lah "$FILENAME" | awk '{ print $5}')
-          DATE_WITH_TIME=`date "+%Y%m%d-%H%M"`
-          SHA8=${COMMIT_SHA::7}
-          OUT_FILENAME="${DATE_WITH_TIME}-${COMMIT_SHA::7}-${{ steps.before_deploy.outputs.file_name }}"
-          URL_FILE="\`\`\`${BINARY_UPLOAD}${DEST_DIR}/$OUT_FILENAME\`\`\`"
-          BUILD_CONTENT="$RUNNER_OS-${{ matrix.config.label }}-$SHA8 Size: $FILESIZE "$URL_FILE
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            export PATH=$PIPX_BIN:$PATH
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            aws configure set default.region ${AWS_REGION}
-            aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
-            aws configure set aws_access_key_id null
-            aws configure set aws_secret_access_key null
-            aws configure set default.region null
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            ~/.local/bin/aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            ~/.local/bin/aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            ~/.local/bin/aws configure set default.region ${AWS_REGION}
-            ~/.local/bin/aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
-            ~/.local/bin/aws configure set aws_access_key_id null
-            ~/.local/bin/aws configure set aws_secret_access_key null
-            ~/.local/bin/aws configure set default.region null
-          elif [ "$RUNNER_OS" == "Linux" ]; then
-            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-            aws configure set default.region ${AWS_REGION}
-            aws s3 cp "./${SOURCE_DIR}/${{ steps.before_deploy.outputs.file_name }}" "s3://${AWS_S3_BUCKET}/${DEST_DIR}/${OUT_FILENAME}" --no-progress --endpoint-url "${AWS_ENDPOINT}" --acl public-read
-            aws configure set aws_access_key_id null
-            aws configure set aws_secret_access_key null
-            aws configure set default.region null
-          fi
-          if [ "$RUNNER_OS" == "Windows" ]; then
-            export PATH=$MINGW64_PATH:$PATH
-          fi
-          curl -H "Content-Type: application/json" -X POST -d "{\"username\": \"BuildBot-$RUNNER_OS-$REPO\", \"content\": \"$BUILD_CONTENT\"}" ${BINARY_DISCORD_HOOK}

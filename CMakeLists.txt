@@ -291,12 +291,6 @@ if (NOT OPENSSL_FOUND)
     endif()
 endif()
 
-if (MSVC AND OPENSSL_FOUND AND (("${CMAKE_GENERATOR_PLATFORM}" STREQUAL "Win32")))
-    # Disable OPENSSL_FOUND in 32 bits MSVC
-    message(STATUS "OpenSSL Found: Disabled MSVC 32 bits")
-    SET(OPENSSL_FOUND FALSE)
-endif ()
-
 if (OPENSSL_FOUND)
     ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
     if (NOT MSVC)

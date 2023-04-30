@@ -14,7 +14,7 @@
 #        cd build
 # 3. Run cmake to generate project files for Windows, add more options to enable required third-party libraries.
 #    See thirdparty.inc for more information.
-#        sample command: cmake -G "Visual Studio 15 Win64" -DWITH_GFLAGS=1 -DWITH_SNAPPY=1 -DWITH_JEMALLOC=1 -DWITH_JNI=1 ..
+#        sample command: cmake -G "Visual Studio 15 Win64" -DCMAKE_BUILD_TYPE=Release -DWITH_GFLAGS=1 -DWITH_SNAPPY=1 -DWITH_JEMALLOC=1 -DWITH_JNI=1 ..
 # 4. Then build the project in debug mode (you may want to add /m[:<N>] flag to run msbuild in <N> parallel threads
 #                                          or simply /m to use all avail cores)
 #        msbuild rocksdb.sln
@@ -32,7 +32,7 @@
 # 3. cmake ..
 # 4. make -j
 
-cmake_minimum_required(VERSION 3.5.1)
+cmake_minimum_required(VERSION 3.10)
 
 message(STATUS "Setting up build environment for RocksDB")
 
@@ -193,6 +193,7 @@ if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
   endif()
 else()
   set(GIT_SHA 0)
+  set(GIT_MOD 1)
 endif()
 
 string(REGEX REPLACE "[^0-9a-f]+" "" GIT_SHA "${GIT_SHA}")
@@ -229,8 +230,11 @@ if(MSVC)
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W -Wextra -Wall")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wsign-compare -Wshadow -Wno-unused-parameter -Wno-unused-variable -Woverloaded-virtual -Wnon-virtual-dtor -Wno-missing-field-initializers -Wno-strict-aliasing")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wstrict-prototypes")
+  endif()
   if(MINGW)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-format -fno-asynchronous-unwind-tables")
     add_definitions(-D_POSIX_C_SOURCE=1)
   endif()
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -252,7 +256,18 @@ endif()
 
 
 include(CheckCCompilerFlag)
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
+  CHECK_C_COMPILER_FLAG("-mcpu=power9" HAS_POWER9)
+  if(HAS_POWER9)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=power9 -mtune=power9")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=power9 -mtune=power9")
+  else()
+    CHECK_C_COMPILER_FLAG("-mcpu=power8" HAS_POWER8)
+    if(HAS_POWER8)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=power8 -mtune=power8")
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=power8 -mtune=power8")
+    endif(HAS_POWER8)
+  endif(HAS_POWER9)
   CHECK_C_COMPILER_FLAG("-maltivec" HAS_ALTIVEC)
   if(HAS_ALTIVEC)
     message(STATUS " HAS_ALTIVEC yes")
@@ -261,18 +276,18 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=power8")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=power8")
   endif(HAS_ALTIVEC)
-endif(CMAKE_SYSTEM_PROCESSOR MATCHES "ppc64le")
+endif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64")
 
 option(PORTABLE "build a portable binary" ON)
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
-        CHECK_C_COMPILER_FLAG("-march=armv8-a+crc" HAS_ARMV8_CRC)
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|AARCH64")
+        CHECK_C_COMPILER_FLAG("-march=armv8-a+crc+crypto" HAS_ARMV8_CRC)
   if(HAS_ARMV8_CRC)
     message(STATUS " HAS_ARMV8_CRC yes")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a+crc -Wno-unused-function")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+crc -Wno-unused-function")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8-a+crc+crypto -Wno-unused-function")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+crc+crypto -Wno-unused-function")
   endif(HAS_ARMV8_CRC)
-endif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|AARCH64")
+endif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|AARCH64")
 
 option(FORCE_SSE42 "force building with SSE4.2, even when PORTABLE=ON" OFF)
 option(FORCE_AVX "force building with AVX, even when PORTABLE=ON" OFF)
@@ -303,7 +318,7 @@ else()
   if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX2")
   else()
-    if(NOT HAVE_POWER8 AND NOT HAS_ARMV8_CRC)
+    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)64" AND NOT HAS_ARMV8_CRC)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native")
     endif()
   endif()
@@ -335,18 +350,46 @@ if(NOT "${ARCH}" STREQUAL "default")
   endif()
 endif()
 
-if(NOT "${ARCH}" STREQUAL "default")
+if (WITH_LIBURING)
+  set(CMAKE_REQUIRED_FLAGS "-luring")
   CHECK_CXX_SOURCE_COMPILES("
-  #if defined(_MSC_VER) && !defined(__thread)
-  #define __thread __declspec(thread)
-  #endif
-  int main() {
-    static __thread int tls;
-  }
-  " HAVE_THREAD_LOCAL)
-  if(HAVE_THREAD_LOCAL)
-    add_definitions(-DROCKSDB_SUPPORT_THREAD_LOCAL)
+#include <liburing.h>
+int main() {
+  struct io_uring ring;
+  io_uring_queue_init(1, &ring, 0);
+  return 0;
+}
+" HAS_LIBURING)
+  if (HAS_LIBURING)
+    add_definitions(-DROCKSDB_IOURING_PRESENT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -luring")
   endif()
+endif()
+
+# Reset the required flags
+set(CMAKE_REQUIRED_FLAGS ${OLD_CMAKE_REQUIRED_FLAGS})
+
+CHECK_CXX_SOURCE_COMPILES("
+#if defined(_MSC_VER) && !defined(__thread)
+#define __thread __declspec(thread)
+#endif
+int main() {
+  static __thread int tls;
+  (void)tls;
+}
+" HAVE_THREAD_LOCAL)
+if(HAVE_THREAD_LOCAL)
+  add_definitions(-DROCKSDB_SUPPORT_THREAD_LOCAL)
+endif()
+
+option(WITH_IOSTATS_CONTEXT "Enable IO stats context" ON)
+if (NOT WITH_IOSTATS_CONTEXT)
+  add_definitions(-DNIOSTATS_CONTEXT)
+endif()
+
+option(WITH_PERF_CONTEXT "Enable perf context" ON)
+if (NOT WITH_PERF_CONTEXT)
+  add_definitions(-DNPERF_CONTEXT)
 endif()
 
 option(FAIL_ON_WARNINGS "Treat compile warnings as errors" OFF)
@@ -477,7 +520,7 @@ endif()
 option(ROCKSDB_LITE "Build RocksDBLite version" OFF)
 if(ROCKSDB_LITE)
   add_definitions(-DROCKSDB_LITE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -Os")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "Cygwin")
@@ -523,7 +566,7 @@ if(WITH_FALLOCATE)
 #include <linux/falloc.h>
 int main() {
  int fd = open(\"/dev/null\", 0);
- fallocate(fd, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE, 0, 1024);
+ fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 1024);
 }
 " HAVE_FALLOCATE)
   if(HAVE_FALLOCATE)
@@ -582,12 +625,15 @@ find_package(Threads REQUIRED)
 
 set(SOURCES
         cache/cache.cc
+        cache/cache_entry_roles.cc
         cache/clock_cache.cc
         cache/lru_cache.cc
         cache/sharded_cache.cc
         db/arena_wrapped_db_iter.cc
+        db/blob/blob_fetcher.cc
         db/blob/blob_file_addition.cc
         db/blob/blob_file_builder.cc
+        db/blob/blob_file_cache.cc
         db/blob/blob_file_garbage.cc
         db/blob/blob_file_meta.cc
         db/blob/blob_file_reader.cc
@@ -597,7 +643,6 @@ set(SOURCES
         db/builder.cc
         db/c.cc
         db/column_family.cc
-        db/compacted_db_impl.cc
         db/compaction/compaction.cc
         db/compaction/compaction_iterator.cc
         db/compaction/compaction_picker.cc
@@ -608,6 +653,7 @@ set(SOURCES
         db/compaction/sst_partitioner.cc
         db/convenience.cc
         db/db_filesnapshot.cc
+        db/db_impl/compacted_db_impl.cc
         db/db_impl/db_impl.cc
         db/db_impl/db_impl_write.cc
         db/db_impl/db_impl_compaction_flush.cc
@@ -658,17 +704,20 @@ set(SOURCES
         db/write_batch_base.cc
         db/write_controller.cc
         db/write_thread.cc
+        env/composite_env.cc
         env/env.cc
         env/env_chroot.cc
         env/env_encryption.cc
         env/env_hdfs.cc
         env/file_system.cc
         env/file_system_tracer.cc
+        env/fs_remap.cc
         env/mock_env.cc
         file/delete_scheduler.cc
         file/file_prefetch_buffer.cc
         file/file_util.cc
         file/filename.cc
+        file/line_file_reader.cc
         file/random_access_file_reader.cc
         file/read_write_util.cc
         file/readahead_raf.cc
@@ -703,6 +752,7 @@ set(SOURCES
         monitoring/thread_status_util_debug.cc
         options/cf_options.cc
         options/configurable.cc
+        options/customizable.cc
         options/db_options.cc
         options/options.cc
         options/options_helper.cc
@@ -781,6 +831,7 @@ set(SOURCES
         util/murmurhash.cc
         util/random.cc
         util/rate_limiter.cc
+        util/ribbon_config.cc
         util/slice.cc
         util/file_checksum_helper.cc
         util/status.cc
@@ -826,8 +877,9 @@ set(SOURCES
         utilities/simulator_cache/sim_cache.cc
         utilities/table_properties_collectors/compact_on_deletion_collector.cc
         utilities/trace/file_trace_reader_writer.cc
-        utilities/transactions/lock/lock_tracker.cc
-        utilities/transactions/lock/point_lock_tracker.cc
+        utilities/transactions/lock/lock_manager.cc
+        utilities/transactions/lock/point/point_lock_tracker.cc
+        utilities/transactions/lock/point/point_lock_manager.cc
         utilities/transactions/optimistic_transaction_db_impl.cc
         utilities/transactions/optimistic_transaction.cc
         utilities/transactions/pessimistic_transaction.cc
@@ -835,7 +887,6 @@ set(SOURCES
         utilities/transactions/snapshot_checker.cc
         utilities/transactions/transaction_base.cc
         utilities/transactions/transaction_db_mutex_impl.cc
-        utilities/transactions/transaction_lock_mgr.cc
         utilities/transactions/transaction_util.cc
         utilities/transactions/write_prepared_txn.cc
         utilities/transactions/write_prepared_txn_db.cc
@@ -1043,15 +1094,21 @@ if(WITH_TESTS)
         cache/lru_cache_test.cc
         db/blob/blob_file_addition_test.cc
         db/blob/blob_file_builder_test.cc
+        db/blob/blob_file_cache_test.cc
         db/blob/blob_file_garbage_test.cc
         db/blob/blob_file_reader_test.cc
+        db/blob/db_blob_basic_test.cc
+        db/blob/db_blob_compaction_test.cc
+        db/blob/db_blob_corruption_test.cc
         db/blob/db_blob_index_test.cc
         db/column_family_test.cc
         db/compact_files_test.cc
+        db/compaction/clipping_iterator_test.cc
         db/compaction/compaction_job_stats_test.cc
         db/compaction/compaction_job_test.cc
         db/compaction/compaction_iterator_test.cc
         db/compaction/compaction_picker_test.cc
+        db/compaction/compaction_service_test.cc
         db/comparator_db_test.cc
         db/corruption_test.cc
         db/cuckoo_table_db_test.cc
@@ -1067,6 +1124,7 @@ if(WITH_TESTS)
         db/db_iter_test.cc
         db/db_iter_stress_test.cc
         db/db_iterator_test.cc
+        db/db_kv_checksum_test.cc
         db/db_log_iter_test.cc
         db/db_memtable_test.cc
         db/db_merge_operator_test.cc
@@ -1074,7 +1132,7 @@ if(WITH_TESTS)
         db/db_options_test.cc
         db/db_properties_test.cc
         db/db_range_del_test.cc
-        db/db_impl/db_secondary_test.cc
+        db/db_secondary_test.cc
         db/db_sst_test.cc
         db/db_statistics_test.cc
         db/db_table_properties_test.cc
@@ -1138,6 +1196,7 @@ if(WITH_TESTS)
         monitoring/statistics_test.cc
         monitoring/stats_history_test.cc
         options/configurable_test.cc
+        options/customizable_test.cc
         options/options_settable_test.cc
         options/options_test.cc
         table/block_based/block_based_filter_block_test.cc
@@ -1154,6 +1213,7 @@ if(WITH_TESTS)
         table/table_test.cc
         table/block_fetcher_test.cc
         test_util/testutil_test.cc
+        trace_replay/block_cache_tracer_test.cc
         trace_replay/io_tracer_test.cc
         tools/block_cache_analyzer/block_cache_trace_analyzer_test.cc
         tools/io_tracer_parser_test.cc
@@ -1174,6 +1234,7 @@ if(WITH_TESTS)
         util/random_test.cc
         util/rate_limiter_test.cc
         util/repeatable_thread_test.cc
+        util/ribbon_test.cc
         util/slice_test.cc
         util/slice_transform_test.cc
         util/timer_queue_test.cc
@@ -1200,14 +1261,13 @@ if(WITH_TESTS)
         utilities/table_properties_collectors/compact_on_deletion_collector_test.cc
         utilities/transactions/optimistic_transaction_test.cc
         utilities/transactions/transaction_test.cc
-        utilities/transactions/transaction_lock_mgr_test.cc
+        utilities/transactions/lock/point/point_lock_manager_test.cc
         utilities/transactions/write_prepared_transaction_test.cc
         utilities/transactions/write_unprepared_transaction_test.cc
         utilities/ttl/ttl_test.cc
         utilities/write_batch_with_index/write_batch_with_index_test.cc
-  )
+    )
   endif()
-  
   if(WITH_LIBRADOS)
     list(APPEND TESTS utilities/env_librados_test.cc)
   endif()
@@ -1216,23 +1276,6 @@ if(WITH_TESTS)
     list(APPEND TESTS third-party/folly/folly/synchronization/test/DistributedMutexTest.cpp)
   endif()
 
-  set(BENCHMARKS
-    cache/cache_bench.cc
-    memtable/memtablerep_bench.cc
-    db/range_del_aggregator_bench.cc
-    tools/db_bench.cc
-    table/table_reader_bench.cc
-    utilities/persistent_cache/hash_table_bench.cc)
-  add_library(testharness OBJECT test_util/testharness.cc)
-  foreach(sourcefile ${BENCHMARKS})
-    get_filename_component(exename ${sourcefile} NAME_WE)
-    add_executable(${exename}${ARTIFACT_SUFFIX} ${sourcefile}
-      $<TARGET_OBJECTS:testharness>)
-    target_link_libraries(${exename}${ARTIFACT_SUFFIX} gtest ${LIBS})
-  endforeach(sourcefile ${BENCHMARKS})
-
-  # For test util library that is build only in DEBUG mode
-  # and linked to tests. Add test only code that is not #ifdefed for Release here.
   set(TESTUTIL_SOURCE
       db/db_test_util.cc
       monitoring/thread_status_updater_debug.cc

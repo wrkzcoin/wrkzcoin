@@ -4,12 +4,19 @@
 
 /// \file config_ns.h
 /// \brief Library configuration file
+/// \details <tt>config_ns.h</tt> provides defines for C++ and library
+///  namespaces.
 /// \details <tt>config.h</tt> was split into components in May 2019 to better
-///  integrate with Autoconf and its feature tests. The splitting occured so
+///  integrate with Autoconf and its feature tests. The splitting occurred so
 ///  users could continue to include <tt>config.h</tt> while allowing Autoconf
 ///  to write new <tt>config_asm.h</tt> and new <tt>config_cxx.h</tt> using
 ///  its feature tests.
-/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835</A>
+/// \note You should include <tt>config.h</tt> rather than <tt>config_ns.h</tt>
+///  directly.
+/// \sa <A HREF="https://github.com/weidai11/cryptopp/issues/835">Issue 835,
+///  Make config.h more autoconf friendly</A>,
+///  <A HREF="https://www.cryptopp.com/wiki/Configure.sh">Configure.sh script</A>
+///  on the Crypto++ wiki
 /// \since Crypto++ 8.3
 
 #ifndef CRYPTOPP_CONFIG_NAMESPACE_H
@@ -25,7 +32,7 @@
 /// \namespace CryptoPP
 /// \brief Crypto++ library namespace
 /// \details Nearly all classes are located in the CryptoPP namespace. Within
-/// the namespace, there are two additional namespaces.
+///  the namespace, there are four additional namespaces.
 ///   <ul>
 ///     <li>Name - namespace for names used with NameValuePairs and documented
 ///         in argnames.h
@@ -37,6 +44,7 @@
 ///     <li>Weak - namespace for weak and wounded algorithms, like ARC4, MD5
 ///         and Pananma
 ///   </ul>
+/// \since Crypto++ 3.0
 namespace CryptoPP { }
 
 // Bring in the symbols found in the weak namespace; and fold Weak1 into Weak
