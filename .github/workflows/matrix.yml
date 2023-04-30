@@ -491,12 +491,6 @@ jobs:
             environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars64.bat",
             label: win64
           }
-        - {
-            name: "Windows 2019 32 bits", artifact: "win-32", build: "release",
-            os: windows-2019,
-            environment_script: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/VC/Auxiliary/Build/vcvars32.bat",
-            label: win32
-          }
 
     env:
       MSBUILD_PATH: "C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/MSBuild/Current/Bin"
@@ -506,38 +500,26 @@ jobs:
 
       - name: Install OpenSSL
         run: |
-          if ($env:LABEL -imatch "win64") {
-            choco install openssl
-          }
-          else {
-            choco install --x86 --force openssl
-          }
+          choco install openssl
 
       # Install boost
       - name: Setup binary boost 1.69.0
         run: |
-          if ($env:LABEL -imatch "win64") {
-            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-64.exe"
-          }
-          else {
-            $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-32.exe"
-          }
+          $link = "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/binaries/boost_1_69_0-msvc-14.1-64.exe"
           $path = "C:\boost.exe"
           [Net.WebClient]::new().DownloadFile($link, $path)
           Start-Process C:\boost.exe -ArgumentList "/DIR=C:\local\boost_1_69_0","/VERYSILENT" -Wait
           Get-ChildItem C:\local\boost_1_69_0
+
+      - name: Get specific version CMake
+        uses: lukka/get-cmake@v3.18.2
 
       # Configure project with cmake
       - name: Configure
         run: |
           mkdir build
           cd build
-          if ($env:LABEL -imatch "win64") {
-            cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
-          }
-          else {
-            cmake -G "Visual Studio 16 2019" -A Win32 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
-          }
+          cmake -G "Visual Studio 16 2019" -A x64 .. -DARCH=default -DBOOST_ROOT=C:/local/boost_1_69_0
 
       # Build for Windows
       - name: Build
@@ -545,12 +527,7 @@ jobs:
         run: |
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
-          if ($env:LABEL -imatch "win64") {
-            MSBuild WrkzCoin.sln /p:Configuration=Release /p:PlatformToolset=v141 /m
-          }
-          else {
-            MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m
-          }
+          MSBuild WrkzCoin.sln /p:Configuration=Release /p:PlatformToolset=v141 /m
 
       # Test the crypto
       - name: Test Crypto
