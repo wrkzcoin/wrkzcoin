@@ -25,7 +25,7 @@ jobs:
             package_name: 'gcc-9 g++-9'
             cc: gcc-9
             cxx: g++-9
-            label: gcc-9
+            label: u20-gcc-9
             deployable: true
           - build_name: 'aarch64'
             label: aarch64
@@ -208,7 +208,7 @@ jobs:
             package_name: 'gcc-9 g++-9'
             cc: gcc-9
             cxx: g++-9
-            label: gcc-9
+            label: u22-gcc-9
             deployable: true
     env:
       CCACHE_DIR: $GITHUB_WORKSPACE/.ccache
