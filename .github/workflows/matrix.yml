@@ -504,15 +504,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup clcache
-        run: pip install clcache
-
-      - name: Retrieve clcache
-        uses: actions/cache@v2
-        with:
-          path: clcache
-          key: clcache-windows
-
       - name: Install OpenSSL
         run: |
           if ($env:LABEL -imatch "win64") {
@@ -552,11 +543,10 @@ jobs:
       - name: Build
         id: build-cli
         run: |
-          $env:CLCACHE_DIR = "$env:GITHUB_WORKSPACE\clcache"
           $env:PATH = "$env:PATH;$env:MSBUILD_PATH"
           cd build
           if ($env:LABEL -imatch "win64") {
-            MSBuild WrkzCoin.sln /p:CLToolExe=clcache.exe /p:Configuration=Release /p:PlatformToolset=v141 /m
+            MSBuild WrkzCoin.sln /p:Configuration=Release /p:PlatformToolset=v141 /m
           }
           else {
             MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m
