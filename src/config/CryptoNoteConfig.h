@@ -480,8 +480,8 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "88.198.24.3:17855",       // node-fin.wrkz.work
-        "78.46.65.183:17855",      // node-wrkz.btipz.com
+        "5.189.146.22:17855",      // node-fin.wrkz.work
+        "46.250.227.57:17855",     // node-wrkz.btipz.com
         "161.97.81.2:17855"        // wrkz.xyz
     };
 } // namespace CryptoNote
