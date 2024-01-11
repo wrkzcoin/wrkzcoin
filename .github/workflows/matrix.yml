@@ -363,7 +363,7 @@ jobs:
       # Fetch Dependencies
       - name: Dependencies
         run: |
-          brew uninstall --force llvm
+          brew uninstall --force --ignore-dependencies llvm
           brew cleanup -s llvm
           brew cleanup --prune-prefix
           brew install --force boost llvm@8 ccache
