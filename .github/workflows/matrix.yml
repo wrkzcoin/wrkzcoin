@@ -347,7 +347,7 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macos-10.15
+    runs-on: macos-11
     env:
       CC: /usr/local/opt/llvm@8/bin/clang
       CXX: /usr/local/opt/llvm@8/bin/clang++
