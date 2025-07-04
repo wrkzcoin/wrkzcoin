@@ -54,7 +54,7 @@ jobs:
           sudo apt install ccache
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-${{ matrix.label }}
@@ -227,7 +227,7 @@ jobs:
           sudo apt install ccache
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-${{ matrix.label }}
@@ -371,7 +371,7 @@ jobs:
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-osx
