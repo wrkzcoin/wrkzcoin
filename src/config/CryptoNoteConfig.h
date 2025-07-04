@@ -362,10 +362,11 @@ namespace CryptoNote
             2500000,  // 16
             2800000,  // 17
             3500000,  // 18
+            3800000,  // 19
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 17;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 19;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -481,8 +482,7 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "5.189.146.22:17855",      // node-fin.wrkz.work
-        "46.250.227.57:17855",     // node-wrkz.btipz.com
-        "161.97.81.2:17855"        // wrkz.xyz
+        "23.88.42.100:17855",      // node-fin.wrkz.work
+        "195.7.5.101:17855"        // node-wrkz.btipz.com
     };
 } // namespace CryptoNote
