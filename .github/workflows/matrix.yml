@@ -54,7 +54,7 @@ jobs:
           sudo apt install ccache
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-${{ matrix.label }}
@@ -227,7 +227,7 @@ jobs:
           sudo apt install ccache
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-${{ matrix.label }}
@@ -347,7 +347,7 @@ jobs:
   # Mac builds on Catalina VM
   macos_build:
     name: macOS
-    runs-on: macos-10.15
+    runs-on: macos-11
     env:
       CC: /usr/local/opt/llvm@8/bin/clang
       CXX: /usr/local/opt/llvm@8/bin/clang++
@@ -358,12 +358,12 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '11.2.1'
+          xcode-version: '12.5.1'
 
       # Fetch Dependencies
       - name: Dependencies
         run: |
-          brew uninstall --force llvm
+          brew uninstall --force --ignore-dependencies llvm
           brew cleanup -s llvm
           brew cleanup --prune-prefix
           brew install --force boost llvm@8 ccache
@@ -371,7 +371,7 @@ jobs:
           ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm
 
       - name: Retrieve ccache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: .ccache
           key: ccache-osx

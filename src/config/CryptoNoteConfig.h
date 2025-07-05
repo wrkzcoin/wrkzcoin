@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2024, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -361,10 +361,12 @@ namespace CryptoNote
             1800000,  // 15
             2500000,  // 16
             2800000,  // 17
+            3500000,  // 18
+            3800000,  // 19
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 16;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 19;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -480,8 +482,7 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "88.198.24.3:17855",       // node-fin.wrkz.work
-        "78.46.65.183:17855",      // node-wrkz.btipz.com
-        "161.97.81.2:17855"        // wrkz.xyz
+        "23.88.42.100:17855",      // node-fin.wrkz.work
+        "195.7.5.101:17855"        // node-wrkz.btipz.com
     };
 } // namespace CryptoNote
