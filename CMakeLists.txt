@@ -14,7 +14,8 @@ else ()
 endif ()
 
 set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
-set(ARCH native CACHE STRING "CPU to build for: -march value or native")
+set(ARCH default CACHE STRING "CPU to build for: -march value or native")
+set(CONSENSUS_SAFE_BUILD ON CACHE BOOL "Use reproducible, consensus-safe compiler optimizations")
 
 project(WrkzCoin)
 
@@ -64,6 +65,7 @@ set(NO_AES OFF CACHE BOOL "Turn off Hardware AES instructions?")
 set(NO_OPTIMIZED_MULTIPLY_ON_ARM OFF CACHE BOOL "Turn off Optimized Multiplication on ARM?")
 
 message(STATUS "Building for target architecture: ${ARCH}")
+message(STATUS "CONSENSUS_SAFE_BUILD: ${CONSENSUS_SAFE_BUILD}")
 
 if (FORCE_USE_HEAP)
     add_definitions(-DFORCE_USE_HEAP)
@@ -223,7 +225,11 @@ if (NOT MSVC)
     endif ()
 
     ## Setting up RELEASE flags
-    set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
+    if (CONSENSUS_SAFE_BUILD)
+        set(RELEASE_FLAGS "-O2 -DNDEBUG -Wno-unused-variable -fno-strict-aliasing")
+    else ()
+        set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
+    endif ()
 
     if (NOT APPLE)
         # There is a clang bug that does not allow to compile code that uses AES-NI intrinsics if -flto is enabled
