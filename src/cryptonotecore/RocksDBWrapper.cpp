@@ -255,6 +255,30 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
     return std::error_code();
 }
 
+std::error_code RocksDBWrapper::compact()
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    logger(INFO) << "Starting RocksDB full compaction...";
+
+    rocksdb::CompactRangeOptions options;
+    options.change_level = true;
+    options.target_level = -1;
+
+    const rocksdb::Status status = db->CompactRange(options, nullptr, nullptr);
+    if (!status.ok())
+    {
+        logger(ERROR) << "RocksDB compaction failed: " << status.ToString();
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
+
+    logger(INFO) << "RocksDB full compaction completed.";
+    return std::error_code();
+}
+
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 {
     rocksdb::DBOptions dbOptions;

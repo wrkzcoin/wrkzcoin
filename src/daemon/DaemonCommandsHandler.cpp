@@ -199,6 +199,10 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "db_status",
         std::bind(&DaemonCommandsHandler::db_status, this, std::placeholders::_1),
         "Show on-disk DB status for the active DB engine");
+    m_consoleHandler.setHandler(
+        "compact_db",
+        std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
+        "Run local DB compaction (can take time and increase IO)");
 }
 
 //--------------------------------------------------------------------------------
@@ -780,5 +784,21 @@ bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
         std::cout << "  " << ext << ": " << count << std::endl;
     }
 
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
+{
+    std::cout << InformationMsg("Starting DB compaction. This may take a while...") << std::endl;
+
+    const auto error = m_core.compactDatabase();
+    if (error)
+    {
+        std::cout << WarningMsg("DB compaction failed: " + error.message()) << std::endl;
+        return false;
+    }
+
+    std::cout << SuccessMsg("DB compaction completed.") << std::endl;
     return true;
 }

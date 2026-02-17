@@ -21,6 +21,7 @@
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CoreErrors.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
+#include <cryptonotecore/DataBaseErrors.h>
 #include <cryptonotecore/DatabaseBlockchainCache.h>
 #include <cryptonotecore/ITimeProvider.h>
 #include <cryptonotecore/MemoryBlockchainStorage.h>
@@ -2910,6 +2911,19 @@ namespace CryptoNote
         }
 
         return dbCache->pruneStoredRawBlocks(pruneDepth);
+    }
+
+    std::error_code Core::compactDatabase()
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        return dbCache->compactDatabase();
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

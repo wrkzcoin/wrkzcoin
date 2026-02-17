@@ -209,6 +209,20 @@ std::error_code LevelDBWrapper::readThreadSafe(IReadBatch &batch)
     return read(batch);
 }
 
+std::error_code LevelDBWrapper::compact()
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    logger(INFO) << "Starting LevelDB full compaction...";
+    db->CompactRange(nullptr, nullptr);
+    logger(INFO) << "LevelDB full compaction completed.";
+
+    return std::error_code();
+}
+
 leveldb::Options LevelDBWrapper::getDBOptions(const DataBaseConfig &config)
 {
     leveldb::Options dbOptions;

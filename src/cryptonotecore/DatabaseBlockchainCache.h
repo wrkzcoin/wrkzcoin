@@ -243,6 +243,8 @@ namespace CryptoNote
 
         size_t pruneStoredRawBlocks(uint32_t pruneDepth);
 
+        std::error_code compactDatabase();
+
       private:
         const Currency &currency;
 

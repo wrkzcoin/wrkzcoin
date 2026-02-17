@@ -240,6 +240,8 @@ namespace CryptoNote
 
         size_t pruneRawBlocks(uint32_t pruneDepth);
 
+        std::error_code compactDatabase();
+
       private:
         const Currency &currency;
 
