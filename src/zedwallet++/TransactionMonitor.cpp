@@ -37,9 +37,7 @@ void TransactionMonitor::start()
                    command is being handled, for example, transferring */
                 std::scoped_lock lock(*m_mutex);
 
-                std::cout << InformationMsg("\nNew transaction found!\n\n");
-
-                printIncomingTransfer(tx);
+                printTransferOneLine(tx);
 
                 /* Write out the prompt after every transfer. This prevents the
                    wallet being in a 'ready' state, waiting for input, but looking

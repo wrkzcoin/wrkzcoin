@@ -80,16 +80,7 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
             /* Don't print out fusion transactions */
             if (!tx.isFusionTransaction())
             {
-                std::cout << InformationMsg("\nNew transaction found!\n\n");
-
-                if (tx.totalAmount() < 0)
-                {
-                    printOutgoingTransfer(tx);
-                }
-                else
-                {
-                    printIncomingTransfer(tx);
-                }
+                printTransferOneLine(tx);
             }
         }
 

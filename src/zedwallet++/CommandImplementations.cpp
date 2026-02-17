@@ -12,6 +12,7 @@
 #include <crypto/random.h>
 #include <common/StringTools.h>
 #include <errors/ValidateParameters.h>
+#include <cstdlib>
 #include <fstream>
 #include <logger/Logger.h>
 #include <utilities/Addresses.h>
@@ -416,6 +417,64 @@ void printIncomingTransfer(const WalletTypes::Transaction tx)
     else
     {
         std::cout << SuccessMsg(stream.str()) << std::endl;
+    }
+}
+
+void printTransferOneLine(const WalletTypes::Transaction tx)
+{
+    const bool incoming = tx.totalAmount() >= 0;
+    const int64_t amount = std::abs(tx.totalAmount());
+
+    std::stringstream stream;
+
+    stream << (incoming ? "[IN] " : "[OUT] ");
+
+    if (tx.blockHeight == 0 || tx.timestamp == 0)
+    {
+        stream << "h:pending t:pending ";
+    }
+    else
+    {
+        stream << "h:" << tx.blockHeight << " ";
+        stream << "t:" << Utilities::unixTimeToDate(tx.timestamp) << " ";
+    }
+
+    stream << (incoming ? "+" : "-") << Utilities::formatAmount(amount) << " ";
+
+    if (!incoming && tx.fee != 0)
+    {
+        stream << "fee:" << Utilities::formatAmount(tx.fee) << " ";
+    }
+
+    stream << "tx:" << tx.hash;
+
+    if (incoming)
+    {
+        const int64_t difference = tx.unlockTime - tx.blockHeight;
+
+        if (tx.unlockTime != 0 && difference > 0
+            && tx.unlockTime < CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+        {
+            stream << " unlock_h:" << tx.unlockTime;
+        }
+        else if (tx.unlockTime > static_cast<uint64_t>(std::time(nullptr)))
+        {
+            stream << " unlock_t:" << Utilities::unixTimeToDate(tx.unlockTime);
+        }
+    }
+
+    if (!tx.paymentID.empty())
+    {
+        stream << " pid:" << tx.paymentID;
+    }
+
+    if (incoming)
+    {
+        std::cout << SuccessMsg(stream.str()) << std::endl;
+    }
+    else
+    {
+        std::cout << WarningMsg(stream.str()) << std::endl;
     }
 }
 
