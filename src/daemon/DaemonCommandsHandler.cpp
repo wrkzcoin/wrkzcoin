@@ -884,7 +884,7 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
             return true;
         }
 
-        const uint32_t ip = CryptoNote::hostToNetwork(ipHostOrder);
+        const uint32_t ip = hostToNetwork(ipHostOrder);
         m_srv.ban_host(ip, seconds);
         std::cout << SuccessMsg("Ban added for " + Common::ipAddressToString(ip) + " (" + std::to_string(seconds) + "s)")
                   << std::endl;
@@ -910,7 +910,7 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
             return true;
         }
 
-        const uint32_t ip = CryptoNote::hostToNetwork(ipHostOrder);
+        const uint32_t ip = hostToNetwork(ipHostOrder);
         const bool removed = m_srv.unban_host(ip);
 
         if (!removed)
