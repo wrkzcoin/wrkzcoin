@@ -84,4 +84,10 @@ class DaemonCommandsHandler
     bool print_pool_sh(const std::vector<std::string> &args);
 
     bool status(const std::vector<std::string> &args);
+
+    bool prune_status(const std::vector<std::string> &args);
+
+    bool sync_info(const std::vector<std::string> &args);
+
+    bool save(const std::vector<std::string> &args);
 };

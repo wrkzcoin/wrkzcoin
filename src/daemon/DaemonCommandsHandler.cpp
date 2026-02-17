@@ -110,6 +110,18 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "status",
         std::bind(&DaemonCommandsHandler::status, this, std::placeholders::_1),
         "Show daemon status");
+    m_consoleHandler.setHandler(
+        "prune_status",
+        std::bind(&DaemonCommandsHandler::prune_status, this, std::placeholders::_1),
+        "Show prune mode and capability status");
+    m_consoleHandler.setHandler(
+        "sync_info",
+        std::bind(&DaemonCommandsHandler::sync_info, this, std::placeholders::_1),
+        "Show compact synchronization information");
+    m_consoleHandler.setHandler(
+        "save",
+        std::bind(&DaemonCommandsHandler::save, this, std::placeholders::_1),
+        "Force-save blockchain state to disk");
 }
 
 //--------------------------------------------------------------------------------
@@ -462,6 +474,9 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
     statusTable.push_back({"DB Engine",             m_config.enableLevelDB ? "LevelDB" : "RocksDB"});
+    statusTable.push_back({"Pruned Node",          getBoolFromJSON(resp, "pruned") ? "Yes" : "No"});
+    statusTable.push_back({"Prune Depth",          std::to_string(getUint64FromJSON(resp, "prune_depth"))});
+    statusTable.push_back({"Prune Capability Fork Active", getBoolFromJSON(resp, "prune_capability_active") ? "Yes" : "No"});
     statusTable.push_back({"WrkzCoin Version", PROJECT_VERSION});
 
     size_t longestValue = 0;
@@ -503,5 +518,77 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
         std::cout << WarningMsg(Utilities::get_upgrade_info(supportedHeight, upgradeHeights)) << std::endl;
     }
 
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::prune_status(const std::vector<std::string> &args)
+{
+    auto res = m_rpcServer.Get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving prune status from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing prune status response.") << std::endl;
+        return false;
+    }
+
+    const bool pruned = getBoolFromJSON(resp, "pruned");
+    const uint64_t pruneDepth = getUint64FromJSON(resp, "prune_depth");
+    const bool pruneCapabilityActive = getBoolFromJSON(resp, "prune_capability_active");
+    const uint64_t height = getUint64FromJSON(resp, "height");
+    const uint64_t pruneFloor = height > pruneDepth ? height - pruneDepth : 0;
+
+    std::cout << InformationMsg("Pruned Node: ") << SuccessMsg(pruned ? "Yes" : "No") << std::endl;
+    std::cout << InformationMsg("Prune Depth: ") << SuccessMsg(pruneDepth) << std::endl;
+    std::cout << InformationMsg("Approx Prune Floor Height: ") << SuccessMsg(pruneFloor) << std::endl;
+    std::cout << InformationMsg("Prune Capability Fork Active: ") << SuccessMsg(pruneCapabilityActive ? "Yes" : "No")
+              << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_info(const std::vector<std::string> &args)
+{
+    auto res = m_rpcServer.Get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync information from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync information response.") << std::endl;
+        return false;
+    }
+
+    const uint64_t height = getUint64FromJSON(resp, "height");
+    const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");
+    const std::string percentage = Utilities::get_sync_percentage(height, networkHeight) + "%";
+
+    std::cout << InformationMsg("Height: ") << SuccessMsg(height) << InformationMsg(" / ")
+              << SuccessMsg(networkHeight) << InformationMsg(" (") << SuccessMsg(percentage) << InformationMsg(")")
+              << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::save(const std::vector<std::string> &args)
+{
+    m_core.save();
+    std::cout << SuccessMsg("Core state saved.") << std::endl;
     return true;
 }
