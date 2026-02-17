@@ -59,6 +59,10 @@ namespace DaemonConfig
             exportNumBlocks = 0;
             prune = false;
             pruneDepth = DEFAULT_PRUNE_DEPTH;
+            syncMaxPeers = 2;
+            syncPeerFailureThreshold = 3;
+            syncBatchMin = 100;
+            syncBatchMax = 400;
         }
 
         std::string dataDirectory;
@@ -134,6 +138,14 @@ namespace DaemonConfig
         bool prune;
 
         uint32_t pruneDepth;
+
+        uint32_t syncMaxPeers;
+
+        uint32_t syncPeerFailureThreshold;
+
+        uint32_t syncBatchMin;
+
+        uint32_t syncBatchMax;
 
         std::string configFile;
 

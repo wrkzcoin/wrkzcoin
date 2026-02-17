@@ -531,6 +531,15 @@ std::tuple<Error, uint16_t> RpcServer::info(
     writer.Key("prune_capability_active");
     writer.Bool(m_syncManager->isPruneCapabilityActive());
 
+    writer.Key("sync_active_peers");
+    writer.Uint64(m_syncManager->getSyncActivePeers());
+
+    writer.Key("sync_avg_batch_size");
+    writer.Uint64(m_syncManager->getSyncAvgBatchSize());
+
+    writer.Key("sync_demoted_peers");
+    writer.Uint64(m_syncManager->getSyncDemotedPeers());
+
     writer.Key("major_version");
     writer.Uint64(blockDetails.majorVersion);
 

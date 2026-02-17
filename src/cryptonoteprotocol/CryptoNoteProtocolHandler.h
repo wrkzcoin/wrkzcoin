@@ -91,7 +91,19 @@ namespace CryptoNote
 
         virtual bool isPruneCapabilityActive() const override;
 
+        virtual uint32_t getSyncActivePeers() const override;
+
+        virtual uint32_t getSyncAvgBatchSize() const override;
+
+        virtual uint32_t getSyncDemotedPeers() const override;
+
         void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
+
+        void setSyncTuning(
+            uint32_t syncMaxPeers,
+            uint32_t syncPeerFailureThreshold,
+            uint32_t syncBatchMin,
+            uint32_t syncBatchMax);
 
         void requestMissingPoolTransactions(const CryptoNoteConnectionContext &context);
 
@@ -143,6 +155,14 @@ namespace CryptoNote
 
         //----------------------------------------------------------------------------------
         uint32_t get_current_blockchain_height() const;
+
+        uint32_t getAdaptiveBatchSize(const CryptoNoteConnectionContext &context) const;
+
+        void onSyncChunkSuccess(CryptoNoteConnectionContext &context, size_t blocks, size_t bytes);
+
+        void onSyncChunkFailure(CryptoNoteConnectionContext &context);
+
+        bool shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const;
 
         bool request_missing_objects(CryptoNoteConnectionContext &context, bool check_having_blocks);
 
@@ -205,6 +225,16 @@ namespace CryptoNote
         bool m_isPrunedNode;
 
         uint32_t m_prunedNodeDepth;
+
+        uint32_t m_syncMaxPeers;
+
+        uint32_t m_syncPeerFailureThreshold;
+
+        uint32_t m_syncBatchMin;
+
+        uint32_t m_syncBatchMax;
+
+        std::atomic<uint32_t> m_syncDemotedPeers;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

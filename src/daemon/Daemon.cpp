@@ -466,6 +466,11 @@ int main(int argc, char *argv[])
         );
 
         cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
+        cprotocol->setSyncTuning(
+            config.syncMaxPeers,
+            config.syncPeerFailureThreshold,
+            config.syncBatchMin,
+            config.syncBatchMax);
 
         const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
             dispatcher,

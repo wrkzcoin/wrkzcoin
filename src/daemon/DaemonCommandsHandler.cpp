@@ -122,6 +122,14 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "save",
         std::bind(&DaemonCommandsHandler::save, this, std::placeholders::_1),
         "Force-save blockchain state to disk");
+    m_consoleHandler.setHandler(
+        "sync_tune",
+        std::bind(&DaemonCommandsHandler::sync_tune, this, std::placeholders::_1),
+        "Show current sync tuning and adaptive sync stats");
+    m_consoleHandler.setHandler(
+        "sync_peers",
+        std::bind(&DaemonCommandsHandler::sync_peers, this, std::placeholders::_1),
+        "Show current sync peer diagnostics");
 }
 
 //--------------------------------------------------------------------------------
@@ -477,6 +485,9 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Pruned Node",          getBoolFromJSON(resp, "pruned") ? "Yes" : "No"});
     statusTable.push_back({"Prune Depth",          std::to_string(getUint64FromJSON(resp, "prune_depth"))});
     statusTable.push_back({"Prune Capability Fork Active", getBoolFromJSON(resp, "prune_capability_active") ? "Yes" : "No"});
+    statusTable.push_back({"Active Sync Peers",    std::to_string(getUint64FromJSON(resp, "sync_active_peers"))});
+    statusTable.push_back({"Avg Sync Batch Size",  std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))});
+    statusTable.push_back({"Demoted Sync Peers",   std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))});
     statusTable.push_back({"WrkzCoin Version", PROJECT_VERSION});
 
     size_t longestValue = 0;
@@ -590,5 +601,70 @@ bool DaemonCommandsHandler::save(const std::vector<std::string> &args)
 {
     m_core.save();
     std::cout << SuccessMsg("Core state saved.") << std::endl;
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
+{
+    auto res = m_rpcServer.Get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync tuning from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync tuning response.") << std::endl;
+        return false;
+    }
+
+    std::cout << InformationMsg("Active Sync Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_active_peers"))) << std::endl;
+    std::cout << InformationMsg("Average Sync Batch Size: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
+    std::cout << InformationMsg("Demoted Sync Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+    std::cout << InformationMsg("Configured Sync Max Peers: ")
+              << SuccessMsg(std::to_string(m_config.syncMaxPeers)) << std::endl;
+    std::cout << InformationMsg("Configured Sync Failure Threshold: ")
+              << SuccessMsg(std::to_string(m_config.syncPeerFailureThreshold)) << std::endl;
+    std::cout << InformationMsg("Configured Sync Batch Min/Max: ")
+              << SuccessMsg(std::to_string(m_config.syncBatchMin) + "/" + std::to_string(m_config.syncBatchMax))
+              << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
+{
+    auto res = m_rpcServer.Get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync peer diagnostics from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync peer diagnostics response.") << std::endl;
+        return false;
+    }
+
+    std::cout << InformationMsg("Sync Active Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_active_peers"))) << std::endl;
+    std::cout << InformationMsg("Average Sync Batch Size: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
+    std::cout << InformationMsg("Demoted Sync Peers (lifetime): ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+
     return true;
 }

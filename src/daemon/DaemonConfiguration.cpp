@@ -13,6 +13,7 @@
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
 #include <cxxopts.hpp>
+#include <algorithm>
 #include <fstream>
 #include <logging/ILogger.h>
 #include <rapidjson/document.h>
@@ -223,6 +224,22 @@ namespace DaemonConfig
             "transaction-validation-threads",
             "Number of threads to use to validate a transaction's inputs in parallel",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.transactionValidationThreads)),
+            "#")(
+            "sync-max-peers",
+            "Maximum number of peers to synchronize blocks from in parallel",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncMaxPeers)),
+            "#")(
+            "sync-peer-failure-threshold",
+            "Failures allowed for a sync peer before demotion",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncPeerFailureThreshold)),
+            "#")(
+            "sync-batch-min",
+            "Minimum adaptive block request batch size",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncBatchMin)),
+            "#")(
+            "sync-batch-max",
+            "Maximum adaptive block request batch size",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncBatchMax)),
             "#");
 
         try
@@ -473,6 +490,27 @@ namespace DaemonConfig
             if (cli.count("transaction-validation-threads") > 0)
             {
                 config.transactionValidationThreads = cli["transaction-validation-threads"].as<uint32_t>();
+            }
+
+            if (cli.count("sync-max-peers") > 0)
+            {
+                config.syncMaxPeers = std::max<uint32_t>(1, cli["sync-max-peers"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-peer-failure-threshold") > 0)
+            {
+                config.syncPeerFailureThreshold =
+                    std::max<uint32_t>(1, cli["sync-peer-failure-threshold"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-batch-min") > 0)
+            {
+                config.syncBatchMin = std::max<uint32_t>(1, cli["sync-batch-min"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-batch-max") > 0)
+            {
+                config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, cli["sync-batch-max"].as<uint32_t>());
             }
 
             if (config.help) // Do we want to display the help message?
@@ -990,6 +1028,26 @@ namespace DaemonConfig
             config.transactionValidationThreads = j["transaction-validation-threads"].GetInt();
         }
 
+        if (j.HasMember("sync-max-peers"))
+        {
+            config.syncMaxPeers = std::max<uint32_t>(1, j["sync-max-peers"].GetUint());
+        }
+
+        if (j.HasMember("sync-peer-failure-threshold"))
+        {
+            config.syncPeerFailureThreshold = std::max<uint32_t>(1, j["sync-peer-failure-threshold"].GetUint());
+        }
+
+        if (j.HasMember("sync-batch-min"))
+        {
+            config.syncBatchMin = std::max<uint32_t>(1, j["sync-batch-min"].GetUint());
+        }
+
+        if (j.HasMember("sync-batch-max"))
+        {
+            config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, j["sync-batch-max"].GetUint());
+        }
+
         if (j.HasMember("prune"))
         {
             config.prune = j["prune"].GetBool();
@@ -1073,6 +1131,10 @@ namespace DaemonConfig
         j.AddMember("transaction-validation-threads", config.transactionValidationThreads, alloc);
         j.AddMember("prune", config.prune, alloc);
         j.AddMember("prune-depth", config.pruneDepth, alloc);
+        j.AddMember("sync-max-peers", config.syncMaxPeers, alloc);
+        j.AddMember("sync-peer-failure-threshold", config.syncPeerFailureThreshold, alloc);
+        j.AddMember("sync-batch-min", config.syncBatchMin, alloc);
+        j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
 
         return j;
     }
