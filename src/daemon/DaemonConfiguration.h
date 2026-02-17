@@ -48,7 +48,7 @@ namespace DaemonConfig
             osVersion = false;
             printGenesisTx = false;
             dumpConfig = false;
-            enableDbCompression = false;
+            enableDbCompression = true;
             resync = false;
             enableLevelDB = false;
             importChain = false;

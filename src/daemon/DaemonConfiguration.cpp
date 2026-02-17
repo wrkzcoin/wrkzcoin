@@ -190,7 +190,7 @@ namespace DaemonConfig
              cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("db-enable-compression",
              "Enable database compression",
-             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+             cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
             ("db-max-open-files",
              "Number of files that can be used by the database at one time " + maxOpenFiles,
              cxxopts::value<int>(),

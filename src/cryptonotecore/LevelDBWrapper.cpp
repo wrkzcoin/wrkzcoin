@@ -126,7 +126,7 @@ std::error_code LevelDBWrapper::write(IWriteBatch &batch)
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
-    return write(batch, false);
+    return write(batch, true);
 }
 
 std::error_code LevelDBWrapper::write(IWriteBatch &batch, bool sync)

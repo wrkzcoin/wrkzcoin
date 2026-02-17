@@ -182,7 +182,8 @@ int main(int argc, char *argv[])
 
         std::vector<fs::path> removablePaths = {
             fs::path(config.dataDirectory) / CryptoNote::parameters::P2P_NET_DATA_FILENAME,
-            fs::path(config.dataDirectory) / "DB"
+            fs::path(config.dataDirectory) / "DB",
+            fs::path(config.dataDirectory) / "LevelDB"
         };
 
         for (const auto &path : removablePaths)
@@ -543,6 +544,10 @@ int main(int argc, char *argv[])
 
         cprotocol->set_p2p_endpoint(nullptr);
         ccore->save();
+
+        logger(INFO) << "Flushing and closing blockchain DB...";
+        dbShutdownOnExit.cancel();
+        database->shutdown();
     }
     catch (const std::exception &e)
     {
