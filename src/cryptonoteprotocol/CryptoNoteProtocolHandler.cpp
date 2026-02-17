@@ -392,18 +392,10 @@ namespace CryptoNote
             ss << "the current peer you're connected to.";
 
             auto logLevel = Logging::TRACE;
-            /* Log at different levels depending upon if we're ahead, behind, and if it's
-              a newly formed connection */
+            /* Keep per-peer sync delta logs at deep verbosity to reduce INFO noise. */
             if (diff >= 0)
             {
-                if (is_initial)
-                {
-                    logLevel = Logging::INFO;
-                }
-                else
-                {
-                    logLevel = Logging::DEBUGGING;
-                }
+                logLevel = Logging::DEBUGGING;
             }
             logger(logLevel, Logging::BRIGHT_GREEN) << context << ss.str();
 
