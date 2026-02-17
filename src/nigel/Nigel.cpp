@@ -137,10 +137,18 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
 
     const auto res = m_nodeClient->Post(endpoint, m_requestHeaders, j.dump(), "application/json");
 
-    /* Daemon doesn't support /getrawblocks, fall back to /getwalletsyncdata */
-    if (res && res->status == 404 && m_useRawBlocks)
+    /* Daemon doesn't support /getrawblocks, or pruned/raw-block path failed:
+       fall back to /getwalletsyncdata reconstruction path. */
+    if (res && m_useRawBlocks && (res->status == 404 || res->status == 500))
     {
         m_useRawBlocks = false;
+
+        Logger::logger.log(
+            "Falling back to /getwalletsyncdata endpoint after " + std::to_string(res->status)
+                + " from /getrawblocks",
+            Logger::WARNING,
+            { Logger::SYNC, Logger::DAEMON }
+        );
 
         return getWalletSyncData(
             blockHashCheckpoints,
@@ -206,6 +214,26 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
     if (parsedResponse)
     {
         const auto [ items, topBlock ] = *parsedResponse;
+
+        /* On pruned daemons, /getrawblocks may return no usable data for old
+           heights even when not synced yet. Switch to reconstruction endpoint. */
+        if (m_useRawBlocks && items.empty() && !topBlock.has_value())
+        {
+            m_useRawBlocks = false;
+
+            Logger::logger.log(
+                "No blocks returned from /getrawblocks during sync. Falling back to /getwalletsyncdata.",
+                Logger::WARNING,
+                { Logger::SYNC, Logger::DAEMON }
+            );
+
+            return getWalletSyncData(
+                blockHashCheckpoints,
+                startHeight,
+                startTimestamp,
+                skipCoinbaseTransactions
+            );
+        }
 
         return { true, items, topBlock };
     }
