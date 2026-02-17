@@ -35,6 +35,7 @@
 #include <config/CryptoNoteCheckpoints.h>
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
+#include <atomic>
 
 #if defined(WIN32)
 
@@ -532,8 +533,21 @@ int main(int argc, char *argv[])
             dch.start_handling();
         }
 
-        Tools::SignalHandler::install([&dch] {
-            dch.exit({});
+        std::atomic<uint32_t> interruptCount {0};
+        Tools::SignalHandler::install([&dch, &interruptCount] {
+            const uint32_t count = ++interruptCount;
+
+            if (count == 1)
+            {
+                std::cout << InformationMsg(
+                                 "SIGINT received. Starting graceful shutdown. Press CTRL+C again to force exit.")
+                          << std::endl;
+                dch.exit({});
+                return;
+            }
+
+            std::cerr << "Second interrupt received. Forcing immediate exit without waiting for shutdown." << std::endl;
+            std::_Exit(1);
         });
 
         logger(INFO) << "Starting p2p net loop...";
