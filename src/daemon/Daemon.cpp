@@ -449,6 +449,13 @@ int main(int argc, char *argv[])
             ccore->rewind(config.rewindToHeight);
         }
 
+        if (config.prune)
+        {
+            logger(INFO) << "Prune mode enabled. Pruning stored raw blocks with depth " << config.pruneDepth << "...";
+            const auto prunedBlocks = ccore->pruneRawBlocks(config.pruneDepth);
+            logger(INFO) << "Prune pass completed. Raw block slots processed: " << prunedBlocks;
+        }
+
         const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
             currency,
             dispatcher,
@@ -456,6 +463,8 @@ int main(int argc, char *argv[])
             nullptr,
             logManager
         );
+
+        cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
 
         const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
             dispatcher,

@@ -8,6 +8,7 @@
 
 #include "TransactionValidatiorState.h"
 #include "common/CryptoNoteTools.h"
+#include "common/StringTools.h"
 #include "common/ShuffleGenerator.h"
 #include "common/StdInputStream.h"
 #include "common/StdOutputStream.h"
@@ -81,12 +82,24 @@ namespace CryptoNote
 
     void CachedTransactionInfo::serialize(ISerializer &s)
     {
+        if (s.type() == ISerializer::INPUT)
+        {
+            outputAmounts.clear();
+            keyInputs.clear();
+            paymentId.clear();
+            transactionPublicKey = Crypto::PublicKey();
+        }
+
         s(blockIndex, "block_index");
         s(transactionIndex, "transaction_index");
         s(transactionHash, "transaction_hash");
         s(unlockTime, "unlock_time");
         s(outputs, "outputs");
+        s(outputAmounts, "output_amounts");
         s(globalIndexes, "global_indexes");
+        s(keyInputs, "key_inputs");
+        s(transactionPublicKey, "tx_public_key");
+        s(paymentId, "payment_id");
     }
 
     void CachedBlockInfo::serialize(ISerializer &s)
@@ -465,17 +478,21 @@ namespace CryptoNote
         transactionCacheInfo.transactionIndex = transactionInBlockIndex;
         transactionCacheInfo.transactionHash = cachedTransaction.getTransactionHash();
         transactionCacheInfo.unlockTime = tx.unlockTime;
+        transactionCacheInfo.transactionPublicKey = getTransactionPublicKeyFromExtra(tx.extra);
 
         assert(tx.outputs.size() <= std::numeric_limits<uint16_t>::max());
 
         transactionCacheInfo.globalIndexes.reserve(tx.outputs.size());
         transactionCacheInfo.outputs.reserve(tx.outputs.size());
+        transactionCacheInfo.outputAmounts.reserve(tx.outputs.size());
+        transactionCacheInfo.keyInputs.reserve(tx.inputs.size());
 
         logger(Logging::DEBUGGING) << "Adding " << tx.outputs.size() << " transaction outputs";
         auto outputCount = 0;
         for (auto &output : tx.outputs)
         {
             transactionCacheInfo.outputs.push_back(output.target);
+            transactionCacheInfo.outputAmounts.push_back(output.amount);
 
             PackedOutIndex poi;
             poi.blockIndex = blockIndex;
@@ -489,11 +506,26 @@ namespace CryptoNote
             }
         }
 
+        for (const auto &input : tx.inputs)
+        {
+            if (input.type() == typeid(KeyInput))
+            {
+                transactionCacheInfo.keyInputs.push_back(boost::get<KeyInput>(input));
+            }
+        }
+
         assert(transactions.get<TransactionHashTag>().count(transactionCacheInfo.transactionHash) == 0);
-        transactions.get<TransactionInBlockTag>().insert(std::move(transactionCacheInfo));
 
         PaymentIdTransactionHashPair paymentIdTransactionHash;
-        if (!getPaymentIdFromTxExtra(tx.extra, paymentIdTransactionHash.paymentId))
+        const bool hasPaymentId = getPaymentIdFromTxExtra(tx.extra, paymentIdTransactionHash.paymentId);
+        if (hasPaymentId)
+        {
+            transactionCacheInfo.paymentId = Common::podToHex(paymentIdTransactionHash.paymentId);
+        }
+
+        transactions.get<TransactionInBlockTag>().insert(std::move(transactionCacheInfo));
+
+        if (!hasPaymentId)
         {
             logger(Logging::DEBUGGING) << "Transaction " << cachedTransaction.getTransactionHash()
                                        << " successfully added";

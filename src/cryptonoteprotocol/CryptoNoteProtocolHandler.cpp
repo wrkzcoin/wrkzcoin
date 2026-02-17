@@ -32,6 +32,11 @@ namespace CryptoNote
 {
     namespace
     {
+        bool isPruneCapabilityForkActive(uint64_t localHeight, uint64_t remoteHeight)
+        {
+            return std::max(localHeight, remoteHeight) >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
+        }
+
         template<class t_parametr>
         bool post_notify(
             IP2pEndpoint &p2p,
@@ -196,6 +201,8 @@ namespace CryptoNote
         m_syncLogStartHeight(0),
         m_lastSyncLogHeight(0),
         m_peersCount(0),
+        m_isPrunedNode(false),
+        m_prunedNodeDepth(0),
         logger(log, "protocol")
     {
         if (!m_p2p)
@@ -308,6 +315,9 @@ namespace CryptoNote
         CryptoNoteConnectionContext &context,
         bool is_initial)
     {
+        context.m_remote_is_pruned_node = (hshd.capability_flags & NODE_CAPABILITY_FLAG_PRUNED) != 0;
+        context.m_remote_pruned_node_height = hshd.pruned_node_height;
+
         if (context.m_state == CryptoNoteConnectionContext::state_befor_handshake && !is_initial)
         {
             return true;
@@ -333,6 +343,28 @@ namespace CryptoNote
             uint64_t currentHeight = get_current_blockchain_height();
 
             uint64_t remoteHeight = hshd.current_height;
+            const bool forkActive = isPruneCapabilityForkActive(currentHeight, remoteHeight);
+            const bool fullNodeMustUseFullSyncPeer = forkActive && !m_isPrunedNode && context.m_remote_is_pruned_node;
+
+            if (fullNodeMustUseFullSyncPeer)
+            {
+                logger(Logging::DEBUGGING) << context
+                                           << "Peer is pruned after prune capability fork; limiting this connection "
+                                              "to relay/pool sync only.";
+
+                context.m_state = is_initial ? CryptoNoteConnectionContext::state_pool_sync_required
+                                             : CryptoNoteConnectionContext::state_normal;
+                updateObservedHeight(hshd.current_height, context);
+                context.m_remote_blockchain_height = hshd.current_height;
+
+                if (is_initial)
+                {
+                    m_peersCount++;
+                    m_observerManager.notify(&ICryptoNoteProtocolObserver::peerCountUpdated, m_peersCount.load());
+                }
+
+                return true;
+            }
 
             /* Find the difference between the remote and the local height */
             int64_t diff = static_cast<int64_t>(remoteHeight) - static_cast<int64_t>(currentHeight);
@@ -398,6 +430,9 @@ namespace CryptoNote
     {
         hshd.top_id = m_core.getTopBlockHash();
         hshd.current_height = m_core.getTopBlockIndex() + 1;
+        hshd.capability_flags = m_isPrunedNode ? NODE_CAPABILITY_FLAG_PRUNED : 0;
+        hshd.pruned_node_height =
+            (m_isPrunedNode && hshd.current_height > m_prunedNodeDepth) ? (hshd.current_height - m_prunedNodeDepth) : 0;
         return true;
     }
 
@@ -1303,6 +1338,27 @@ namespace CryptoNote
         std::lock_guard<std::mutex> lock(m_blockchainHeightMutex);
         return m_blockchainHeight;
     };
+
+    bool CryptoNoteProtocolHandler::isPrunedNode() const
+    {
+        return m_isPrunedNode;
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getPrunedNodeDepth() const
+    {
+        return m_prunedNodeDepth;
+    }
+
+    bool CryptoNoteProtocolHandler::isPruneCapabilityActive() const
+    {
+        return get_current_blockchain_height() >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
+    }
+
+    void CryptoNoteProtocolHandler::setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth)
+    {
+        m_isPrunedNode = isPrunedNode;
+        m_prunedNodeDepth = prunedNodeDepth;
+    }
 
     bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver *observer)
     {

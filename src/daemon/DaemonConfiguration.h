@@ -54,6 +54,8 @@ namespace DaemonConfig
             importChain = false;
             exportChain = false;
             exportNumBlocks = 0;
+            prune = false;
+            pruneDepth = 0;
         }
 
         std::string dataDirectory;
@@ -125,6 +127,10 @@ namespace DaemonConfig
         bool exportChain;
 
         uint32_t exportNumBlocks;
+
+        bool prune;
+
+        uint32_t pruneDepth;
 
         std::string configFile;
 

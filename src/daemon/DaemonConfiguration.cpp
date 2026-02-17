@@ -44,6 +44,13 @@ namespace DaemonConfig
             "resync",
             "Forces the daemon to delete the blockchain data and start resyncing",
             cxxopts::value<bool>(config.resync)->default_value("false")->implicit_value("true"))(
+            "prune",
+            "Enable pruned-node mode for daemon sync behavior",
+            cxxopts::value<bool>(config.prune)->default_value("false")->implicit_value("true"))(
+            "prune-depth",
+            "When prune mode is enabled, retain at least this many recent blocks locally",
+            cxxopts::value<uint32_t>()->default_value("0"),
+            "#")(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
             cxxopts::value<uint32_t>(),
@@ -278,6 +285,16 @@ namespace DaemonConfig
                 {
                     config.exportNumBlocks = exportBlocks;
                 }
+            }
+
+            if (cli.count("prune") > 0)
+            {
+                config.prune = cli["prune"].as<bool>();
+            }
+
+            if (cli.count("prune-depth") > 0)
+            {
+                config.pruneDepth = cli["prune-depth"].as<uint32_t>();
             }
 
             if (cli.count("print-genesis-tx") > 0)
@@ -972,6 +989,16 @@ namespace DaemonConfig
         {
             config.transactionValidationThreads = j["transaction-validation-threads"].GetInt();
         }
+
+        if (j.HasMember("prune"))
+        {
+            config.prune = j["prune"].GetBool();
+        }
+
+        if (j.HasMember("prune-depth"))
+        {
+            config.pruneDepth = j["prune-depth"].GetUint();
+        }
     }
 
     Document asJSON(const DaemonConfiguration &config)
@@ -1044,6 +1071,8 @@ namespace DaemonConfig
         j.AddMember("fee-address", config.feeAddress, alloc);
         j.AddMember("fee-amount", config.feeAmount, alloc);
         j.AddMember("transaction-validation-threads", config.transactionValidationThreads, alloc);
+        j.AddMember("prune", config.prune, alloc);
+        j.AddMember("prune-depth", config.pruneDepth, alloc);
 
         return j;
     }

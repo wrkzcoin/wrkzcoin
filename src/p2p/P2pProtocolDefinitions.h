@@ -18,6 +18,8 @@
 
 namespace CryptoNote
 {
+    const uint32_t NODE_CAPABILITY_FLAG_PRUNED = 0x1;
+
     inline bool serialize(boost::uuids::uuid &v, Common::StringView name, ISerializer &s)
     {
         return s.binary(&v, sizeof(v), name);
@@ -75,10 +77,22 @@ namespace CryptoNote
 
         Crypto::Hash top_id;
 
+        uint32_t capability_flags;
+
+        uint32_t pruned_node_height;
+
         void serialize(ISerializer &s)
         {
+            if (s.type() == ISerializer::INPUT)
+            {
+                capability_flags = 0;
+                pruned_node_height = 0;
+            }
+
             KV_MEMBER(current_height)
             KV_MEMBER(top_id)
+            KV_MEMBER(capability_flags)
+            KV_MEMBER(pruned_node_height)
         }
     };
 

@@ -364,10 +364,11 @@ namespace CryptoNote
             3500000,  // 18
             3800000,  // 19
             4300000,  // 20
+            4500000,  // 21 prune capability + mixed full/pruned sync policy activation
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 20;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 21;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -390,6 +391,9 @@ namespace CryptoNote
         
         /* Maximum allowable blocks to rewind from existing chain */
         const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
+
+        /* Feature fork where prune capability signaling and sync policy enforcement activate. */
+        const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";

@@ -1,206 +1,122 @@
 ### Compiling WrkzCoin
 
-##### Table of Contents
+This document reflects the current build system and recommended defaults.
 
--   **Linux**
-    -   [Linux Dependencies](#linux-dependencies)
-    -   [Ubuntu with GCC](#ubuntu-with-gcc)
-    -   [Ubuntu with CLANG](#ubuntu-with-clang)
-    -   [CentOS with GCC](#centos-with-gcc)
-    -   [Generic Linux](#generic-linux)
--   **MacOS**
-    -   [MacOS Dependencies](#macos-dependencies)
-    -   [MacOS with CLANG](#macos-with-clang)
--   **Windows**
-    -   [Windows Dependencies](#windows-dependencies)
-    -   [Windows with VS2019](#windows-with-vs2019)
+## Quick Start (Linux/macOS)
 
-##### Build Optimization
+```bash
+git clone https://github.com/wrkzcoin/wrkzcoin
+cd wrkzcoin
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
 
-The CMake build system will, by default, create optimized _native_ builds for your particular system type when you build the software. Using this method, the binaries created provide a better experience and all-together faster performance.
+Binaries are produced in `build/src`.
 
-##### Making Portable Binaries
+## Build Modes
 
-However, if you wish to create _portable_ binaries that can be shared between systems, specify `-DARCH=default` in your CMake arguments during the build process. Note that _portable_ binaries will have a noticable difference in performance than _native_ binaries. For this reason, it is always best to build for your particular system if possible.
+### Default (recommended for nodes / reproducible)
 
-## Linux
+The project now defaults to:
 
-##### Linux Dependencies
+- `ARCH=default` (portable target, no `-march=native`)
+- `CONSENSUS_SAFE_BUILD=ON`
 
-**Note:** Individual names for these packages may differ depending on your Linux distribution.
+This uses safer/reproducible release flags (for example `-O2` instead of `-Ofast`).
 
--   [Boost](https://www.boost.org/)
--   [OpenSSL](https://www.openssl.org/)
--   [Cmake (3.8, higher)](https://cmake.org/download/)
--   [GNU Make](https://ftp.gnu.org/gnu/make/)
--   [Git](https://git-scm.com/)
--   [GCC 7, higher](https://gcc.gnu.org/) or [CLANG 6, higher](https://clang.llvm.org/)
+### Performance build (local benchmark/testing only)
 
-##### Ubuntu with GCC
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCONSENSUS_SAFE_BUILD=OFF \
+  -DARCH=native
+cmake --build build -j
+```
 
--   `sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y`
--   `sudo apt-get update`
--   `sudo apt-get install aptitude -y`
--   `sudo aptitude install -y build-essential g++-8 gcc-8 git libboost-all-dev python-pip libssl-dev`
--   `sudo pip install cmake`
--   `export CC=gcc-8`
--   `export CXX=g++-8`
--   `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
--   `cd wrkzcoin`
--   `mkdir build`
--   `cd build`
--   `cmake ..`
--   `make`
+Use performance mode only when you explicitly want host-specific optimization.
 
-The binaries will be in the `src` folder when you are complete.
+## Dependencies
 
--   `cd src`
--   `./Wrkzd --version`
+### Linux
 
-##### Ubuntu with CLANG
+Minimum tooling:
 
-###### For Ubuntu 16.04 (Xenial) users:
+- CMake >= 3.8
+- C++ compiler:
+  - GCC >= 7, or
+  - Clang >= 6
+- OpenSSL development package
+- Git
+- Make or Ninja
 
--   `sudo add-apt-repository "deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial 6.0 main"`
+Database/compression libs used by build:
 
-###### For Ubuntu 18.04 (Bionic) users:
+- RocksDB
+- LevelDB
+- Snappy
+- Zstd
 
--   `sudo add-apt-repository "deb https://apt.llvm.org/bionic/ llvm-toolchain-bionic 6.0 main"`
+### Boost status (updated)
 
-###### For Everyone:
+Boost is no longer required as a broad/full dependency package in build docs.
+Current CMake uses Boost `date_time` only.
 
--   `sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y`
--   `wget -O - https://apt.llvm.org/Developer Tools.llvm-snapshot.gpg.key | sudo apt-key add -`
+- Linux packages: prefer minimal Boost dev packages (for example `libboost-date-time-dev`) instead of `libboost-all-dev`.
+- Windows: if your toolchain cannot auto-resolve Boost, point CMake to your Boost install with `-DBOOST_ROOT=...`.
 
-*   `sudo apt-get update`
-*   `sudo apt-get install aptitude -y`
-*   `sudo aptitude install -y -o Aptitude::ProblemResolver::SolutionCost='100*canceled-actions,200*removals' build-essential clang-6.0 libstdc++-7-dev git libboost-all-dev python-pip libssl-dev`
-*   `sudo pip install cmake`
-*   `export CC=clang-6.0`
-*   `export CXX=clang++-6.0`
-*   `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
-*   `cd wrkzcoin`
-*   `mkdir build`
-*   `cd build`
-*   `cmake ..`
-*   `make`
+## Ubuntu example
 
-The binaries will be in the `src` folder when you are complete.
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential git cmake pkg-config \
+  libssl-dev libboost-date-time-dev \
+  libsnappy-dev libzstd-dev
 
--   `cd src`
--   `./Wrkzd --version`
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+```
 
-##### CentOS with GCC
+## macOS example (Homebrew)
 
-CentOS compile instructions provided by [brandonlehmann](https://github.com/turtlecoin/turtlecoin/blob/development/COMPILE.md#centos-with-gcc)
+```bash
+brew install cmake openssl boost snappy zstd
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
 
--   `sudo yum update -y`
--   `sudo yum install -y epel-release centos-release-scl`
--   `sudo yum install -y devtoolset-8 cmake cmake3 wget git openssl-devel`
--   `sudo scl enable devtoolset-8 bash`
--   `wget https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz`
--   `tar xzvf boost_1_68_0.tar.gz && cd boost_1_68_0`
--   `./bootstrap.sh --prefix=/usr/local/`
--   `./b2 -j$(nproc) -d0 install --with-system --with-filesystem --with-thread --with-date_time --with-chrono --with-regex --with-serialization --with-program_options`
--   `cd ..`
--   `git clone https://github.com/wrkzcoin/wrkzcoin/`
--   `mkdir -p wrkzcoin/build`
--   `cd wrkzcoin/build`
--   `cmake3 ..`
--   `make`
+If OpenSSL is not auto-detected, pass:
 
-The binaries will be in the `src` folder when you are complete.
+```bash
+-DOPENSSL_ROOT_DIR=$(brew --prefix openssl)
+```
 
--   `cd src`
--   `./Wrkzd --version`
+## Windows (Visual Studio)
 
-##### Generic Linux
+Open **x64 Native Tools Command Prompt for VS 2019/2022**:
 
-**Note:** If you want to use clang, ensure you set the environment variables `CC` and `CXX`.
-See the ubuntu instructions for an example.
+```bat
+cd <your_wrkzcoin_directory>
+cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -- /m
+```
 
--   `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
--   `cd wrkzcoin`
--   `mkdir build`
--   `cd build`
--   `cmake ..`
--   `make`
+If Boost is not discovered automatically:
 
-The binaries will be in the `src` folder when you are complete.
+```bat
+cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -DBOOST_ROOT=C:/local/boost_1_69_0
+```
 
--   `cd src`
--   `./Wrkzd --version`
+Binaries are produced in `build/src/Release`.
 
-## MacOS
+## Optional: Faster incremental builds
 
-##### MacOS Dependencies
+Use Ninja and ccache when available:
 
--   [XCode](https://developer.apple.com/xcode/)
--   [CLANG](https://clang.llvm.org/)
--   [Brew](https://brew.sh/)
--   [Cmake (3.8, higher)](https://cmake.org/download/)
--   [GNU Make](https://ftp.gnu.org/gnu/make/)
--   [Git](https://git-scm.com/)
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+```
 
-##### MacOS with CLANG
-
--   `which brew || /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"`
--   `brew install --force cmake boost llvm@8 openssl`
--   `brew link --force llvm@8`
--   `ln -s /usr/local/opt/llvm@8 /usr/local/opt/llvm`
--   `export CC=/usr/local/opt/llvm@8/bin/clang`
--   `export CXX=/usr/local/opt/llvm@8/bin/clang++`
--   `git clone -b master --single-branch https://github.com/wrkzcoin/wrkzcoin`
--   `cd wrkzcoin`
--   `mkdir build`
--   `cd build`
--   `cmake ..`
--   `make`
-
-The binaries will be in the `src` folder when you are complete.
-
--   `cd src`
--   `./Wrkzd --version`
-
-## Windows
-
-##### Windows Dependencies
-
-You can build for 32-bit or 64-bit Windows. **If you're not sure, pick 64-bit.**
-
--   Download the [Build Tools for Visual Studio 2019](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16) Installer
--   When it opens up select **C++ build tools**, it automatically selects the needed parts. Make sure **MSVC v141 Build Tools** is selected.
--   Install Boost. Select the appropriate version for your system:
-    -   [Boost 64-bit](https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-64.exe)
-    -   [Boost 32-bit](https://bintray.com/boostorg/release/download_file?file_path=1.69.0%2Fbinaries%2Fboost_1_69_0-msvc-14.1-32.exe)
--   Install the latest full LTS version of OpenSSL (currently OpenSSL 1.1.1f). Select the appropriate version for your system:
-    -   [OpenSSL 64-bit](https://slproweb.com/download/Win64OpenSSL-1_1_1t.exe)
-    -   [OpenSSL 32-bit](https://slproweb.com/download/Win32OpenSSL-1_1_1t.exe)
-
-##### Windows with VS2019
-
-For 64-bit:
-
--   From the start menu, open **x64 Native Tools Command Prompt for VS 2019**.
--   `cd <your_wrkzcoin_directory>`
--   `mkdir build`
--   `cd build`
--   `cmake -G "Visual Studio 16 2019" -A x64 .. -DBOOST_ROOT=C:/local/boost_1_69_0`
--   `MSBuild WrkzCoin.sln /p:Configuration=Release /p:PlatformToolset=v141 /m` or `MSBuild src\cli.vcxproj /p:Configuration=Release /p:PlatformToolset=v141 /m`
-
-For 32-bit:
-
--   From the start menu, open **x86 Native Tools Command Prompt for VS 2019**.
--   `cd <your_wrkzcoin_directory>`
--   `mkdir build`
--   `cd build`
--   `cmake -G "Visual Studio 16 2019" -A Win32 .. -DBOOST_ROOT=C:/local/boost_1_69_0`
--   `MSBuild WrkzCoin.sln /p:Configuration=Release /p:Platform=Win32 /p:PlatformToolset=v141 /m`
-
-The binaries will be in the `src/Release` folder when you are complete.
-
--   `cd src`
--   `cd Release`
--   `Wrkzd.exe --version`
-
-[^ Return To Top](#compiling-wrkzcoin)
+`ccache` is auto-enabled by CMake when installed.

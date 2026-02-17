@@ -85,6 +85,14 @@ namespace CryptoNote
 
         virtual uint32_t getBlockchainHeight() const override;
 
+        virtual bool isPrunedNode() const override;
+
+        virtual uint32_t getPrunedNodeDepth() const override;
+
+        virtual bool isPruneCapabilityActive() const override;
+
+        void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
+
         void requestMissingPoolTransactions(const CryptoNoteConnectionContext &context);
 
       private:
@@ -193,6 +201,10 @@ namespace CryptoNote
         std::chrono::steady_clock::time_point m_lastSyncLogTime;
 
         std::atomic<size_t> m_peersCount;
+
+        bool m_isPrunedNode;
+
+        uint32_t m_prunedNodeDepth;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

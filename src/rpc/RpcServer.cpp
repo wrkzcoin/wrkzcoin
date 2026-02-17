@@ -522,6 +522,15 @@ std::tuple<Error, uint16_t> RpcServer::info(
     writer.Key("synced");
     writer.Bool(height == networkHeight);
 
+    writer.Key("pruned");
+    writer.Bool(m_syncManager->isPrunedNode());
+
+    writer.Key("prune_depth");
+    writer.Uint64(m_syncManager->getPrunedNodeDepth());
+
+    writer.Key("prune_capability_active");
+    writer.Bool(m_syncManager->isPruneCapabilityActive());
+
     writer.Key("major_version");
     writer.Uint64(blockDetails.majorVersion);
 

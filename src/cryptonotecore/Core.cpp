@@ -21,6 +21,7 @@
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CoreErrors.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
+#include <cryptonotecore/DatabaseBlockchainCache.h>
 #include <cryptonotecore/ITimeProvider.h>
 #include <cryptonotecore/MemoryBlockchainStorage.h>
 #include <cryptonotecore/Mixins.h>
@@ -772,42 +773,59 @@ namespace CryptoNote
                 return true;
             }
 
-            std::vector<RawBlock> rawBlocks;
-
-            if (skipCoinbaseTransactions)
+            if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+                for (uint64_t index = startIndex; index < endIndex; ++index)
+                {
+                    WalletTypes::WalletBlockInfo walletBlock;
+
+                    if (!dbCache->getWalletSyncBlock(static_cast<uint32_t>(index), skipCoinbaseTransactions, walletBlock))
+                    {
+                        continue;
+                    }
+
+                    walletBlocks.push_back(std::move(walletBlock));
+                }
             }
             else
             {
-                rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
-            }
+                std::vector<RawBlock> rawBlocks;
 
-            for (const auto &rawBlock : rawBlocks)
-            {
-                BlockTemplate block;
-
-                fromBinaryArray(block, rawBlock.block);
-
-                WalletTypes::WalletBlockInfo walletBlock;
-
-                CachedBlock cachedBlock(block);
-
-                walletBlock.blockHeight = cachedBlock.getBlockIndex();
-                walletBlock.blockHash = cachedBlock.getBlockHash();
-                walletBlock.blockTimestamp = block.timestamp;
-
-                if (!skipCoinbaseTransactions)
+                if (skipCoinbaseTransactions)
                 {
-                    walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(block.baseTransaction);
+                    rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+                }
+                else
+                {
+                    rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
                 }
 
-                for (const auto &transaction : rawBlock.transactions)
+                for (const auto &rawBlock : rawBlocks)
                 {
-                    walletBlock.transactions.push_back(getRawTransaction(transaction));
-                }
+                    BlockTemplate block;
 
-                walletBlocks.push_back(walletBlock);
+                    fromBinaryArray(block, rawBlock.block);
+
+                    WalletTypes::WalletBlockInfo walletBlock;
+
+                    CachedBlock cachedBlock(block);
+
+                    walletBlock.blockHeight = cachedBlock.getBlockIndex();
+                    walletBlock.blockHash = cachedBlock.getBlockHash();
+                    walletBlock.blockTimestamp = block.timestamp;
+
+                    if (!skipCoinbaseTransactions)
+                    {
+                        walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(block.baseTransaction);
+                    }
+
+                    for (const auto &transaction : rawBlock.transactions)
+                    {
+                        walletBlock.transactions.push_back(getRawTransaction(transaction));
+                    }
+
+                    walletBlocks.push_back(walletBlock);
+                }
             }
 
             if (walletBlocks.empty())
@@ -2874,6 +2892,24 @@ namespace CryptoNote
         mainChain->rewind(blockIndex);
 
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
+    }
+
+    size_t Core::pruneRawBlocks(uint32_t pruneDepth)
+    {
+        if (pruneDepth == 0)
+        {
+            return 0;
+        }
+
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return 0;
+        }
+
+        return dbCache->pruneStoredRawBlocks(pruneDepth);
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)
