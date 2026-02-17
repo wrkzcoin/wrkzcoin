@@ -20,6 +20,9 @@ namespace DaemonConfig
 {
     struct DaemonConfiguration
     {
+        static constexpr uint32_t DEFAULT_PRUNE_DEPTH =
+            CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 14;
+
         DaemonConfiguration()
         {
             std::stringstream logfile;
@@ -55,7 +58,7 @@ namespace DaemonConfig
             exportChain = false;
             exportNumBlocks = 0;
             prune = false;
-            pruneDepth = 0;
+            pruneDepth = DEFAULT_PRUNE_DEPTH;
         }
 
         std::string dataDirectory;

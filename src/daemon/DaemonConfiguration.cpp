@@ -49,7 +49,7 @@ namespace DaemonConfig
             cxxopts::value<bool>(config.prune)->default_value("false")->implicit_value("true"))(
             "prune-depth",
             "When prune mode is enabled, retain at least this many recent blocks locally",
-            cxxopts::value<uint32_t>()->default_value("0"),
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.pruneDepth)),
             "#")(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
