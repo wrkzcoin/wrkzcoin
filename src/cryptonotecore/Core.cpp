@@ -1338,7 +1338,7 @@ namespace CryptoNote
                     logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain.";
                     if ((previousBlockIndex + 1) % 100 == 0)
                     {
-                        logger(Logging::INFO) << "Block " << blockStr << " added to main chain";
+                        logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain";
                     }
 
                     notifyObservers(

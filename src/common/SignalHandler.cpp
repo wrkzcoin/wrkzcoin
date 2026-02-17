@@ -5,8 +5,10 @@
 
 #include "SignalHandler.h"
 
+#include <atomic>
 #include <iostream>
 #include <mutex>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -19,6 +21,7 @@
 #include <Windows.h>
 
 #else
+#include <pthread.h>
 #include <cstring>
 #include <signal.h>
 #endif
@@ -61,10 +64,7 @@ namespace
 
 #else
 
-    void posixHandler(int /*type*/)
-    {
-        handleSignal();
-    }
+    std::atomic<bool> signalThreadStarted(false);
 #endif
 
 } // namespace
@@ -81,27 +81,41 @@ namespace Tools
         }
         return r;
 #else
-        struct sigaction newMask;
-        std::memset(&newMask, 0, sizeof(struct sigaction));
-        newMask.sa_handler = posixHandler;
-        if (sigaction(SIGINT, &newMask, nullptr) != 0)
-        {
-            return false;
-        }
-
-        if (sigaction(SIGTERM, &newMask, nullptr) != 0)
-        {
-            return false;
-        }
-
-        std::memset(&newMask, 0, sizeof(struct sigaction));
-        newMask.sa_handler = SIG_IGN;
-        if (sigaction(SIGPIPE, &newMask, nullptr) != 0)
-        {
-            return false;
-        }
-
         m_handler = t;
+
+        struct sigaction ignoreMask;
+        std::memset(&ignoreMask, 0, sizeof(struct sigaction));
+        ignoreMask.sa_handler = SIG_IGN;
+        if (sigaction(SIGPIPE, &ignoreMask, nullptr) != 0)
+        {
+            return false;
+        }
+
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, SIGINT);
+        sigaddset(&set, SIGTERM);
+
+        if (pthread_sigmask(SIG_BLOCK, &set, nullptr) != 0)
+        {
+            return false;
+        }
+
+        if (!signalThreadStarted.exchange(true))
+        {
+            std::thread([set]() mutable {
+                while (true)
+                {
+                    int signalNumber = 0;
+                    const int rc = sigwait(&set, &signalNumber);
+                    if (rc == 0 && (signalNumber == SIGINT || signalNumber == SIGTERM))
+                    {
+                        handleSignal();
+                    }
+                }
+            }).detach();
+        }
+
         return true;
 #endif
     }

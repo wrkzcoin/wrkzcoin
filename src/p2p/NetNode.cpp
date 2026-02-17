@@ -613,7 +613,11 @@ namespace CryptoNote
 
     bool NodeServer::sendStopSignal()
     {
-        m_stop = true;
+        if (m_stop.exchange(true))
+        {
+            logger(DEBUGGING) << "Stop signal already requested, ignoring duplicate request.";
+            return true;
+        }
 
         m_dispatcher.remoteSpawn([this] {
             m_stopEvent.set();

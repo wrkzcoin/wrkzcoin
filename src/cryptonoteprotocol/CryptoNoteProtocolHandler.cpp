@@ -17,9 +17,12 @@
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
+#include <chrono>
 #include <future>
+#include <iomanip>
 #include <serialization/SerializationTools.h>
 #include <system/Dispatcher.h>
+#include <sstream>
 #include <utilities/FormatTools.h>
 
 using namespace Logging;
@@ -189,6 +192,9 @@ namespace CryptoNote
         m_stop(false),
         m_observedHeight(0),
         m_blockchainHeight(0),
+        m_syncLogInitialized(false),
+        m_syncLogStartHeight(0),
+        m_lastSyncLogHeight(0),
         m_peersCount(0),
         logger(log, "protocol")
     {
@@ -1254,13 +1260,11 @@ namespace CryptoNote
             if (peerHeight > m_blockchainHeight)
             {
                 m_blockchainHeight = peerHeight;
-                /* Add percentage and local height info */
-                uint64_t currentHeight = get_current_blockchain_height();
-
-                logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight
-                                                             << " / Local: " << currentHeight
-                                                             << " (" << Utilities::get_sync_percentage(currentHeight, peerHeight) << "%)";
             }
+
+            const uint64_t currentHeight = get_current_blockchain_height();
+            const uint64_t remoteHeight = std::max<uint64_t>(m_blockchainHeight, peerHeight);
+            logSyncProgressLocked(currentHeight, remoteHeight);
         }
 
         if (updated)
@@ -1308,6 +1312,61 @@ namespace CryptoNote
     bool CryptoNoteProtocolHandler::removeObserver(ICryptoNoteProtocolObserver *observer)
     {
         return m_observerManager.remove(observer);
+    }
+
+    void CryptoNoteProtocolHandler::logSyncProgressLocked(uint64_t currentHeight, uint64_t remoteHeight)
+    {
+        using namespace std::chrono;
+
+        if (remoteHeight == 0 || currentHeight >= remoteHeight)
+        {
+            m_syncLogInitialized = false;
+            return;
+        }
+
+        const auto now = steady_clock::now();
+
+        if (!m_syncLogInitialized || currentHeight < m_syncLogStartHeight || currentHeight < m_lastSyncLogHeight)
+        {
+            m_syncLogInitialized = true;
+            m_syncLogStartHeight = currentHeight;
+            m_lastSyncLogHeight = currentHeight;
+            m_syncLogStartTime = now;
+            m_lastSyncLogTime = now;
+            return;
+        }
+
+        if (duration_cast<seconds>(now - m_lastSyncLogTime).count() < 3)
+        {
+            return;
+        }
+
+        const double elapsedMinutes = duration_cast<duration<double>>(now - m_syncLogStartTime).count() / 60.0;
+        const uint64_t processedBlocks = currentHeight - m_syncLogStartHeight;
+        const double avgBlocksPerMinute = elapsedMinutes > 0.0 ? processedBlocks / elapsedMinutes : 0.0;
+        const uint64_t remainingBlocks = remoteHeight - currentHeight;
+        const uint64_t etaSeconds =
+            avgBlocksPerMinute > 0.0 ? static_cast<uint64_t>(remainingBlocks * 60.0 / avgBlocksPerMinute) : 0;
+
+        const uint64_t etaDays = etaSeconds / 86400;
+        const uint64_t etaHours = (etaSeconds % 86400) / 3600;
+        const uint64_t etaMinutes = (etaSeconds % 3600) / 60;
+        const uint64_t etaRemainderSeconds = etaSeconds % 60;
+        const double progress = static_cast<double>(currentHeight) * 100.0 / static_cast<double>(remoteHeight);
+
+        std::ostringstream progressStream;
+        progressStream << std::fixed << std::setprecision(2) << progress;
+
+        logger(Logging::INFO, Logging::BRIGHT_GREEN) << "Sync progress: " << progressStream.str() << "% (" << currentHeight
+                                                     << "/" << remoteHeight << "), avg "
+                                                     << static_cast<uint64_t>(avgBlocksPerMinute)
+                                                     << " blk/min, eta d" << etaDays << ".h" << std::setw(2)
+                                                     << std::setfill('0') << etaHours << ".m" << std::setw(2)
+                                                     << std::setfill('0') << etaMinutes << ".s" << std::setw(2)
+                                                     << std::setfill('0') << etaRemainderSeconds;
+
+        m_lastSyncLogTime = now;
+        m_lastSyncLogHeight = currentHeight;
     }
 
 }; // namespace CryptoNote

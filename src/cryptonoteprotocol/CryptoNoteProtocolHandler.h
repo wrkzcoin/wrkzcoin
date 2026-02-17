@@ -16,6 +16,7 @@
 #include "p2p/P2pProtocolDefinitions.h"
 
 #include <atomic>
+#include <chrono>
 #include <common/ObserverManager.h>
 #include <logging/LoggerRef.h>
 
@@ -143,6 +144,8 @@ namespace CryptoNote
 
         void recalculateMaxObservedHeight(const CryptoNoteConnectionContext &context);
 
+        void logSyncProgressLocked(uint64_t currentHeight, uint64_t remoteHeight);
+
         int processObjects(
             CryptoNoteConnectionContext &context,
             std::vector<RawBlock> &&rawBlocks,
@@ -178,6 +181,16 @@ namespace CryptoNote
         mutable std::mutex m_blockchainHeightMutex;
 
         uint32_t m_blockchainHeight;
+
+        bool m_syncLogInitialized;
+
+        uint64_t m_syncLogStartHeight;
+
+        uint64_t m_lastSyncLogHeight;
+
+        std::chrono::steady_clock::time_point m_syncLogStartTime;
+
+        std::chrono::steady_clock::time_point m_lastSyncLogTime;
 
         std::atomic<size_t> m_peersCount;
 

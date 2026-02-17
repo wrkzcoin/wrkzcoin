@@ -525,7 +525,6 @@ int main(int argc, char *argv[])
 
         Tools::SignalHandler::install([&dch] {
             dch.exit({});
-            dch.stop_handling();
         });
 
         logger(INFO) << "Starting p2p net loop...";
