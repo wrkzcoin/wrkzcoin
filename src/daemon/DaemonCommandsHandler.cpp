@@ -21,6 +21,8 @@
 #include <utilities/FormatTools.h>
 #include <utilities/Utilities.h>
 #include <common/CheckDifficulty.h>
+#include <common/FileSystemShim.h>
+#include <map>
 
 namespace
 {
@@ -48,6 +50,69 @@ namespace
         ss << "JSON: \n" << CryptoNote::storeToJson(transaction.getTransaction()) << std::endl;
 
         return ss.str();
+    }
+
+    struct DbDirStats
+    {
+        uint64_t bytes = 0;
+        uint64_t files = 0;
+        uint64_t directories = 0;
+        std::map<std::string, uint64_t> extensionCounts;
+    };
+
+    DbDirStats collectDbDirStats(const fs::path &path)
+    {
+        DbDirStats stats;
+        std::error_code ec;
+
+        if (!fs::exists(path, ec) || ec)
+        {
+            return stats;
+        }
+
+        fs::recursive_directory_iterator it(path, ec), end;
+
+        if (ec)
+        {
+            return stats;
+        }
+
+        for (; it != end; it.increment(ec))
+        {
+            if (ec)
+            {
+                break;
+            }
+
+            const auto &entry = *it;
+
+            if (entry.is_directory(ec))
+            {
+                ++stats.directories;
+                continue;
+            }
+
+            if (entry.is_regular_file(ec))
+            {
+                ++stats.files;
+
+                const auto fileSize = entry.file_size(ec);
+                if (!ec)
+                {
+                    stats.bytes += fileSize;
+                }
+
+                std::string ext = entry.path().extension().string();
+                if (ext.empty())
+                {
+                    ext = "<none>";
+                }
+
+                ++stats.extensionCounts[ext];
+            }
+        }
+
+        return stats;
     }
 
 } // namespace
@@ -130,6 +195,10 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "sync_peers",
         std::bind(&DaemonCommandsHandler::sync_peers, this, std::placeholders::_1),
         "Show current sync peer diagnostics");
+    m_consoleHandler.setHandler(
+        "db_status",
+        std::bind(&DaemonCommandsHandler::db_status, this, std::placeholders::_1),
+        "Show on-disk DB status for the active DB engine");
 }
 
 //--------------------------------------------------------------------------------
@@ -665,6 +734,35 @@ bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
               << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
     std::cout << InformationMsg("Demoted Sync Peers (lifetime): ")
               << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
+{
+    const std::string engine = m_config.enableLevelDB ? "LevelDB" : "RocksDB";
+    const fs::path dbPath = fs::path(m_config.dataDirectory) / (m_config.enableLevelDB ? "LevelDB" : "DB");
+    const DbDirStats stats = collectDbDirStats(dbPath);
+
+    std::cout << InformationMsg("DB Engine: ") << SuccessMsg(engine) << std::endl;
+    std::cout << InformationMsg("DB Path: ") << SuccessMsg(dbPath.string()) << std::endl;
+    std::cout << InformationMsg("DB Size: ") << SuccessMsg(Utilities::prettyPrintBytes(stats.bytes)) << std::endl;
+    std::cout << InformationMsg("Files: ") << SuccessMsg(std::to_string(stats.files)) << std::endl;
+    std::cout << InformationMsg("Directories: ") << SuccessMsg(std::to_string(stats.directories)) << std::endl;
+
+    if (stats.extensionCounts.empty())
+    {
+        std::cout << WarningMsg("No DB files found in the selected path.") << std::endl;
+        return true;
+    }
+
+    std::cout << InformationMsg("File type counts:") << std::endl;
+
+    for (const auto &[ext, count] : stats.extensionCounts)
+    {
+        std::cout << "  " << ext << ": " << count << std::endl;
+    }
 
     return true;
 }

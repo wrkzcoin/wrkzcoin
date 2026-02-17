@@ -94,4 +94,6 @@ class DaemonCommandsHandler
     bool sync_tune(const std::vector<std::string> &args);
 
     bool sync_peers(const std::vector<std::string> &args);
+
+    bool db_status(const std::vector<std::string> &args);
 };
