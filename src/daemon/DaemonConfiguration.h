@@ -63,6 +63,14 @@ namespace DaemonConfig
             syncPeerFailureThreshold = 3;
             syncBatchMin = 100;
             syncBatchMax = 400;
+            rpcAccessToken = "";
+            rpcReadTimeout = 15;
+            rpcWriteTimeout = 30;
+            rpcMaxRequestBodyBytes = 2 * 1024 * 1024;
+            rpcMaxRequestsPerMinute = 240;
+            rpcMaxGlobalIndexesRange = 5000;
+            rpcMaxBlockCount = 100;
+            rpcTrustProxy = false;
         }
 
         std::string dataDirectory;
@@ -146,6 +154,22 @@ namespace DaemonConfig
         uint32_t syncBatchMin;
 
         uint32_t syncBatchMax;
+
+        std::string rpcAccessToken;
+
+        uint32_t rpcReadTimeout;
+
+        uint32_t rpcWriteTimeout;
+
+        uint64_t rpcMaxRequestBodyBytes;
+
+        uint32_t rpcMaxRequestsPerMinute;
+
+        uint32_t rpcMaxGlobalIndexesRange;
+
+        uint32_t rpcMaxBlockCount;
+
+        bool rpcTrustProxy;
 
         std::string configFile;
 

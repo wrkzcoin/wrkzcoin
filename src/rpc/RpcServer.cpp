@@ -7,6 +7,7 @@
 //////////////////////////
 
 #include <iostream>
+#include <ctime>
 
 #include "version.h"
 
@@ -24,6 +25,14 @@ RpcServer::RpcServer(
     const uint16_t bindPort,
     const std::string rpcBindIp,
     const std::string corsHeader,
+    const std::string rpcAccessToken,
+    const uint32_t rpcReadTimeout,
+    const uint32_t rpcWriteTimeout,
+    const uint64_t rpcMaxRequestBodyBytes,
+    const uint32_t rpcMaxRequestsPerMinute,
+    const uint32_t rpcMaxGlobalIndexesRange,
+    const uint32_t rpcMaxBlockCount,
+    const bool rpcTrustProxy,
     const std::string feeAddress,
     const uint64_t feeAmount,
     const RpcMode rpcMode,
@@ -33,6 +42,14 @@ RpcServer::RpcServer(
     m_port(bindPort),
     m_host(rpcBindIp),
     m_corsHeader(corsHeader),
+    m_rpcAccessToken(rpcAccessToken),
+    m_rpcReadTimeout(std::max<uint32_t>(1, rpcReadTimeout)),
+    m_rpcWriteTimeout(std::max<uint32_t>(1, rpcWriteTimeout)),
+    m_rpcMaxRequestBodyBytes(std::max<uint64_t>(1024, rpcMaxRequestBodyBytes)),
+    m_rpcMaxRequestsPerMinute(rpcMaxRequestsPerMinute),
+    m_rpcMaxGlobalIndexesRange(std::max<uint32_t>(100, rpcMaxGlobalIndexesRange)),
+    m_rpcMaxBlockCount(std::max<uint32_t>(1, rpcMaxBlockCount)),
+    m_rpcTrustProxy(rpcTrustProxy),
     m_feeAddress(feeAddress),
     m_feeAmount(feeAmount),
     m_rpcMode(rpcMode),
@@ -40,6 +57,10 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
+    m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+    m_server.set_read_timeout(static_cast<time_t>(m_rpcReadTimeout), 0);
+    m_server.set_write_timeout(static_cast<time_t>(m_rpcWriteTimeout), 0);
+
     if (m_feeAddress != "")
     {
         Error error = validateAddresses({m_feeAddress}, false);
@@ -250,8 +271,10 @@ void RpcServer::middleware(
         httplib::Response &res,
         const rapidjson::Document &body)> handler)
 {
+    const std::string clientIp = getClientIp(req);
+
     Logger::logger.log(
-        "[" + req.get_header_value("REMOTE_ADDR") + "] Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
+        "[" + clientIp + "] Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
         Logger::DEBUG,
         { Logger::DAEMON_RPC }
     );
@@ -262,6 +285,36 @@ void RpcServer::middleware(
     }
 
     res.set_header("Content-Type", "application/json");
+
+    if (!m_rpcAccessToken.empty())
+    {
+        std::string providedToken = req.get_header_value("X-API-Key");
+
+        if (providedToken.empty())
+        {
+            const std::string authHeader = req.get_header_value("Authorization");
+            static const std::string bearerPrefix = "Bearer ";
+            if (authHeader.rfind(bearerPrefix, 0) == 0)
+            {
+                providedToken = authHeader.substr(bearerPrefix.size());
+            }
+        }
+
+        if (providedToken != m_rpcAccessToken)
+        {
+            failRequest(401, "Unauthorized RPC request", res);
+            return;
+        }
+    }
+
+    if (!clientIp.empty() && clientIp != "127.0.0.1" && clientIp != "::1")
+    {
+        if (isRateLimited(clientIp))
+        {
+            failRequest(429, "Too many RPC requests, please retry later", res);
+            return;
+        }
+    }
 
     const auto jsonBody = getJsonBody(req, res, bodyRequired);
 
@@ -298,7 +351,7 @@ void RpcServer::middleware(
 
     if (syncRequired && !areSynced)
     {
-        failRequest(200, "Daemon must be synced to process this RPC method call, please retry when synced", res);
+        failRequest(503, "Daemon must be synced to process this RPC method call, please retry when synced", res);
         return;
     }
 
@@ -322,7 +375,7 @@ void RpcServer::middleware(
             writer.EndObject();
 
             res.body = sb.GetString();
-            res.status = 400;
+            res.status = statusCode;
         }
         else
         {
@@ -365,6 +418,58 @@ void RpcServer::middleware(
 
         failRequest(500, "Internal server error: " + std::string(e.what()), res);
     }
+}
+
+std::string RpcServer::getClientIp(const httplib::Request &req) const
+{
+    std::string ip = req.get_header_value("REMOTE_ADDR");
+
+    if (!m_rpcTrustProxy)
+    {
+        return ip;
+    }
+
+    const std::string forwardedFor = req.get_header_value("X-Forwarded-For");
+    if (forwardedFor.empty())
+    {
+        return ip;
+    }
+
+    const size_t comma = forwardedFor.find(',');
+    if (comma == std::string::npos)
+    {
+        return forwardedFor;
+    }
+
+    return forwardedFor.substr(0, comma);
+}
+
+bool RpcServer::isRateLimited(const std::string &clientIp)
+{
+    if (m_rpcMaxRequestsPerMinute == 0)
+    {
+        return false;
+    }
+
+    const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    const uint64_t windowStart = now - (now % 60);
+
+    std::lock_guard<std::mutex> lock(m_rateLimitMutex);
+    auto &entry = m_rateLimitByIp[clientIp];
+
+    if (entry.first != windowStart)
+    {
+        entry.first = windowStart;
+        entry.second = 0;
+    }
+
+    if (entry.second >= m_rpcMaxRequestsPerMinute)
+    {
+        return true;
+    }
+
+    ++entry.second;
+    return false;
 }
 
 void RpcServer::failRequest(uint16_t statusCode, std::string body, httplib::Response &res)
@@ -774,7 +879,7 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
 
             if (!success)
             {
-                return {Error(CANT_GET_FAKE_OUTPUTS, error), 200};
+                return {Error(CANT_GET_FAKE_OUTPUTS, error), 400};
             }
 
             if (globalIndexes.size() != numOutputs)
@@ -789,7 +894,7 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
                        << "Note: If you are a public node operator, you can safely ignore this message. "
                        << "It is only relevant to the user sending the transaction.";
 
-                return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 200};
+                return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 400};
             }
 
             writer.Key("amount");
@@ -847,7 +952,11 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
             std::string hashStr = jsonHash.GetString();
 
             Crypto::Hash hash;
-            Common::podFromHex(hashStr, hash);
+            if (!Common::podFromHex(hashStr, hash))
+            {
+                failRequest(400, "blockHashCheckpoints contains invalid hash", res);
+                return {SUCCESS, 400};
+            }
 
             blockHashCheckpoints.push_back(hash);
         }
@@ -864,6 +973,12 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")
         : 100;
+
+    if (blockCount > m_rpcMaxBlockCount)
+    {
+        failRequest(400, "blockCount exceeds rpc-max-block-count", res);
+        return {SUCCESS, 400};
+    }
 
     const bool skipCoinbaseTransactions = hasMember(body, "skipCoinbaseTransactions")
         ? getBoolFromJSON(body, "skipCoinbaseTransactions")
@@ -1050,6 +1165,19 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
 
     const uint64_t startHeight = getUint64FromJSON(body, "startHeight");
     const uint64_t endHeight = getUint64FromJSON(body, "endHeight");
+
+    if (endHeight < startHeight)
+    {
+        failRequest(400, "endHeight must be >= startHeight", res);
+        return {SUCCESS, 400};
+    }
+
+    const uint64_t rangeSpan = endHeight - startHeight;
+    if (rangeSpan >= m_rpcMaxGlobalIndexesRange)
+    {
+        failRequest(400, "Requested range exceeds rpc-max-global-index-range", res);
+        return {SUCCESS, 400};
+    }
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>> indexes;
 
@@ -3146,7 +3274,11 @@ std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
             std::string hashStr = jsonHash.GetString();
 
             Crypto::Hash hash;
-            Common::podFromHex(hashStr, hash);
+            if (!Common::podFromHex(hashStr, hash))
+            {
+                failRequest(400, "blockHashCheckpoints contains invalid hash", res);
+                return {SUCCESS, 400};
+            }
 
             blockHashCheckpoints.push_back(hash);
         }
@@ -3163,6 +3295,12 @@ std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")
         : 100;
+
+    if (blockCount > m_rpcMaxBlockCount)
+    {
+        failRequest(400, "blockCount exceeds rpc-max-block-count", res);
+        return {SUCCESS, 400};
+    }
 
     const bool skipCoinbaseTransactions = hasMember(body, "skipCoinbaseTransactions")
         ? getBoolFromJSON(body, "skipCoinbaseTransactions")

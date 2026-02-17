@@ -98,4 +98,6 @@ class DaemonCommandsHandler
     bool db_status(const std::vector<std::string> &args);
 
     bool compact_db(const std::vector<std::string> &args);
+
+    std::shared_ptr<httplib::Response> rpc_get(const std::string &path);
 };

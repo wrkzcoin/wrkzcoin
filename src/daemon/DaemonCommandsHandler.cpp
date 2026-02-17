@@ -117,6 +117,17 @@ namespace
 
 } // namespace
 
+std::shared_ptr<httplib::Response> DaemonCommandsHandler::rpc_get(const std::string &path)
+{
+    if (m_config.rpcAccessToken.empty())
+    {
+        return m_rpcServer.Get(path.c_str());
+    }
+
+    httplib::Headers headers = {{"X-API-Key", m_config.rpcAccessToken}};
+    return m_rpcServer.Get(path.c_str(), headers);
+}
+
 DaemonCommandsHandler::DaemonCommandsHandler(
     CryptoNote::Core &core,
     CryptoNote::NodeServer &srv,
@@ -500,7 +511,7 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    auto res = rpc_get("/info");
 
     if (!res || res->status != 200)
     {
@@ -608,7 +619,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::prune_status(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    auto res = rpc_get("/info");
 
     if (!res || res->status != 200)
     {
@@ -642,7 +653,7 @@ bool DaemonCommandsHandler::prune_status(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::sync_info(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    auto res = rpc_get("/info");
 
     if (!res || res->status != 200)
     {
@@ -680,7 +691,7 @@ bool DaemonCommandsHandler::save(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    auto res = rpc_get("/info");
 
     if (!res || res->status != 200)
     {
@@ -716,7 +727,7 @@ bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    auto res = rpc_get("/info");
 
     if (!res || res->status != 200)
     {
