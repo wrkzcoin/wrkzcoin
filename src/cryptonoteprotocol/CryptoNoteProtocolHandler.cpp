@@ -305,7 +305,7 @@ namespace CryptoNote
         logger(INFO) << "Connections: " << ENDL << ss.str();
     }
 
-    uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height()
+    uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height() const
     {
         return m_core.getTopBlockIndex() + 1;
     }

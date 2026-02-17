@@ -142,7 +142,7 @@ namespace CryptoNote
         virtual void relayTransactions(const std::vector<BinaryArray> &transactions) override;
 
         //----------------------------------------------------------------------------------
-        uint32_t get_current_blockchain_height();
+        uint32_t get_current_blockchain_height() const;
 
         bool request_missing_objects(CryptoNoteConnectionContext &context, bool check_having_blocks);
 
