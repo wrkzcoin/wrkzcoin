@@ -295,22 +295,68 @@ namespace CryptoNote
     void CryptoNoteProtocolHandler::log_connections()
     {
         std::stringstream ss;
+        const int dirWidth = 3;
+        const int remoteWidth = 22;
+        const int peerWidth = 16;
+        const int stateWidth = 14;
+        const int ageWidth = 14;
+        const int heightWidth = 10;
+        const int pruneWidth = 6;
+        const int batchWidth = 5;
+        const int failWidth = 5;
 
-        ss << std::setw(25) << std::left << "Remote Host" << std::setw(20) << "Peer ID" << std::setw(25)
-           << "Recv/Sent (inactive,sec)" << std::setw(25) << "State" << std::setw(20) << "Lifetime" << ENDL;
+        const std::string border =
+            "+" + std::string(dirWidth + 2, '-')
+            + "+" + std::string(remoteWidth + 2, '-')
+            + "+" + std::string(peerWidth + 2, '-')
+            + "+" + std::string(stateWidth + 2, '-')
+            + "+" + std::string(ageWidth + 2, '-')
+            + "+" + std::string(heightWidth + 2, '-')
+            + "+" + std::string(pruneWidth + 2, '-')
+            + "+" + std::string(batchWidth + 2, '-')
+            + "+" + std::string(failWidth + 2, '-') + "+";
+
+        ss << border << ENDL;
+        ss << "| " << std::left << std::setw(dirWidth) << "Dir"
+           << " | " << std::setw(remoteWidth) << "Remote"
+           << " | " << std::setw(peerWidth) << "Peer ID"
+           << " | " << std::setw(stateWidth) << "State"
+           << " | " << std::setw(ageWidth) << "Uptime"
+           << " | " << std::setw(heightWidth) << "Height"
+           << " | " << std::setw(pruneWidth) << "Pruned"
+           << " | " << std::setw(batchWidth) << "Batch"
+           << " | " << std::setw(failWidth) << "Fail"
+           << " |" << ENDL;
+        ss << border << ENDL;
 
         m_p2p->for_each_connection([&](const CryptoNoteConnectionContext &cntxt, uint64_t peer_id) {
-            ss << std::setw(25) << std::left
-               << std::string(cntxt.m_is_income ? "[INCOMING]" : "[OUTGOING]")
-                      + Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port)
-               << std::setw(20) << std::hex
-               << peer_id
-               << std::setw(25) << get_protocol_state_string(cntxt.m_state) << std::setw(20)
-               << Common::timeIntervalToString(time(NULL) - cntxt.m_started) << std::setw(20)
-               << std::to_string(cntxt.m_remote_blockchain_height)
-               << ENDL;
+            const std::string dir = cntxt.m_is_income ? "IN" : "OUT";
+            const std::string remote =
+                Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port);
+            std::string state = get_protocol_state_string(cntxt.m_state);
+            if (state.find("state_") == 0)
+            {
+                state = state.substr(6);
+            }
+            const std::string age = Common::timeIntervalToString(time(nullptr) - cntxt.m_started);
+
+            std::stringstream peerIdStream;
+            peerIdStream << std::hex << std::nouppercase << std::setw(peerWidth) << std::setfill('0') << peer_id;
+
+            ss << "| " << std::left << std::setfill(' ') << std::setw(dirWidth) << dir
+               << " | " << std::setw(remoteWidth) << remote
+               << " | " << std::setw(peerWidth) << peerIdStream.str()
+               << " | " << std::setw(stateWidth) << state
+               << " | " << std::setw(ageWidth) << age
+               << " | " << std::right << std::setw(heightWidth) << cntxt.m_remote_blockchain_height
+               << " | " << std::left << std::setw(pruneWidth) << (cntxt.m_remote_is_pruned_node ? "yes" : "no")
+               << " | " << std::right << std::setw(batchWidth) << cntxt.m_sync_batch_size
+               << " | " << std::setw(failWidth) << cntxt.m_sync_failures
+               << " |" << ENDL;
         });
-        logger(INFO) << "Connections: " << ENDL << ss.str();
+
+        ss << border << ENDL;
+        logger(INFO) << "Connections:" << ENDL << ss.str();
     }
 
     uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height() const
@@ -793,6 +839,13 @@ namespace CryptoNote
                 || addResult == error::AddBlockErrorCondition::TRANSACTION_VALIDATION_FAILED
                 || addResult == error::AddBlockErrorCondition::DESERIALIZATION_FAILED)
             {
+                if (addResult == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
+                {
+                    logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                        << context << "Checkpoint mismatch from peer for block "
+                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " ("
+                        << addResult.message() << ")";
+                }
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << addResult.message();
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
