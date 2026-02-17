@@ -88,7 +88,7 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     m_isBlockchainCache = false;
     m_nodeFeeAddress = "";
     m_nodeFeeAmount = 0;
-    m_useRawBlocks = true;
+    m_useRawBlocks = false;
 
     m_daemonHost = daemonHost;
     m_daemonPort = daemonPort;
@@ -128,6 +128,11 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
               {"skipCoinbaseTransactions", skipCoinbaseTransactions}};
 
     const std::string endpoint = m_useRawBlocks ? "/getrawblocks" : "/getwalletsyncdata";
+
+    if (!m_useRawBlocks)
+    {
+        Logger::logger.log("Using /getwalletsyncdata for wallet sync", Logger::DEBUG, {Logger::SYNC, Logger::DAEMON});
+    }
 
     Logger::logger.log(
         "Sending " + endpoint + " request to daemon: " + j.dump(),

@@ -231,5 +231,5 @@ class Nigel
     bool m_daemonSSL = false;
 
     /* Whether we should use /getrawblocks instead of /getwalletsyncdata */
-    bool m_useRawBlocks = true;
+    bool m_useRawBlocks = false;
 };
