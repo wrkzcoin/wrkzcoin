@@ -23,6 +23,7 @@
 #include <common/CheckDifficulty.h>
 #include <common/FileSystemShim.h>
 #include <map>
+#include <chrono>
 #include <system/Ipv4Address.h>
 #include <p2p/P2pProtocolTypes.h>
 
@@ -215,7 +216,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     m_consoleHandler.setHandler(
         "compact_db",
         std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
-        "Run local DB compaction (can take time and increase IO)");
+        "Manage DB compaction: compact_db [start|status|wait]");
     m_consoleHandler.setHandler(
         "ban",
         std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1),
@@ -807,17 +808,100 @@ bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
 {
-    std::cout << InformationMsg("Starting DB compaction. This may take a while...") << std::endl;
+    const std::string sub = args.empty() ? "start" : args[0];
 
-    const auto error = m_core.compactDatabase();
-    if (error)
+    if (sub != "start" && sub != "status" && sub != "wait")
     {
-        std::cout << WarningMsg("DB compaction failed: " + error.message()) << std::endl;
-        return false;
+        std::cout << "Usage: compact_db [start|status|wait]" << std::endl;
+        return true;
     }
 
-    std::cout << SuccessMsg("DB compaction completed.") << std::endl;
+    std::lock_guard<std::mutex> lock(m_compactionMutex);
+    refresh_compaction_state_locked();
+
+    if (sub == "status")
+    {
+        if (m_compactionRunning)
+        {
+            const uint64_t now = static_cast<uint64_t>(time(nullptr));
+            const uint64_t elapsed = now > m_compactionStartedAt ? (now - m_compactionStartedAt) : 0;
+            std::cout << InformationMsg("DB compaction status: ")
+                      << SuccessMsg("running (" + std::to_string(elapsed) + "s elapsed)") << std::endl;
+            return true;
+        }
+
+        std::cout << InformationMsg("DB compaction status: ") << SuccessMsg("idle") << std::endl;
+        if (m_compactionHasResult)
+        {
+            if (m_compactionLastError)
+            {
+                std::cout << WarningMsg("Last result: failed - " + m_compactionLastError.message()) << std::endl;
+            }
+            else
+            {
+                std::cout << SuccessMsg("Last result: completed successfully") << std::endl;
+            }
+        }
+
+        return true;
+    }
+
+    if (sub == "wait")
+    {
+        if (!m_compactionRunning)
+        {
+            std::cout << InformationMsg("No DB compaction is running.") << std::endl;
+            return true;
+        }
+
+        std::cout << InformationMsg("Waiting for DB compaction to complete...") << std::endl;
+        m_compactionTask.wait();
+        refresh_compaction_state_locked();
+
+        if (m_compactionLastError)
+        {
+            std::cout << WarningMsg("DB compaction failed: " + m_compactionLastError.message()) << std::endl;
+            return false;
+        }
+
+        std::cout << SuccessMsg("DB compaction completed.") << std::endl;
+        return true;
+    }
+
+    if (m_compactionRunning)
+    {
+        std::cout << WarningMsg("DB compaction is already running. Use `compact_db status` or `compact_db wait`.")
+                  << std::endl;
+        return true;
+    }
+
+    m_compactionHasResult = false;
+    m_compactionLastError = std::error_code();
+    m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+    m_compactionRunning = true;
+    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+
+    std::cout << InformationMsg("DB compaction started in background. Use `compact_db status` or `compact_db wait`.")
+              << std::endl;
     return true;
+}
+
+void DaemonCommandsHandler::refresh_compaction_state_locked()
+{
+    if (!m_compactionRunning || !m_compactionTask.valid())
+    {
+        return;
+    }
+
+    if (m_compactionTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    {
+        return;
+    }
+
+    m_compactionLastError = m_compactionTask.get();
+    m_compactionRunning = false;
+    m_compactionHasResult = true;
+    m_compactionFinishedAt = static_cast<uint64_t>(time(nullptr));
 }
 
 //--------------------------------------------------------------------------------

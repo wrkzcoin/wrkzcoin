@@ -14,6 +14,9 @@
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>
+#include <future>
+#include <mutex>
+#include <system_error>
 
 namespace CryptoNote
 {
@@ -102,4 +105,20 @@ class DaemonCommandsHandler
     bool ban(const std::vector<std::string> &args);
 
     std::shared_ptr<httplib::Response> rpc_get(const std::string &path);
+
+    void refresh_compaction_state_locked();
+
+    std::mutex m_compactionMutex;
+
+    std::future<std::error_code> m_compactionTask;
+
+    bool m_compactionRunning = false;
+
+    bool m_compactionHasResult = false;
+
+    std::error_code m_compactionLastError;
+
+    uint64_t m_compactionStartedAt = 0;
+
+    uint64_t m_compactionFinishedAt = 0;
 };
