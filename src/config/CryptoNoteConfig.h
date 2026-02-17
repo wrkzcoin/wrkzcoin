@@ -363,10 +363,11 @@ namespace CryptoNote
             2800000,  // 17
             3500000,  // 18
             3800000,  // 19
+            4300000,  // 20
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 19;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 20;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 

@@ -8,6 +8,7 @@
 
 #include <common/Base58.h>
 #include <config/CryptoNoteConfig.h>
+#include <config/WalletConfig.h>
 #include <errors/ValidateParameters.h>
 #include <serialization/SerializationTools.h>
 
@@ -63,7 +64,7 @@ namespace Utilities
         /* Decode from base58 */
         Tools::Base58::decode_addr(address, ignore, decoded);
 
-        const uint64_t paymentIDLen = 64;
+        const uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
 
         /* Grab the payment ID from the decoded address */
         std::string paymentID = decoded.substr(0, paymentIDLen);
@@ -110,6 +111,11 @@ namespace Utilities
         if (Error error = validatePaymentID(paymentID); error != SUCCESS)
         {
             return {error, std::string()};
+        }
+
+        if (paymentID.length() != WalletConfig::shortPaymentIDLength)
+        {
+            return {PAYMENT_ID_WRONG_LENGTH, std::string()};
         }
 
         const bool allowIntegratedAddresses = false;

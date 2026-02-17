@@ -6,6 +6,7 @@
 #include <utilities/ParseExtra.h>
 /////////////////////////////////
 
+#include <common/StringTools.h>
 #include <common/Varint.h>
 #include <config/Constants.h>
 
@@ -132,6 +133,22 @@ namespace Utilities
 
                             /* Advance the inner iterator by the hash size (32-bytes) */
                             is += 32;
+
+                            continue;
+                        }
+
+                        if (
+                            s == Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER
+                            && nElementsRemaining > 8
+                            && !seenPaymentID)
+                        {
+                            std::vector<uint8_t> shortPaymentID;
+                            std::copy(is + 1, is + 1 + 8, std::back_inserter(shortPaymentID));
+                            parsed.paymentID = Common::toHex(shortPaymentID);
+
+                            seenPaymentID = true;
+                            advanceIterator += 1 + 8;
+                            is += 8;
 
                             continue;
                         }

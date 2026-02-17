@@ -15,6 +15,7 @@
 #include "common/FileSystemShim.h"
 #include "common/TransactionExtra.h"
 #include "common/Util.h"
+#include "config/WalletConfig.h"
 #include "crypto/crypto.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "cryptonotecore/CryptoNoteFormatUtils.h"
@@ -42,9 +43,10 @@ namespace PaymentService
 {
     namespace
     {
-        bool checkPaymentId(const std::string &paymentId)
+        bool checkPaymentId(const std::string &paymentId, const bool allowShort = true)
         {
-            if (paymentId.size() != 64)
+            if (paymentId.size() != WalletConfig::longPaymentIDLength
+                && (!allowShort || paymentId.size() != WalletConfig::shortPaymentIDLength))
             {
                 return false;
             }
@@ -71,7 +73,7 @@ namespace PaymentService
 
         Crypto::Hash parsePaymentId(const std::string &paymentIdStr)
         {
-            if (!checkPaymentId(paymentIdStr))
+            if (!checkPaymentId(paymentIdStr, false))
             {
                 throw std::system_error(
                     make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_PAYMENT_ID_FORMAT));
@@ -367,7 +369,7 @@ namespace PaymentService
                 throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
             }
 
-            const uint64_t paymentIDLen = 64;
+            const uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);
 
@@ -1629,6 +1631,11 @@ namespace PaymentService
 
             validateAddresses({address}, currency, logger);
             validatePaymentId(paymentId, logger);
+            if (paymentId.size() != WalletConfig::shortPaymentIDLength)
+            {
+                throw std::system_error(
+                    make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_PAYMENT_ID_FORMAT));
+            }
         }
         catch (std::system_error &x)
         {

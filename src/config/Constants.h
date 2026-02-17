@@ -187,6 +187,8 @@ namespace Constants
 
     /* Indicates the following data is a payment ID */
     const uint8_t TX_EXTRA_PAYMENT_ID_IDENTIFIER = 0x00;
+    /* Indicates the following data is a short encrypted payment ID (8 bytes) */
+    const uint8_t TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER = 0x01;
 
     /* Indicates the following data is a transaction public key */
     const uint8_t TX_EXTRA_PUBKEY_IDENTIFIER = 0x01;

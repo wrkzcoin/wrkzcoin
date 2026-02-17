@@ -83,7 +83,7 @@ bool handleCommand(
     }
     else if (command == "make_integrated_address")
     {
-        createIntegratedAddress();
+        createIntegratedAddress(walletBackend);
     }
     else if (command == "incoming_transfers")
     {

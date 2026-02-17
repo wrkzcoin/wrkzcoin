@@ -10,6 +10,7 @@
 #include <config/Constants.h>
 #include <config/WalletConfig.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <common/Varint.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
@@ -1405,15 +1406,28 @@ namespace SendTransaction
 
         if (paymentID != "")
         {
-            Crypto::Hash paymentIDBin;
+            if (paymentID.size() == WalletConfig::shortPaymentIDLength)
+            {
+                std::vector<uint8_t> paymentIDBin;
+                Common::fromHex(paymentID, paymentIDBin);
 
-            Common::podFromHex(paymentID, paymentIDBin);
+                /* Indicate this is the short encrypted payment ID */
+                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER);
 
-            /* Indicate this is the payment ID */
-            extraNonce.push_back(Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER);
+                /* Write the 8-byte data to the extra nonce */
+                std::copy(paymentIDBin.begin(), paymentIDBin.end(), std::back_inserter(extraNonce));
+            }
+            else
+            {
+                Crypto::Hash paymentIDBin;
+                Common::podFromHex(paymentID, paymentIDBin);
 
-            /* Write the data to the extra nonce */
-            std::copy(std::begin(paymentIDBin.data), std::end(paymentIDBin.data), std::back_inserter(extraNonce));
+                /* Indicate this is the legacy 32-byte payment ID */
+                extraNonce.push_back(Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER);
+
+                /* Write the data to the extra nonce */
+                std::copy(std::begin(paymentIDBin.data), std::end(paymentIDBin.data), std::back_inserter(extraNonce));
+            }
         }
 
         if (!extraData.empty())

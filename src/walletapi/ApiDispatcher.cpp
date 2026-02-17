@@ -192,7 +192,7 @@ ApiDispatcher::ApiDispatcher(
 
         /* Creates an integrated address from the given address and payment ID */
         .Get(
-            "/addresses/" + ApiConstants::addressRegex + "/" + ApiConstants::hashRegex,
+            "/addresses/" + ApiConstants::addressRegex + "/" + ApiConstants::paymentIDRegex,
             router(&ApiDispatcher::createIntegratedAddress, WalletMustBeOpen, viewWalletsAllowed))
 
         /* Get all transactions */

@@ -126,11 +126,11 @@ std::string Error::getErrorMessage() const
         }
         case PAYMENT_ID_WRONG_LENGTH:
         {
-            return "The payment ID given is not 64 characters long.";
+            return "The payment ID given is not 16 or 64 characters long.";
         }
         case PAYMENT_ID_INVALID:
         {
-            return "The payment ID given is not a hex string (A-Za-z0-9)";
+            return "The payment ID given is not a hex string (A-F0-9)";
         }
         case ADDRESS_IS_INTEGRATED:
         {

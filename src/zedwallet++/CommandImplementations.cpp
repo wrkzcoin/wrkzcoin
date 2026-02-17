@@ -9,6 +9,8 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
+#include <crypto/random.h>
+#include <common/StringTools.h>
 #include <errors/ValidateParameters.h>
 #include <fstream>
 #include <logger/Logger.h>
@@ -493,7 +495,7 @@ void save(const std::shared_ptr<WalletBackend> walletBackend)
     }
 }
 
-void createIntegratedAddress()
+void createIntegratedAddress(const std::shared_ptr<WalletBackend> walletBackend)
 {
     std::cout << InformationMsg("Creating an integrated address from an ")
               << InformationMsg("address and payment ID pair...") << std::endl
@@ -509,6 +511,13 @@ void createIntegratedAddress()
         std::getline(std::cin, address);
 
         Utilities::trim(address);
+
+        if (address.empty())
+        {
+            address = walletBackend->getPrimaryAddress();
+            std::cout << InformationMsg("No address provided. Using primary wallet address: ")
+                      << SuccessMsg(address) << std::endl;
+        }
 
         const bool integratedAddressesAllowed = false;
 
@@ -530,10 +539,23 @@ void createIntegratedAddress()
 
         Utilities::trim(paymentID);
 
+        if (paymentID.empty())
+        {
+            paymentID = Common::toHex(Random::randomBytes(8));
+            std::cout << InformationMsg("No payment ID provided. Generated random short payment ID: ")
+                      << SuccessMsg(paymentID) << std::endl;
+        }
+
         /* Validate the payment ID */
         if (Error error = validatePaymentID(paymentID); error != SUCCESS)
         {
             std::cout << WarningMsg("Invalid payment ID: ") << WarningMsg(error) << std::endl;
+        }
+        else if (paymentID.length() != WalletConfig::shortPaymentIDLength)
+        {
+            std::cout << WarningMsg("Invalid payment ID: ")
+                      << WarningMsg("Integrated addresses require a short payment ID of 16 hex characters.")
+                      << std::endl;
         }
         else
         {

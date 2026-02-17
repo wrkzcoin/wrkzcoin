@@ -172,12 +172,13 @@ Error validatePaymentID(const std::string paymentID)
         return SUCCESS;
     }
 
-    if (paymentID.length() != 64)
+    if (paymentID.length() != WalletConfig::shortPaymentIDLength
+        && paymentID.length() != WalletConfig::longPaymentIDLength)
     {
         return PAYMENT_ID_WRONG_LENGTH;
     }
 
-    std::regex hexRegex("[a-zA-Z0-9]{64}");
+    std::regex hexRegex("[a-fA-F0-9]+");
 
     if (!std::regex_match(paymentID, hexRegex))
     {
@@ -375,7 +376,7 @@ Error validateAddresses(std::vector<std::string> addresses, const bool integrate
                 return ADDRESS_NOT_BASE58;
             }
 
-            const uint64_t paymentIDLen = 64;
+            const uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
 
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);

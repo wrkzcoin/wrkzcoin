@@ -682,6 +682,17 @@ void WalletBackend::init()
     {
         auto [startHeight, startTimestamp] = m_subWallets->getMinInitialSyncStart();
 
+        /* New wallets may store both a creation timestamp and an implied
+           creation height candidate. Use the lower scan point to avoid
+           missing first transactions and avoid requiring an immediate reset. */
+        if (startHeight == 0 && startTimestamp != 0)
+        {
+            const uint64_t createdHeight = m_daemon->networkBlockCount();
+            const uint64_t timestampHeight = Utilities::timestampToScanHeight(startTimestamp);
+            startHeight = std::min(createdHeight, timestampHeight);
+            startTimestamp = 0;
+        }
+
         m_walletSynchronizer = std::make_shared<WalletSynchronizer>(
             m_daemon,
             startHeight,
