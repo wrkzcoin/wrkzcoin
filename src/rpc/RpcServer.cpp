@@ -57,10 +57,6 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
-    m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
-    m_server.set_read_timeout(static_cast<time_t>(m_rpcReadTimeout), 0);
-    m_server.set_write_timeout(static_cast<time_t>(m_rpcWriteTimeout), 0);
-
     if (m_feeAddress != "")
     {
         Error error = validateAddresses({m_feeAddress}, false);
@@ -285,6 +281,12 @@ void RpcServer::middleware(
     }
 
     res.set_header("Content-Type", "application/json");
+
+    if (req.body.size() > m_rpcMaxRequestBodyBytes)
+    {
+        failRequest(413, "RPC request body too large", res);
+        return;
+    }
 
     if (!m_rpcAccessToken.empty())
     {
