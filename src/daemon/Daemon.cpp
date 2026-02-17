@@ -539,8 +539,7 @@ int main(int argc, char *argv[])
 
             if (count == 1)
             {
-                std::cout << InformationMsg(
-                                 "SIGINT received. Starting graceful shutdown. Press CTRL+C again to force exit.")
+                std::cout << "SIGINT received. Starting graceful shutdown. Press CTRL+C again to force exit."
                           << std::endl;
                 dch.exit({});
                 return;
