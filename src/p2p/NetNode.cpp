@@ -806,6 +806,12 @@ namespace CryptoNote
         uint64_t last_seen_stamp,
         bool white)
     {
+        if (isHostBanned(na.ip))
+        {
+            logger(DEBUGGING) << "Skipping banned peer " << na;
+            return false;
+        }
+
         logger(DEBUGGING) << "Connecting to " << na << " (white=" << white << ", last_seen: "
                           << (last_seen_stamp ? Common::timeIntervalToString(time(NULL) - last_seen_stamp) : "never")
                           << ")...";
@@ -1491,6 +1497,89 @@ namespace CryptoNote
         logger(INFO) << "Connections: \r\n" << print_connections_container();
         return true;
     }
+
+    bool NodeServer::ban_host(uint32_t ip, uint64_t seconds)
+    {
+        if (seconds == 0)
+        {
+            return false;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t expireAt = now + seconds;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+            m_bannedHostsUntil[ip] = expireAt;
+        }
+
+        logger(INFO) << "Banned host " << Common::ipAddressToString(ip) << " for " << seconds << " seconds";
+
+        forEachConnection([&](P2pConnectionContext &conn) {
+            if (conn.m_remote_ip == ip)
+            {
+                conn.m_state = CryptoNoteConnectionContext::state_shutdown;
+                safeInterrupt(conn);
+            }
+        });
+
+        return true;
+    }
+
+    bool NodeServer::unban_host(uint32_t ip)
+    {
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        const auto it = m_bannedHostsUntil.find(ip);
+        if (it == m_bannedHostsUntil.end())
+        {
+            return false;
+        }
+
+        m_bannedHostsUntil.erase(it);
+        logger(INFO) << "Removed host ban for " << Common::ipAddressToString(ip);
+        return true;
+    }
+
+    std::vector<std::pair<uint32_t, uint64_t>> NodeServer::get_banned_hosts()
+    {
+        std::vector<std::pair<uint32_t, uint64_t>> bans;
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        for (auto it = m_bannedHostsUntil.begin(); it != m_bannedHostsUntil.end();)
+        {
+            if (it->second <= now)
+            {
+                it = m_bannedHostsUntil.erase(it);
+                continue;
+            }
+
+            bans.emplace_back(it->first, it->second);
+            ++it;
+        }
+
+        return bans;
+    }
+
+    bool NodeServer::isHostBanned(uint32_t ip)
+    {
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        auto it = m_bannedHostsUntil.find(ip);
+        if (it == m_bannedHostsUntil.end())
+        {
+            return false;
+        }
+
+        if (it->second <= now)
+        {
+            m_bannedHostsUntil.erase(it);
+            return false;
+        }
+
+        return true;
+    }
     //-----------------------------------------------------------------------------------
 
     std::string NodeServer::print_connections_container()
@@ -1548,6 +1637,13 @@ namespace CryptoNote
                 auto addressAndPort = ctx.connection.getPeerAddressAndPort();
                 ctx.m_remote_ip = hostToNetwork(addressAndPort.first.getValue());
                 ctx.m_remote_port = addressAndPort.second;
+
+                if (isHostBanned(ctx.m_remote_ip))
+                {
+                    logger(DEBUGGING) << "Rejecting incoming connection from banned host "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    continue;
+                }
 
                 auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
                 const boost::uuids::uuid &connectionId = iter->first;

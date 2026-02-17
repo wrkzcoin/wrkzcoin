@@ -841,10 +841,13 @@ namespace CryptoNote
             {
                 if (addResult == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
                 {
+                    static constexpr uint64_t CHECKPOINT_MISMATCH_BAN_SECONDS = 900;
+                    m_p2p->ban_host(context.m_remote_ip, CHECKPOINT_MISMATCH_BAN_SECONDS);
                     logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
                         << context << "Checkpoint mismatch from peer for block "
                         << Common::podToHex(cachedBlocks[index].getBlockHash()) << " ("
-                        << addResult.message() << ")";
+                        << addResult.message() << "), temporary ban applied for "
+                        << CHECKPOINT_MISMATCH_BAN_SECONDS << "s";
                 }
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << addResult.message();

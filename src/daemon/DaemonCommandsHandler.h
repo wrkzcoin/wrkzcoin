@@ -99,5 +99,7 @@ class DaemonCommandsHandler
 
     bool compact_db(const std::vector<std::string> &args);
 
+    bool ban(const std::vector<std::string> &args);
+
     std::shared_ptr<httplib::Response> rpc_get(const std::string &path);
 };

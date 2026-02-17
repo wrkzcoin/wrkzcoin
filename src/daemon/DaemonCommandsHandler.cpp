@@ -23,6 +23,8 @@
 #include <common/CheckDifficulty.h>
 #include <common/FileSystemShim.h>
 #include <map>
+#include <system/Ipv4Address.h>
+#include <p2p/P2pProtocolTypes.h>
 
 namespace
 {
@@ -214,6 +216,10 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "compact_db",
         std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
         "Run local DB compaction (can take time and increase IO)");
+    m_consoleHandler.setHandler(
+        "ban",
+        std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1),
+        "Manage in-memory host bans: ban list | ban add <ip> [seconds] | ban delete <ip>");
 }
 
 //--------------------------------------------------------------------------------
@@ -811,5 +817,112 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
     }
 
     std::cout << SuccessMsg("DB compaction completed.") << std::endl;
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
+{
+    if (args.empty())
+    {
+        std::cout << "Usage: ban list | ban add <ip> [seconds] | ban delete <ip>" << std::endl;
+        return true;
+    }
+
+    const std::string sub = args[0];
+
+    if (sub == "list")
+    {
+        const auto bans = m_srv.get_banned_hosts();
+
+        if (bans.empty())
+        {
+            std::cout << InformationMsg("Ban list is empty.") << std::endl;
+            return true;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::cout << InformationMsg("Banned hosts:") << std::endl;
+        for (const auto &[ip, until] : bans)
+        {
+            const uint64_t remaining = until > now ? (until - now) : 0;
+            std::cout << "  " << Common::ipAddressToString(ip) << " (" << remaining << "s remaining)" << std::endl;
+        }
+
+        return true;
+    }
+
+    if (sub == "add")
+    {
+        if (args.size() < 2 || args.size() > 3)
+        {
+            std::cout << "Usage: ban add <ip> [seconds]" << std::endl;
+            return true;
+        }
+
+        uint64_t seconds = 900;
+        if (args.size() == 3 && !Common::fromString(args[2], seconds))
+        {
+            std::cout << WarningMsg("Invalid ban seconds value.") << std::endl;
+            return true;
+        }
+
+        if (seconds == 0)
+        {
+            std::cout << WarningMsg("Ban seconds must be greater than zero.") << std::endl;
+            return true;
+        }
+
+        uint32_t ipHostOrder = 0;
+        try
+        {
+            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            return true;
+        }
+
+        const uint32_t ip = CryptoNote::hostToNetwork(ipHostOrder);
+        m_srv.ban_host(ip, seconds);
+        std::cout << SuccessMsg("Ban added for " + Common::ipAddressToString(ip) + " (" + std::to_string(seconds) + "s)")
+                  << std::endl;
+        return true;
+    }
+
+    if (sub == "delete")
+    {
+        if (args.size() != 2)
+        {
+            std::cout << "Usage: ban delete <ip>" << std::endl;
+            return true;
+        }
+
+        uint32_t ipHostOrder = 0;
+        try
+        {
+            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            return true;
+        }
+
+        const uint32_t ip = CryptoNote::hostToNetwork(ipHostOrder);
+        const bool removed = m_srv.unban_host(ip);
+
+        if (!removed)
+        {
+            std::cout << WarningMsg("IP not found in ban list.") << std::endl;
+            return true;
+        }
+
+        std::cout << SuccessMsg("Ban removed for " + Common::ipAddressToString(ip)) << std::endl;
+        return true;
+    }
+
+    std::cout << "Usage: ban list | ban add <ip> [seconds] | ban delete <ip>" << std::endl;
     return true;
 }
