@@ -744,8 +744,24 @@ bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
     const std::string engine = m_config.enableLevelDB ? "LevelDB" : "RocksDB";
     const fs::path dbPath = fs::path(m_config.dataDirectory) / (m_config.enableLevelDB ? "LevelDB" : "DB");
     const DbDirStats stats = collectDbDirStats(dbPath);
+    const bool compressionEnabled = m_config.enableDbCompression;
 
     std::cout << InformationMsg("DB Engine: ") << SuccessMsg(engine) << std::endl;
+    std::cout << InformationMsg("Compression Enabled: ")
+              << SuccessMsg(compressionEnabled ? "Yes" : "No") << std::endl;
+
+    if (m_config.enableLevelDB)
+    {
+        std::cout << InformationMsg("Compression Mode: ")
+                  << SuccessMsg(compressionEnabled ? "Snappy (if available)" : "Disabled") << std::endl;
+    }
+    else
+    {
+        std::cout << InformationMsg("Compression Mode: ")
+                  << SuccessMsg(compressionEnabled ? "RocksDB ZSTD (L2+; L0/L1 uncompressed)" : "Disabled")
+                  << std::endl;
+    }
+
     std::cout << InformationMsg("DB Path: ") << SuccessMsg(dbPath.string()) << std::endl;
     std::cout << InformationMsg("DB Size: ") << SuccessMsg(Utilities::prettyPrintBytes(stats.bytes)) << std::endl;
     std::cout << InformationMsg("Files: ") << SuccessMsg(std::to_string(stats.files)) << std::endl;
