@@ -42,6 +42,7 @@ void save(const std::shared_ptr<WalletBackend> walletBackend);
 
 void listTransfers(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
 void listTransfersBrief(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
+void listTransfersVerbose(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
 
 void printOutgoingTransfer(const WalletTypes::Transaction t);
 

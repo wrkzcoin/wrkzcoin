@@ -130,7 +130,7 @@ bool handleCommand(
         const bool printIncoming = true;
         const bool printOutgoing = true;
 
-        listTransfers(printIncoming, printOutgoing, walletBackend);
+        listTransfersVerbose(printIncoming, printOutgoing, walletBackend);
     }
     else if (command == "optimize")
     {

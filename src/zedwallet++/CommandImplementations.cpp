@@ -516,6 +516,58 @@ void listTransfers(const bool incoming, const bool outgoing, const std::shared_p
 
         if (amount < 0 && outgoing)
         {
+            printTransferOneLine(tx);
+
+            totalSpent += -amount;
+            numOutgoingTransactions++;
+        }
+        else if (amount > 0 && incoming)
+        {
+            printTransferOneLine(tx);
+
+            totalReceived += amount;
+            numIncomingTransactions++;
+        }
+    }
+
+    std::cout << InformationMsg("Summary:\n\n");
+
+    if (incoming)
+    {
+        std::cout << SuccessMsg(numIncomingTransactions) << SuccessMsg(" incoming transactions, totalling ")
+                  << SuccessMsg(Utilities::formatAmount(totalReceived)) << std::endl;
+    }
+
+    if (outgoing)
+    {
+        std::cout << WarningMsg(numOutgoingTransactions) << WarningMsg(" outgoing transactions, totalling ")
+                  << WarningMsg(Utilities::formatAmount(totalSpent)) << std::endl;
+    }
+}
+
+void listTransfersVerbose(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend)
+{
+    uint64_t totalSpent = 0;
+    uint64_t totalReceived = 0;
+
+    uint64_t numIncomingTransactions = 0;
+    uint64_t numOutgoingTransactions = 0;
+
+    std::vector<WalletTypes::Transaction> transactions = walletBackend->getTransactions();
+    const auto unconfirmedTransactions = walletBackend->getUnconfirmedTransactions();
+    transactions.insert(transactions.end(), unconfirmedTransactions.begin(), unconfirmedTransactions.end());
+
+    for (const auto &tx : transactions)
+    {
+        if (tx.isFusionTransaction())
+        {
+            continue;
+        }
+
+        const int64_t amount = tx.totalAmount();
+
+        if (amount < 0 && outgoing)
+        {
             printOutgoingTransfer(tx);
 
             totalSpent += -amount;
