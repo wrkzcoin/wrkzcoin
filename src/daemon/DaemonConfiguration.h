@@ -20,8 +20,11 @@ namespace DaemonConfig
 {
     struct DaemonConfiguration
     {
+        static constexpr uint32_t MIN_PRUNE_DEPTH_DAYS = 30;
+        static constexpr uint32_t MIN_PRUNE_DEPTH =
+            CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * MIN_PRUNE_DEPTH_DAYS;
         static constexpr uint32_t DEFAULT_PRUNE_DEPTH =
-            CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 14;
+            MIN_PRUNE_DEPTH;
 
         DaemonConfiguration()
         {

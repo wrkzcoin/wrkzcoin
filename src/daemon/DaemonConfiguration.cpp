@@ -26,6 +26,24 @@ using namespace rapidjson;
 
 namespace DaemonConfig
 {
+    namespace
+    {
+        uint32_t clampPruneDepth(const uint32_t depth, const std::string &source)
+        {
+            if (depth >= DaemonConfiguration::MIN_PRUNE_DEPTH)
+            {
+                return depth;
+            }
+
+            std::cout << CryptoNote::getProjectCLIHeader() << "The configured prune depth (" << depth
+                      << ") from " << source << " is below the enforced minimum (" << DaemonConfiguration::MIN_PRUNE_DEPTH
+                      << ", about " << DaemonConfiguration::MIN_PRUNE_DEPTH_DAYS
+                      << " days). Using the minimum for network health." << std::endl;
+
+            return DaemonConfiguration::MIN_PRUNE_DEPTH;
+        }
+    } // namespace
+
     DaemonConfiguration initConfiguration(const char *path)
     {
         DaemonConfiguration config;
@@ -342,7 +360,7 @@ namespace DaemonConfig
 
             if (cli.count("prune-depth") > 0)
             {
-                config.pruneDepth = cli["prune-depth"].as<uint32_t>();
+                config.pruneDepth = clampPruneDepth(cli["prune-depth"].as<uint32_t>(), "CLI");
             }
 
             if (cli.count("print-genesis-tx") > 0)
@@ -1249,7 +1267,7 @@ namespace DaemonConfig
 
         if (j.HasMember("prune-depth"))
         {
-            config.pruneDepth = j["prune-depth"].GetUint();
+            config.pruneDepth = clampPruneDepth(j["prune-depth"].GetUint(), "config file");
         }
     }
 
