@@ -13,6 +13,7 @@
 #include "common/StdInputStream.h"
 #include "common/StdOutputStream.h"
 #include "common/TransactionExtra.h"
+#include "utilities/ParseExtra.h"
 #include "cryptonotecore/BlockchainStorage.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "serialization/CryptoNoteSerialization.h"
@@ -516,16 +517,15 @@ namespace CryptoNote
 
         assert(transactions.get<TransactionHashTag>().count(transactionCacheInfo.transactionHash) == 0);
 
+        /* Persist payment ID text for wallet sync output (supports both short and long). */
+        transactionCacheInfo.paymentId = Utilities::getPaymentIDFromExtra(tx.extra);
+
         PaymentIdTransactionHashPair paymentIdTransactionHash;
-        const bool hasPaymentId = getPaymentIdFromTxExtra(tx.extra, paymentIdTransactionHash.paymentId);
-        if (hasPaymentId)
-        {
-            transactionCacheInfo.paymentId = Common::podToHex(paymentIdTransactionHash.paymentId);
-        }
+        const bool hasLongPaymentId = getPaymentIdFromTxExtra(tx.extra, paymentIdTransactionHash.paymentId);
 
         transactions.get<TransactionInBlockTag>().insert(std::move(transactionCacheInfo));
 
-        if (!hasPaymentId)
+        if (!hasLongPaymentId)
         {
             logger(Logging::DEBUGGING) << "Transaction " << cachedTransaction.getTransactionHash()
                                        << " successfully added";

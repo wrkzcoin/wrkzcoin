@@ -12,6 +12,7 @@
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <utilities/ParseExtra.h>
 #include <cryptonotecore/BlockchainStorage.h>
 #include <cryptonotecore/CryptoNoteBasicImpl.h>
 #include <cryptonotecore/DatabaseBlockchainCache.h>
@@ -1215,10 +1216,12 @@ namespace CryptoNote
             batch.insertKeyOutputAmounts(newKeyAmounts, *keyOutputAmountsCount);
         }
 
+        /* Persist payment ID text for wallet sync output (supports both short and long). */
+        transactionCacheInfo.paymentId = Utilities::getPaymentIDFromExtra(cachedTransaction.getTransaction().extra);
+
         Crypto::Hash paymentId;
         if (getPaymentIdFromTxExtra(cachedTransaction.getTransaction().extra, paymentId))
         {
-            transactionCacheInfo.paymentId = Common::podToHex(paymentId);
             insertPaymentId(batch, cachedTransaction.getTransactionHash(), paymentId);
         }
 

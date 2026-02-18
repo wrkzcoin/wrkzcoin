@@ -669,12 +669,6 @@ void createIntegratedAddress(const std::shared_ptr<WalletBackend> walletBackend)
         {
             std::cout << WarningMsg("Invalid payment ID: ") << WarningMsg(error) << std::endl;
         }
-        else if (paymentID.length() != WalletConfig::shortPaymentIDLength)
-        {
-            std::cout << WarningMsg("Invalid payment ID: ")
-                      << WarningMsg("Integrated addresses require a short payment ID of 16 hex characters.")
-                      << std::endl;
-        }
         else
         {
             break;

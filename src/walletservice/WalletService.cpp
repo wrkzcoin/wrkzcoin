@@ -1631,11 +1631,6 @@ namespace PaymentService
 
             validateAddresses({address}, currency, logger);
             validatePaymentId(paymentId, logger);
-            if (paymentId.size() != WalletConfig::shortPaymentIDLength)
-            {
-                throw std::system_error(
-                    make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_PAYMENT_ID_FORMAT));
-            }
         }
         catch (std::system_error &x)
         {

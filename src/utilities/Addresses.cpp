@@ -132,7 +132,8 @@ namespace Utilities
             return {error, std::string()};
         }
 
-        if (paymentID.length() != WalletConfig::shortPaymentIDLength)
+        if (paymentID.length() != WalletConfig::shortPaymentIDLength
+            && paymentID.length() != WalletConfig::longPaymentIDLength)
         {
             return {PAYMENT_ID_WRONG_LENGTH, std::string()};
         }
