@@ -166,11 +166,39 @@ if (NOT MSVC)
     string(TOLOWER "${CMAKE_C_COMPILER}" WRKZ_C_COMPILER_LC)
     string(TOLOWER "${CMAKE_CXX_COMPILER}" WRKZ_CXX_COMPILER_LC)
     set(WRKZ_COMPILER_TARGETS_ARM FALSE)
+    set(WRKZ_COMPILER_TARGETS_AARCH64 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARM32 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMHF FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMEL FALSE)
     if (
         WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
         OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
     )
         set(WRKZ_COMPILER_TARGETS_ARM TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64"
+    )
+        set(WRKZ_COMPILER_TARGETS_AARCH64 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM32 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMHF TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMEL TRUE)
     endif ()
 
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
@@ -219,13 +247,13 @@ if (NOT MSVC)
     set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
     set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
 
-    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64")
+    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64" OR WRKZ_COMPILER_TARGETS_AARCH64)
         set(MAES_FLAG "")
         set(CRYPTOPP_AARCH64 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch64")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" OR WRKZ_COMPILER_TARGETS_ARMHF)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARMHF ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabihf")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi" OR WRKZ_COMPILER_TARGETS_ARMEL)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
