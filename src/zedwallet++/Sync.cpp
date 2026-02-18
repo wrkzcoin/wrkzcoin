@@ -9,6 +9,7 @@
 #include <common/SignalHandler.h>
 #include <config/WalletConfig.h>
 #include <iostream>
+#include <logger/Logger.h>
 #include <thread>
 #include <utilities/ColouredMsg.h>
 #include <zedwallet++/CommandImplementations.h>
@@ -62,7 +63,11 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
     {
         auto [tmpWalletBlockCount, localDaemonBlockCount, networkBlockCount] = walletBackend->getSyncStatus();
 
-        std::cout << SuccessMsg(tmpWalletBlockCount) << " of " << InformationMsg(localDaemonBlockCount) << std::endl;
+        {
+            std::stringstream progress;
+            progress << "Wallet sync progress: " << tmpWalletBlockCount << " of " << localDaemonBlockCount;
+            Logger::logger.log(progress.str(), Logger::TRACE, {Logger::SYNC});
+        }
 
         if (walletBlockCount == tmpWalletBlockCount)
         {
@@ -89,7 +94,7 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
         /* Save every 10k blocks */
         if (walletBlockCount > lastSavedBlock + 10000)
         {
-            std::cout << InformationMsg("\nSaving progress...\n\n");
+            Logger::logger.log("Saving wallet sync progress...", Logger::DEBUG, {Logger::SYNC});
 
             walletBackend->save();
 
