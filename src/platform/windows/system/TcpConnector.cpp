@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -9,7 +10,7 @@
 #include <stdexcept>
 
 // clang-format off
-/* Order of includes is important here, because, you know, *windows* ¯\_(ツ)_/¯ */
+/* Order of includes is important here, because, you know, *windows* Â¯\_(ãƒ„)_/Â¯ */
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
