@@ -1457,6 +1457,14 @@ namespace SendTransaction
 
         std::vector<uint8_t> extra;
 
+        /* Add the pub key identifier to extra */
+        extra.push_back(Constants::TX_EXTRA_PUBKEY_IDENTIFIER);
+
+        const auto pubKey = result.txKeyPair.publicKey;
+
+        /* Append the pub key to extra */
+        std::copy(std::begin(pubKey.data), std::end(pubKey.data), std::back_inserter(extra));
+
         if (!extraNonce.empty())
         {
             /* Indicate this is the extra nonce */
@@ -1471,14 +1479,6 @@ namespace SendTransaction
             /* Write the data to extra */
             std::copy(extraNonce.begin(), extraNonce.end(), std::back_inserter(extra));
         }
-
-        /* Add the pub key identifier to extra */
-        extra.push_back(Constants::TX_EXTRA_PUBKEY_IDENTIFIER);
-
-        const auto pubKey = result.txKeyPair.publicKey;
-
-        /* Append the pub key to extra */
-        std::copy(std::begin(pubKey.data), std::end(pubKey.data), std::back_inserter(extra));
 
         CryptoNote::Transaction setupTX;
 
