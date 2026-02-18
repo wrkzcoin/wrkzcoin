@@ -167,11 +167,11 @@ void mainLoop(const std::shared_ptr<WalletBackend> walletBackend, const std::sha
 {
     if (walletBackend->isViewWallet())
     {
-        printCommands(basicViewWalletCommands());
+        printCommands(allViewWalletCommands());
     }
     else
     {
-        printCommands(basicCommands());
+        printCommands(allCommands());
     }
 
     while (true)
@@ -180,11 +180,11 @@ void mainLoop(const std::shared_ptr<WalletBackend> walletBackend, const std::sha
 
         if (walletBackend->isViewWallet())
         {
-            command = parseCommand(basicViewWalletCommands(), allViewWalletCommands(), getPrompt(walletBackend));
+            command = parseCommand(allViewWalletCommands(), allViewWalletCommands(), getPrompt(walletBackend));
         }
         else
         {
-            command = parseCommand(basicCommands(), allCommands(), getPrompt(walletBackend));
+            command = parseCommand(allCommands(), allCommands(), getPrompt(walletBackend));
         }
 
         /* User exited */

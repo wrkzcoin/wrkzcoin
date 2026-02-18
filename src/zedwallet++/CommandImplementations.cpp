@@ -646,26 +646,17 @@ void help(const std::shared_ptr<WalletBackend> walletBackend)
 {
     if (walletBackend->isViewWallet())
     {
-        printCommands(basicViewWalletCommands());
+        printCommands(allViewWalletCommands());
     }
     else
     {
-        printCommands(basicCommands());
+        printCommands(allCommands());
     }
 }
 
 void advanced(const std::shared_ptr<WalletBackend> walletBackend)
 {
-    /* We pass the offset of the command to know what index to print for
-       command numbers */
-    if (walletBackend->isViewWallet())
-    {
-        printCommands(advancedViewWalletCommands(), basicViewWalletCommands().size());
-    }
-    else
-    {
-        printCommands(advancedCommands(), basicCommands().size());
-    }
+    help(walletBackend);
 }
 
 void swapNode(const std::shared_ptr<WalletBackend> walletBackend)
