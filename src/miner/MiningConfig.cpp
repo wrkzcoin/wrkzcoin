@@ -87,7 +87,7 @@ namespace CryptoNote
         {
             auto result = options.parse(argc, argv);
         }
-        catch (const cxxopts::OptionException &e)
+        catch (const cxxopts::exceptions::exception &e)
         {
             std::cout << WarningMsg("Error: Unable to parse command line argument options: ") << WarningMsg(e.what())
                       << "\n\n";

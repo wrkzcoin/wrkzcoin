@@ -95,7 +95,7 @@ ApiConfig parseArguments(int argc, char **argv)
             exit(1);
         }
     }
-    catch (const cxxopts::OptionException &e)
+    catch (const cxxopts::exceptions::exception &e)
     {
         std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl << std::endl;
         std::cout << options.help({}) << std::endl;

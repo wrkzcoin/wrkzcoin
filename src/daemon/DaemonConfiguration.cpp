@@ -588,7 +588,7 @@ namespace DaemonConfig
                 exit(0);
             }
         }
-        catch (const cxxopts::OptionException &e)
+        catch (const cxxopts::exceptions::exception &e)
         {
             std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl
                       << std::endl

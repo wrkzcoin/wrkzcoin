@@ -338,7 +338,7 @@ int main(int argc, char **argv)
     {
         auto result = options.parse(argc, argv);
     }
-    catch (const cxxopts::OptionException &e)
+    catch (const cxxopts::exceptions::exception &e)
     {
         std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl << std::endl;
         std::cout << options.help({}) << std::endl;
