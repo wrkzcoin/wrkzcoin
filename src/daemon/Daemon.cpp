@@ -529,6 +529,7 @@ int main(int argc, char *argv[])
         }
 
         DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
+        dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)
         {
@@ -541,7 +542,9 @@ int main(int argc, char *argv[])
 
             if (count == 1)
             {
-                std::cout << "SIGINT received. Starting graceful shutdown. Press CTRL+C again to force exit."
+                std::cout
+                    << "SIGINT received. Starting graceful shutdown and waiting for safe DB close "
+                       "(flush/WAL sync/background compaction). Press CTRL+C again to force exit."
                           << std::endl;
                 dch.exit({});
                 return;
@@ -556,6 +559,7 @@ int main(int argc, char *argv[])
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
+        dch.wait_for_background_compaction();
 
         // stop components
         logger(INFO) << "Stopping core rpc server...";

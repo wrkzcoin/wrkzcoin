@@ -49,6 +49,10 @@ class DaemonCommandsHandler
 
     bool exit(const std::vector<std::string> &args);
 
+    void start_boot_compaction_if_needed();
+
+    void wait_for_background_compaction();
+
   private:
     Common::ConsoleHandler m_consoleHandler;
 
@@ -107,6 +111,14 @@ class DaemonCommandsHandler
     std::shared_ptr<httplib::Response> rpc_get(const std::string &path);
 
     void refresh_compaction_state_locked();
+
+    std::string get_compaction_marker_path() const;
+
+    bool compaction_marker_exists_locked() const;
+
+    void create_compaction_marker_locked();
+
+    void clear_compaction_marker_locked();
 
     std::mutex m_compactionMutex;
 

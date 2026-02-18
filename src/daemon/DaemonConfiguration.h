@@ -73,6 +73,7 @@ namespace DaemonConfig
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
+            skipBootCompaction = false;
         }
 
         std::string dataDirectory;
@@ -168,6 +169,8 @@ namespace DaemonConfig
         uint32_t rpcMaxBlockCount;
 
         bool rpcTrustProxy;
+
+        bool skipBootCompaction;
 
         std::string configFile;
 
