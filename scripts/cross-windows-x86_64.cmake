@@ -1,0 +1,36 @@
+message(STATUS "Activating MinGW-w64 Cross-Compiler: x86_64-w64-mingw32")
+
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+
+if (DEFINED ENV{MINGW_PREFIX})
+    set(MINGW_PREFIX "$ENV{MINGW_PREFIX}")
+else ()
+    set(MINGW_PREFIX "x86_64-w64-mingw32")
+endif ()
+
+if (DEFINED ENV{CROSS_PREFIX})
+    set(CROSS_PREFIX "$ENV{CROSS_PREFIX}")
+else ()
+    set(CROSS_PREFIX "$ENV{HOME}/toolchain/windows-x86_64/prefix")
+endif ()
+
+set(CMAKE_C_COMPILER "/usr/bin/${MINGW_PREFIX}-gcc")
+set(CMAKE_CXX_COMPILER "/usr/bin/${MINGW_PREFIX}-g++")
+set(CMAKE_RC_COMPILER "/usr/bin/${MINGW_PREFIX}-windres")
+set(CMAKE_AR "/usr/bin/${MINGW_PREFIX}-ar")
+set(CMAKE_RANLIB "/usr/bin/${MINGW_PREFIX}-ranlib")
+set(CMAKE_STRIP "/usr/bin/${MINGW_PREFIX}-strip")
+
+set(CMAKE_FIND_ROOT_PATH
+    "/usr/${MINGW_PREFIX}"
+    "${CROSS_PREFIX}"
+)
+
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
