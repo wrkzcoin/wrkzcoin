@@ -18,13 +18,15 @@ int main(int argc, char **argv)
     std::string walletName;
     std::string walletPass;
 
-    bool help;
-    bool version;
+    bool help = false;
+    bool version = false;
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
     options.add_options("Core")(
-        "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
+        "h,help",
+        "Display this help message",
+        cxxopts::value<bool>(help)->default_value("false")->implicit_value("true"))
 
         ("v,version",
          "Output software version information",

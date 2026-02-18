@@ -23,7 +23,7 @@ ApiConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help, version, scanCoinbaseTransactions, noConsole;
+    bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false;
 
     int logLevel;
 
@@ -32,7 +32,9 @@ ApiConfig parseArguments(int argc, char **argv)
     std::string logFilePath;
 
     options.add_options("Core")(
-        "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
+        "h,help",
+        "Display this help message",
+        cxxopts::value<bool>(help)->default_value("false")->implicit_value("true"))
 
         ("log-level",
          "Specify log level",

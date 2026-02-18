@@ -314,13 +314,15 @@ void TestDeterministicSubwalletCreation(
 
 int main(int argc, char **argv)
 {
-    bool o_help, o_version, o_benchmark;
+    bool o_help = false, o_version = false, o_benchmark = false;
     int o_iterations;
 
     cxxopts::Options options(argv[0], getProjectCLIHeader());
 
     options.add_options("Core")(
-        "h,help", "Display this help message", cxxopts::value<bool>(o_help)->implicit_value("true"))(
+        "h,help",
+        "Display this help message",
+        cxxopts::value<bool>(o_help)->default_value("false")->implicit_value("true"))(
         "v,version",
         "Output software version information",
         cxxopts::value<bool>(o_version)->default_value("false")->implicit_value("true"));

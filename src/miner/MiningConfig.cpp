@@ -39,7 +39,9 @@ namespace CryptoNote
         cxxopts::Options options(argv[0], getProjectCLIHeader());
 
         options.add_options("Core")(
-            "help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))(
+            "help",
+            "Display this help message",
+            cxxopts::value<bool>(help)->default_value("false")->implicit_value("true"))(
             "version",
             "Output software version information",
             cxxopts::value<bool>(version)->default_value("false")->implicit_value("true"));

@@ -24,7 +24,7 @@ ZedConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help, version, scanCoinbaseTransactions;
+    bool help = false, version = false, scanCoinbaseTransactions = false;
 
     std::string remoteDaemon;
 
@@ -35,7 +35,9 @@ ZedConfig parseArguments(int argc, char **argv)
     std::string logFilePath;
 
     options.add_options("Core")(
-        "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
+        "h,help",
+        "Display this help message",
+        cxxopts::value<bool>(help)->default_value("false")->implicit_value("true"))
 
         ("v,version",
          "Output software version information",
