@@ -2,6 +2,11 @@
 
 This folder documents Linux-hosted cross-build flows.
 
+ARM64 scope in this repo:
+
+- `aarch64` means Linux ARM64 cross-builds (GNU/Linux target).
+- `macOS arm64` means Apple Silicon macOS targets via osxcross.
+
 ## Windows x86_64 from Ubuntu
 
 From repo root:
@@ -50,6 +55,45 @@ Runtime note:
   `libwinpthread-1.dll`).
 - `scripts/package-windows-x86_64.sh` now auto-includes common MinGW runtime
   DLLs in the zip when found on the Ubuntu host.
+
+## Linux aarch64 from Ubuntu
+
+This repo includes a legacy Linux ARM64 cross-build flow used by CI.
+
+From repo root:
+
+```bash
+# 1) Prepare aarch64 cross toolchain + Boost/OpenSSL
+source scripts/prep-aarch64.sh
+
+# 2) Configure and build
+mkdir -p build-aarch64 && cd build-aarch64
+cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+cmake --build . --parallel
+```
+
+Optional explicit toolchain file:
+
+```bash
+cmake -S . -B build-aarch64 \
+  -DCMAKE_TOOLCHAIN_FILE=scripts/cross-aarch64.cmake \
+  -DARCH=default \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DSTATIC=true
+cmake --build build-aarch64 --parallel
+```
+
+Build output directory:
+
+```text
+build-aarch64/src
+```
+
+Note:
+
+- `scripts/prep-aarch64.sh` downloads older pinned dependencies/toolchains.
+- If your host already has a modern `aarch64-linux-gnu-*` toolchain and
+  target deps, you can skip prep and provide your own toolchain settings.
 
 ## macOS from Ubuntu (osxcross)
 
