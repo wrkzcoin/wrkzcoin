@@ -311,8 +311,32 @@ add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
 if (NOT MSVC)
+    set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
+    set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/libzstd.a")
+
     execute_process(
-        COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DARCH=${ARCH} -DWITH_ZSTD=ON -DWITH_SNAPPY=OFF -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -DUSE_RTTI=ON -B${PROJECT_BINARY_DIR}/rocksdb
+        COMMAND ${CMAKE_COMMAND}
+            ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb
+            -DARCH=${ARCH}
+            -DWITH_ZSTD=ON
+            -DWITH_SNAPPY=OFF
+            -DWITH_GFLAGS=0
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DWITH_TESTS=OFF
+            -DWITH_TOOLS=OFF
+            -DPORTABLE=ON
+            -DUSE_RTTI=ON
+            -Dzstd_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
+            -Dzstd_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
+            -DZSTD_INCLUDE_DIR=${ROCKSDB_ZSTD_INCLUDE_DIR}
+            -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
+            -DZSTD_LIBRARY=${ROCKSDB_ZSTD_LIBRARY}
+            -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
+            -B${PROJECT_BINARY_DIR}/rocksdb
+        RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
     )
+    if (NOT ROCKSDB_CMAKE_CONFIGURE_RESULT EQUAL 0)
+        message(FATAL_ERROR "RocksDB CMake configure failed with code ${ROCKSDB_CMAKE_CONFIGURE_RESULT}")
+    endif()
     set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
 endif ()
