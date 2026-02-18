@@ -184,6 +184,27 @@ void sendTransaction(
     const std::string paymentID,
     const bool sendAll)
 {
+    std::string destination = address;
+    std::string effectivePaymentID = paymentID;
+
+    if (Utilities::isIntegratedAddress(destination))
+    {
+        const auto [extractedAddress, extractedPaymentID] = Utilities::extractIntegratedAddressData(destination);
+        destination = extractedAddress;
+
+        if (effectivePaymentID.empty())
+        {
+            effectivePaymentID = extractedPaymentID;
+        }
+        else if (effectivePaymentID != extractedPaymentID)
+        {
+            std::cout << WarningMsg("Conflicting payment IDs detected between integrated address and input PID.")
+                      << std::endl;
+            cancel();
+            return;
+        }
+    }
+
     const auto unlockedBalance = walletBackend->getTotalUnlockedBalance();
 
     /* nodeFee will be zero if using a node without a fee, so we can add this
@@ -211,9 +232,9 @@ void sendTransaction(
     WalletTypes::PreparedTransactionInfo preparedTransaction;
 
     std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionBasic(
-        address,
+        destination,
         amount,
-        paymentID,
+        effectivePaymentID,
         sendAll,
         false /* Don't relay to network */
     );
@@ -247,9 +268,9 @@ void sendTransaction(
 
         /* Resend the transaction */
         std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionBasic(
-            address,
+            destination,
             amount,
-            paymentID,
+            effectivePaymentID,
             sendAll,
             false /* Don't relay to network */
         );
@@ -280,7 +301,7 @@ void sendTransaction(
         ? unlockedBalance - nodeFee - preparedTransaction.fee
         : amount;
 
-    if (!confirmTransaction(walletBackend, address, actualAmount, paymentID, nodeFee, preparedTransaction.fee))
+    if (!confirmTransaction(walletBackend, destination, actualAmount, effectivePaymentID, nodeFee, preparedTransaction.fee))
     {
         cancel();
         return;
