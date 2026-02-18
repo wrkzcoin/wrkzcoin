@@ -14,6 +14,7 @@
 #include <config/WalletConfig.h>
 #include <cxxopts.hpp>
 #include <fstream>
+#include <iostream>
 #include <thread>
 
 ApiConfig parseArguments(int argc, char **argv)
