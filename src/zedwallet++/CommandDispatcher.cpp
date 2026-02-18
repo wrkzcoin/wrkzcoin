@@ -97,6 +97,10 @@ bool handleCommand(
     {
         checkTx(walletBackend, command);
     }
+    else if (command == "decode_integrated" || command.rfind("decode_integrated ", 0) == 0)
+    {
+        decodeIntegrated(walletBackend, command);
+    }
     else if (command == "make_integrated_address")
     {
         createIntegratedAddress(walletBackend);

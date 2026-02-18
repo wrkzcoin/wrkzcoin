@@ -897,6 +897,54 @@ void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::stri
     }
 }
 
+void decodeIntegrated(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    std::string integratedAddress;
+
+    if (commandInput.rfind("decode_integrated ", 0) == 0)
+    {
+        integratedAddress = commandInput.substr(std::string("decode_integrated ").size());
+        Utilities::trim(integratedAddress);
+    }
+
+    if (integratedAddress.empty())
+    {
+        std::cout << InformationMsg("Integrated address to decode (or cancel): ");
+        std::getline(std::cin, integratedAddress);
+        Utilities::trim(integratedAddress);
+    }
+
+    if (integratedAddress == "cancel")
+    {
+        return;
+    }
+
+    if (!Utilities::isIntegratedAddress(integratedAddress))
+    {
+        std::cout << WarningMsg("This is not an integrated address format for this network.") << std::endl;
+        std::cout << InformationMsg("Expected length: ") << SuccessMsg(WalletConfig::integratedAddressLength)
+                  << InformationMsg(" (short) or ") << SuccessMsg(WalletConfig::integratedAddressLengthLong)
+                  << InformationMsg(" (long).") << std::endl;
+        return;
+    }
+
+    if (Error error = validateAddresses({integratedAddress}, true); error != SUCCESS)
+    {
+        std::cout << WarningMsg("Invalid integrated address: ") << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    const auto [actualAddress, paymentID] = Utilities::extractIntegratedAddressData(integratedAddress);
+
+    std::cout << InformationMsg("Decoded address: ") << SuccessMsg(actualAddress) << std::endl;
+    std::cout << InformationMsg("Embedded payment ID: ") << SuccessMsg(paymentID) << std::endl;
+
+    if (walletBackend != nullptr && actualAddress == walletBackend->getPrimaryAddress())
+    {
+        std::cout << SuccessMsg("This integrated address maps to your primary wallet address.") << std::endl;
+    }
+}
+
 void setLogLevel()
 {
     const std::vector<Command> logLevels = {

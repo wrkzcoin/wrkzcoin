@@ -25,7 +25,8 @@ std::string parseCommand(
 {
     while (true)
     {
-        std::string selection = getInput(availableCommands, prompt);
+        std::string selectionRaw = getInput(availableCommands, prompt);
+        std::string selection = selectionRaw;
 
         /* Convert to lower case */
         std::transform(selection.begin(), selection.end(), selection.begin(), ::tolower);
@@ -84,9 +85,11 @@ std::string parseCommand(
         }
         else
         {
-            const size_t argSplitPos = selection.find(' ');
-            const std::string commandSelection =
-                argSplitPos == std::string::npos ? selection : selection.substr(0, argSplitPos);
+            const size_t argSplitPos = selectionRaw.find(' ');
+            const std::string commandSelectionRaw =
+                argSplitPos == std::string::npos ? selectionRaw : selectionRaw.substr(0, argSplitPos);
+            std::string commandSelection = commandSelectionRaw;
+            std::transform(commandSelection.begin(), commandSelection.end(), commandSelection.begin(), ::tolower);
 
             /* Find the command by command name */
             auto it =
@@ -109,10 +112,11 @@ std::string parseCommand(
                 continue;
             }
 
-            /* check_tx accepts inline args: check_tx <hash> */
-            if (argSplitPos != std::string::npos && commandSelection == "check_tx")
+            /* Commands that accept inline args: keep original arg casing */
+            if (argSplitPos != std::string::npos
+                && (commandSelection == "check_tx" || commandSelection == "decode_integrated"))
             {
-                return selection;
+                return commandSelection + selectionRaw.substr(argSplitPos);
             }
 
             return commandSelection;
