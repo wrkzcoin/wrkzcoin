@@ -14,9 +14,11 @@
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>
+#include <atomic>
 #include <future>
 #include <mutex>
 #include <system_error>
+#include <thread>
 
 namespace CryptoNote
 {
@@ -28,6 +30,8 @@ namespace CryptoNote
 class DaemonCommandsHandler
 {
   public:
+    ~DaemonCommandsHandler();
+
     DaemonCommandsHandler(
         CryptoNote::Core &core,
         CryptoNote::NodeServer &srv,
@@ -50,6 +54,8 @@ class DaemonCommandsHandler
     bool exit(const std::vector<std::string> &args);
 
     void start_boot_compaction_if_needed();
+
+    void stop_compaction_scheduler();
 
     void wait_for_background_compaction();
 
@@ -112,6 +118,8 @@ class DaemonCommandsHandler
 
     void refresh_compaction_state_locked();
 
+    void compaction_scheduler_loop();
+
     std::string get_compaction_marker_path() const;
 
     bool compaction_marker_exists_locked() const;
@@ -133,4 +141,8 @@ class DaemonCommandsHandler
     uint64_t m_compactionStartedAt = 0;
 
     uint64_t m_compactionFinishedAt = 0;
+
+    std::thread m_compactionSchedulerThread;
+
+    std::atomic<bool> m_stopCompactionScheduler {false};
 };

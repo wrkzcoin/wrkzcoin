@@ -36,6 +36,17 @@ cmake --build build -j
 
 Use performance mode only when you explicitly want host-specific optimization.
 
+### Static build (portable)
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPORTABLE_BINARY=ON \
+  -DENABLE_X86_AESNI=OFF \
+  -DFULLY_STATIC=ON
+cmake --build build -j
+```
+
 ## Dependencies
 
 ### Linux

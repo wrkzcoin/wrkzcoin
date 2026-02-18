@@ -559,6 +559,7 @@ int main(int argc, char *argv[])
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
+        dch.stop_compaction_scheduler();
         dch.wait_for_background_compaction();
 
         // stop components

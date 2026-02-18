@@ -31,6 +31,8 @@
 namespace
 {
     const char *COMPACTION_MARKER_FILE = ".compact_db_in_progress";
+    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_SECONDS = 300;
+    constexpr uint64_t AUTO_COMPACTION_MIN_GAP_SECONDS = 6 * 60 * 60;
 
     template<typename T> static bool print_as_json(const T &obj)
     {
@@ -226,6 +228,11 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "Manage in-memory host bans: ban list | ban add <ip> [seconds] | ban delete <ip>");
 }
 
+DaemonCommandsHandler::~DaemonCommandsHandler()
+{
+    stop_compaction_scheduler();
+}
+
 //--------------------------------------------------------------------------------
 std::string DaemonCommandsHandler::get_commands_str()
 {
@@ -263,33 +270,51 @@ void DaemonCommandsHandler::start_boot_compaction_if_needed()
         return;
     }
 
-    std::lock_guard<std::mutex> lock(m_compactionMutex);
-    refresh_compaction_state_locked();
-
-    if (m_compactionRunning)
     {
-        return;
+        std::lock_guard<std::mutex> lock(m_compactionMutex);
+        refresh_compaction_state_locked();
+
+        if (!m_compactionRunning)
+        {
+            const bool markerExists = compaction_marker_exists_locked();
+
+            m_compactionHasResult = false;
+            m_compactionLastError = std::error_code();
+            m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+            m_compactionRunning = true;
+            create_compaction_marker_locked();
+            logger(Logging::INFO) << "Starting DB compaction (boot background task).";
+            m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+
+            if (markerExists)
+            {
+                std::cout << WarningMsg(
+                                 "Detected unfinished DB compaction marker from previous run. Restarting DB compaction in "
+                                 "background.")
+                          << std::endl;
+            }
+            else
+            {
+                std::cout << InformationMsg("Boot DB compaction started in background.") << std::endl;
+            }
+        }
     }
 
-    const bool markerExists = compaction_marker_exists_locked();
-
-    m_compactionHasResult = false;
-    m_compactionLastError = std::error_code();
-    m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
-    m_compactionRunning = true;
-    create_compaction_marker_locked();
-    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
-
-    if (markerExists)
+    m_stopCompactionScheduler = false;
+    if (!m_compactionSchedulerThread.joinable())
     {
-        std::cout << WarningMsg(
-                         "Detected unfinished DB compaction marker from previous run. Restarting DB compaction in "
-                         "background.")
-                  << std::endl;
+        m_compactionSchedulerThread = std::thread(std::bind(&DaemonCommandsHandler::compaction_scheduler_loop, this));
+        std::cout << InformationMsg("Automatic periodic DB compaction monitoring is enabled.") << std::endl;
     }
-    else
+}
+
+void DaemonCommandsHandler::stop_compaction_scheduler()
+{
+    m_stopCompactionScheduler = true;
+
+    if (m_compactionSchedulerThread.joinable())
     {
-        std::cout << InformationMsg("Boot DB compaction started in background.") << std::endl;
+        m_compactionSchedulerThread.join();
     }
 }
 
@@ -937,6 +962,7 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
     m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
     m_compactionRunning = true;
     create_compaction_marker_locked();
+    logger(Logging::INFO) << "Starting DB compaction (manual console request).";
     m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
 
     std::cout << InformationMsg("DB compaction started in background. Use `compact_db status` or `compact_db wait`.")
@@ -997,6 +1023,47 @@ void DaemonCommandsHandler::clear_compaction_marker_locked()
 {
     std::error_code ec;
     fs::remove(get_compaction_marker_path(), ec);
+}
+
+void DaemonCommandsHandler::compaction_scheduler_loop()
+{
+    while (!m_stopCompactionScheduler)
+    {
+        for (uint64_t i = 0; i < AUTO_COMPACTION_CHECK_INTERVAL_SECONDS; ++i)
+        {
+            if (m_stopCompactionScheduler)
+            {
+                return;
+            }
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+
+        std::lock_guard<std::mutex> lock(m_compactionMutex);
+        refresh_compaction_state_locked();
+
+        if (m_compactionRunning)
+        {
+            continue;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t lastActivity = std::max(m_compactionStartedAt, m_compactionFinishedAt);
+
+        if (lastActivity != 0 && now > lastActivity && (now - lastActivity) < AUTO_COMPACTION_MIN_GAP_SECONDS)
+        {
+            continue;
+        }
+
+        m_compactionHasResult = false;
+        m_compactionLastError = std::error_code();
+        m_compactionStartedAt = now;
+        m_compactionRunning = true;
+        create_compaction_marker_locked();
+        logger(Logging::INFO) << "Starting DB compaction (automatic periodic background task).";
+        m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+        std::cout << InformationMsg("Automatic periodic DB compaction started in background.") << std::endl;
+    }
 }
 
 //--------------------------------------------------------------------------------
