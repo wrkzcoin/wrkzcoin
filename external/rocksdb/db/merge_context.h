@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "rocksdb/db.h"
 #include "rocksdb/slice.h"
 
 namespace ROCKSDB_NAMESPACE {
@@ -20,6 +22,8 @@ const std::vector<Slice> empty_operand_list;
 // will be fetched from the context when issuing partial of full merge.
 class MergeContext {
  public:
+  GetMergeOperandsOptions* get_merge_operands_options = nullptr;
+
   // Clear all the operands
   void Clear() {
     if (operand_list_) {
@@ -136,10 +140,11 @@ class MergeContext {
     }
   }
 
-  // List of operands
+  // List of operands, the order of operands depends on operands_reversed_.
   mutable std::unique_ptr<std::vector<Slice>> operand_list_;
   // Copy of operands that are not pinned.
   std::unique_ptr<std::vector<std::unique_ptr<std::string>>> copied_operands_;
+  // Reversed means the newest update is ordered first.
   mutable bool operands_reversed_ = true;
 };
 

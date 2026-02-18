@@ -312,7 +312,7 @@ add_subdirectory(src)
 ## We need to setup the RocksDB build environment to match our system
 if (NOT MSVC)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
-    set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/libzstd.a")
+    set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
 
     execute_process(
         COMMAND ${CMAKE_COMMAND}

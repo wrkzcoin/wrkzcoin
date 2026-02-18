@@ -132,9 +132,9 @@ elseif (UNIX)
 endif ()
 
 if (MSVC)
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb zstd Errors)
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdb libzstd Errors)
 else ()
-    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib zstd Errors)
+    target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib libzstd Errors)
 endif ()
 
 # Add the dependencies we need

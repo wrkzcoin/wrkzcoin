@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-present, Facebook, Inc.
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -87,7 +87,7 @@ void usage() {
   std::fprintf(stderr, "  -V, --version          : display version number and exit\n");
   std::fprintf(stderr, "  -v, --verbose          : verbose mode; specify multiple times to increase log level (default:2)\n");
   std::fprintf(stderr, "  -q, --quiet            : suppress warnings; specify twice to suppress errors too\n");
-  std::fprintf(stderr, "  -c, --stdout           : force write to standard output, even if it is the console\n");
+  std::fprintf(stderr, "  -c, --stdout           : write to standard output (even if it is the console)\n");
 #ifdef UTIL_HAS_CREATEFILELIST
   std::fprintf(stderr, "  -r                     : operate recursively on directories\n");
 #endif
@@ -322,7 +322,7 @@ Options::Status Options::parse(int argc, const char **argv) {
   g_utilDisplayLevel = verbosity;
   // Remove local input files that are symbolic links
   if (!followLinks) {
-      std::remove_if(localInputFiles.begin(), localInputFiles.end(),
+	  localInputFiles.erase(std::remove_if(localInputFiles.begin(), localInputFiles.end(),
                      [&](const char *path) {
                         bool isLink = UTIL_isLink(path);
                         if (isLink && verbosity >= 2) {
@@ -332,7 +332,7 @@ Options::Status Options::parse(int argc, const char **argv) {
                                     path);
                         }
                         return isLink;
-                    });
+					 }), localInputFiles.end());
   }
 
   // Translate input files/directories into files to (de)compress
