@@ -317,20 +317,16 @@ if (NOT MSVC)
     execute_process(
         COMMAND ${CMAKE_COMMAND}
             ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb
-            -DARCH=${ARCH}
             -DWITH_ZSTD=ON
             -DWITH_SNAPPY=OFF
+            -DWITH_LIBURING=OFF
             -DWITH_GFLAGS=0
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
             -DWITH_TESTS=OFF
             -DWITH_TOOLS=OFF
             -DPORTABLE=ON
             -DUSE_RTTI=ON
-            -Dzstd_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
-            -Dzstd_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
-            -DZSTD_INCLUDE_DIR=${ROCKSDB_ZSTD_INCLUDE_DIR}
             -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
-            -DZSTD_LIBRARY=${ROCKSDB_ZSTD_LIBRARY}
             -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
             -B${PROJECT_BINARY_DIR}/rocksdb
         RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
