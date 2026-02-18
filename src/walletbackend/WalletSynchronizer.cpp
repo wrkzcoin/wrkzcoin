@@ -255,6 +255,9 @@ void WalletSynchronizer::blockProcessingThread()
                            forked.
 
                            Also need to check there are enough indexes for the one we want */
+                        size_t globalIndexRetries = 0;
+                        constexpr size_t GLOBAL_INDEX_MAX_RETRIES = 3;
+
                         while (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
                         {
                             if (m_shouldStop)
@@ -268,6 +271,18 @@ void WalletSynchronizer::blockProcessingThread()
                                 Logger::FATAL,
                                 {Logger::SYNC, Logger::DAEMON});
 
+                            if (++globalIndexRetries >= GLOBAL_INDEX_MAX_RETRIES)
+                            {
+                                Logger::logger.log(
+                                    "Skipping unresolved global output index for tx "
+                                        + Common::podToHex(input.parentTransactionHash) + " at block "
+                                        + std::to_string(block.blockHeight)
+                                        + ". Sync will continue, but spending this output may require a full node rescan.",
+                                    Logger::WARNING,
+                                    {Logger::SYNC, Logger::DAEMON});
+                                break;
+                            }
+
                             std::this_thread::sleep_for(std::chrono::seconds(5));
 
                             globalIndexes = getGlobalIndexes(block.blockHeight);
@@ -275,7 +290,10 @@ void WalletSynchronizer::blockProcessingThread()
                             it = globalIndexes.find(input.parentTransactionHash);
                         }
 
-                        input.globalOutputIndex = it->second[input.transactionIndex];
+                        if (it != globalIndexes.end() && it->second.size() > input.transactionIndex)
+                        {
+                            input.globalOutputIndex = it->second[input.transactionIndex];
+                        }
                     }
                 }
 

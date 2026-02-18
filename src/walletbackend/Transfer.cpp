@@ -1015,6 +1015,16 @@ namespace SendTransaction
 
         for (const auto &walletAmount : sources)
         {
+            if (!walletAmount.input.globalOutputIndex)
+            {
+                return {
+                    Error(
+                        DAEMON_ERROR,
+                        "Missing global output index for one or more wallet outputs. "
+                        "Let sync continue on a full node and retry."),
+                    result};
+            }
+
             WalletTypes::GlobalIndexKey realOutput {*walletAmount.input.globalOutputIndex, walletAmount.input.key};
 
             WalletTypes::ObscuredInput obscuredInput;

@@ -163,6 +163,9 @@ ApiDispatcher::ApiDispatcher(
         /* Swap node details */
         .Put("/node", router(&ApiDispatcher::setNodeInfo, WalletMustBeOpen, viewWalletsAllowed))
 
+        /* Force wallet sync reconnect */
+        .Put("/sync/refresh", router(&ApiDispatcher::refreshSync, WalletMustBeOpen, viewWalletsAllowed))
+
         /* GET */
 
         /* Get node details */
@@ -1091,6 +1094,27 @@ std::tuple<Error, uint16_t> ApiDispatcher::setNodeInfo(const httplib::Request &r
     return {SUCCESS, 200};
 }
 
+std::tuple<Error, uint16_t>
+    ApiDispatcher::refreshSync(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+{
+    std::scoped_lock lock(m_mutex);
+
+    const auto [daemonHost, daemonPort, daemonSSL] = m_walletBackend->getNodeAddress();
+    m_walletBackend->swapNode(daemonHost, daemonPort, daemonSSL);
+
+    nlohmann::json j {
+        {"status", "OK"},
+        {"message", "Wallet sync refresh triggered"},
+        {"daemonHost", daemonHost},
+        {"daemonPort", daemonPort},
+        {"daemonSSL", daemonSSL}
+    };
+
+    res.set_content(j.dump(4) + "\n", "application/json");
+
+    return {SUCCESS, 200};
+}
+
 //////////////////
 /* GET REQUESTS */
 //////////////////
@@ -1180,9 +1204,16 @@ std::tuple<Error, uint16_t>
 {
     const WalletTypes::WalletStatus status = m_walletBackend->getStatus();
 
+    const bool daemonSynced = status.localDaemonBlockCount + 1 >= status.networkBlockCount;
+    const bool walletSynced = status.walletBlockCount + 10 >= status.networkBlockCount;
+    const bool outOfSync = !(daemonSynced && walletSynced);
+
     nlohmann::json j {{"walletBlockCount", status.walletBlockCount},
                       {"localDaemonBlockCount", status.localDaemonBlockCount},
                       {"networkBlockCount", status.networkBlockCount},
+                      {"isDaemonSynced", daemonSynced},
+                      {"isWalletSynced", walletSynced},
+                      {"isOutOfSync", outOfSync},
                       {"peerCount", status.peerCount},
                       {"hashrate", status.lastKnownHashrate},
                       {"isViewWallet", m_walletBackend->isViewWallet()},

@@ -202,6 +202,10 @@ class ApiDispatcher
     std::tuple<Error, uint16_t>
         setNodeInfo(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
+    /* Forces a sync reconnect using current daemon settings */
+    std::tuple<Error, uint16_t>
+        refreshSync(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+
     //////////////////
     /* GET REQUESTS */
     //////////////////
