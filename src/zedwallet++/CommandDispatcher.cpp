@@ -93,6 +93,10 @@ bool handleCommand(
     {
         getTxPrivateKey(walletBackend);
     }
+    else if (command == "check_tx" || command.rfind("check_tx ", 0) == 0)
+    {
+        checkTx(walletBackend, command);
+    }
     else if (command == "make_integrated_address")
     {
         createIntegratedAddress(walletBackend);

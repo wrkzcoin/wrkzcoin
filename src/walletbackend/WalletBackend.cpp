@@ -1278,6 +1278,16 @@ std::tuple<Error, Crypto::SecretKey> WalletBackend::getTxPrivateKey(const Crypto
     return {TX_PRIVATE_KEY_NOT_FOUND, key};
 }
 
+bool WalletBackend::getTransactionsStatus(
+    const std::unordered_set<Crypto::Hash> transactionHashes,
+    std::unordered_set<Crypto::Hash> &transactionsInPool,
+    std::unordered_set<Crypto::Hash> &transactionsInBlock,
+    std::unordered_set<Crypto::Hash> &transactionsUnknown) const
+{
+    return m_daemon->getTransactionsStatus(
+        transactionHashes, transactionsInPool, transactionsInBlock, transactionsUnknown);
+}
+
 std::vector<std::tuple<std::string, uint64_t, uint64_t>> WalletBackend::getBalances() const
 {
     return m_subWallets->getBalances(m_daemon->networkBlockCount());

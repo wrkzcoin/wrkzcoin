@@ -794,6 +794,103 @@ void getTxPrivateKey(const std::shared_ptr<WalletBackend> walletBackend)
     }
 }
 
+void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    std::string txHash;
+
+    if (commandInput.rfind("check_tx ", 0) == 0)
+    {
+        txHash = commandInput.substr(std::string("check_tx ").size());
+        Utilities::trim(txHash);
+    }
+
+    if (txHash.empty())
+    {
+        txHash = getHash("Transaction hash to check (or cancel): ", true);
+    }
+
+    if (txHash == "cancel")
+    {
+        return;
+    }
+
+    if (Error error = validateHash(txHash); error != SUCCESS)
+    {
+        std::cout << WarningMsg("Invalid hash: ") << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    Crypto::Hash hash;
+    Common::podFromHex(txHash, hash);
+
+    const auto unconfirmed = walletBackend->getUnconfirmedTransactions();
+    const auto unconfirmedIt = std::find_if(unconfirmed.begin(), unconfirmed.end(), [&hash](const auto &tx) {
+        return tx.hash == hash;
+    });
+
+    const auto confirmed = walletBackend->getTransactions();
+    const auto confirmedIt = std::find_if(confirmed.begin(), confirmed.end(), [&hash](const auto &tx) {
+        return tx.hash == hash;
+    });
+
+    std::cout << InformationMsg("Wallet lookup: ");
+    if (unconfirmedIt != unconfirmed.end())
+    {
+        std::cout << WarningMsg("found (pending outgoing in pool)") << std::endl;
+        std::cout << "  amount: " << WarningMsg(Utilities::formatAmount(std::abs(unconfirmedIt->totalAmount())))
+                  << ", fee: " << WarningMsg(Utilities::formatAmount(unconfirmedIt->fee)) << std::endl;
+    }
+    else if (confirmedIt != confirmed.end())
+    {
+        const bool incoming = confirmedIt->totalAmount() > 0;
+        std::cout << SuccessMsg("found (confirmed ") << SuccessMsg(incoming ? "incoming" : "outgoing")
+                  << SuccessMsg(")") << std::endl;
+        std::cout << "  block: " << SuccessMsg(confirmedIt->blockHeight)
+                  << ", amount: " << (incoming ? SuccessMsg(Utilities::formatAmount(confirmedIt->totalAmount()))
+                                                : WarningMsg(Utilities::formatAmount(std::abs(confirmedIt->totalAmount()))))
+                  << std::endl;
+        if (!confirmedIt->paymentID.empty())
+        {
+            std::cout << "  payment ID: " << SuccessMsg(confirmedIt->paymentID) << std::endl;
+        }
+    }
+    else
+    {
+        std::cout << WarningMsg("not found in this wallet") << std::endl;
+    }
+
+    std::unordered_set<Crypto::Hash> hashes = {hash};
+    std::unordered_set<Crypto::Hash> inPool;
+    std::unordered_set<Crypto::Hash> inBlock;
+    std::unordered_set<Crypto::Hash> unknown;
+
+    const bool daemonOk = walletBackend->getTransactionsStatus(hashes, inPool, inBlock, unknown);
+
+    std::cout << InformationMsg("Node lookup: ");
+    if (!daemonOk)
+    {
+        std::cout << WarningMsg("failed to query daemon") << std::endl;
+        return;
+    }
+
+    if (inPool.find(hash) != inPool.end())
+    {
+        std::cout << WarningMsg("transaction is in pool") << std::endl;
+    }
+    else if (inBlock.find(hash) != inBlock.end())
+    {
+        std::cout << SuccessMsg("transaction is in a block") << std::endl;
+    }
+    else if (unknown.find(hash) != unknown.end())
+    {
+        std::cout << WarningMsg("transaction is unknown to daemon") << std::endl;
+    }
+    else
+    {
+        std::cout << WarningMsg("daemon returned no status for this transaction") << std::endl;
+    }
+}
+
 void setLogLevel()
 {
     const std::vector<Command> logLevels = {

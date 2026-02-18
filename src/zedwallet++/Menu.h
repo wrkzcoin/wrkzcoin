@@ -84,14 +84,18 @@ std::string parseCommand(
         }
         else
         {
+            const size_t argSplitPos = selection.find(' ');
+            const std::string commandSelection =
+                argSplitPos == std::string::npos ? selection : selection.substr(0, argSplitPos);
+
             /* Find the command by command name */
             auto it =
-                std::find_if(availableCommands.begin(), availableCommands.end(), [&selection](const auto command) {
+                std::find_if(availableCommands.begin(), availableCommands.end(), [&commandSelection](const auto command) {
                     std::string cmd = command.commandName;
 
                     std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
 
-                    return cmd == selection;
+                    return cmd == commandSelection;
                 });
 
             /* Command doesn't exist in availableCommands */
@@ -105,7 +109,13 @@ std::string parseCommand(
                 continue;
             }
 
-            return selection;
+            /* check_tx accepts inline args: check_tx <hash> */
+            if (argSplitPos != std::string::npos && commandSelection == "check_tx")
+            {
+                return selection;
+            }
+
+            return commandSelection;
         }
     }
 }

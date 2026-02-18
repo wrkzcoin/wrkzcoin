@@ -55,6 +55,7 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("ab_send", "[Transactions / Address Book] Send " + WalletConfig::ticker + " to someone in your address book", false, true),
         AdvancedCommand("send_all", "[Transactions] Send all your balance to someone", false, true),
         AdvancedCommand("get_tx_private_key", "[Transactions] Get the private key of a transaction", true, true),
+        AdvancedCommand("check_tx", "[Transactions] Check wallet + node status for a tx hash (use: check_tx <hash>)", true, true),
         AdvancedCommand("ab_add", "[Address Book] Add a person to your address book", true, true),
         AdvancedCommand("ab_delete", "[Address Book] Delete a person in your address book", true, true),
         AdvancedCommand("ab_list", "[Address Book] List everyone in your address book", true, true),
