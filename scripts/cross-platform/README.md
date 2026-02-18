@@ -91,9 +91,15 @@ build-aarch64/src
 
 Note:
 
-- `scripts/prep-aarch64.sh` downloads older pinned dependencies/toolchains.
-- If your host already has a modern `aarch64-linux-gnu-*` toolchain and
-  target deps, you can skip prep and provide your own toolchain settings.
+- `scripts/prep-aarch64.sh` installs Ubuntu cross packages and builds static
+  target deps (`OpenSSL` and `Boost.DateTime`) into:
+  - `$HOME/toolchain/aarch64-linux-gnu/prefix` (default)
+- You can override locations/versions with:
+  - `TOOLCHAIN_DIR`
+  - `CROSS_PREFIX`
+  - `TARGET_TRIPLE`
+  - `OPENSSL_VERSION`
+  - `BOOST_VERSION`
 
 ## macOS from Ubuntu (osxcross)
 
