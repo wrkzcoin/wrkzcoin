@@ -5,7 +5,11 @@
 
 #include "hash-ops.h"
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>

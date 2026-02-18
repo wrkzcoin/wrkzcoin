@@ -1,5 +1,15 @@
 #!/usr/bin/env bash
+
+_PREP_SCRIPT_SOURCED=0
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  _PREP_SCRIPT_SOURCED=1
+fi
+
+_PREV_SHELL_OPTS="$-"
+_PREV_PIPEFAIL_STATE="$(set -o | awk '/pipefail/ {print $2}')"
+_PREV_ERR_TRAP="$(trap -p ERR || true)"
 set -euo pipefail
+trap 'echo "[ERROR] prep failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 # Prepare an Ubuntu host for x86_64 Windows cross-builds.
 
@@ -31,9 +41,17 @@ sudo apt-get install -y \
   perl \
   make \
   mingw-w64 \
+  mingw-w64-x86-64-dev \
   gcc-mingw-w64-x86-64 \
   g++-mingw-w64-x86-64 \
+  gcc-mingw-w64-x86-64-posix \
+  g++-mingw-w64-x86-64-posix \
   binutils-mingw-w64-x86-64
+
+if command -v update-alternatives >/dev/null 2>&1; then
+  sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix || true
+  sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix || true
+fi
 
 echo "Using toolchain prefix: $PREFIX_DIR"
 mkdir -p "$PREFIX_DIR"
@@ -97,8 +115,17 @@ else
   echo "Found."
 fi
 
-export CC="/usr/bin/${MINGW_PREFIX}-gcc"
-export CXX="/usr/bin/${MINGW_PREFIX}-g++"
+if [ -x "/usr/bin/${MINGW_PREFIX}-gcc-posix" ]; then
+  export CC="/usr/bin/${MINGW_PREFIX}-gcc-posix"
+else
+  export CC="/usr/bin/${MINGW_PREFIX}-gcc"
+fi
+
+if [ -x "/usr/bin/${MINGW_PREFIX}-g++-posix" ]; then
+  export CXX="/usr/bin/${MINGW_PREFIX}-g++-posix"
+else
+  export CXX="/usr/bin/${MINGW_PREFIX}-g++"
+fi
 export AR="/usr/bin/${MINGW_PREFIX}-ar"
 export RANLIB="/usr/bin/${MINGW_PREFIX}-ranlib"
 export STRIP="/usr/bin/${MINGW_PREFIX}-strip"
@@ -120,3 +147,29 @@ echo "CUSTOM_TOOLCHAIN_FILE=$CUSTOM_TOOLCHAIN_FILE"
 
 cd "$BASEDIR"
 
+if [[ "$_PREP_SCRIPT_SOURCED" -eq 1 ]]; then
+  case "${_PREV_SHELL_OPTS}" in
+    *e*) set -e ;; *) set +e ;;
+  esac
+  case "${_PREV_SHELL_OPTS}" in
+    *u*) set -u ;; *) set +u ;;
+  esac
+  case "${_PREV_SHELL_OPTS}" in
+    *f*) set -f ;; *) set +f ;;
+  esac
+  if [[ "${_PREV_SHELL_OPTS}" == *x* ]]; then
+    set -x
+  else
+    set +x
+  fi
+  if [[ "${_PREV_PIPEFAIL_STATE}" == "on" ]]; then
+    set -o pipefail
+  else
+    set +o pipefail
+  fi
+  if [[ -n "${_PREV_ERR_TRAP}" ]]; then
+    eval "${_PREV_ERR_TRAP}"
+  else
+    trap - ERR
+  fi
+fi

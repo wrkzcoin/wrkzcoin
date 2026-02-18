@@ -7,14 +7,18 @@ This folder documents Linux-hosted cross-build flows.
 From repo root:
 
 ```bash
-# 1) Prepare toolchain and target dependencies (MinGW + OpenSSL + Boost)
+# 1) One-step build (runs prep automatically unless SKIP_PREP=1)
+bash scripts/cross-build-windows-x86_64.sh
+
+# 2) Package .exe artifacts
+bash scripts/package-windows-x86_64.sh
+```
+
+Optional manual prep:
+
+```bash
 source scripts/prep-windows-x86_64.sh
-
-# 2) Configure and build all targets for Windows
-scripts/cross-build-windows-x86_64.sh
-
-# 3) Package .exe artifacts
-scripts/package-windows-x86_64.sh
+SKIP_PREP=1 bash scripts/cross-build-windows-x86_64.sh
 ```
 
 Build output directory:
@@ -28,6 +32,24 @@ Package output directory:
 ```text
 builds/wrkzcoin-windows-x86_64-<timestamp>.zip
 ```
+
+Build log:
+
+```text
+build-logs/cross-build-windows-x86_64.log
+```
+
+Parallel jobs:
+
+- `JOBS` is capped at a maximum of `8` in the build script.
+- Example: `JOBS=4 bash scripts/cross-build-windows-x86_64.sh`
+
+Runtime note:
+
+- Windows builds using MinGW POSIX may require runtime DLLs (for example
+  `libwinpthread-1.dll`).
+- `scripts/package-windows-x86_64.sh` now auto-includes common MinGW runtime
+  DLLs in the zip when found on the Ubuntu host.
 
 ## macOS from Ubuntu (osxcross)
 
@@ -54,16 +76,16 @@ builds/wrkzcoin-windows-x86_64-<timestamp>.zip
 
 ```bash
 source scripts/prep-macos-osxcross.sh
-scripts/cross-build-macos.sh x86_64
-scripts/package-macos.sh build-macos-x86_64 builds "$(date +%Y%m%d-%H%M)" x86_64
+bash scripts/cross-build-macos.sh x86_64
+bash scripts/package-macos.sh build-macos-x86_64 builds "$(date +%Y%m%d-%H%M)" x86_64
 ```
 
 ### Build macOS arm64
 
 ```bash
 source scripts/prep-macos-osxcross.sh
-scripts/cross-build-macos.sh arm64
-scripts/package-macos.sh build-macos-arm64 builds "$(date +%Y%m%d-%H%M)" arm64
+bash scripts/cross-build-macos.sh arm64
+bash scripts/package-macos.sh build-macos-arm64 builds "$(date +%Y%m%d-%H%M)" arm64
 ```
 
 Build output directories:
@@ -87,8 +109,8 @@ builds/wrkzcoin-macos-arm64-<timestamp>.tar.gz
 - Override common locations with:
   - `TOOLCHAIN_DIR`, `CROSS_PREFIX`, `MINGW_PREFIX`
 - Skip prep when environment is already ready:
-  - `SKIP_PREP=1 scripts/cross-build-windows-x86_64.sh`
-  - `SKIP_PREP=1 scripts/cross-build-macos.sh x86_64`
+  - `SKIP_PREP=1 bash scripts/cross-build-windows-x86_64.sh`
+  - `SKIP_PREP=1 bash scripts/cross-build-macos.sh x86_64`
 - macOS toolchain file inputs:
   - `OSXCROSS_ROOT`
   - `OSXCROSS_TARGET` (default: `x86_64-apple-darwin22.4`)
