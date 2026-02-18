@@ -54,6 +54,7 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
     }
 
     uint64_t lastSavedBlock = walletBlockCount;
+    bool progressPrinted = false;
 
     /* Amount of times we have looped without getting any new blocks */
     uint32_t stuckCounter = 0;
@@ -62,7 +63,9 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
     {
         auto [tmpWalletBlockCount, localDaemonBlockCount, networkBlockCount] = walletBackend->getSyncStatus();
 
-        std::cout << SuccessMsg(tmpWalletBlockCount) << " of " << InformationMsg(localDaemonBlockCount) << std::endl;
+        std::cout << "\r" << SuccessMsg(std::to_string(tmpWalletBlockCount)) << "/"
+                  << InformationMsg(std::to_string(localDaemonBlockCount)) << " " << std::flush;
+        progressPrinted = true;
 
         if (walletBlockCount == tmpWalletBlockCount)
         {
@@ -80,6 +83,11 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
             /* Don't print out fusion transactions */
             if (!tx.isFusionTransaction())
             {
+                if (progressPrinted)
+                {
+                    std::cout << std::endl;
+                    progressPrinted = false;
+                }
                 printTransferOneLine(tx);
             }
         }
@@ -89,7 +97,7 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
         /* Save every 10k blocks */
         if (walletBlockCount > lastSavedBlock + 10000)
         {
-            std::cout << InformationMsg("\nSaving progress...\n\n");
+            Logger::logger.log("Saving wallet sync progress...", Logger::DEBUG, {Logger::SYNC});
 
             walletBackend->save();
 
@@ -105,9 +113,19 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
                       "wallet operation)\nGive the daemon a restart if possible.\n"
                    << "If this persists, visit " << WalletConfig::contactLink << " for support.";
 
+            if (progressPrinted)
+            {
+                std::cout << std::endl;
+                progressPrinted = false;
+            }
             std::cout << WarningMsg(stream.str()) << std::endl;
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(2));
+    }
+
+    if (progressPrinted)
+    {
+        std::cout << std::endl;
     }
 }
