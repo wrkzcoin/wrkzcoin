@@ -44,6 +44,8 @@ namespace CryptoNote
         std::error_code read(IReadBatch &batch) override;
 
         std::error_code readThreadSafe(IReadBatch &batch) override;
+
+        std::error_code compact() override;
         
         void recreate() override;
 

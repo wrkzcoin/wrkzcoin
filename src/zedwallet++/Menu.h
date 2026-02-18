@@ -25,7 +25,8 @@ std::string parseCommand(
 {
     while (true)
     {
-        std::string selection = getInput(availableCommands, prompt);
+        std::string selectionRaw = getInput(availableCommands, prompt);
+        std::string selection = selectionRaw;
 
         /* Convert to lower case */
         std::transform(selection.begin(), selection.end(), selection.begin(), ::tolower);
@@ -84,14 +85,20 @@ std::string parseCommand(
         }
         else
         {
+            const size_t argSplitPos = selectionRaw.find(' ');
+            const std::string commandSelectionRaw =
+                argSplitPos == std::string::npos ? selectionRaw : selectionRaw.substr(0, argSplitPos);
+            std::string commandSelection = commandSelectionRaw;
+            std::transform(commandSelection.begin(), commandSelection.end(), commandSelection.begin(), ::tolower);
+
             /* Find the command by command name */
             auto it =
-                std::find_if(availableCommands.begin(), availableCommands.end(), [&selection](const auto command) {
+                std::find_if(availableCommands.begin(), availableCommands.end(), [&commandSelection](const auto command) {
                     std::string cmd = command.commandName;
 
                     std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::tolower);
 
-                    return cmd == selection;
+                    return cmd == commandSelection;
                 });
 
             /* Command doesn't exist in availableCommands */
@@ -105,7 +112,14 @@ std::string parseCommand(
                 continue;
             }
 
-            return selection;
+            /* Commands that accept inline args: keep original arg casing */
+            if (argSplitPos != std::string::npos
+                && (commandSelection == "check_tx" || commandSelection == "decode_integrated"))
+            {
+                return commandSelection + selectionRaw.substr(argSplitPos);
+            }
+
+            return commandSelection;
         }
     }
 }

@@ -126,7 +126,7 @@ Error validateIntegratedAddresses(
 {
     for (const auto &[address, amount] : destinations)
     {
-        if (address.length() != WalletConfig::integratedAddressLength)
+        if (!Utilities::isIntegratedAddress(address))
         {
             continue;
         }
@@ -172,12 +172,13 @@ Error validatePaymentID(const std::string paymentID)
         return SUCCESS;
     }
 
-    if (paymentID.length() != 64)
+    if (paymentID.length() != WalletConfig::shortPaymentIDLength
+        && paymentID.length() != WalletConfig::longPaymentIDLength)
     {
         return PAYMENT_ID_WRONG_LENGTH;
     }
 
-    std::regex hexRegex("[a-zA-Z0-9]{64}");
+    std::regex hexRegex("[a-fA-F0-9]+");
 
     if (!std::regex_match(paymentID, hexRegex))
     {
@@ -338,12 +339,14 @@ Error validateAddresses(std::vector<std::string> addresses, const bool integrate
     {
         /* Address is the wrong length */
         if (address.length() != WalletConfig::standardAddressLength
-            && address.length() != WalletConfig::integratedAddressLength)
+            && address.length() != WalletConfig::integratedAddressLength
+            && address.length() != WalletConfig::integratedAddressLengthLong)
         {
             std::stringstream stream;
 
             stream << "The address given is the wrong length. It should be " << WalletConfig::standardAddressLength
-                   << " chars or " << WalletConfig::integratedAddressLength << " chars, but "
+                   << " chars, " << WalletConfig::integratedAddressLength << " chars, or "
+                   << WalletConfig::integratedAddressLengthLong << " chars, but "
                    << "it is " << address.length() << " chars.";
 
             return Error(ADDRESS_WRONG_LENGTH, stream.str());
@@ -355,7 +358,7 @@ Error validateAddresses(std::vector<std::string> addresses, const bool integrate
             return ADDRESS_WRONG_PREFIX;
         }
 
-        if (address.length() == WalletConfig::integratedAddressLength)
+        if (Utilities::isIntegratedAddress(address))
         {
             if (!integratedAddressesAllowed)
             {
@@ -375,7 +378,12 @@ Error validateAddresses(std::vector<std::string> addresses, const bool integrate
                 return ADDRESS_NOT_BASE58;
             }
 
-            const uint64_t paymentIDLen = 64;
+            uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
+
+            if (address.length() == WalletConfig::integratedAddressLengthLong)
+            {
+                paymentIDLen = WalletConfig::longPaymentIDLength;
+            }
 
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);

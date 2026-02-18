@@ -238,6 +238,10 @@ namespace CryptoNote
 
         virtual void rewind(const uint64_t blockIndex) override;
 
+        size_t pruneRawBlocks(uint32_t pruneDepth);
+
+        std::error_code compactDatabase();
+
       private:
         const Currency &currency;
 

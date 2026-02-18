@@ -6,8 +6,10 @@
 
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "httplib.h"
 #include "JsonHelper.h"
@@ -38,6 +40,14 @@ class RpcServer
         const uint16_t bindPort,
         const std::string rpcBindIp,
         const std::string corsHeader,
+        const std::string rpcAccessToken,
+        const uint32_t rpcReadTimeout,
+        const uint32_t rpcWriteTimeout,
+        const uint64_t rpcMaxRequestBodyBytes,
+        const uint32_t rpcMaxRequestsPerMinute,
+        const uint32_t rpcMaxGlobalIndexesRange,
+        const uint32_t rpcMaxBlockCount,
+        const bool rpcTrustProxy,
         const std::string feeAddress,
         const uint64_t feeAmount,
         const RpcMode rpcMode,
@@ -91,6 +101,10 @@ class RpcServer
         const int64_t errorCode,
         const std::string errorMessage,
         httplib::Response &res);
+
+    std::string getClientIp(const httplib::Request &req) const;
+
+    bool isRateLimited(const std::string &clientIp);
 
     /////////////////////
     /* OPTION REQUESTS */
@@ -203,6 +217,22 @@ class RpcServer
      * header is not added. */
     const std::string m_corsHeader;
 
+    const std::string m_rpcAccessToken;
+
+    const uint32_t m_rpcReadTimeout;
+
+    const uint32_t m_rpcWriteTimeout;
+
+    const uint64_t m_rpcMaxRequestBodyBytes;
+
+    const uint32_t m_rpcMaxRequestsPerMinute;
+
+    const uint32_t m_rpcMaxGlobalIndexesRange;
+
+    const uint32_t m_rpcMaxBlockCount;
+
+    const bool m_rpcTrustProxy;
+
     /* The thread running the server */
     std::thread m_serverThread;
 
@@ -222,4 +252,7 @@ class RpcServer
     const std::shared_ptr<CryptoNote::NodeServer> m_p2p;
 
     const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> m_syncManager;
+
+    std::mutex m_rateLimitMutex;
+    std::unordered_map<std::string, std::pair<uint64_t, uint32_t>> m_rateLimitByIp;
 };

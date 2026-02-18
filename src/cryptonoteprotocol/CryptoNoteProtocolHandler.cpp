@@ -17,9 +17,14 @@
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
+#include <chrono>
 #include <future>
+#include <iomanip>
+#include <algorithm>
+#include <ctime>
 #include <serialization/SerializationTools.h>
 #include <system/Dispatcher.h>
+#include <sstream>
 #include <utilities/FormatTools.h>
 
 using namespace Logging;
@@ -29,6 +34,11 @@ namespace CryptoNote
 {
     namespace
     {
+        bool isPruneCapabilityForkActive(uint64_t localHeight, uint64_t remoteHeight)
+        {
+            return std::max(localHeight, remoteHeight) >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
+        }
+
         template<class t_parametr>
         bool post_notify(
             IP2pEndpoint &p2p,
@@ -189,7 +199,17 @@ namespace CryptoNote
         m_stop(false),
         m_observedHeight(0),
         m_blockchainHeight(0),
+        m_syncLogInitialized(false),
+        m_syncLogStartHeight(0),
+        m_lastSyncLogHeight(0),
         m_peersCount(0),
+        m_isPrunedNode(false),
+        m_prunedNodeDepth(0),
+        m_syncMaxPeers(2),
+        m_syncPeerFailureThreshold(3),
+        m_syncBatchMin(100),
+        m_syncBatchMax(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT),
+        m_syncDemotedPeers(0),
         logger(log, "protocol")
     {
         if (!m_p2p)
@@ -256,6 +276,7 @@ namespace CryptoNote
         {
             assert(context.m_needed_objects.empty());
             assert(context.m_requested_objects.empty());
+            context.m_sync_batch_size = getAdaptiveBatchSize(context);
 
             NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
             r.block_ids = m_core.buildSparseChain();
@@ -274,25 +295,71 @@ namespace CryptoNote
     void CryptoNoteProtocolHandler::log_connections()
     {
         std::stringstream ss;
+        const int dirWidth = 3;
+        const int remoteWidth = 22;
+        const int peerWidth = 16;
+        const int stateWidth = 14;
+        const int ageWidth = 14;
+        const int heightWidth = 10;
+        const int pruneWidth = 6;
+        const int batchWidth = 5;
+        const int failWidth = 5;
 
-        ss << std::setw(25) << std::left << "Remote Host" << std::setw(20) << "Peer ID" << std::setw(25)
-           << "Recv/Sent (inactive,sec)" << std::setw(25) << "State" << std::setw(20) << "Lifetime" << ENDL;
+        const std::string border =
+            "+" + std::string(dirWidth + 2, '-')
+            + "+" + std::string(remoteWidth + 2, '-')
+            + "+" + std::string(peerWidth + 2, '-')
+            + "+" + std::string(stateWidth + 2, '-')
+            + "+" + std::string(ageWidth + 2, '-')
+            + "+" + std::string(heightWidth + 2, '-')
+            + "+" + std::string(pruneWidth + 2, '-')
+            + "+" + std::string(batchWidth + 2, '-')
+            + "+" + std::string(failWidth + 2, '-') + "+";
+
+        ss << border << ENDL;
+        ss << "| " << std::left << std::setw(dirWidth) << "Dir"
+           << " | " << std::setw(remoteWidth) << "Remote"
+           << " | " << std::setw(peerWidth) << "Peer ID"
+           << " | " << std::setw(stateWidth) << "State"
+           << " | " << std::setw(ageWidth) << "Uptime"
+           << " | " << std::setw(heightWidth) << "Height"
+           << " | " << std::setw(pruneWidth) << "Pruned"
+           << " | " << std::setw(batchWidth) << "Batch"
+           << " | " << std::setw(failWidth) << "Fail"
+           << " |" << ENDL;
+        ss << border << ENDL;
 
         m_p2p->for_each_connection([&](const CryptoNoteConnectionContext &cntxt, uint64_t peer_id) {
-            ss << std::setw(25) << std::left
-               << std::string(cntxt.m_is_income ? "[INCOMING]" : "[OUTGOING]")
-                      + Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port)
-               << std::setw(20) << std::hex
-               << peer_id
-               << std::setw(25) << get_protocol_state_string(cntxt.m_state) << std::setw(20)
-               << Common::timeIntervalToString(time(NULL) - cntxt.m_started) << std::setw(20)
-               << std::to_string(cntxt.m_remote_blockchain_height)
-               << ENDL;
+            const std::string dir = cntxt.m_is_income ? "IN" : "OUT";
+            const std::string remote =
+                Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port);
+            std::string state = get_protocol_state_string(cntxt.m_state);
+            if (state.find("state_") == 0)
+            {
+                state = state.substr(6);
+            }
+            const std::string age = Common::timeIntervalToString(time(nullptr) - cntxt.m_started);
+
+            std::stringstream peerIdStream;
+            peerIdStream << std::hex << std::nouppercase << std::setw(peerWidth) << std::setfill('0') << peer_id;
+
+            ss << "| " << std::left << std::setfill(' ') << std::setw(dirWidth) << dir
+               << " | " << std::setw(remoteWidth) << remote
+               << " | " << std::setw(peerWidth) << peerIdStream.str()
+               << " | " << std::setw(stateWidth) << state
+               << " | " << std::setw(ageWidth) << age
+               << " | " << std::right << std::setw(heightWidth) << cntxt.m_remote_blockchain_height
+               << " | " << std::left << std::setw(pruneWidth) << (cntxt.m_remote_is_pruned_node ? "yes" : "no")
+               << " | " << std::right << std::setw(batchWidth) << cntxt.m_sync_batch_size
+               << " | " << std::setw(failWidth) << cntxt.m_sync_failures
+               << " |" << ENDL;
         });
-        logger(INFO) << "Connections: " << ENDL << ss.str();
+
+        ss << border << ENDL;
+        logger(INFO) << "Connections:" << ENDL << ss.str();
     }
 
-    uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height()
+    uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height() const
     {
         return m_core.getTopBlockIndex() + 1;
     }
@@ -302,6 +369,11 @@ namespace CryptoNote
         CryptoNoteConnectionContext &context,
         bool is_initial)
     {
+        context.m_remote_is_pruned_node = (hshd.capability_flags & NODE_CAPABILITY_FLAG_PRUNED) != 0;
+        context.m_remote_pruned_node_height = hshd.pruned_node_height;
+        context.m_sync_batch_size = m_syncBatchMin;
+        context.m_sync_failures = 0;
+
         if (context.m_state == CryptoNoteConnectionContext::state_befor_handshake && !is_initial)
         {
             return true;
@@ -327,6 +399,58 @@ namespace CryptoNote
             uint64_t currentHeight = get_current_blockchain_height();
 
             uint64_t remoteHeight = hshd.current_height;
+            const bool forkActive = isPruneCapabilityForkActive(currentHeight, remoteHeight);
+            const bool fullNodeMustUseFullSyncPeer = forkActive && !m_isPrunedNode && context.m_remote_is_pruned_node;
+
+            if (fullNodeMustUseFullSyncPeer)
+            {
+                logger(Logging::DEBUGGING) << context
+                                           << "Peer is pruned after prune capability fork; limiting this connection "
+                                              "to relay/pool sync only.";
+
+                context.m_state = is_initial ? CryptoNoteConnectionContext::state_pool_sync_required
+                                             : CryptoNoteConnectionContext::state_normal;
+                updateObservedHeight(hshd.current_height, context);
+                context.m_remote_blockchain_height = hshd.current_height;
+
+                if (is_initial)
+                {
+                    m_peersCount++;
+                    m_observerManager.notify(&ICryptoNoteProtocolObserver::peerCountUpdated, m_peersCount.load());
+                }
+
+                return true;
+            }
+
+            if (context.m_state != CryptoNoteConnectionContext::state_synchronizing && m_syncMaxPeers > 0)
+            {
+                uint32_t activeSyncPeers = 0;
+                m_p2p->for_each_connection([&activeSyncPeers](const CryptoNoteConnectionContext &ctx, uint64_t) {
+                    if (ctx.m_state == CryptoNoteConnectionContext::state_synchronizing
+                        || ctx.m_state == CryptoNoteConnectionContext::state_sync_required)
+                    {
+                        ++activeSyncPeers;
+                    }
+                });
+
+                if (activeSyncPeers >= m_syncMaxPeers)
+                {
+                    logger(Logging::DEBUGGING) << context << "Skipping sync-required transition due to sync peer cap ("
+                                               << activeSyncPeers << "/" << m_syncMaxPeers << ")";
+                    context.m_state = is_initial ? CryptoNoteConnectionContext::state_pool_sync_required
+                                                 : CryptoNoteConnectionContext::state_normal;
+                    updateObservedHeight(hshd.current_height, context);
+                    context.m_remote_blockchain_height = hshd.current_height;
+
+                    if (is_initial)
+                    {
+                        m_peersCount++;
+                        m_observerManager.notify(&ICryptoNoteProtocolObserver::peerCountUpdated, m_peersCount.load());
+                    }
+
+                    return true;
+                }
+            }
 
             /* Find the difference between the remote and the local height */
             int64_t diff = static_cast<int64_t>(remoteHeight) - static_cast<int64_t>(currentHeight);
@@ -354,18 +478,10 @@ namespace CryptoNote
             ss << "the current peer you're connected to.";
 
             auto logLevel = Logging::TRACE;
-            /* Log at different levels depending upon if we're ahead, behind, and if it's
-              a newly formed connection */
+            /* Keep per-peer sync delta logs at deep verbosity to reduce INFO noise. */
             if (diff >= 0)
             {
-                if (is_initial)
-                {
-                    logLevel = Logging::INFO;
-                }
-                else
-                {
-                    logLevel = Logging::DEBUGGING;
-                }
+                logLevel = Logging::DEBUGGING;
             }
             logger(logLevel, Logging::BRIGHT_GREEN) << context << ss.str();
 
@@ -392,6 +508,9 @@ namespace CryptoNote
     {
         hshd.top_id = m_core.getTopBlockHash();
         hshd.current_height = m_core.getTopBlockIndex() + 1;
+        hshd.capability_flags = m_isPrunedNode ? NODE_CAPABILITY_FLAG_PRUNED : 0;
+        hshd.pruned_node_height =
+            (m_isPrunedNode && hshd.current_height > m_prunedNodeDepth) ? (hshd.current_height - m_prunedNodeDepth) : 0;
         return true;
     }
 
@@ -664,6 +783,7 @@ namespace CryptoNote
 
         if (context.m_requested_objects.size())
         {
+            onSyncChunkFailure(context);
             logger(Logging::ERROR, Logging::BRIGHT_RED)
                 << context << "returned not all requested objects (context.m_requested_objects.size()="
                 << context.m_requested_objects.size() << "), dropping connection";
@@ -672,11 +792,24 @@ namespace CryptoNote
         }
 
         {
+            size_t rawBytes = 0;
+            for (const auto &rawBlock : rawBlocks)
+            {
+                rawBytes += rawBlock.block.size();
+                for (const auto &tx : rawBlock.transactions)
+                {
+                    rawBytes += tx.size();
+                }
+            }
+
             int result = processObjects(context, std::move(rawBlocks), cachedBlocks);
             if (result != 0)
             {
+                onSyncChunkFailure(context);
                 return result;
             }
+
+            onSyncChunkSuccess(context, cachedBlocks.size(), rawBytes);
         }
 
         logger(DEBUGGING, BRIGHT_GREEN) << "Local blockchain updated, new index = " << m_core.getTopBlockIndex();
@@ -706,6 +839,16 @@ namespace CryptoNote
                 || addResult == error::AddBlockErrorCondition::TRANSACTION_VALIDATION_FAILED
                 || addResult == error::AddBlockErrorCondition::DESERIALIZATION_FAILED)
             {
+                if (addResult == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
+                {
+                    static constexpr uint64_t CHECKPOINT_MISMATCH_BAN_SECONDS = 900;
+                    m_p2p->ban_host(context.m_remote_ip, CHECKPOINT_MISMATCH_BAN_SECONDS);
+                    logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                        << context << "Checkpoint mismatch from peer for block "
+                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " ("
+                        << addResult.message() << "), temporary ban applied for "
+                        << CHECKPOINT_MISMATCH_BAN_SECONDS << "s";
+                }
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << addResult.message();
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
@@ -932,7 +1075,9 @@ namespace CryptoNote
             size_t count = 0;
             auto it = context.m_needed_objects.begin();
 
-            while (it != context.m_needed_objects.end() && count < BLOCKS_SYNCHRONIZING_DEFAULT_COUNT)
+            const uint32_t batchSize = std::max(m_syncBatchMin, getAdaptiveBatchSize(context));
+
+            while (it != context.m_needed_objects.end() && count < batchSize)
             {
                 if (!(check_having_blocks && m_core.hasBlock(*it)))
                 {
@@ -959,6 +1104,7 @@ namespace CryptoNote
             if (!(context.m_last_response_height == context.m_remote_blockchain_height - 1
                   && !context.m_needed_objects.size() && !context.m_requested_objects.size()))
             {
+                onSyncChunkFailure(context);
                 logger(Logging::ERROR, Logging::BRIGHT_RED)
                     << "request_missing_blocks final condition failed!"
                     << "\r\nm_last_response_height=" << context.m_last_response_height
@@ -1254,13 +1400,11 @@ namespace CryptoNote
             if (peerHeight > m_blockchainHeight)
             {
                 m_blockchainHeight = peerHeight;
-                /* Add percentage and local height info */
-                uint64_t currentHeight = get_current_blockchain_height();
-
-                logger(Logging::INFO, Logging::BRIGHT_GREEN) << "New Top Block Detected: " << peerHeight
-                                                             << " / Local: " << currentHeight
-                                                             << " (" << Utilities::get_sync_percentage(currentHeight, peerHeight) << "%)";
             }
+
+            const uint64_t currentHeight = get_current_blockchain_height();
+            const uint64_t remoteHeight = std::max<uint64_t>(m_blockchainHeight, peerHeight);
+            logSyncProgressLocked(currentHeight, remoteHeight);
         }
 
         if (updated)
@@ -1300,6 +1444,128 @@ namespace CryptoNote
         return m_blockchainHeight;
     };
 
+    uint32_t CryptoNoteProtocolHandler::getSyncActivePeers() const
+    {
+        uint32_t activeSyncPeers = 0;
+        m_p2p->for_each_connection([&activeSyncPeers](const CryptoNoteConnectionContext &ctx, uint64_t) {
+            if (ctx.m_state == CryptoNoteConnectionContext::state_synchronizing
+                || ctx.m_state == CryptoNoteConnectionContext::state_sync_required)
+            {
+                ++activeSyncPeers;
+            }
+        });
+
+        return activeSyncPeers;
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getSyncAvgBatchSize() const
+    {
+        uint64_t sum = 0;
+        uint32_t peers = 0;
+
+        m_p2p->for_each_connection([&sum, &peers](const CryptoNoteConnectionContext &ctx, uint64_t) {
+            if (ctx.m_sync_batch_size > 0)
+            {
+                sum += ctx.m_sync_batch_size;
+                ++peers;
+            }
+        });
+
+        if (peers == 0)
+        {
+            return 0;
+        }
+
+        return static_cast<uint32_t>(sum / peers);
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getSyncDemotedPeers() const
+    {
+        return m_syncDemotedPeers.load();
+    }
+
+    bool CryptoNoteProtocolHandler::isPrunedNode() const
+    {
+        return m_isPrunedNode;
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getPrunedNodeDepth() const
+    {
+        return m_prunedNodeDepth;
+    }
+
+    bool CryptoNoteProtocolHandler::isPruneCapabilityActive() const
+    {
+        return get_current_blockchain_height() >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
+    }
+
+    void CryptoNoteProtocolHandler::setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth)
+    {
+        m_isPrunedNode = isPrunedNode;
+        m_prunedNodeDepth = prunedNodeDepth;
+    }
+
+    void CryptoNoteProtocolHandler::setSyncTuning(
+        uint32_t syncMaxPeers,
+        uint32_t syncPeerFailureThreshold,
+        uint32_t syncBatchMin,
+        uint32_t syncBatchMax)
+    {
+        m_syncMaxPeers = std::max<uint32_t>(1, syncMaxPeers);
+        m_syncPeerFailureThreshold = std::max<uint32_t>(1, syncPeerFailureThreshold);
+        m_syncBatchMin = std::max<uint32_t>(1, syncBatchMin);
+        m_syncBatchMax = std::max<uint32_t>(m_syncBatchMin, syncBatchMax);
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getAdaptiveBatchSize(const CryptoNoteConnectionContext &context) const
+    {
+        uint32_t current = context.m_sync_batch_size;
+
+        if (current == 0)
+        {
+            current = m_syncBatchMin;
+        }
+
+        return std::max(m_syncBatchMin, std::min(current, m_syncBatchMax));
+    }
+
+    void CryptoNoteProtocolHandler::onSyncChunkSuccess(CryptoNoteConnectionContext &context, size_t blocks, size_t bytes)
+    {
+        context.m_sync_blocks_received += blocks;
+        context.m_sync_bytes_received += bytes;
+        context.m_sync_failures = 0;
+        context.m_last_sync_progress_ts = static_cast<uint64_t>(std::time(nullptr));
+
+        if (context.m_sync_batch_size < m_syncBatchMax)
+        {
+            const uint32_t next = context.m_sync_batch_size + std::max<uint32_t>(1, context.m_sync_batch_size / 4);
+            context.m_sync_batch_size = std::min(next, m_syncBatchMax);
+        }
+    }
+
+    void CryptoNoteProtocolHandler::onSyncChunkFailure(CryptoNoteConnectionContext &context)
+    {
+        ++context.m_sync_failures;
+
+        if (context.m_sync_batch_size > m_syncBatchMin)
+        {
+            context.m_sync_batch_size = std::max(m_syncBatchMin, context.m_sync_batch_size / 2);
+        }
+
+        if (shouldDemoteSyncPeer(context))
+        {
+            ++m_syncDemotedPeers;
+            logger(Logging::WARNING) << context << "Demoting sync peer after " << context.m_sync_failures
+                                     << " failures";
+            context.m_state = CryptoNoteConnectionContext::state_shutdown;
+        }
+    }
+
+    bool CryptoNoteProtocolHandler::shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const
+    {
+        return context.m_sync_failures >= m_syncPeerFailureThreshold;
+    }
+
     bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver *observer)
     {
         return m_observerManager.add(observer);
@@ -1308,6 +1574,61 @@ namespace CryptoNote
     bool CryptoNoteProtocolHandler::removeObserver(ICryptoNoteProtocolObserver *observer)
     {
         return m_observerManager.remove(observer);
+    }
+
+    void CryptoNoteProtocolHandler::logSyncProgressLocked(uint64_t currentHeight, uint64_t remoteHeight)
+    {
+        using namespace std::chrono;
+
+        if (remoteHeight == 0 || currentHeight >= remoteHeight)
+        {
+            m_syncLogInitialized = false;
+            return;
+        }
+
+        const auto now = steady_clock::now();
+
+        if (!m_syncLogInitialized || currentHeight < m_syncLogStartHeight || currentHeight < m_lastSyncLogHeight)
+        {
+            m_syncLogInitialized = true;
+            m_syncLogStartHeight = currentHeight;
+            m_lastSyncLogHeight = currentHeight;
+            m_syncLogStartTime = now;
+            m_lastSyncLogTime = now;
+            return;
+        }
+
+        if (duration_cast<seconds>(now - m_lastSyncLogTime).count() < 3)
+        {
+            return;
+        }
+
+        const double elapsedMinutes = duration_cast<duration<double>>(now - m_syncLogStartTime).count() / 60.0;
+        const uint64_t processedBlocks = currentHeight - m_syncLogStartHeight;
+        const double avgBlocksPerMinute = elapsedMinutes > 0.0 ? processedBlocks / elapsedMinutes : 0.0;
+        const uint64_t remainingBlocks = remoteHeight - currentHeight;
+        const uint64_t etaSeconds =
+            avgBlocksPerMinute > 0.0 ? static_cast<uint64_t>(remainingBlocks * 60.0 / avgBlocksPerMinute) : 0;
+
+        const uint64_t etaDays = etaSeconds / 86400;
+        const uint64_t etaHours = (etaSeconds % 86400) / 3600;
+        const uint64_t etaMinutes = (etaSeconds % 3600) / 60;
+        const uint64_t etaRemainderSeconds = etaSeconds % 60;
+        const double progress = static_cast<double>(currentHeight) * 100.0 / static_cast<double>(remoteHeight);
+
+        std::ostringstream progressStream;
+        progressStream << std::fixed << std::setprecision(2) << progress;
+
+        logger(Logging::INFO, Logging::BRIGHT_GREEN) << "Sync progress: " << progressStream.str() << "% (" << currentHeight
+                                                     << "/" << remoteHeight << "), avg "
+                                                     << static_cast<uint64_t>(avgBlocksPerMinute)
+                                                     << " blk/min, eta d" << etaDays << ".h" << std::setw(2)
+                                                     << std::setfill('0') << etaHours << ".m" << std::setw(2)
+                                                     << std::setfill('0') << etaMinutes << ".s" << std::setw(2)
+                                                     << std::setfill('0') << etaRemainderSeconds;
+
+        m_lastSyncLogTime = now;
+        m_lastSyncLogHeight = currentHeight;
     }
 
 }; // namespace CryptoNote

@@ -682,6 +682,17 @@ void WalletBackend::init()
     {
         auto [startHeight, startTimestamp] = m_subWallets->getMinInitialSyncStart();
 
+        /* New wallets may store both a creation timestamp and an implied
+           creation height candidate. Use the lower scan point to avoid
+           missing first transactions and avoid requiring an immediate reset. */
+        if (startHeight == 0 && startTimestamp != 0)
+        {
+            const uint64_t createdHeight = m_daemon->networkBlockCount();
+            const uint64_t timestampHeight = Utilities::timestampToScanHeight(startTimestamp);
+            startHeight = std::min(createdHeight, timestampHeight);
+            startTimestamp = 0;
+        }
+
         m_walletSynchronizer = std::make_shared<WalletSynchronizer>(
             m_daemon,
             startHeight,
@@ -1265,6 +1276,16 @@ std::tuple<Error, Crypto::SecretKey> WalletBackend::getTxPrivateKey(const Crypto
     }
 
     return {TX_PRIVATE_KEY_NOT_FOUND, key};
+}
+
+bool WalletBackend::getTransactionsStatus(
+    const std::unordered_set<Crypto::Hash> transactionHashes,
+    std::unordered_set<Crypto::Hash> &transactionsInPool,
+    std::unordered_set<Crypto::Hash> &transactionsInBlock,
+    std::unordered_set<Crypto::Hash> &transactionsUnknown) const
+{
+    return m_daemon->getTransactionsStatus(
+        transactionHashes, transactionsInPool, transactionsInBlock, transactionsUnknown);
 }
 
 std::vector<std::tuple<std::string, uint64_t, uint64_t>> WalletBackend::getBalances() const

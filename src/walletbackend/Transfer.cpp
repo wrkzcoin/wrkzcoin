@@ -10,6 +10,7 @@
 #include <config/Constants.h>
 #include <config/WalletConfig.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <common/Varint.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
@@ -361,7 +362,7 @@ namespace SendTransaction
            in validateTransaction(), and the paymentID's do not conflict. */
         for (auto &[address, amount] : addressesAndAmounts)
         {
-            if (address.length() != WalletConfig::integratedAddressLength)
+            if (!Utilities::isIntegratedAddress(address))
             {
                 continue;
             }
@@ -1014,6 +1015,16 @@ namespace SendTransaction
 
         for (const auto &walletAmount : sources)
         {
+            if (!walletAmount.input.globalOutputIndex)
+            {
+                return {
+                    Error(
+                        DAEMON_ERROR,
+                        "Missing global output index for one or more wallet outputs. "
+                        "Let sync continue on a full node and retry."),
+                    result};
+            }
+
             WalletTypes::GlobalIndexKey realOutput {*walletAmount.input.globalOutputIndex, walletAmount.input.key};
 
             WalletTypes::ObscuredInput obscuredInput;
@@ -1405,15 +1416,28 @@ namespace SendTransaction
 
         if (paymentID != "")
         {
-            Crypto::Hash paymentIDBin;
+            if (paymentID.size() == WalletConfig::shortPaymentIDLength)
+            {
+                std::vector<uint8_t> paymentIDBin;
+                Common::fromHex(paymentID, paymentIDBin);
 
-            Common::podFromHex(paymentID, paymentIDBin);
+                /* Indicate this is the short encrypted payment ID */
+                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER);
 
-            /* Indicate this is the payment ID */
-            extraNonce.push_back(Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER);
+                /* Write the 8-byte data to the extra nonce */
+                std::copy(paymentIDBin.begin(), paymentIDBin.end(), std::back_inserter(extraNonce));
+            }
+            else
+            {
+                Crypto::Hash paymentIDBin;
+                Common::podFromHex(paymentID, paymentIDBin);
 
-            /* Write the data to the extra nonce */
-            std::copy(std::begin(paymentIDBin.data), std::end(paymentIDBin.data), std::back_inserter(extraNonce));
+                /* Indicate this is the legacy 32-byte payment ID */
+                extraNonce.push_back(Constants::TX_EXTRA_PAYMENT_ID_IDENTIFIER);
+
+                /* Write the data to the extra nonce */
+                std::copy(std::begin(paymentIDBin.data), std::end(paymentIDBin.data), std::back_inserter(extraNonce));
+            }
         }
 
         if (!extraData.empty())
@@ -1433,6 +1457,14 @@ namespace SendTransaction
 
         std::vector<uint8_t> extra;
 
+        /* Add the pub key identifier to extra */
+        extra.push_back(Constants::TX_EXTRA_PUBKEY_IDENTIFIER);
+
+        const auto pubKey = result.txKeyPair.publicKey;
+
+        /* Append the pub key to extra */
+        std::copy(std::begin(pubKey.data), std::end(pubKey.data), std::back_inserter(extra));
+
         if (!extraNonce.empty())
         {
             /* Indicate this is the extra nonce */
@@ -1447,14 +1479,6 @@ namespace SendTransaction
             /* Write the data to extra */
             std::copy(extraNonce.begin(), extraNonce.end(), std::back_inserter(extra));
         }
-
-        /* Add the pub key identifier to extra */
-        extra.push_back(Constants::TX_EXTRA_PUBKEY_IDENTIFIER);
-
-        const auto pubKey = result.txKeyPair.publicKey;
-
-        /* Append the pub key to extra */
-        std::copy(std::begin(pubKey.data), std::end(pubKey.data), std::back_inserter(extra));
 
         CryptoNote::Transaction setupTX;
 

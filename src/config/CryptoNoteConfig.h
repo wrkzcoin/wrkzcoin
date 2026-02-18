@@ -363,10 +363,12 @@ namespace CryptoNote
             2800000,  // 17
             3500000,  // 18
             3800000,  // 19
+            4300000,  // 20
+            4500000,  // 21 prune capability + mixed full/pruned sync policy activation
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 19;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 21;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -389,6 +391,9 @@ namespace CryptoNote
         
         /* Maximum allowable blocks to rewind from existing chain */
         const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
+
+        /* Feature fork where prune capability signaling and sync policy enforcement activate. */
+        const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";
@@ -464,7 +469,7 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 2; // 2 MB
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 64; // 64 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
     const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads

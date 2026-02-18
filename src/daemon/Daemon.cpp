@@ -35,6 +35,7 @@
 #include <config/CryptoNoteCheckpoints.h>
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
+#include <atomic>
 
 #if defined(WIN32)
 
@@ -182,7 +183,8 @@ int main(int argc, char *argv[])
 
         std::vector<fs::path> removablePaths = {
             fs::path(config.dataDirectory) / CryptoNote::parameters::P2P_NET_DATA_FILENAME,
-            fs::path(config.dataDirectory) / "DB"
+            fs::path(config.dataDirectory) / "DB",
+            fs::path(config.dataDirectory) / "LevelDB"
         };
 
         for (const auto &path : removablePaths)
@@ -448,6 +450,13 @@ int main(int argc, char *argv[])
             ccore->rewind(config.rewindToHeight);
         }
 
+        if (config.prune)
+        {
+            logger(INFO) << "Prune mode enabled. Pruning stored raw blocks with depth " << config.pruneDepth << "...";
+            const auto prunedBlocks = ccore->pruneRawBlocks(config.pruneDepth);
+            logger(INFO) << "Prune pass completed. Raw block slots processed: " << prunedBlocks;
+        }
+
         const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
             currency,
             dispatcher,
@@ -455,6 +464,13 @@ int main(int argc, char *argv[])
             nullptr,
             logManager
         );
+
+        cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
+        cprotocol->setSyncTuning(
+            config.syncMaxPeers,
+            config.syncPeerFailureThreshold,
+            config.syncBatchMin,
+            config.syncBatchMax);
 
         const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
             dispatcher,
@@ -481,6 +497,14 @@ int main(int argc, char *argv[])
             config.rpcPort,
             config.rpcInterface,
             config.enableCors,
+            config.rpcAccessToken,
+            config.rpcReadTimeout,
+            config.rpcWriteTimeout,
+            config.rpcMaxRequestBodyBytes,
+            config.rpcMaxRequestsPerMinute,
+            config.rpcMaxGlobalIndexesRange,
+            config.rpcMaxBlockCount,
+            config.rpcTrustProxy,
             config.feeAddress,
             config.feeAmount,
             rpcMode,
@@ -522,9 +546,20 @@ int main(int argc, char *argv[])
             dch.start_handling();
         }
 
-        Tools::SignalHandler::install([&dch] {
-            dch.exit({});
-            dch.stop_handling();
+        std::atomic<uint32_t> interruptCount {0};
+        Tools::SignalHandler::install([&dch, &interruptCount] {
+            const uint32_t count = ++interruptCount;
+
+            if (count == 1)
+            {
+                std::cout << "SIGINT received. Starting graceful shutdown. Press CTRL+C again to force exit."
+                          << std::endl;
+                dch.exit({});
+                return;
+            }
+
+            std::cerr << "Second interrupt received. Forcing immediate exit without waiting for shutdown." << std::endl;
+            std::_Exit(1);
         });
 
         logger(INFO) << "Starting p2p net loop...";
@@ -543,6 +578,10 @@ int main(int argc, char *argv[])
 
         cprotocol->set_p2p_endpoint(nullptr);
         ccore->save();
+
+        logger(INFO) << "Flushing and closing blockchain DB...";
+        dbShutdownOnExit.cancel();
+        database->shutdown();
     }
     catch (const std::exception &e)
     {

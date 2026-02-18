@@ -20,6 +20,12 @@ namespace DaemonConfig
 {
     struct DaemonConfiguration
     {
+        static constexpr uint32_t MIN_PRUNE_DEPTH_DAYS = 30;
+        static constexpr uint32_t MIN_PRUNE_DEPTH =
+            CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * MIN_PRUNE_DEPTH_DAYS;
+        static constexpr uint32_t DEFAULT_PRUNE_DEPTH =
+            MIN_PRUNE_DEPTH;
+
         DaemonConfiguration()
         {
             std::stringstream logfile;
@@ -48,12 +54,26 @@ namespace DaemonConfig
             osVersion = false;
             printGenesisTx = false;
             dumpConfig = false;
-            enableDbCompression = false;
+            enableDbCompression = true;
             resync = false;
             enableLevelDB = false;
             importChain = false;
             exportChain = false;
             exportNumBlocks = 0;
+            prune = false;
+            pruneDepth = DEFAULT_PRUNE_DEPTH;
+            syncMaxPeers = 2;
+            syncPeerFailureThreshold = 3;
+            syncBatchMin = 100;
+            syncBatchMax = 400;
+            rpcAccessToken = "";
+            rpcReadTimeout = 15;
+            rpcWriteTimeout = 30;
+            rpcMaxRequestBodyBytes = 2 * 1024 * 1024;
+            rpcMaxRequestsPerMinute = 240;
+            rpcMaxGlobalIndexesRange = 5000;
+            rpcMaxBlockCount = 100;
+            rpcTrustProxy = false;
         }
 
         std::string dataDirectory;
@@ -125,6 +145,34 @@ namespace DaemonConfig
         bool exportChain;
 
         uint32_t exportNumBlocks;
+
+        bool prune;
+
+        uint32_t pruneDepth;
+
+        uint32_t syncMaxPeers;
+
+        uint32_t syncPeerFailureThreshold;
+
+        uint32_t syncBatchMin;
+
+        uint32_t syncBatchMax;
+
+        std::string rpcAccessToken;
+
+        uint32_t rpcReadTimeout;
+
+        uint32_t rpcWriteTimeout;
+
+        uint64_t rpcMaxRequestBodyBytes;
+
+        uint32_t rpcMaxRequestsPerMinute;
+
+        uint32_t rpcMaxGlobalIndexesRange;
+
+        uint32_t rpcMaxBlockCount;
+
+        bool rpcTrustProxy;
 
         std::string configFile;
 

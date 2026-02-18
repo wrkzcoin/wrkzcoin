@@ -13,6 +13,7 @@
 #include <rapidjson/istreamwrapper.h>
 #include <rapidjson/ostreamwrapper.h>
 #include <rapidjson/prettywriter.h>
+#include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/Input.h>
 #include <utilities/String.h>
@@ -76,10 +77,23 @@ void addToAddressBook()
         return;
     }
 
+    if (!Utilities::isIntegratedAddress(address))
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("standard") << std::endl;
+    }
+    else if (address.length() == WalletConfig::integratedAddressLength)
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-short") << std::endl;
+    }
+    else
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-long") << std::endl;
+    }
+
     std::string paymentID;
 
     /* Don't prompt for a payment ID if we have an integrated address */
-    if (address.length() == WalletConfig::standardAddressLength)
+    if (!Utilities::isIntegratedAddress(address))
     {
         const bool cancelAllowed = true;
 
@@ -94,6 +108,10 @@ void addToAddressBook()
 
             return;
         }
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is already embedded.") << std::endl;
     }
 
     addressBook.emplace_back(friendlyName, address, paymentID);

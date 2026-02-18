@@ -13,6 +13,7 @@
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
 #include <cxxopts.hpp>
+#include <algorithm>
 #include <fstream>
 #include <logging/ILogger.h>
 #include <rapidjson/document.h>
@@ -25,6 +26,24 @@ using namespace rapidjson;
 
 namespace DaemonConfig
 {
+    namespace
+    {
+        uint32_t clampPruneDepth(const uint32_t depth, const std::string &source)
+        {
+            if (depth >= DaemonConfiguration::MIN_PRUNE_DEPTH)
+            {
+                return depth;
+            }
+
+            std::cout << CryptoNote::getProjectCLIHeader() << "The configured prune depth (" << depth
+                      << ") from " << source << " is below the enforced minimum (" << DaemonConfiguration::MIN_PRUNE_DEPTH
+                      << ", about " << DaemonConfiguration::MIN_PRUNE_DEPTH_DAYS
+                      << " days). Using the minimum for network health." << std::endl;
+
+            return DaemonConfiguration::MIN_PRUNE_DEPTH;
+        }
+    } // namespace
+
     DaemonConfiguration initConfiguration(const char *path)
     {
         DaemonConfiguration config;
@@ -44,6 +63,13 @@ namespace DaemonConfig
             "resync",
             "Forces the daemon to delete the blockchain data and start resyncing",
             cxxopts::value<bool>(config.resync)->default_value("false")->implicit_value("true"))(
+            "prune",
+            "Enable pruned-node mode for daemon sync behavior",
+            cxxopts::value<bool>(config.prune)->default_value("false")->implicit_value("true"))(
+            "prune-depth",
+            "When prune mode is enabled, retain at least this many recent blocks locally",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.pruneDepth)),
+            "#")(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
             cxxopts::value<uint32_t>(),
@@ -118,7 +144,38 @@ namespace DaemonConfig
             "fee-amount",
             "Sets the convenience charge amount for light wallets that use the daemon",
             cxxopts::value<int>()->default_value("0"),
-            "#");
+            "#")(
+            "rpc-access-token",
+            "Require this token in RPC header X-API-Key (or Authorization: Bearer <token>)",
+            cxxopts::value<std::string>()->default_value(config.rpcAccessToken),
+            "<token>")(
+            "rpc-read-timeout",
+            "RPC read timeout in seconds",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcReadTimeout)),
+            "#")(
+            "rpc-write-timeout",
+            "RPC write timeout in seconds",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcWriteTimeout)),
+            "#")(
+            "rpc-max-body-bytes",
+            "Maximum RPC request body size in bytes",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.rpcMaxRequestBodyBytes)),
+            "#")(
+            "rpc-max-rpm",
+            "Maximum RPC requests per minute per client IP (0 disables rate limiting)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxRequestsPerMinute)),
+            "#")(
+            "rpc-max-global-index-range",
+            "Maximum allowed block range for get_global_indexes_for_range",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxGlobalIndexesRange)),
+            "#")(
+            "rpc-max-block-count",
+            "Maximum allowed blockCount for wallet/raw-block sync RPC methods",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxBlockCount)),
+            "#")(
+            "rpc-trust-proxy",
+            "Trust X-Forwarded-For header for client IP (enable only behind trusted reverse proxy)",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
 
         options.add_options("Network")(
             "allow-local-ip",
@@ -190,7 +247,7 @@ namespace DaemonConfig
              cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("db-enable-compression",
              "Enable database compression",
-             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+             cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
             ("db-max-open-files",
              "Number of files that can be used by the database at one time " + maxOpenFiles,
              cxxopts::value<int>(),
@@ -216,6 +273,22 @@ namespace DaemonConfig
             "transaction-validation-threads",
             "Number of threads to use to validate a transaction's inputs in parallel",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.transactionValidationThreads)),
+            "#")(
+            "sync-max-peers",
+            "Maximum number of peers to synchronize blocks from in parallel",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncMaxPeers)),
+            "#")(
+            "sync-peer-failure-threshold",
+            "Failures allowed for a sync peer before demotion",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncPeerFailureThreshold)),
+            "#")(
+            "sync-batch-min",
+            "Minimum adaptive block request batch size",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncBatchMin)),
+            "#")(
+            "sync-batch-max",
+            "Maximum adaptive block request batch size",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncBatchMax)),
             "#");
 
         try
@@ -278,6 +351,16 @@ namespace DaemonConfig
                 {
                     config.exportNumBlocks = exportBlocks;
                 }
+            }
+
+            if (cli.count("prune") > 0)
+            {
+                config.prune = cli["prune"].as<bool>();
+            }
+
+            if (cli.count("prune-depth") > 0)
+            {
+                config.pruneDepth = clampPruneDepth(cli["prune-depth"].as<uint32_t>(), "CLI");
             }
 
             if (cli.count("print-genesis-tx") > 0)
@@ -453,9 +536,71 @@ namespace DaemonConfig
                 config.feeAmount = cli["fee-amount"].as<int>();
             }
 
+            if (cli.count("rpc-access-token") > 0)
+            {
+                config.rpcAccessToken = cli["rpc-access-token"].as<std::string>();
+            }
+
+            if (cli.count("rpc-read-timeout") > 0)
+            {
+                config.rpcReadTimeout = std::max<uint32_t>(1, cli["rpc-read-timeout"].as<uint32_t>());
+            }
+
+            if (cli.count("rpc-write-timeout") > 0)
+            {
+                config.rpcWriteTimeout = std::max<uint32_t>(1, cli["rpc-write-timeout"].as<uint32_t>());
+            }
+
+            if (cli.count("rpc-max-body-bytes") > 0)
+            {
+                config.rpcMaxRequestBodyBytes = std::max<uint64_t>(1024, cli["rpc-max-body-bytes"].as<uint64_t>());
+            }
+
+            if (cli.count("rpc-max-rpm") > 0)
+            {
+                config.rpcMaxRequestsPerMinute = cli["rpc-max-rpm"].as<uint32_t>();
+            }
+
+            if (cli.count("rpc-max-global-index-range") > 0)
+            {
+                config.rpcMaxGlobalIndexesRange =
+                    std::max<uint32_t>(100, cli["rpc-max-global-index-range"].as<uint32_t>());
+            }
+
+            if (cli.count("rpc-max-block-count") > 0)
+            {
+                config.rpcMaxBlockCount = std::max<uint32_t>(1, cli["rpc-max-block-count"].as<uint32_t>());
+            }
+
+            if (cli.count("rpc-trust-proxy") > 0)
+            {
+                config.rpcTrustProxy = cli["rpc-trust-proxy"].as<bool>();
+            }
+
             if (cli.count("transaction-validation-threads") > 0)
             {
                 config.transactionValidationThreads = cli["transaction-validation-threads"].as<uint32_t>();
+            }
+
+            if (cli.count("sync-max-peers") > 0)
+            {
+                config.syncMaxPeers = std::max<uint32_t>(1, cli["sync-max-peers"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-peer-failure-threshold") > 0)
+            {
+                config.syncPeerFailureThreshold =
+                    std::max<uint32_t>(1, cli["sync-peer-failure-threshold"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-batch-min") > 0)
+            {
+                config.syncBatchMin = std::max<uint32_t>(1, cli["sync-batch-min"].as<uint32_t>());
+            }
+
+            if (cli.count("sync-batch-max") > 0)
+            {
+                config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, cli["sync-batch-max"].as<uint32_t>());
             }
 
             if (config.help) // Do we want to display the help message?
@@ -730,6 +875,88 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("rpc-access-token") == 0)
+                {
+                    config.rpcAccessToken = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("rpc-read-timeout") == 0)
+                {
+                    try
+                    {
+                        config.rpcReadTimeout = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-write-timeout") == 0)
+                {
+                    try
+                    {
+                        config.rpcWriteTimeout = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-max-body-bytes") == 0)
+                {
+                    try
+                    {
+                        config.rpcMaxRequestBodyBytes = std::max<uint64_t>(1024, std::stoull(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-max-rpm") == 0)
+                {
+                    try
+                    {
+                        config.rpcMaxRequestsPerMinute = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-max-global-index-range") == 0)
+                {
+                    try
+                    {
+                        config.rpcMaxGlobalIndexesRange = std::max<uint32_t>(100, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-max-block-count") == 0)
+                {
+                    try
+                    {
+                        config.rpcMaxBlockCount = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-trust-proxy") == 0)
+                {
+                    config.rpcTrustProxy = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("transaction-validation-threads") == 0)
                 {
                     try
@@ -968,9 +1195,79 @@ namespace DaemonConfig
             config.feeAmount = j["fee-amount"].GetInt();
         }
 
+        if (j.HasMember("rpc-access-token"))
+        {
+            config.rpcAccessToken = j["rpc-access-token"].GetString();
+        }
+
+        if (j.HasMember("rpc-read-timeout"))
+        {
+            config.rpcReadTimeout = std::max<uint32_t>(1, j["rpc-read-timeout"].GetUint());
+        }
+
+        if (j.HasMember("rpc-write-timeout"))
+        {
+            config.rpcWriteTimeout = std::max<uint32_t>(1, j["rpc-write-timeout"].GetUint());
+        }
+
+        if (j.HasMember("rpc-max-body-bytes"))
+        {
+            config.rpcMaxRequestBodyBytes = std::max<uint64_t>(1024, j["rpc-max-body-bytes"].GetUint64());
+        }
+
+        if (j.HasMember("rpc-max-rpm"))
+        {
+            config.rpcMaxRequestsPerMinute = j["rpc-max-rpm"].GetUint();
+        }
+
+        if (j.HasMember("rpc-max-global-index-range"))
+        {
+            config.rpcMaxGlobalIndexesRange = std::max<uint32_t>(100, j["rpc-max-global-index-range"].GetUint());
+        }
+
+        if (j.HasMember("rpc-max-block-count"))
+        {
+            config.rpcMaxBlockCount = std::max<uint32_t>(1, j["rpc-max-block-count"].GetUint());
+        }
+
+        if (j.HasMember("rpc-trust-proxy"))
+        {
+            config.rpcTrustProxy = j["rpc-trust-proxy"].GetBool();
+        }
+
         if (j.HasMember("transaction-validation-threads"))
         {
             config.transactionValidationThreads = j["transaction-validation-threads"].GetInt();
+        }
+
+        if (j.HasMember("sync-max-peers"))
+        {
+            config.syncMaxPeers = std::max<uint32_t>(1, j["sync-max-peers"].GetUint());
+        }
+
+        if (j.HasMember("sync-peer-failure-threshold"))
+        {
+            config.syncPeerFailureThreshold = std::max<uint32_t>(1, j["sync-peer-failure-threshold"].GetUint());
+        }
+
+        if (j.HasMember("sync-batch-min"))
+        {
+            config.syncBatchMin = std::max<uint32_t>(1, j["sync-batch-min"].GetUint());
+        }
+
+        if (j.HasMember("sync-batch-max"))
+        {
+            config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, j["sync-batch-max"].GetUint());
+        }
+
+        if (j.HasMember("prune"))
+        {
+            config.prune = j["prune"].GetBool();
+        }
+
+        if (j.HasMember("prune-depth"))
+        {
+            config.pruneDepth = clampPruneDepth(j["prune-depth"].GetUint(), "config file");
         }
     }
 
@@ -1043,7 +1340,21 @@ namespace DaemonConfig
         j.AddMember("enable-mining", config.enableMining, alloc);
         j.AddMember("fee-address", config.feeAddress, alloc);
         j.AddMember("fee-amount", config.feeAmount, alloc);
+        j.AddMember("rpc-access-token", config.rpcAccessToken, alloc);
+        j.AddMember("rpc-read-timeout", config.rpcReadTimeout, alloc);
+        j.AddMember("rpc-write-timeout", config.rpcWriteTimeout, alloc);
+        j.AddMember("rpc-max-body-bytes", config.rpcMaxRequestBodyBytes, alloc);
+        j.AddMember("rpc-max-rpm", config.rpcMaxRequestsPerMinute, alloc);
+        j.AddMember("rpc-max-global-index-range", config.rpcMaxGlobalIndexesRange, alloc);
+        j.AddMember("rpc-max-block-count", config.rpcMaxBlockCount, alloc);
+        j.AddMember("rpc-trust-proxy", config.rpcTrustProxy, alloc);
         j.AddMember("transaction-validation-threads", config.transactionValidationThreads, alloc);
+        j.AddMember("prune", config.prune, alloc);
+        j.AddMember("prune-depth", config.pruneDepth, alloc);
+        j.AddMember("sync-max-peers", config.syncMaxPeers, alloc);
+        j.AddMember("sync-peer-failure-threshold", config.syncPeerFailureThreshold, alloc);
+        j.AddMember("sync-batch-min", config.syncBatchMin, alloc);
+        j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
 
         return j;
     }

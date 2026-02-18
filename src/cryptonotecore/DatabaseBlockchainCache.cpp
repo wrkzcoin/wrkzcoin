@@ -10,7 +10,9 @@
 #include <boost/iterator/iterator_facade.hpp>
 #include <common/CryptoNoteTools.h>
 #include <common/ShuffleGenerator.h>
+#include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <utilities/ParseExtra.h>
 #include <cryptonotecore/BlockchainStorage.h>
 #include <cryptonotecore/CryptoNoteBasicImpl.h>
 #include <cryptonotecore/DatabaseBlockchainCache.h>
@@ -252,6 +254,70 @@ namespace CryptoNote
 
             block = result.getRawBlocks().at(blockIndex);
             return true;
+        }
+
+        WalletTypes::RawTransaction toWalletRawTransaction(const CachedTransactionInfo &txInfo)
+        {
+            WalletTypes::RawTransaction tx;
+
+            tx.hash = txInfo.transactionHash;
+            tx.transactionPublicKey = txInfo.transactionPublicKey;
+            tx.unlockTime = txInfo.unlockTime;
+            tx.paymentID = txInfo.paymentId;
+            tx.keyInputs = txInfo.keyInputs;
+
+            size_t globalKeyOutputIndex = 0;
+            for (size_t i = 0; i < txInfo.outputs.size(); ++i)
+            {
+                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                {
+                    continue;
+                }
+
+                WalletTypes::KeyOutput output;
+                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
+
+                if (globalKeyOutputIndex < txInfo.globalIndexes.size())
+                {
+                    output.globalOutputIndex = txInfo.globalIndexes[globalKeyOutputIndex++];
+                }
+
+                tx.keyOutputs.push_back(output);
+            }
+
+            return tx;
+        }
+
+        WalletTypes::RawCoinbaseTransaction toWalletRawCoinbaseTransaction(const CachedTransactionInfo &txInfo)
+        {
+            WalletTypes::RawCoinbaseTransaction tx;
+
+            tx.hash = txInfo.transactionHash;
+            tx.transactionPublicKey = txInfo.transactionPublicKey;
+            tx.unlockTime = txInfo.unlockTime;
+
+            size_t globalKeyOutputIndex = 0;
+            for (size_t i = 0; i < txInfo.outputs.size(); ++i)
+            {
+                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                {
+                    continue;
+                }
+
+                WalletTypes::KeyOutput output;
+                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
+
+                if (globalKeyOutputIndex < txInfo.globalIndexes.size())
+                {
+                    output.globalOutputIndex = txInfo.globalIndexes[globalKeyOutputIndex++];
+                }
+
+                tx.keyOutputs.push_back(output);
+            }
+
+            return tx;
         }
 
         Transaction extractTransaction(const RawBlock &block, uint32_t transactionIndex)
@@ -534,7 +600,7 @@ namespace CryptoNote
             uint32_t schemeVersion;
         };
 
-        const uint32_t CURRENT_DB_SCHEME_VERSION = 2;
+        const uint32_t CURRENT_DB_SCHEME_VERSION = 3;
 
     } // namespace
 
@@ -1080,11 +1146,14 @@ namespace CryptoNote
         transactionCacheInfo.transactionIndex = transactionBlockIndex;
         transactionCacheInfo.transactionHash = cachedTransaction.getTransactionHash();
         transactionCacheInfo.unlockTime = tx.unlockTime;
+        transactionCacheInfo.transactionPublicKey = getTransactionPublicKeyFromExtra(tx.extra);
 
         assert(tx.outputs.size() <= std::numeric_limits<uint16_t>::max());
 
         transactionCacheInfo.globalIndexes.reserve(tx.outputs.size());
         transactionCacheInfo.outputs.reserve(tx.outputs.size());
+        transactionCacheInfo.outputAmounts.reserve(tx.outputs.size());
+        transactionCacheInfo.keyInputs.reserve(tx.inputs.size());
         auto outputCount = 0;
         std::unordered_map<Amount, std::vector<PackedOutIndex>> keyIndexes;
 
@@ -1093,6 +1162,7 @@ namespace CryptoNote
         for (auto &output : tx.outputs)
         {
             transactionCacheInfo.outputs.push_back(output.target);
+            transactionCacheInfo.outputAmounts.push_back(output.amount);
 
             PackedOutIndex poi;
             poi.blockIndex = blockIndex;
@@ -1124,6 +1194,14 @@ namespace CryptoNote
             }
         }
 
+        for (const auto &input : tx.inputs)
+        {
+            if (input.type() == typeid(KeyInput))
+            {
+                transactionCacheInfo.keyInputs.push_back(boost::get<KeyInput>(input));
+            }
+        }
+
         for (auto &amountToOutputs : keyIndexes)
         {
             batch.insertKeyOutputGlobalIndexes(
@@ -1137,6 +1215,9 @@ namespace CryptoNote
             assert(keyOutputAmountsCount.is_initialized());
             batch.insertKeyOutputAmounts(newKeyAmounts, *keyOutputAmountsCount);
         }
+
+        /* Persist payment ID text for wallet sync output (supports both short and long). */
+        transactionCacheInfo.paymentId = Utilities::getPaymentIDFromExtra(cachedTransaction.getTransaction().extra);
 
         Crypto::Hash paymentId;
         if (getPaymentIdFromTxExtra(cachedTransaction.getTransaction().extra, paymentId))
@@ -2258,9 +2339,156 @@ namespace CryptoNote
         return orderedBlocks;
     }
 
+    bool DatabaseBlockchainCache::getWalletSyncBlock(
+        uint32_t blockIndex,
+        bool skipCoinbaseTransactions,
+        WalletTypes::WalletBlockInfo &walletBlock) const
+    {
+        auto blockBatch = BlockchainReadBatch().requestCachedBlock(blockIndex).requestTransactionHashesByBlock(blockIndex);
+        const auto blockResult = readDatabase(blockBatch);
+
+        if (blockResult.getCachedBlocks().count(blockIndex) == 0
+            || blockResult.getTransactionHashesByBlocks().count(blockIndex) == 0)
+        {
+            return false;
+        }
+
+        const auto &blockInfo = blockResult.getCachedBlocks().at(blockIndex);
+        const auto &transactionHashes = blockResult.getTransactionHashesByBlocks().at(blockIndex);
+
+        walletBlock.blockHeight = blockIndex;
+        walletBlock.blockHash = blockInfo.blockHash;
+        walletBlock.blockTimestamp = blockInfo.timestamp;
+        walletBlock.transactions.clear();
+        walletBlock.coinbaseTransaction.reset();
+
+        if (transactionHashes.empty())
+        {
+            return true;
+        }
+
+        BlockchainReadBatch transactionBatch;
+        for (const auto &hash : transactionHashes)
+        {
+            transactionBatch.requestCachedTransaction(hash);
+        }
+
+        const auto transactionsResult = readDatabase(transactionBatch);
+        const auto &transactions = transactionsResult.getCachedTransactions();
+
+        for (size_t i = 0; i < transactionHashes.size(); ++i)
+        {
+            const auto transactionIt = transactions.find(transactionHashes[i]);
+
+            if (transactionIt == transactions.end())
+            {
+                continue;
+            }
+
+            if (i == 0)
+            {
+                if (!skipCoinbaseTransactions)
+                {
+                    walletBlock.coinbaseTransaction = toWalletRawCoinbaseTransaction(transactionIt->second);
+                }
+
+                continue;
+            }
+
+            walletBlock.transactions.push_back(toWalletRawTransaction(transactionIt->second));
+        }
+
+        return true;
+    }
+
+    std::vector<Crypto::Hash>
+        DatabaseBlockchainCache::getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const
+    {
+        std::vector<Crypto::Hash> hashes;
+
+        if (startHeight >= endHeight)
+        {
+            return hashes;
+        }
+
+        BlockchainReadBatch batch;
+        for (uint64_t height = startHeight; height < endHeight; ++height)
+        {
+            batch.requestTransactionHashesByBlock(static_cast<uint32_t>(height));
+        }
+
+        const auto result = readDatabase(batch);
+        const auto &byBlocks = result.getTransactionHashesByBlocks();
+
+        for (uint64_t height = startHeight; height < endHeight; ++height)
+        {
+            const auto it = byBlocks.find(static_cast<uint32_t>(height));
+            if (it == byBlocks.end())
+            {
+                continue;
+            }
+
+            hashes.insert(hashes.end(), it->second.begin(), it->second.end());
+        }
+
+        return hashes;
+    }
+
+    size_t DatabaseBlockchainCache::pruneStoredRawBlocks(uint32_t pruneDepth)
+    {
+        if (pruneDepth == 0)
+        {
+            return 0;
+        }
+
+        const uint64_t topHeight = static_cast<uint64_t>(getTopBlockIndex()) + 1;
+
+        if (topHeight <= pruneDepth)
+        {
+            return 0;
+        }
+
+        const uint64_t pruneBeforeHeight = topHeight - pruneDepth;
+        const uint32_t pruneBatchSize = 10000;
+
+        size_t removed = 0;
+
+        for (uint64_t start = 0; start < pruneBeforeHeight; start += pruneBatchSize)
+        {
+            const uint64_t end = std::min<uint64_t>(pruneBeforeHeight, start + pruneBatchSize);
+            BlockchainWriteBatch writeBatch;
+
+            for (uint64_t index = start; index < end; ++index)
+            {
+                writeBatch.removeRawBlock(static_cast<uint32_t>(index));
+            }
+
+            const auto error = database.write(writeBatch);
+
+            if (error)
+            {
+                throw std::runtime_error("Failed to prune raw blocks: " + error.message());
+            }
+
+            removed += static_cast<size_t>(end - start);
+        }
+
+        return removed;
+    }
+
+    std::error_code DatabaseBlockchainCache::compactDatabase()
+    {
+        return database.compact();
+    }
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {
+        if (transactionHashes.empty())
+        {
+            return {};
+        }
+
         auto txBatch = BlockchainReadBatch().requestCachedTransactions(transactionHashes);
 
         database.read(txBatch);

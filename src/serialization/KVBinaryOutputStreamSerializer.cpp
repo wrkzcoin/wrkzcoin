@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <common/StreamTools.h>
+#include <limits>
 #include <stdexcept>
 
 using namespace Common;

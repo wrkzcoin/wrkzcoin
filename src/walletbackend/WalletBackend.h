@@ -13,6 +13,7 @@
 #include <string>
 #include <subwallets/SubWallets.h>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 #include <walletbackend/WalletSynchronizer.h>
 #include <walletbackend/WalletSynchronizerRAIIWrapper.h>
@@ -264,6 +265,12 @@ class WalletBackend
     std::tuple<Error, std::string> getAddress(const Crypto::PublicKey spendKey) const;
 
     std::tuple<Error, Crypto::SecretKey> getTxPrivateKey(const Crypto::Hash txHash) const;
+
+    bool getTransactionsStatus(
+        const std::unordered_set<Crypto::Hash> transactionHashes,
+        std::unordered_set<Crypto::Hash> &transactionsInPool,
+        std::unordered_set<Crypto::Hash> &transactionsInBlock,
+        std::unordered_set<Crypto::Hash> &transactionsUnknown) const;
 
     std::vector<std::tuple<std::string, uint64_t, uint64_t>> getBalances() const;
 

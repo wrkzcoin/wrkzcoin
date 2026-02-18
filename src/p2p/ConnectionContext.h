@@ -43,6 +43,14 @@ namespace CryptoNote
         std::unordered_set<Crypto::Hash> m_requested_objects;
         uint32_t m_remote_blockchain_height = 0;
         uint32_t m_last_response_height = 0;
+        bool m_remote_is_pruned_node = false;
+        uint32_t m_remote_pruned_node_height = 0;
+
+        uint32_t m_sync_batch_size = 100;
+        uint64_t m_sync_blocks_received = 0;
+        uint64_t m_sync_bytes_received = 0;
+        uint32_t m_sync_failures = 0;
+        uint64_t m_last_sync_progress_ts = 0;
     };
 
     inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s)

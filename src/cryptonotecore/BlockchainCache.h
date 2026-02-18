@@ -47,8 +47,16 @@ namespace CryptoNote
 
         std::vector<TransactionOutputTarget> outputs;
 
+        std::vector<uint64_t> outputAmounts;
+
         // needed for getTransactionGlobalIndexes query
         std::vector<uint32_t> globalIndexes;
+
+        std::vector<KeyInput> keyInputs;
+
+        Crypto::PublicKey transactionPublicKey;
+
+        std::string paymentId;
 
         void serialize(ISerializer &s);
     };

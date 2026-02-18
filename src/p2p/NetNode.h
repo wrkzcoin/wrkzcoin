@@ -19,6 +19,7 @@
 #include <boost/functional/hash.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <functional>
+#include <mutex>
 #include <system/Context.h>
 #include <system/ContextGroup.h>
 #include <system/Dispatcher.h>
@@ -176,6 +177,12 @@ namespace CryptoNote
         {
             return m_peerlist;
         }
+
+        bool ban_host(uint32_t ip, uint64_t seconds) override;
+
+        bool unban_host(uint32_t ip) override;
+
+        std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
       private:
         int handleCommand(
@@ -410,5 +417,11 @@ namespace CryptoNote
         uint64_t m_peer_livetime;
 
         boost::uuids::uuid m_network_id;
+
+        std::mutex m_banMutex;
+
+        std::unordered_map<uint32_t, uint64_t> m_bannedHostsUntil;
+
+        bool isHostBanned(uint32_t ip);
     };
 } // namespace CryptoNote

@@ -8,11 +8,18 @@
 
 #include <common/Base58.h>
 #include <config/CryptoNoteConfig.h>
+#include <config/WalletConfig.h>
 #include <errors/ValidateParameters.h>
 #include <serialization/SerializationTools.h>
 
 namespace Utilities
 {
+    bool isIntegratedAddress(const std::string address)
+    {
+        return address.length() == WalletConfig::integratedAddressLength
+               || address.length() == WalletConfig::integratedAddressLengthLong;
+    }
+
     /* Will throw an exception if the addresses are invalid. Please check they
        are valid before calling this function. (e.g. use validateAddresses)
 
@@ -63,7 +70,20 @@ namespace Utilities
         /* Decode from base58 */
         Tools::Base58::decode_addr(address, ignore, decoded);
 
-        const uint64_t paymentIDLen = 64;
+        uint64_t paymentIDLen = 0;
+
+        if (address.length() == WalletConfig::integratedAddressLength)
+        {
+            paymentIDLen = WalletConfig::shortPaymentIDLength;
+        }
+        else if (address.length() == WalletConfig::integratedAddressLengthLong)
+        {
+            paymentIDLen = WalletConfig::longPaymentIDLength;
+        }
+        else
+        {
+            throw std::invalid_argument("Address is not an integrated address!");
+        }
 
         /* Grab the payment ID from the decoded address */
         std::string paymentID = decoded.substr(0, paymentIDLen);
@@ -110,6 +130,12 @@ namespace Utilities
         if (Error error = validatePaymentID(paymentID); error != SUCCESS)
         {
             return {error, std::string()};
+        }
+
+        if (paymentID.length() != WalletConfig::shortPaymentIDLength
+            && paymentID.length() != WalletConfig::longPaymentIDLength)
+        {
+            return {PAYMENT_ID_WRONG_LENGTH, std::string()};
         }
 
         const bool allowIntegratedAddresses = false;
