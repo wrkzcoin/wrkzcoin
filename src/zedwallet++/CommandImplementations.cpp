@@ -845,10 +845,16 @@ void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::stri
         const bool incoming = confirmedIt->totalAmount() > 0;
         std::cout << SuccessMsg("found (confirmed ") << SuccessMsg(incoming ? "incoming" : "outgoing")
                   << SuccessMsg(")") << std::endl;
-        std::cout << "  block: " << SuccessMsg(confirmedIt->blockHeight)
-                  << ", amount: " << (incoming ? SuccessMsg(Utilities::formatAmount(confirmedIt->totalAmount()))
-                                                : WarningMsg(Utilities::formatAmount(std::abs(confirmedIt->totalAmount()))))
-                  << std::endl;
+        std::cout << "  block: " << SuccessMsg(confirmedIt->blockHeight) << ", amount: ";
+        if (incoming)
+        {
+            std::cout << SuccessMsg(Utilities::formatAmount(confirmedIt->totalAmount()));
+        }
+        else
+        {
+            std::cout << WarningMsg(Utilities::formatAmount(std::abs(confirmedIt->totalAmount())));
+        }
+        std::cout << std::endl;
         if (!confirmedIt->paymentID.empty())
         {
             std::cout << "  payment ID: " << SuccessMsg(confirmedIt->paymentID) << std::endl;
