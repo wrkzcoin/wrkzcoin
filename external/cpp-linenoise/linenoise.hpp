@@ -131,7 +131,7 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <Windows.h>
+#include <windows.h>
 #include <io.h>
 #ifndef STDIN_FILENO
 #define STDIN_FILENO (_fileno(stdin))
@@ -1629,6 +1629,7 @@ inline bool enableRawMode(int fd) {
     if (tcsetattr(fd,TCSAFLUSH,&raw) < 0) goto fatal;
     rawmode = true;
 #else
+    DWORD consolemodeInWithRaw = 0;
     if (!atexit_registered) {
         /* Cleanup them at exit */
         atexit(linenoiseAtExit);
@@ -1654,7 +1655,7 @@ inline bool enableRawMode(int fd) {
     }
 
     GetConsoleMode(hIn, &consolemodeIn);
-    DWORD consolemodeInWithRaw = consolemodeIn & ~ENABLE_PROCESSED_INPUT;
+    consolemodeInWithRaw = consolemodeIn & ~ENABLE_PROCESSED_INPUT;
     SetConsoleMode(hIn, consolemodeInWithRaw);
 
     rawmode = true;

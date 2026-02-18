@@ -132,14 +132,19 @@ endif ()
 include_directories(include "${CMAKE_CURRENT_BINARY_DIR}/version" src external)
 
 ## Platform specific code base information is applied here
-if (MSVC)
+if (WIN32)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows)
-    add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
-    foreach (VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
-        string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
-    endforeach ()
-    include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
+    if (MSVC)
+        add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
+        foreach (VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
+            string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
+        endforeach ()
+        include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
+    else ()
+        include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/mingw)
+        add_definitions(-DWIN32 -D_WIN32_WINNT=0x0600 -DWIN32_LEAN_AND_MEAN)
+    endif ()
 elseif (APPLE)
     include_directories(SYSTEM /usr/include/malloc)
     enable_language(ASM)
@@ -213,7 +218,7 @@ if (NOT MSVC)
         endif ()
     endif ()
 
-    if (NOT APPLE)
+    if (NOT APPLE AND NOT WIN32)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
 
@@ -294,8 +299,12 @@ endif()
 
 if (OPENSSL_FOUND)
     ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
-    if (NOT MSVC)
+    if (NOT MSVC AND NOT WIN32)
         set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};dl")
+    endif ()
+    if (WIN32)
+        # Static OpenSSL for MinGW needs these system libs after libcrypto/libssl.
+        set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};crypt32;ws2_32;bcrypt;iphlpapi")
     endif ()
 
     include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
@@ -313,6 +322,13 @@ add_subdirectory(src)
 if (NOT MSVC)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
     set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
+    set(ROCKSDB_CMAKE_EXTRA_ARGS "")
+    if (CMAKE_TOOLCHAIN_FILE)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    endif ()
+    if (CMAKE_SYSROOT)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_SYSROOT=${CMAKE_SYSROOT}")
+    endif ()
 
     execute_process(
         COMMAND ${CMAKE_COMMAND}
@@ -328,6 +344,7 @@ if (NOT MSVC)
             -DUSE_RTTI=ON
             -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
             -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
+            ${ROCKSDB_CMAKE_EXTRA_ARGS}
             -B${PROJECT_BINARY_DIR}/rocksdb
         RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
     )

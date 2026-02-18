@@ -28,7 +28,9 @@ elseif (NOT MSVC)
     set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
     add_custom_target(
             rocksdb
-            COMMAND $(MAKE) rocksdb
+            BYPRODUCTS
+                ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a
+            COMMAND ${CMAKE_COMMAND} --build ${PROJECT_BINARY_DIR}/rocksdb --target rocksdb --parallel 1
             WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/rocksdb
     )
     add_dependencies(rocksdb libzstd_static)

@@ -44,7 +44,7 @@ file(GLOB_RECURSE WalletService walletservice/*)
 file(GLOB_RECURSE WalletUpgrader walletupgrader/*)
 file(GLOB_RECURSE zedwallet++ zedwallet++/*)
 
-if (MSVC)
+if (WIN32)
     file(GLOB_RECURSE System system/* platform/windows/system/*)
 elseif (APPLE)
     file(GLOB_RECURSE System system/* platform/osx/system/* platform/posix/system/*)
@@ -78,7 +78,7 @@ add_library(Utilities STATIC ${Utilities})
 add_library(Wallet STATIC ${Wallet})
 add_library(WalletBackend STATIC ${WalletBackend})
 
-if (MSVC)
+if (WIN32)
     set(DAEMON_SOURCES_OS
             binaryinfo/daemon.rc
             )
@@ -110,10 +110,15 @@ add_executable(WalletApi ${WalletApi} ${WALLET_API_SOURCES_OS})
 add_executable(WalletUpgrader ${WalletUpgrader} ${WALLET_UPGRADER_SOURCES_OS})
 add_executable(zedwallet++ ${zedwallet++} ${ZED_WALLET_SOURCES_OS})
 
-if (MSVC)
+if (WIN32)
     target_link_libraries(System ws2_32)
-    target_link_libraries(Wrkzd Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
-    target_link_libraries(WalletService Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
+    if (MSVC)
+        target_link_libraries(Wrkzd ws2_32 advapi32 crypt32 gdi32 user32)
+        target_link_libraries(WalletService Rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
+    else ()
+        target_link_libraries(Wrkzd ws2_32 advapi32 crypt32 gdi32 user32)
+        target_link_libraries(WalletService rpcrt4 ws2_32 advapi32 crypt32 gdi32 user32)
+    endif ()
     target_link_libraries(zedwallet++ ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(WalletApi ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(miner ws2_32 advapi32 crypt32 gdi32 user32)
@@ -167,6 +172,11 @@ if (OPENSSL_FOUND)
     target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
     target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
     target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
+endif ()
+
+if (WIN32 AND NOT MSVC)
+    # RocksDB Windows objects require shlwapi and rpc symbols; keep them late.
+    target_link_libraries(Wrkzd shlwapi rpcrt4)
 endif ()
 
 # Add dependencies means we have to build the latter before we build the former

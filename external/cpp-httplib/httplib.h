@@ -30,7 +30,9 @@
 #define S_ISDIR(m)  (((m)&S_IFDIR)==S_IFDIR)
 #endif //S_ISDIR
 
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 
 #include <io.h>
 #include <winsock2.h>
@@ -1718,7 +1720,7 @@ inline std::string SocketStream::get_remote_addr() const {
 // Buffer stream implementation
 inline int BufferStream::read(char* ptr, size_t size)
 {
-#ifdef _WIN32
+#if defined(_WIN32) && defined(_MSC_VER)
     return static_cast<int>(buffer._Copy_s(ptr, size, size));
 #else
     return static_cast<int>(buffer.copy(ptr, size));

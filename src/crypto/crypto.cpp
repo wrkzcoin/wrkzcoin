@@ -11,7 +11,11 @@
 #include "hash.h"
 #include "random.h"
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 #include <cassert>
 #include <cstddef>
 #include <cstdint>

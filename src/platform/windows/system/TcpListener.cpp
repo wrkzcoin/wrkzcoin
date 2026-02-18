@@ -167,7 +167,7 @@ namespace System
         }
         else
         {
-            uint8_t addresses[sizeof sockaddr_in * 2 + 32];
+            uint8_t addresses[sizeof(sockaddr_in) * 2 + 32];
             DWORD received;
             TcpListenerContext context2;
             context2.hEvent = NULL;
