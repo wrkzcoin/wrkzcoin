@@ -2,7 +2,7 @@
 
 Implementation: `src/walletservice/PaymentServiceJsonRpcServer.cpp`
 
-This is a JSON-RPC server used by wallet service (`walletservice`), separate from the HTTP wallet-api routes.
+This is a JSON-RPC server used by the legacy wallet service binary (`wrkz-service`), separate from the HTTP wallet-api routes.
 
 Request format is JSON-RPC-like with:
 

@@ -1,24 +1,24 @@
-# Using Wallet CLI
+﻿# Using Wallet CLI
 
 Implementation references:
 
 - CLI args: `src/zedwallet++/ParseArguments.cpp`
 - Command catalog: `src/zedwallet++/Commands.cpp`
 
-This project’s interactive wallet CLI is `zedwallet++`.
+This project's interactive wallet CLI binary is `wrkz-wallet`.
 
 ## Start the CLI
 
 Show help:
 
 ```bash
-./zedwallet++ --help
+./wrkz-wallet --help
 ```
 
 Open an existing wallet from command line:
 
 ```bash
-./zedwallet++ \
+./wrkz-wallet \
   --wallet-file wallet.wallet \
   --password "wallet-pass" \
   --remote-daemon 127.0.0.1:11898 \
@@ -105,7 +105,7 @@ Security and maintenance:
 1. Start:
 
 ```bash
-./zedwallet++ --remote-daemon 127.0.0.1:11898
+./wrkz-wallet --remote-daemon 127.0.0.1:11898
 ```
 
 2. Create or open wallet in startup menu:

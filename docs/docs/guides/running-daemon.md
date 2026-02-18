@@ -2,7 +2,7 @@
 
 ## Typical startup flags
 
-Use the daemon binary with RPC-related flags such as:
+Use the daemon binary (`Wrkzd`) with RPC-related flags such as:
 
 - `--rpc-bind-ip`
 - `--rpc-bind-port`
@@ -26,7 +26,7 @@ See definitions in `src/daemon/DaemonConfiguration.cpp`.
 ## Example command
 
 ```bash
-./daemon \
+./Wrkzd \
   --rpc-bind-ip 127.0.0.1 \
   --rpc-bind-port 11898 \
   --rpc-access-token "strong-token" \

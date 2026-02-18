@@ -24,7 +24,7 @@ Send `X-API-KEY: <rpc-password>` on every request.
 ## Example command
 
 ```bash
-./wallet-api \
+./wrkz-wallet-api \
   --rpc-bind-ip 127.0.0.1 \
   --port 8070 \
   --rpc-password "strong-password" \

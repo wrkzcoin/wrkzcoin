@@ -10,6 +10,14 @@ Scope in this first draft:
 - Wallet CLI (`src/zedwallet++`)
 - Basic operator guides
 
+## Binaries
+
+- Daemon: `Wrkzd`
+- Wallet CLI: `wrkz-wallet`
+- Wallet API: `wrkz-wallet-api`
+- Wallet Service (legacy): `wrkz-service`
+- Hash test: `cryptotest`
+
 Source of truth is always the current code. Keep these pages updated when route registration or method handlers change.
 
 ## Build locally
