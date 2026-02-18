@@ -57,6 +57,7 @@ namespace WalletConfig
        base58 encoding is done by encoding chunks of 8 chars at once into
        blocks of 11 chars, we can calculate this automatically. */
     const uint16_t integratedAddressLength = standardAddressLength + ((shortPaymentIDLength * 11) / 8);
+    const uint16_t integratedAddressLengthLong = standardAddressLength + ((longPaymentIDLength * 11) / 8);
 
     /* The default fee value to use with transactions (in ATOMIC units!) */
     const uint64_t defaultFee = CryptoNote::parameters::MINIMUM_FEE_V1;

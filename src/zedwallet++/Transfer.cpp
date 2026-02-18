@@ -8,6 +8,7 @@
 
 #include <config/WalletConfig.h>
 #include <iostream>
+#include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Input.h>
@@ -50,7 +51,7 @@ void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sen
 
     std::string paymentID;
 
-    if (address.length() == WalletConfig::standardAddressLength)
+    if (!Utilities::isIntegratedAddress(address))
     {
         paymentID = getPaymentID(
             "What payment ID do you want to use?\n"

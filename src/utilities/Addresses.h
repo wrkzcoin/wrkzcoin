@@ -15,6 +15,8 @@ namespace Utilities
 
     std::tuple<Crypto::PublicKey, Crypto::PublicKey> addressToKeys(const std::string address);
 
+    bool isIntegratedAddress(const std::string address);
+
     std::tuple<std::string, std::string> extractIntegratedAddressData(const std::string address);
 
     std::string publicKeysToAddress(const Crypto::PublicKey publicSpendKey, const Crypto::PublicKey publicViewKey);

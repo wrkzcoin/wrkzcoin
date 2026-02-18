@@ -651,7 +651,7 @@ std::tuple<Error, uint16_t>
     std::string actualAddress = address;
     std::string paymentID = "";
 
-    const bool isIntegrated = address.length() == WalletConfig::integratedAddressLength;
+    const bool isIntegrated = Utilities::isIntegratedAddress(address);
 
     if (isIntegrated)
     {
@@ -661,7 +661,7 @@ std::tuple<Error, uint16_t>
     const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(actualAddress);
 
     nlohmann::json j {
-        {"isIntegrated", address.length() == WalletConfig::integratedAddressLength},
+        {"isIntegrated", isIntegrated},
         {"paymentID", paymentID},
         {"actualAddress", actualAddress},
         {"publicSpendKey", publicSpendKey},

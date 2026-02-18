@@ -362,7 +362,7 @@ namespace SendTransaction
            in validateTransaction(), and the paymentID's do not conflict. */
         for (auto &[address, amount] : addressesAndAmounts)
         {
-            if (address.length() != WalletConfig::integratedAddressLength)
+            if (!Utilities::isIntegratedAddress(address))
             {
                 continue;
             }

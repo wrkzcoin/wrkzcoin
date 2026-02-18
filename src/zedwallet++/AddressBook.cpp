@@ -13,6 +13,7 @@
 #include <rapidjson/istreamwrapper.h>
 #include <rapidjson/ostreamwrapper.h>
 #include <rapidjson/prettywriter.h>
+#include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/Input.h>
 #include <utilities/String.h>
@@ -79,7 +80,7 @@ void addToAddressBook()
     std::string paymentID;
 
     /* Don't prompt for a payment ID if we have an integrated address */
-    if (address.length() == WalletConfig::standardAddressLength)
+    if (!Utilities::isIntegratedAddress(address))
     {
         const bool cancelAllowed = true;
 
