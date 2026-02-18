@@ -163,6 +163,16 @@ else ()
 endif ()
 
 if (NOT MSVC)
+    string(TOLOWER "${CMAKE_C_COMPILER}" WRKZ_C_COMPILER_LC)
+    string(TOLOWER "${CMAKE_CXX_COMPILER}" WRKZ_CXX_COMPILER_LC)
+    set(WRKZ_COMPILER_TARGETS_ARM FALSE)
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM TRUE)
+    endif ()
+
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         # This option has no effect in glibc version less than 2.20.
         # Since glibc 2.20 _BSD_SOURCE is deprecated, this macro is recomended instead
@@ -171,13 +181,25 @@ if (NOT MSVC)
 
     ## This is here to support building for multiple architecture types... but we all know how well that usually goes...
     if ("${ARCH}" STREQUAL "default")
-        if (PORTABLE_BINARY AND NOT CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+        if (
+            PORTABLE_BINARY
+            AND NOT WRKZ_COMPILER_TARGETS_ARM
+            AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64"
+        )
             set(ARCH_FLAG "-march=x86-64 -mtune=generic")
         else ()
             set(ARCH_FLAG "")
         endif ()
     else ()
-        set(ARCH_FLAG "-march=${ARCH}")
+        if (
+            WRKZ_COMPILER_TARGETS_ARM
+            AND "${ARCH}" MATCHES "x86|X86|amd64|AMD64"
+        )
+            message(WARNING "Ignoring ARCH=${ARCH} because selected compiler targets ARM/aarch64.")
+            set(ARCH_FLAG "")
+        else ()
+            set(ARCH_FLAG "-march=${ARCH}")
+        endif ()
         if (PORTABLE_BINARY AND "${ARCH}" STREQUAL "native")
             message(WARNING "ARCH=native requested with PORTABLE_BINARY=ON. Result may not run on different CPUs.")
         endif ()
@@ -209,7 +231,7 @@ if (NOT MSVC)
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
         set(MAES_FLAG "")
         set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT WRKZ_COMPILER_TARGETS_ARM AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
         if (ENABLE_X86_AESNI AND NOT NO_AES)
             set(MAES_FLAG "-maes")
         else ()
