@@ -2398,6 +2398,39 @@ namespace CryptoNote
         return true;
     }
 
+    std::vector<Crypto::Hash>
+        DatabaseBlockchainCache::getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const
+    {
+        std::vector<Crypto::Hash> hashes;
+
+        if (startHeight >= endHeight)
+        {
+            return hashes;
+        }
+
+        BlockchainReadBatch batch;
+        for (uint64_t height = startHeight; height < endHeight; ++height)
+        {
+            batch.requestTransactionHashesByBlock(static_cast<uint32_t>(height));
+        }
+
+        const auto result = readDatabase(batch);
+        const auto &byBlocks = result.getTransactionHashesByBlocks();
+
+        for (uint64_t height = startHeight; height < endHeight; ++height)
+        {
+            const auto it = byBlocks.find(static_cast<uint32_t>(height));
+            if (it == byBlocks.end())
+            {
+                continue;
+            }
+
+            hashes.insert(hashes.end(), it->second.begin(), it->second.end());
+        }
+
+        return hashes;
+    }
+
     size_t DatabaseBlockchainCache::pruneStoredRawBlocks(uint32_t pruneDepth)
     {
         if (pruneDepth == 0)
@@ -2448,6 +2481,11 @@ namespace CryptoNote
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {
+        if (transactionHashes.empty())
+        {
+            return {};
+        }
+
         auto txBatch = BlockchainReadBatch().requestCachedTransactions(transactionHashes);
 
         database.read(txBatch);

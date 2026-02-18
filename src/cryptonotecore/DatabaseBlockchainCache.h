@@ -241,6 +241,8 @@ namespace CryptoNote
             bool skipCoinbaseTransactions,
             WalletTypes::WalletBlockInfo &walletBlock) const;
 
+        std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
+
         size_t pruneStoredRawBlocks(uint32_t pruneDepth);
 
         std::error_code compactDatabase();

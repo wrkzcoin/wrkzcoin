@@ -1748,19 +1748,25 @@ namespace CryptoNote
             IBlockchainCache *mainChain = chainsLeaves[0];
 
             std::vector<Crypto::Hash> transactionHashes;
-
-            for (const auto &rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
+            if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                for (const auto &transaction : rawBlock.transactions)
+                transactionHashes = dbCache->getTransactionHashesByBlockRange(startHeight, endHeight);
+            }
+            else
+            {
+                for (const auto &rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
                 {
-                    transactionHashes.push_back(getBinaryArrayHash(transaction));
+                    for (const auto &transaction : rawBlock.transactions)
+                    {
+                        transactionHashes.push_back(getBinaryArrayHash(transaction));
+                    }
+
+                    BlockTemplate block;
+
+                    fromBinaryArray(block, rawBlock.block);
+
+                    transactionHashes.push_back(getBinaryArrayHash(toBinaryArray(block.baseTransaction)));
                 }
-
-                BlockTemplate block;
-
-                fromBinaryArray(block, rawBlock.block);
-
-                transactionHashes.push_back(getBinaryArrayHash(toBinaryArray(block.baseTransaction)));
             }
 
             indexes = mainChain->getGlobalIndexes(transactionHashes);
