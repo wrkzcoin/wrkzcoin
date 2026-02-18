@@ -13,14 +13,13 @@ add_subdirectory(miniupnpc)
 add_subdirectory(cryptopp)
 add_subdirectory(argon2)
 add_subdirectory(zstd)
-add_subdirectory(snappy)
+set(WITH_SNAPPY OFF CACHE BOOL "Disable Snappy in RocksDB" FORCE)
 
 if (MSVC)
     add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
-    add_subdirectory(levelDB EXCLUDE_FROM_ALL)
-    set_property(TARGET upnpc-static cryptopp-static rocksdb leveldb snappy zstd argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static rocksdb zstd argon2 PROPERTY FOLDER "external")
 elseif (NOT MSVC)
-    set_property(TARGET upnpc-static cryptopp-static snappy zstd argon2 PROPERTY FOLDER "external")
+    set_property(TARGET upnpc-static cryptopp-static zstd argon2 PROPERTY FOLDER "external")
     add_custom_target(
             rocksdb
             COMMAND $(MAKE) rocksdb
@@ -29,15 +28,6 @@ elseif (NOT MSVC)
     add_library(rocksdblib STATIC IMPORTED GLOBAL)
     set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
     add_dependencies(rocksdblib rocksdb)
-
-    add_custom_target(
-            leveldb
-            COMMAND $(MAKE) leveldb
-            WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/leveldb
-    )
-    add_library(leveldblib STATIC IMPORTED GLOBAL)
-    set_target_properties(leveldblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/leveldb/libleveldb.a)
-    add_dependencies(leveldblib leveldb)
 endif ()
 
 if (MSVC)

@@ -572,7 +572,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Next Fork",             Utilities::get_fork_time(networkHeight, upgradeHeights)});
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
-    statusTable.push_back({"DB Engine",             m_config.enableLevelDB ? "LevelDB" : "RocksDB"});
+    statusTable.push_back({"DB Engine",             "RocksDB"});
     statusTable.push_back({"Pruned Node",          getBoolFromJSON(resp, "pruned") ? "Yes" : "No"});
     statusTable.push_back({"Prune Depth",          std::to_string(getUint64FromJSON(resp, "prune_depth"))});
     statusTable.push_back({"Prune Capability Fork Active", getBoolFromJSON(resp, "prune_capability_active") ? "Yes" : "No"});
@@ -763,8 +763,8 @@ bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
 {
-    const std::string engine = m_config.enableLevelDB ? "LevelDB" : "RocksDB";
-    const fs::path dbPath = fs::path(m_config.dataDirectory) / (m_config.enableLevelDB ? "LevelDB" : "DB");
+    const std::string engine = "RocksDB";
+    const fs::path dbPath = fs::path(m_config.dataDirectory) / "DB";
     const DbDirStats stats = collectDbDirStats(dbPath);
     const bool compressionEnabled = m_config.enableDbCompression;
 
@@ -772,17 +772,9 @@ bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
     std::cout << InformationMsg("Compression Enabled: ")
               << SuccessMsg(compressionEnabled ? "Yes" : "No") << std::endl;
 
-    if (m_config.enableLevelDB)
-    {
-        std::cout << InformationMsg("Compression Mode: ")
-                  << SuccessMsg(compressionEnabled ? "Snappy (if available)" : "Disabled") << std::endl;
-    }
-    else
-    {
-        std::cout << InformationMsg("Compression Mode: ")
-                  << SuccessMsg(compressionEnabled ? "RocksDB ZSTD (L2+; L0/L1 uncompressed)" : "Disabled")
-                  << std::endl;
-    }
+    std::cout << InformationMsg("Compression Mode: ")
+              << SuccessMsg(compressionEnabled ? "RocksDB ZSTD (L2+; L0/L1 uncompressed)" : "Disabled")
+              << std::endl;
 
     std::cout << InformationMsg("DB Path: ") << SuccessMsg(dbPath.string()) << std::endl;
     std::cout << InformationMsg("DB Size: ") << SuccessMsg(Utilities::prettyPrintBytes(stats.bytes)) << std::endl;

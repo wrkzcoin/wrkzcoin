@@ -53,8 +53,6 @@ Minimum tooling:
 Database/compression libs used by build:
 
 - RocksDB
-- LevelDB
-- Snappy
 - Zstd
 
 ### Boost status (updated)
@@ -72,7 +70,7 @@ sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
   libssl-dev libboost-date-time-dev \
-  libsnappy-dev libzstd-dev
+  libzstd-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
@@ -81,7 +79,7 @@ cmake --build build -j$(nproc)
 ## macOS example (Homebrew)
 
 ```bash
-brew install cmake openssl boost snappy zstd
+brew install cmake openssl boost zstd
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```

@@ -56,7 +56,6 @@ namespace DaemonConfig
             dumpConfig = false;
             enableDbCompression = true;
             resync = false;
-            enableLevelDB = false;
             importChain = false;
             exportChain = false;
             exportNumBlocks = 0;
@@ -118,8 +117,6 @@ namespace DaemonConfig
 
         uint64_t dbReadCacheSizeMB;
 
-        uint64_t dbMaxFileSizeMB;
-
         uint32_t rewindToHeight;
 
         bool noConsole;
@@ -137,8 +134,6 @@ namespace DaemonConfig
         bool resync;
 
         bool p2pResetPeerstate;
-
-        bool enableLevelDB;
 
         bool importChain;
 

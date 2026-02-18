@@ -474,11 +474,6 @@ namespace CryptoNote
     const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
 
-    const uint64_t LEVELDB_WRITE_BUFFER_MB = 2; // 2 MB
-    const uint64_t LEVELDB_READ_BUFFER_MB = 128; // 128 MB
-    const uint64_t LEVELDB_MAX_OPEN_FILES = 512; // 512 files
-    const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
-
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
     const std::string LICENSE_URL = "https://github.com/wrkzcoin/wrkzcoin/blob/master/LICENSE";
