@@ -45,11 +45,12 @@ namespace
     void watchTransactionUntilConfirmed(
         const std::shared_ptr<WalletBackend> &walletBackend,
         const Crypto::Hash &hash,
-        const uint64_t waitSeconds = 180)
+        const uint64_t waitSeconds = 20)
     {
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(waitSeconds);
+        const uint64_t intervalSeconds = 5;
+        const uint64_t maxChecks = std::max<uint64_t>(1, waitSeconds / intervalSeconds);
 
-        while (std::chrono::steady_clock::now() < deadline)
+        for (uint64_t i = 0; i < maxChecks; i++)
         {
             const auto unconfirmed = walletBackend->getUnconfirmedTransactions();
 
@@ -60,7 +61,7 @@ namespace
             if (inPool != unconfirmed.end())
             {
                 std::cout << InformationMsg("Status: pending in pool...") << std::endl;
-                std::this_thread::sleep_for(std::chrono::seconds(5));
+                std::this_thread::sleep_for(std::chrono::seconds(intervalSeconds));
                 continue;
             }
 
@@ -75,10 +76,16 @@ namespace
                 return;
             }
 
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+            std::this_thread::sleep_for(std::chrono::seconds(intervalSeconds));
         }
 
-        std::cout << WarningMsg("Status check timed out. You can use list_transfers/txs later to verify confirmation.")
+        std::cout << WarningMsg("Status still pending. Returning to prompt so you can continue using the wallet.")
+                  << std::endl;
+        std::cout << InformationMsg("Use ")
+                  << SuccessMsg("txs")
+                  << InformationMsg(" / ")
+                  << SuccessMsg("list_transfers")
+                  << InformationMsg(" to check confirmation later.")
                   << std::endl;
     }
 } // namespace
