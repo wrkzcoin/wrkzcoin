@@ -10,7 +10,9 @@
     <li><a href="#master-build-status">Master Build Status</a></li>
     <li><a href="#development-build-status">Development Build Status</a></li>
     <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
+    <li><a href="#build-from-source">Build from Source</a></li>
     <li><a href="#getting-started-fast">Getting Started Fast</a></li>
+    <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
     <li><a href="#a-note-for-contributing-developers">A note for contributing developers</a></li>
     <li><a href="#contributing-projects">Contributing Projects</a></li>
     <li><a href="#our-discord">Our Discord</a></li>
@@ -30,7 +32,12 @@ To use WrkzCoin, you'll need a way to connect to the network, and a wallet to ho
 
 **Click here to download: https://latest.wrkz.work**
 
-To compile from source code yourself, [click here for build instructions](https://github.com/wrkzcoin/wrkzcoin/blob/development/COMPILE.md).
+### Build from Source
+
+Build instructions are maintained in:
+
+- [COMPILE.md](COMPILE.md)
+- [Cross-platform build guide](scripts/cross-platform/README.md)
 
 ### Getting Started Fast
 
@@ -39,11 +46,19 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 -   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://github.com/wrkzcoin/checkpoints) or via [Direct link](https://github.com/wrkzcoin/checkpoints/raw/master/wrkzcoin_checkpoints.csv.zip) 
 -   **Backup your keys** - You can generate a wallet right inside the software, or use [this paper wallet generator](https://paperwallet.wrkz.work)
 
+### Daemon DB Compaction
+
+- The daemon can compact RocksDB in background while syncing.
+- Boot-time background compaction is enabled by default.
+- Disable boot compaction with `--skip-boot-compaction`.
+- Check status from daemon console: `compact_db status`.
+- Manual controls: `compact_db start` and `compact_db wait`.
+
 ### A note for contributing developers
 
 Hello, and thank you for helping us! Our work makes use of many brilliant projects from other communities who contributed their code which helped us get to where we are now. To make sure we're always doing things the right way, we try to make sure we get the proper license header in every file we modify. By the terms of this project's license, any open source project may use our software, but the licenses may only be appended to, not altered. 
 
-See [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
+See `src/config/CryptoNoteConfig.h` for an example.
 
 ```
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
@@ -60,7 +75,7 @@ See [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/com
 
 ### Our Discord
 
-* WrkzCoin: <https://discordapp.com/invite/GpHzURM>
+* WrkzCoin: <https://discord.gg/GpHzURM>
 
 ### Stars
 

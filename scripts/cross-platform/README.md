@@ -68,7 +68,14 @@ source scripts/prep-aarch64.sh
 
 # 2) Configure and build
 mkdir -p build-aarch64 && cd build-aarch64
-cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
+cmake .. \
+  -DCMAKE_TOOLCHAIN_FILE=../scripts/cross-aarch64.cmake \
+  -DARCH=default \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPORTABLE_BINARY=ON \
+  -DENABLE_X86_AESNI=OFF \
+  -DFULLY_STATIC=ON \
+  -DSTATIC=true
 cmake --build . --parallel
 ```
 
@@ -79,6 +86,9 @@ cmake -S . -B build-aarch64 \
   -DCMAKE_TOOLCHAIN_FILE=scripts/cross-aarch64.cmake \
   -DARCH=default \
   -DCMAKE_BUILD_TYPE=Release \
+  -DPORTABLE_BINARY=ON \
+  -DENABLE_X86_AESNI=OFF \
+  -DFULLY_STATIC=ON \
   -DSTATIC=true
 cmake --build build-aarch64 --parallel
 ```
