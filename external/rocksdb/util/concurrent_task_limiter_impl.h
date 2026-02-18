@@ -11,8 +11,8 @@
 #include <atomic>
 #include <memory>
 
-#include "rocksdb/env.h"
 #include "rocksdb/concurrent_task_limiter.h"
+#include "rocksdb/env.h"
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -29,13 +29,13 @@ class ConcurrentTaskLimiterImpl : public ConcurrentTaskLimiter {
 
   virtual ~ConcurrentTaskLimiterImpl();
 
-  virtual const std::string& GetName() const override;
+  const std::string& GetName() const override;
 
-  virtual void SetMaxOutstandingTask(int32_t limit) override;
+  void SetMaxOutstandingTask(int32_t limit) override;
 
-  virtual void ResetMaxOutstandingTask() override;
+  void ResetMaxOutstandingTask() override;
 
-  virtual int32_t GetOutstandingTask() const override;
+  int32_t GetOutstandingTask() const override;
 
   // Request token for adding a new task.
   // If force == true, it requests a token bypassing throttle.
@@ -53,16 +53,11 @@ class ConcurrentTaskLimiterImpl : public ConcurrentTaskLimiter {
 class TaskLimiterToken {
  public:
   explicit TaskLimiterToken(ConcurrentTaskLimiterImpl* limiter)
-      : limiter_(limiter), released_(false) {}
+      : limiter_(limiter) {}
   ~TaskLimiterToken();
-  // Releases the token from the `ConcurrentTaskLimiterImpl` if not already
-  // released.
-  // Not thread-safe.
-  void ReleaseOnce();
 
  private:
   ConcurrentTaskLimiterImpl* limiter_;
-  bool released_;
 
   // no copying allowed
   TaskLimiterToken(const TaskLimiterToken&) = delete;

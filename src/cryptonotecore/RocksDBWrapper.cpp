@@ -10,7 +10,6 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/table.h"
-#include "rocksdb/utilities/backupable_db.h"
 #include <algorithm>
 
 using namespace CryptoNote;
@@ -288,7 +287,6 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     // For spinning disk
     dbOptions.skip_stats_update_on_db_open = true;
     dbOptions.compaction_readahead_size  = 2 * 1024 * 1024;
-    dbOptions.new_table_reader_for_compaction_inputs = true;
 
     rocksdb::ColumnFamilyOptions fOptions;
     fOptions.write_buffer_size = static_cast<size_t>(config.writeBufferSize);

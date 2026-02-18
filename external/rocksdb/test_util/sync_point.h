@@ -5,6 +5,7 @@
 #pragma once
 
 #include <assert.h>
+
 #include <functional>
 #include <mutex>
 #include <string>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "rocksdb/rocksdb_namespace.h"
+#include "rocksdb/slice.h"
 
 #ifdef NDEBUG
 // empty in release build
@@ -83,7 +85,9 @@ class SyncPoint {
   };
 
   // call once at the beginning of a test to setup the dependency between
-  // sync points
+  // sync points. Specifically, execution will not be allowed to proceed past
+  // each successor until execution has reached the corresponding predecessor,
+  // in any thread.
   void LoadDependency(const std::vector<SyncPointPair>& dependencies);
 
   // call once at the beginning of a test to setup the dependency between
@@ -117,7 +121,16 @@ class SyncPoint {
   // triggered by TEST_SYNC_POINT, blocking execution until all predecessors
   // are executed.
   // And/or call registered callback function, with argument `cb_arg`
-  void Process(const std::string& point, void* cb_arg = nullptr);
+  void Process(const Slice& point, void* cb_arg = nullptr);
+
+  // template gets length of const string at compile time,
+  //  avoiding strlen() at runtime
+  template <size_t kLen>
+  void Process(const char (&point)[kLen], void* cb_arg = nullptr) {
+    static_assert(kLen > 0, "Must not be empty");
+    assert(point[kLen - 1] == '\0');
+    Process(Slice(point, kLen - 1), cb_arg);
+  }
 
   // TODO: it might be useful to provide a function that blocks until all
   // sync points are cleared.
@@ -127,9 +140,9 @@ class SyncPoint {
   struct Data;
 
  private:
-   // Singleton
+  // Singleton
   SyncPoint();
-  Data*  impl_;
+  Data* impl_;
 };
 
 // Sets up sync points to mock direct IO instead of actually issuing direct IO
@@ -167,3 +180,35 @@ void SetupSyncPointsToMockDirectIO();
     }                                               \
   }
 #endif  // NDEBUG
+
+// An alternative to assert() that is more test-friendly than using
+// ASSERT_DEATH. Relies on exception propagation.
+#ifdef NDEBUG
+#define testable_assert(cond)
+#else
+namespace ROCKSDB_NAMESPACE {
+// Intentionally not based on std::exception to reduce places where this
+// would be caught
+struct TestableAssertionFailure {};
+extern std::atomic<int> g_throw_on_testable_assertion_failure;
+}  // namespace ROCKSDB_NAMESPACE
+#define testable_assert(cond)                                          \
+  do {                                                                 \
+    if (ROCKSDB_NAMESPACE::g_throw_on_testable_assertion_failure.load( \
+            std::memory_order_relaxed) > 0) {                          \
+      if (cond) {                                                      \
+      } else                                                           \
+        throw ROCKSDB_NAMESPACE::TestableAssertionFailure();           \
+    } else {                                                           \
+      assert(cond);                                                    \
+    }                                                                  \
+  } while (0)
+#define ASSERT_TESTABLE_FAILURE(expr)                                   \
+  do {                                                                  \
+    ROCKSDB_NAMESPACE::g_throw_on_testable_assertion_failure.fetch_add( \
+        1, std::memory_order_relaxed);                                  \
+    ASSERT_THROW(expr, ROCKSDB_NAMESPACE::TestableAssertionFailure);    \
+    ROCKSDB_NAMESPACE::g_throw_on_testable_assertion_failure.fetch_sub( \
+        1, std::memory_order_relaxed);                                  \
+  } while (0)
+#endif

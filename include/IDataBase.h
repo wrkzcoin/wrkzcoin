@@ -22,14 +22,12 @@ namespace CryptoNote
             const uint64_t openFiles,
             const uint64_t writeBufferMB,
             const uint64_t readCacheMB,
-            const uint64_t maxFileSizeMB,
             const bool enableDbCompression) :
             dataDir(dataDirectory),
             backgroundThreadsCount(backgroundThreads),
             maxOpenFiles(openFiles),
             writeBufferSize(writeBufferMB * 1024 * 1024),
             readCacheSize(readCacheMB * 1024 * 1024),
-            maxFileSize(maxFileSizeMB * 1024 * 1024),
             compressionEnabled(enableDbCompression)
         {
         }
@@ -43,8 +41,6 @@ namespace CryptoNote
         uint64_t writeBufferSize;
 
         uint64_t readCacheSize;
-
-        uint64_t maxFileSize;
 
         bool compressionEnabled;
     };

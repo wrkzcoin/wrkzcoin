@@ -5,9 +5,8 @@
 //
 #pragma once
 #include "db/dbformat.h"
+#include "rocksdb/slice.h"
 #include "rocksdb/status.h"
-#include "test_util/sync_point.h"
-#include "util/hash.h"
 
 namespace ROCKSDB_NAMESPACE {
 // A class that validates key/value that is inserted to an SST file.
@@ -16,12 +15,10 @@ namespace ROCKSDB_NAMESPACE {
 // of all the key and value.
 class OutputValidator {
  public:
-  explicit OutputValidator(const InternalKeyComparator& icmp,
-                           bool enable_order_check, bool enable_hash,
+  explicit OutputValidator(const InternalKeyComparator& icmp, bool enable_hash,
                            uint64_t precalculated_hash = 0)
       : icmp_(icmp),
         paranoid_hash_(precalculated_hash),
-        enable_order_check_(enable_order_check),
         enable_hash_(enable_hash) {}
 
   // Add a key to the KV sequence, and return whether the key follows
@@ -43,7 +40,6 @@ class OutputValidator {
   const InternalKeyComparator& icmp_;
   std::string prev_key_;
   uint64_t paranoid_hash_ = 0;
-  bool enable_order_check_;
   bool enable_hash_;
 };
 }  // namespace ROCKSDB_NAMESPACE

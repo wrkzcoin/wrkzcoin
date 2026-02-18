@@ -226,25 +226,16 @@ namespace DaemonConfig
             cxxopts::value<std::vector<std::string>>(),
             "<ip:port>");
 
-        const std::string maxOpenFiles = 
-            "(default: " + std::to_string(CryptoNote::ROCKSDB_MAX_OPEN_FILES) 
-            + " (ROCKSDB), " + std::to_string(CryptoNote::LEVELDB_MAX_OPEN_FILES)
-            + " (LEVELDB))";
+        const std::string maxOpenFiles =
+            "(default: " + std::to_string(CryptoNote::ROCKSDB_MAX_OPEN_FILES) + ")";
 
-        const std::string readCache = 
-            "(default: " + std::to_string(CryptoNote::ROCKSDB_READ_BUFFER_MB) 
-            + " (ROCKSDB), " + std::to_string(CryptoNote::LEVELDB_READ_BUFFER_MB)
-            + " (LEVELDB))";
+        const std::string readCache =
+            "(default: " + std::to_string(CryptoNote::ROCKSDB_READ_BUFFER_MB) + ")";
 
-        const std::string writeBuffer = 
-            "(default: " + std::to_string(CryptoNote::ROCKSDB_WRITE_BUFFER_MB) 
-            + " (ROCKSDB), " + std::to_string(CryptoNote::LEVELDB_WRITE_BUFFER_MB)
-            + " (LEVELDB))";
+        const std::string writeBuffer =
+            "(default: " + std::to_string(CryptoNote::ROCKSDB_WRITE_BUFFER_MB) + ")";
 
         options.add_options("Database")
-            ("db-enable-level-db",
-             "Use LevelDB instead of RocksDB",
-             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("db-enable-compression",
              "Enable database compression",
              cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
@@ -263,10 +254,6 @@ namespace DaemonConfig
             ("db-write-buffer-size",
              "Size of the database write buffer in megabytes (MB) " + writeBuffer,
              cxxopts::value<int>(),
-             "#")
-            ("db-max-file-size",
-             "Max file size of database files in megabytes (MB) (LevelDB only)",
-             cxxopts::value<int>()->default_value(std::to_string(CryptoNote::LEVELDB_MAX_FILE_SIZE_MB)),
              "#");
 
         options.add_options("Syncing")(
@@ -403,23 +390,10 @@ namespace DaemonConfig
                 config.noConsole = cli["no-console"].as<bool>();
             }
 
-            /* Using levelDB, lets set the level DB defaults. Will overwrite with
-             * passed in values later if present. */
-            if (cli.count("db-enable-level-db") > 0 && cli["db-enable-level-db"].as<bool>())
-            {
-                config.enableLevelDB = true;
-                config.dbMaxOpenFiles = CryptoNote::LEVELDB_MAX_OPEN_FILES;
-                config.dbReadCacheSizeMB = CryptoNote::LEVELDB_READ_BUFFER_MB;
-                config.dbWriteBufferSizeMB = CryptoNote::LEVELDB_WRITE_BUFFER_MB;
-                config.dbMaxFileSizeMB = CryptoNote::LEVELDB_MAX_FILE_SIZE_MB;
-            }
-            else
-            {
-                config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
-                config.dbReadCacheSizeMB = CryptoNote::ROCKSDB_READ_BUFFER_MB;
-                config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
-                config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
-            }
+            config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
+            config.dbReadCacheSizeMB = CryptoNote::ROCKSDB_READ_BUFFER_MB;
+            config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
+            config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
             if (cli.count("db-max-open-files") > 0)
             {
@@ -439,11 +413,6 @@ namespace DaemonConfig
             if (cli.count("db-write-buffer-size") > 0)
             {
                 config.dbWriteBufferSizeMB = cli["db-write-buffer-size"].as<int>();
-            }
-
-            if (cli.count("db-max-file-size") > 0)
-            {
-                config.dbMaxFileSizeMB = cli["db-max-file-size"].as<int>();
             }
 
             if (cli.count("local-ip") > 0)
@@ -619,7 +588,7 @@ namespace DaemonConfig
                 exit(0);
             }
         }
-        catch (const cxxopts::OptionException &e)
+        catch (const cxxopts::exceptions::exception &e)
         {
             std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl
                       << std::endl
@@ -1036,23 +1005,10 @@ namespace DaemonConfig
             config.logLevel = j["log-level"].GetInt();
         }
 
-        /* Using levelDB, lets set the level DB defaults. Will overwrite with
-         * passed in values later if present. */
-        if (j.HasMember("db-enable-level-db") && j["db-enable-level-db"].GetBool())
-        {
-            config.enableLevelDB = true;
-            config.dbMaxOpenFiles = CryptoNote::LEVELDB_MAX_OPEN_FILES;
-            config.dbReadCacheSizeMB = CryptoNote::LEVELDB_READ_BUFFER_MB;
-            config.dbWriteBufferSizeMB = CryptoNote::LEVELDB_WRITE_BUFFER_MB;
-            config.dbMaxFileSizeMB = CryptoNote::LEVELDB_MAX_FILE_SIZE_MB;
-        }
-        else
-        {
-            config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
-            config.dbReadCacheSizeMB = CryptoNote::ROCKSDB_READ_BUFFER_MB;
-            config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
-            config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
-        }
+        config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
+        config.dbReadCacheSizeMB = CryptoNote::ROCKSDB_READ_BUFFER_MB;
+        config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
+        config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
         if (j.HasMember("db-enable-compression"))
         {
@@ -1082,11 +1038,6 @@ namespace DaemonConfig
         if (j.HasMember("db-write-buffer-size"))
         {
             config.dbWriteBufferSizeMB = j["db-write-buffer-size"].GetInt();
-        }
-
-        if (j.HasMember("db-max-file-size"))
-        {
-            config.dbMaxFileSizeMB = j["db-max-file-size"].GetInt();
         }
 
         if (j.HasMember("allow-local-ip"))
@@ -1282,13 +1233,11 @@ namespace DaemonConfig
         j.AddMember("log-file", config.logFile, alloc);
         j.AddMember("log-level", config.logLevel, alloc);
         j.AddMember("no-console", config.noConsole, alloc);
-        j.AddMember("db-enable-level-db", config.enableLevelDB, alloc);
         j.AddMember("db-enable-compression", config.enableDbCompression, alloc);
         j.AddMember("db-max-open-files", config.dbMaxOpenFiles, alloc);
         j.AddMember("db-read-buffer-size", config.dbReadCacheSizeMB, alloc);
         j.AddMember("db-threads", config.dbThreads, alloc);
         j.AddMember("db-write-buffer-size", config.dbWriteBufferSizeMB, alloc);
-        j.AddMember("db-max-file-size", config.dbMaxFileSizeMB, alloc);
         j.AddMember("allow-local-ip", config.localIp, alloc);
         j.AddMember("hide-my-port", config.hideMyPort, alloc);
         j.AddMember("p2p-bind-ip", config.p2pInterface, alloc);

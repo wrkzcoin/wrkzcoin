@@ -21,7 +21,6 @@
 #include "cryptonotecore/Currency.h"
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
-#include "cryptonotecore/LevelDBWrapper.h"
 #include "cryptonotecore/RocksDBWrapper.h"
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
@@ -183,8 +182,7 @@ int main(int argc, char *argv[])
 
         std::vector<fs::path> removablePaths = {
             fs::path(config.dataDirectory) / CryptoNote::parameters::P2P_NET_DATA_FILENAME,
-            fs::path(config.dataDirectory) / "DB",
-            fs::path(config.dataDirectory) / "LevelDB"
+            fs::path(config.dataDirectory) / "DB"
         };
 
         for (const auto &path : removablePaths)
@@ -306,7 +304,6 @@ int main(int argc, char *argv[])
             config.dbMaxOpenFiles,
             config.dbWriteBufferSizeMB,
             config.dbReadCacheSizeMB,
-            config.dbMaxFileSizeMB,
             config.enableDbCompression
         );
 
@@ -354,15 +351,7 @@ int main(int argc, char *argv[])
         }
 
         std::shared_ptr<IDataBase> database;
-
-        if (config.enableLevelDB)
-        {
-            database = std::make_shared<LevelDBWrapper>(logManager, dbConfig);
-        }
-        else
-        {
-            database = std::make_shared<RocksDBWrapper>(logManager, dbConfig);
-        }
+        database = std::make_shared<RocksDBWrapper>(logManager, dbConfig);
 
         database->init();
         Tools::ScopeExit dbShutdownOnExit([&database]() { database->shutdown(); });
