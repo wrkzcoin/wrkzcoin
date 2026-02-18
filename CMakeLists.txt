@@ -171,7 +171,7 @@ if (NOT MSVC)
 
     ## This is here to support building for multiple architecture types... but we all know how well that usually goes...
     if ("${ARCH}" STREQUAL "default")
-        if (PORTABLE_BINARY AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+        if (PORTABLE_BINARY AND NOT CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
             set(ARCH_FLAG "-march=x86-64 -mtune=generic")
         else ()
             set(ARCH_FLAG "")

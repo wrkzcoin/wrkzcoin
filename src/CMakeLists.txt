@@ -82,7 +82,11 @@ add_library(WalletBackend STATIC ${WalletBackend})
 # Keep this flag local to the file so global CPU portability settings remain intact.
 if (NOT MSVC)
     set(SLOW_HASH_X86_SRC "${CMAKE_CURRENT_SOURCE_DIR}/crypto/slow-hash-x86.c")
-    if (EXISTS "${SLOW_HASH_X86_SRC}" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64|x86|i.86")
+    if (
+        EXISTS "${SLOW_HASH_X86_SRC}"
+        AND NOT CMAKE_CROSSCOMPILING
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64|x86|i.86"
+    )
         set_source_files_properties("${SLOW_HASH_X86_SRC}" PROPERTIES COMPILE_OPTIONS "-maes")
     endif ()
 endif ()
