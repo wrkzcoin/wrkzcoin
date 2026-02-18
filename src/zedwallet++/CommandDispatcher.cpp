@@ -50,6 +50,10 @@ bool handleCommand(
     {
         help(walletBackend);
     }
+    else if (command == "refresh")
+    {
+        refresh(walletBackend);
+    }
     else if (command == "transfer")
     {
         const bool sendAll = false;

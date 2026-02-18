@@ -120,6 +120,7 @@ void syncWallet(const std::shared_ptr<WalletBackend> walletBackend)
                 progressPrinted = false;
             }
             std::cout << WarningMsg(stream.str()) << std::endl;
+            break;
         }
 
         std::this_thread::sleep_for(std::chrono::seconds(2));

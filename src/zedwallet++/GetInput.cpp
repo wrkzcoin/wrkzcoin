@@ -48,8 +48,16 @@ std::string getPrompt(std::shared_ptr<WalletBackend> walletBackend)
     }
 
     const std::string shortName = walletName.substr(0, promptLength);
+    const auto [walletBlockCount, localDaemonBlockCount, networkBlockCount] = walletBackend->getSyncStatus();
 
-    return "[" + WalletConfig::ticker + " " + shortName + "]: ";
+    std::string syncRemark;
+
+    if (localDaemonBlockCount + 1 < networkBlockCount || walletBlockCount + 10 < networkBlockCount)
+    {
+        syncRemark = " (out-of-sync)";
+    }
+
+    return "[" + WalletConfig::ticker + " " + shortName + syncRemark + "]: ";
 }
 
 template<typename T> std::string getInput(const std::vector<T> &availableCommands, const std::string prompt)

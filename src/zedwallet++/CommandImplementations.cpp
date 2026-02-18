@@ -298,6 +298,13 @@ void reset(const std::shared_ptr<WalletBackend> walletBackend)
     walletBackend->m_eventHandler->onTransaction.resume();
 }
 
+void refresh(const std::shared_ptr<WalletBackend> walletBackend)
+{
+    walletBackend->m_eventHandler->onTransaction.pause();
+    syncWallet(walletBackend);
+    walletBackend->m_eventHandler->onTransaction.resume();
+}
+
 void saveCSV(const std::shared_ptr<WalletBackend> walletBackend)
 {
     const auto transactions = walletBackend->getTransactions();

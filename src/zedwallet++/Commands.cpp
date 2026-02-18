@@ -41,6 +41,7 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("backup", "Backup your private keys and/or seed", true, false),
         AdvancedCommand("exit", "Exit and save your wallet", true, false),
         AdvancedCommand("help", "List this help message", true, false),
+        AdvancedCommand("refresh", "Retry syncing with daemon now", true, false),
         AdvancedCommand("transfer", "Send " + WalletConfig::ticker + " to someone", false, false),
 
         /* Advanced commands */

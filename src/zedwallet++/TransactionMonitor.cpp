@@ -16,8 +16,6 @@ void TransactionMonitor::start()
     /* Grab new transactions and push them into a queue for processing */
     m_walletBackend->m_eventHandler->onTransaction.subscribe([this](const auto tx) { m_queuedTransactions.push(tx); });
 
-    const std::string prompt = getPrompt(m_walletBackend);
-
     while (!m_shouldStop)
     {
         /* Make sure we're not printing a garbage tx */
@@ -42,7 +40,7 @@ void TransactionMonitor::start()
                 /* Write out the prompt after every transfer. This prevents the
                    wallet being in a 'ready' state, waiting for input, but looking
                    like it's not. */
-                std::cout << InformationMsg(prompt) << std::flush;
+                std::cout << InformationMsg(getPrompt(m_walletBackend)) << std::flush;
             }
 
             m_queuedTransactions.deleteFront();
