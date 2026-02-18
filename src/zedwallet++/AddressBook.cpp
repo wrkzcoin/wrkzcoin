@@ -77,6 +77,19 @@ void addToAddressBook()
         return;
     }
 
+    if (!Utilities::isIntegratedAddress(address))
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("standard") << std::endl;
+    }
+    else if (address.length() == WalletConfig::integratedAddressLength)
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-short") << std::endl;
+    }
+    else
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-long") << std::endl;
+    }
+
     std::string paymentID;
 
     /* Don't prompt for a payment ID if we have an integrated address */
@@ -95,6 +108,10 @@ void addToAddressBook()
 
             return;
         }
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is already embedded.") << std::endl;
     }
 
     addressBook.emplace_back(friendlyName, address, paymentID);

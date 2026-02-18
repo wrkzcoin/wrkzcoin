@@ -6,6 +6,7 @@
 #include <walletbackend/WalletSynchronizer.h>
 /////////////////////////////////////////////
 
+#include <algorithm>
 #include <common/StringTools.h>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
@@ -111,7 +112,14 @@ WalletSynchronizer::~WalletSynchronizer()
 
 void WalletSynchronizer::mainLoop()
 {
+    const uint64_t lockedTxDeltaBlocks =
+        std::max<uint64_t>(1, CryptoNote::parameters::CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS);
+    const auto lockedTxCheckInterval = std::chrono::seconds(std::max<uint64_t>(
+        CryptoNote::parameters::DIFFICULTY_TARGET,
+        CryptoNote::parameters::CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS));
+
     auto lastCheckedLockedTransactions = std::chrono::system_clock::now();
+    uint64_t lastCheckedLockedTxHeight = 0;
 
     while (!m_shouldStop)
     {
@@ -169,12 +177,20 @@ void WalletSynchronizer::mainLoop()
         {
             const auto now = std::chrono::system_clock::now();
             const auto timeDiff = now - lastCheckedLockedTransactions;
+            const uint64_t currentScanHeight = getCurrentScanHeight();
 
-            /* Not a viewwallet and haven't checked transactions in last 15 secs */
-            if (!m_subWallets->isViewWallet() && timeDiff > std::chrono::seconds(15))
+            const bool heightElapsed = lastCheckedLockedTxHeight == 0
+                || currentScanHeight >= lastCheckedLockedTxHeight + lockedTxDeltaBlocks;
+
+            const bool timeElapsed = timeDiff >= lockedTxCheckInterval;
+
+            /* Not a viewwallet, and either enough blocks or enough time has elapsed
+               based on chain lock/mempool policy settings. */
+            if (!m_subWallets->isViewWallet() && (heightElapsed || timeElapsed))
             {
                 checkLockedTransactions();
                 lastCheckedLockedTransactions = now;
+                lastCheckedLockedTxHeight = currentScanHeight;
             }
 
             Utilities::sleepUnlessStopping(std::chrono::seconds(5), m_shouldStop);

@@ -7,7 +7,11 @@
 /////////////////////////////////
 
 #include <config/WalletConfig.h>
+#include <config/CryptoNoteConfig.h>
+#include <algorithm>
+#include <chrono>
 #include <iostream>
+#include <thread>
 #include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
@@ -21,6 +25,61 @@ namespace
     void cancel()
     {
         std::cout << WarningMsg("Cancelling transaction.\n");
+    }
+
+    std::string getAddressTypeLabel(const std::string &address)
+    {
+        if (!Utilities::isIntegratedAddress(address))
+        {
+            return "standard";
+        }
+
+        if (address.length() == WalletConfig::integratedAddressLength)
+        {
+            return "integrated-short";
+        }
+
+        return "integrated-long";
+    }
+
+    void watchTransactionUntilConfirmed(
+        const std::shared_ptr<WalletBackend> &walletBackend,
+        const Crypto::Hash &hash,
+        const uint64_t waitSeconds = 180)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(waitSeconds);
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            const auto unconfirmed = walletBackend->getUnconfirmedTransactions();
+
+            const auto inPool = std::find_if(unconfirmed.begin(), unconfirmed.end(), [&hash](const auto &tx) {
+                return tx.hash == hash;
+            });
+
+            if (inPool != unconfirmed.end())
+            {
+                std::cout << InformationMsg("Status: pending in pool...") << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                continue;
+            }
+
+            const auto confirmed = walletBackend->getTransactions();
+            const auto inBlock = std::find_if(confirmed.begin(), confirmed.end(), [&hash](const auto &tx) {
+                return tx.hash == hash;
+            });
+
+            if (inBlock != confirmed.end())
+            {
+                std::cout << SuccessMsg("Status: confirmed in block ") << SuccessMsg(inBlock->blockHeight) << std::endl;
+                return;
+            }
+
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+        }
+
+        std::cout << WarningMsg("Status check timed out. You can use list_transfers/txs later to verify confirmation.")
+                  << std::endl;
     }
 } // namespace
 
@@ -47,6 +106,7 @@ void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sen
         return;
     }
 
+    std::cout << InformationMsg("Address type: ") << SuccessMsg(getAddressTypeLabel(address)) << std::endl;
     std::cout << "\n";
 
     std::string paymentID;
@@ -65,6 +125,12 @@ void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sen
         }
 
         std::cout << "\n";
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is embedded; skipping payment ID prompt.")
+                  << std::endl
+                  << std::endl;
     }
 
     /* If we're using send all, then we'll work out the max in the WalletBackend
@@ -224,6 +290,15 @@ void sendTransaction(
     else
     {
         std::cout << SuccessMsg("Transaction has been sent!\nHash: ") << SuccessMsg(hash) << std::endl;
+
+        if (Utilities::confirm("Watch transaction status now (pool -> block)?"))
+        {
+            watchTransactionUntilConfirmed(walletBackend, hash);
+        }
+
+        std::cout << InformationMsg(
+                         "Note: recipients typically see incoming funds once a block confirms the transaction.")
+                  << std::endl;
     }
 }
 
@@ -255,6 +330,10 @@ bool confirmTransaction(
 
     std::cout << "\n\nFROM: " << SuccessMsg(walletBackend->getWalletLocation()) << "\nTO: " << SuccessMsg(address)
               << "\n\n";
+
+    std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
+              << SuccessMsg(CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS) << InformationMsg(" blocks")
+              << std::endl;
 
     if (Utilities::confirm("Is this correct?"))
     {

@@ -34,7 +34,15 @@ bool handleCommand(
     {
         std::cout << SuccessMsg(walletBackend->getPrimaryAddress()) << std::endl;
     }
+    else if (command == "addr")
+    {
+        std::cout << SuccessMsg(walletBackend->getPrimaryAddress()) << std::endl;
+    }
     else if (command == "balance")
+    {
+        balance(walletBackend);
+    }
+    else if (command == "bal")
     {
         balance(walletBackend);
     }
@@ -96,7 +104,28 @@ bool handleCommand(
 
         listTransfers(printIncoming, printOutgoing, walletBackend);
     }
+    else if (command == "in")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = false;
+
+        listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
     else if (command == "list_transfers")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = true;
+
+        listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "txs")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = true;
+
+        listTransfersBrief(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "txs_full")
     {
         const bool printIncoming = true;
         const bool printOutgoing = true;
@@ -119,6 +148,13 @@ bool handleCommand(
         }
     }
     else if (command == "outgoing_transfers")
+    {
+        const bool printIncoming = false;
+        const bool printOutgoing = true;
+
+        listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "out")
     {
         const bool printIncoming = false;
         const bool printOutgoing = true;

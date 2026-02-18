@@ -654,6 +654,53 @@ void help(const std::shared_ptr<WalletBackend> walletBackend)
     }
 }
 
+void listTransfersBrief(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend)
+{
+    std::vector<WalletTypes::Transaction> transactions = walletBackend->getTransactions();
+    const auto unconfirmedTransactions = walletBackend->getUnconfirmedTransactions();
+    transactions.insert(transactions.end(), unconfirmedTransactions.begin(), unconfirmedTransactions.end());
+
+    uint64_t displayed = 0;
+    uint64_t matched = 0;
+    constexpr uint64_t pageSize = 25;
+
+    for (const auto &tx : transactions)
+    {
+        if (tx.isFusionTransaction())
+        {
+            continue;
+        }
+
+        const int64_t amount = tx.totalAmount();
+        const bool isIncoming = amount > 0;
+        const bool isOutgoing = amount < 0;
+
+        if ((isIncoming && !incoming) || (isOutgoing && !outgoing) || (!isIncoming && !isOutgoing))
+        {
+            continue;
+        }
+
+        printTransferOneLine(tx);
+        matched++;
+        displayed++;
+
+        if (displayed % pageSize == 0)
+        {
+            std::cout << InformationMsg("Press Enter for more, or type q to stop: ");
+            std::string input;
+            std::getline(std::cin, input);
+            Utilities::trim(input);
+
+            if (input == "q" || input == "Q")
+            {
+                break;
+            }
+        }
+    }
+
+    std::cout << InformationMsg("Displayed ") << SuccessMsg(matched) << InformationMsg(" transfer(s).") << std::endl;
+}
+
 void advanced(const std::shared_ptr<WalletBackend> walletBackend)
 {
     help(walletBackend);
