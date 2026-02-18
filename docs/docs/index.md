@@ -1,4 +1,4 @@
-# zcoin-dev Wiki
+# WrkzCoin Wiki
 
 This docs tree is intended for publishing as project documentation/wiki later.
 

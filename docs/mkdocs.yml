@@ -1,4 +1,4 @@
-site_name: zcoin-dev Wiki
+site_name: WrkzCoin Wiki
 site_description: Daemon RPC, wallet-api RPC, and operator guides
 docs_dir: docs
 theme:
