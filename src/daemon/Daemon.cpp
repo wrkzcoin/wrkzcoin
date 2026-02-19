@@ -336,6 +336,8 @@ int main(int argc, char *argv[])
             config.p2pInterface,
             config.p2pPort,
             config.p2pExternalPort,
+            config.p2pOutPeers,
+            config.p2pInPeers,
             config.localIp,
             config.hideMyPort,
             config.dataDirectory,
@@ -459,7 +461,9 @@ int main(int argc, char *argv[])
             config.syncMaxPeers,
             config.syncPeerFailureThreshold,
             config.syncBatchMin,
-            config.syncBatchMax);
+            config.syncBatchMax,
+            config.blockSyncSize,
+            config.blockSyncBytes);
 
         const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
             dispatcher,

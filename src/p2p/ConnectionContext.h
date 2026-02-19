@@ -50,7 +50,9 @@ namespace CryptoNote
         uint32_t m_sync_batch_size = 100;
         uint64_t m_sync_blocks_received = 0;
         uint64_t m_sync_bytes_received = 0;
+        uint64_t m_sync_avg_block_bytes = 0;
         uint32_t m_sync_failures = 0;
+        uint32_t m_sync_orphan_retries = 0;
         uint64_t m_last_sync_progress_ts = 0;
     };
 

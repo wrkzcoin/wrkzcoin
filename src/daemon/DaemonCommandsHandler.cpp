@@ -804,11 +804,18 @@ bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
               << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
     std::cout << InformationMsg("Configured Sync Max Peers: ")
               << SuccessMsg(std::to_string(m_config.syncMaxPeers)) << std::endl;
+    std::cout << InformationMsg("Configured P2P Out/In Peers: ")
+              << SuccessMsg(std::to_string(m_config.p2pOutPeers) + "/" + std::to_string(m_config.p2pInPeers))
+              << std::endl;
     std::cout << InformationMsg("Configured Sync Failure Threshold: ")
               << SuccessMsg(std::to_string(m_config.syncPeerFailureThreshold)) << std::endl;
     std::cout << InformationMsg("Configured Sync Batch Min/Max: ")
               << SuccessMsg(std::to_string(m_config.syncBatchMin) + "/" + std::to_string(m_config.syncBatchMax))
               << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Size: ")
+              << SuccessMsg(std::to_string(m_config.blockSyncSize)) << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Bytes: ")
+              << SuccessMsg(Utilities::prettyPrintBytes(m_config.blockSyncBytes)) << std::endl;
 
     return true;
 }

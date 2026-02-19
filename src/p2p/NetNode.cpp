@@ -58,6 +58,9 @@ using namespace CryptoNote;
 
 namespace
 {
+    constexpr size_t PEER_SELECTION_RECENCY_WINDOW = 256;
+    constexpr size_t PEER_SELECTION_MAX_TRIES = 16;
+
     size_t get_random_index_with_fixed_probability(size_t max_index)
     {
         // divide by zero workaround
@@ -231,6 +234,8 @@ namespace CryptoNote
         m_payload_handler(payload_handler),
         m_allow_local_ip(false),
         m_hide_my_port(false),
+        m_targetOutgoingConnections(CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT),
+        m_maxIncomingConnections(CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT),
         m_network_id(CryptoNote::CRYPTONOTE_NETWORK),
         logger(log, "node_server"),
         m_stopEvent(m_dispatcher),
@@ -423,6 +428,8 @@ namespace CryptoNote
         m_bind_ip = config.getBindIp();
         m_port = std::to_string(config.getBindPort());
         m_external_port = config.getExternalPort();
+        m_targetOutgoingConnections = std::max<uint32_t>(1, config.getOutPeers());
+        m_maxIncomingConnections = config.getInPeers();
         m_allow_local_ip = config.getAllowLocalIp();
 
         auto peers = config.getPeers();
@@ -495,6 +502,8 @@ namespace CryptoNote
             logger(ERROR, BRIGHT_RED) << "Failed to init config.";
             return false;
         }
+
+        m_config.m_net_config.connections_count = m_targetOutgoingConnections;
 
         if (!m_peerlist.init(m_allow_local_ip))
         {
@@ -928,13 +937,13 @@ namespace CryptoNote
             return false;
         } // no peers
 
-        size_t max_random_index = std::min<uint64_t>(local_peers_count - 1, 20);
+        size_t max_random_index = std::min<uint64_t>(local_peers_count - 1, PEER_SELECTION_RECENCY_WINDOW);
 
         std::set<size_t> tried_peers;
 
         size_t try_count = 0;
         size_t rand_count = 0;
-        while (rand_count < (max_random_index + 1) * 3 && try_count < 10 && !m_stop)
+        while (rand_count < (max_random_index + 1) * 3 && try_count < PEER_SELECTION_MAX_TRIES && !m_stop)
         {
             ++rand_count;
             size_t random_index = get_random_index_with_fixed_probability(max_random_index);
@@ -1642,6 +1651,23 @@ namespace CryptoNote
                 if (isHostBanned(ctx.m_remote_ip))
                 {
                     logger(DEBUGGING) << "Rejecting incoming connection from banned host "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    continue;
+                }
+
+                size_t incomingConnections = 0;
+                for (const auto &kv : m_connections)
+                {
+                    if (kv.second.m_is_income)
+                    {
+                        ++incomingConnections;
+                    }
+                }
+
+                if (incomingConnections >= m_maxIncomingConnections)
+                {
+                    logger(DEBUGGING) << "Rejecting incoming connection due to --in-peers limit ("
+                                      << incomingConnections << "/" << m_maxIncomingConnections << ") from "
                                       << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
                     continue;
                 }

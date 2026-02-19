@@ -35,6 +35,11 @@ namespace CryptoNote
 {
     namespace
     {
+        constexpr uint64_t SYNC_BLOCK_SIZE_ESTIMATE_FLOOR_BYTES = 64 * 1024;
+        constexpr uint64_t SYNC_BLOCK_BUDGET_MIN_BYTES = 2 * 1024 * 1024;
+        constexpr uint64_t SYNC_BLOCK_BUDGET_MAX_BYTES = 48 * 1024 * 1024;
+        constexpr uint32_t SYNC_ORPHAN_RETRY_LIMIT = 3;
+
         bool isPruneCapabilityForkActive(uint64_t localHeight, uint64_t remoteHeight)
         {
             return std::max(localHeight, remoteHeight) >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
@@ -206,10 +211,12 @@ namespace CryptoNote
         m_peersCount(0),
         m_isPrunedNode(false),
         m_prunedNodeDepth(0),
-        m_syncMaxPeers(2),
-        m_syncPeerFailureThreshold(3),
-        m_syncBatchMin(100),
-        m_syncBatchMax(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT),
+        m_syncMaxPeers(3),
+        m_syncPeerFailureThreshold(2),
+        m_syncBatchMin(120),
+        m_syncBatchMax(600),
+        m_syncBlockSyncSize(600),
+        m_syncBlockSyncBytes(16ULL * 1024ULL * 1024ULL),
         m_syncDemotedPeers(0),
         logger(log, "protocol")
     {
@@ -374,6 +381,7 @@ namespace CryptoNote
         context.m_remote_pruned_node_height = hshd.pruned_node_height;
         context.m_sync_batch_size = m_syncBatchMin;
         context.m_sync_failures = 0;
+        context.m_sync_orphan_retries = 0;
 
         if (context.m_state == CryptoNoteConnectionContext::state_befor_handshake && !is_initial)
         {
@@ -745,17 +753,6 @@ namespace CryptoNote
             }
 
             cachedBlocks.emplace_back(blockTemplates[index]);
-            if (index == 1)
-            {
-                if (m_core.hasBlock(cachedBlocks.back().getBlockHash()))
-                { // TODO
-                    context.m_state = CryptoNoteConnectionContext::state_idle;
-                    context.m_needed_objects.clear();
-                    context.m_requested_objects.clear();
-                    logger(Logging::DEBUGGING) << context << "Connection set to idle state.";
-                    return 1;
-                }
-            }
 
             auto req_it = context.m_requested_objects.find(cachedBlocks.back().getBlockHash());
             if (req_it == context.m_requested_objects.end())
@@ -857,10 +854,28 @@ namespace CryptoNote
             }
             else if (addResult == error::AddBlockErrorCondition::BLOCK_REJECTED)
             {
+                ++context.m_sync_orphan_retries;
+
+                if (context.m_sync_orphan_retries >= SYNC_ORPHAN_RETRY_LIMIT)
+                {
+                    logger(Logging::WARNING) << context << "Sync orphan retry limit reached ("
+                                             << context.m_sync_orphan_retries << "/" << SYNC_ORPHAN_RETRY_LIMIT
+                                             << "), dropping connection: " << addResult.message();
+                    context.m_state = CryptoNoteConnectionContext::state_shutdown;
+                    return 1;
+                }
+
                 logger(Logging::INFO) << context
-                                      << "Block received at sync phase was marked as orphaned, dropping connection: "
+                                      << "Block received at sync phase was marked as orphaned. Re-requesting chain "
+                                         "entry from peer (retry "
+                                      << context.m_sync_orphan_retries << "/" << SYNC_ORPHAN_RETRY_LIMIT << "): "
                                       << addResult.message();
-                context.m_state = CryptoNoteConnectionContext::state_shutdown;
+                context.m_needed_objects.clear();
+                context.m_requested_objects.clear();
+                context.m_state = CryptoNoteConnectionContext::state_synchronizing;
+                NOTIFY_REQUEST_CHAIN::request req = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                req.block_ids = m_core.buildSparseChain();
+                post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, req, context);
                 return 1;
             }
             else if (addResult == error::AddBlockErrorCode::ALREADY_EXISTS)
@@ -1076,7 +1091,20 @@ namespace CryptoNote
             size_t count = 0;
             auto it = context.m_needed_objects.begin();
 
-            const uint32_t batchSize = std::max(m_syncBatchMin, getAdaptiveBatchSize(context));
+            const uint32_t adaptiveBatchSize = std::max(m_syncBatchMin, getAdaptiveBatchSize(context));
+            const uint32_t countLimitedBatch = std::max<uint32_t>(1, std::min(adaptiveBatchSize, m_syncBlockSyncSize));
+
+            const uint64_t avgBlockBytes =
+                context.m_sync_avg_block_bytes > 0 ? context.m_sync_avg_block_bytes : SYNC_BLOCK_SIZE_ESTIMATE_FLOOR_BYTES;
+
+            const uint64_t bytesBudget =
+                std::max<uint64_t>(SYNC_BLOCK_BUDGET_MIN_BYTES, std::min<uint64_t>(m_syncBlockSyncBytes, SYNC_BLOCK_BUDGET_MAX_BYTES));
+
+            const uint32_t bytesLimitedBatch = std::max<uint32_t>(
+                1,
+                static_cast<uint32_t>(bytesBudget / std::max<uint64_t>(avgBlockBytes, SYNC_BLOCK_SIZE_ESTIMATE_FLOOR_BYTES)));
+
+            const uint32_t batchSize = std::max<uint32_t>(1, std::min(countLimitedBatch, bytesLimitedBatch));
 
             while (it != context.m_needed_objects.end() && count < batchSize)
             {
@@ -1510,12 +1538,17 @@ namespace CryptoNote
         uint32_t syncMaxPeers,
         uint32_t syncPeerFailureThreshold,
         uint32_t syncBatchMin,
-        uint32_t syncBatchMax)
+        uint32_t syncBatchMax,
+        uint32_t blockSyncSize,
+        uint64_t blockSyncBytes)
     {
         m_syncMaxPeers = std::max<uint32_t>(1, syncMaxPeers);
         m_syncPeerFailureThreshold = std::max<uint32_t>(1, syncPeerFailureThreshold);
         m_syncBatchMin = std::max<uint32_t>(1, syncBatchMin);
         m_syncBatchMax = std::max<uint32_t>(m_syncBatchMin, syncBatchMax);
+        m_syncBlockSyncSize = std::max<uint32_t>(1, blockSyncSize);
+        m_syncBlockSyncBytes =
+            std::max<uint64_t>(SYNC_BLOCK_BUDGET_MIN_BYTES, std::min<uint64_t>(blockSyncBytes, SYNC_BLOCK_BUDGET_MAX_BYTES));
     }
 
     uint32_t CryptoNoteProtocolHandler::getAdaptiveBatchSize(const CryptoNoteConnectionContext &context) const
@@ -1536,6 +1569,21 @@ namespace CryptoNote
         context.m_sync_bytes_received += bytes;
         context.m_sync_failures = 0;
         context.m_last_sync_progress_ts = static_cast<uint64_t>(std::time(nullptr));
+        context.m_sync_orphan_retries = 0;
+
+        if (blocks > 0)
+        {
+            const uint64_t sampleAvgBlockBytes = std::max<uint64_t>(1, static_cast<uint64_t>(bytes / blocks));
+
+            if (context.m_sync_avg_block_bytes == 0)
+            {
+                context.m_sync_avg_block_bytes = sampleAvgBlockBytes;
+            }
+            else
+            {
+                context.m_sync_avg_block_bytes = ((context.m_sync_avg_block_bytes * 8) + (sampleAvgBlockBytes * 2)) / 10;
+            }
+        }
 
         if (context.m_sync_batch_size < m_syncBatchMax)
         {
