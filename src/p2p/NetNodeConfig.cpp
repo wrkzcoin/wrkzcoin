@@ -62,6 +62,8 @@ namespace CryptoNote
         bindIp = "";
         bindPort = 0;
         externalPort = 0;
+        outPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
+        inPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
         allowLocalIp = false;
         hideMyPort = false;
         configFolder = Tools::getDefaultDataDirectory();
@@ -72,6 +74,8 @@ namespace CryptoNote
         const std::string interface,
         const int port,
         const int external,
+        const uint32_t outPeersCount,
+        const uint32_t inPeersCount,
         const bool localIp,
         const bool hidePort,
         const std::string dataDir,
@@ -84,6 +88,8 @@ namespace CryptoNote
         bindIp = interface;
         bindPort = port;
         externalPort = external;
+        outPeers = outPeersCount;
+        inPeers = inPeersCount;
         allowLocalIp = localIp;
         hideMyPort = hidePort;
         configFolder = dataDir;
@@ -148,6 +154,16 @@ namespace CryptoNote
     uint16_t NetNodeConfig::getExternalPort() const
     {
         return externalPort;
+    }
+
+    uint32_t NetNodeConfig::getOutPeers() const
+    {
+        return outPeers;
+    }
+
+    uint32_t NetNodeConfig::getInPeers() const
+    {
+        return inPeers;
     }
 
     bool NetNodeConfig::getAllowLocalIp() const

@@ -104,7 +104,9 @@ namespace CryptoNote
             uint32_t syncMaxPeers,
             uint32_t syncPeerFailureThreshold,
             uint32_t syncBatchMin,
-            uint32_t syncBatchMax);
+            uint32_t syncBatchMax,
+            uint32_t blockSyncSize,
+            uint64_t blockSyncBytes);
 
         void requestMissingPoolTransactions(const CryptoNoteConnectionContext &context);
 
@@ -234,6 +236,10 @@ namespace CryptoNote
         uint32_t m_syncBatchMin;
 
         uint32_t m_syncBatchMax;
+
+        uint32_t m_syncBlockSyncSize;
+
+        uint64_t m_syncBlockSyncBytes;
 
         std::atomic<uint32_t> m_syncDemotedPeers;
 

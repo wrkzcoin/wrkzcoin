@@ -39,6 +39,8 @@ namespace DaemonConfig
             p2pInterface = "0.0.0.0";
             p2pPort = CryptoNote::P2P_DEFAULT_PORT;
             p2pExternalPort = 0;
+            p2pOutPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
+            p2pInPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
             transactionValidationThreads = std::thread::hardware_concurrency();
             rpcInterface = "127.0.0.1";
             rpcPort = CryptoNote::RPC_DEFAULT_PORT;
@@ -61,10 +63,12 @@ namespace DaemonConfig
             exportNumBlocks = 0;
             prune = false;
             pruneDepth = DEFAULT_PRUNE_DEPTH;
-            syncMaxPeers = 2;
-            syncPeerFailureThreshold = 3;
-            syncBatchMin = 100;
-            syncBatchMax = 400;
+            syncMaxPeers = 3;
+            syncPeerFailureThreshold = 2;
+            syncBatchMin = 120;
+            syncBatchMax = 600;
+            blockSyncSize = syncBatchMax;
+            blockSyncBytes = 16ULL * 1024ULL * 1024ULL;
             rpcAccessToken = "";
             rpcReadTimeout = 15;
             rpcWriteTimeout = 30;
@@ -107,6 +111,10 @@ namespace DaemonConfig
         int p2pPort;
 
         int p2pExternalPort;
+
+        uint32_t p2pOutPeers;
+
+        uint32_t p2pInPeers;
 
         uint32_t transactionValidationThreads;
 
@@ -153,6 +161,10 @@ namespace DaemonConfig
         uint32_t syncBatchMin;
 
         uint32_t syncBatchMax;
+
+        uint32_t blockSyncSize;
+
+        uint64_t blockSyncBytes;
 
         std::string rpcAccessToken;
 

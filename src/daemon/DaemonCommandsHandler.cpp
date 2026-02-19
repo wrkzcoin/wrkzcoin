@@ -33,6 +33,7 @@ namespace
     const char *COMPACTION_MARKER_FILE = ".compact_db_in_progress";
     constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_SECONDS = 300;
     constexpr uint64_t AUTO_COMPACTION_MIN_GAP_SECONDS = 6 * 60 * 60;
+    constexpr uint64_t AUTO_PRUNE_MIN_GAP_SECONDS = 5 * 60;
 
     template<typename T> static bool print_as_json(const T &obj)
     {
@@ -267,9 +268,8 @@ void DaemonCommandsHandler::start_boot_compaction_if_needed()
     {
         std::cout << InformationMsg("Boot DB compaction: skipped by configuration (--skip-boot-compaction).")
                   << std::endl;
-        return;
     }
-
+    else
     {
         std::lock_guard<std::mutex> lock(m_compactionMutex);
         refresh_compaction_state_locked();
@@ -804,11 +804,18 @@ bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
               << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
     std::cout << InformationMsg("Configured Sync Max Peers: ")
               << SuccessMsg(std::to_string(m_config.syncMaxPeers)) << std::endl;
+    std::cout << InformationMsg("Configured P2P Out/In Peers: ")
+              << SuccessMsg(std::to_string(m_config.p2pOutPeers) + "/" + std::to_string(m_config.p2pInPeers))
+              << std::endl;
     std::cout << InformationMsg("Configured Sync Failure Threshold: ")
               << SuccessMsg(std::to_string(m_config.syncPeerFailureThreshold)) << std::endl;
     std::cout << InformationMsg("Configured Sync Batch Min/Max: ")
               << SuccessMsg(std::to_string(m_config.syncBatchMin) + "/" + std::to_string(m_config.syncBatchMax))
               << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Size: ")
+              << SuccessMsg(std::to_string(m_config.blockSyncSize)) << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Bytes: ")
+              << SuccessMsg(Utilities::prettyPrintBytes(m_config.blockSyncBytes)) << std::endl;
 
     return true;
 }
@@ -1042,12 +1049,32 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
         std::lock_guard<std::mutex> lock(m_compactionMutex);
         refresh_compaction_state_locked();
 
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        if (m_config.prune
+            && (m_lastAutoPruneAt == 0 || (now > m_lastAutoPruneAt && (now - m_lastAutoPruneAt) >= AUTO_PRUNE_MIN_GAP_SECONDS)))
+        {
+            logger(Logging::INFO)
+                << "Starting periodic prune pass in background (depth " << m_config.pruneDepth << ").";
+
+            try
+            {
+                const auto prunedBlocks = m_core.pruneRawBlocks(m_config.pruneDepth);
+                logger(Logging::INFO) << "Periodic prune pass completed. Raw block slots processed: " << prunedBlocks;
+            }
+            catch (const std::exception &e)
+            {
+                logger(Logging::WARNING) << "Periodic prune pass failed: " << e.what();
+            }
+
+            m_lastAutoPruneAt = now;
+        }
+
         if (m_compactionRunning)
         {
             continue;
         }
 
-        const uint64_t now = static_cast<uint64_t>(time(nullptr));
         const uint64_t lastActivity = std::max(m_compactionStartedAt, m_compactionFinishedAt);
 
         if (lastActivity != 0 && now > lastActivity && (now - lastActivity) < AUTO_COMPACTION_MIN_GAP_SECONDS)

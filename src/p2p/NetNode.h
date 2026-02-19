@@ -368,6 +368,10 @@ namespace CryptoNote
 
         bool m_hide_my_port;
 
+        uint32_t m_targetOutgoingConnections;
+
+        uint32_t m_maxIncomingConnections;
+
         std::string m_p2p_state_filename;
 
         bool m_p2p_state_reset;

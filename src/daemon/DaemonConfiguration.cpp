@@ -42,6 +42,23 @@ namespace DaemonConfig
 
             return DaemonConfiguration::MIN_PRUNE_DEPTH;
         }
+
+        uint32_t clampSyncMaxPeersToOutPeers(
+            const uint32_t syncMaxPeers,
+            const uint32_t outPeers,
+            const std::string &source)
+        {
+            if (syncMaxPeers <= outPeers)
+            {
+                return syncMaxPeers;
+            }
+
+            std::cout << CryptoNote::getProjectCLIHeader() << "The configured sync-max-peers (" << syncMaxPeers
+                      << ") from " << source << " exceeds out-peers (" << outPeers
+                      << "). Using out-peers value to avoid oversubscription." << std::endl;
+
+            return outPeers;
+        }
     } // namespace
 
     DaemonConfiguration initConfiguration(const char *path)
@@ -199,6 +216,14 @@ namespace DaemonConfig
             "External TCP port for the P2P service (NAT port forward)",
             cxxopts::value<int>()->default_value("0"),
             "#")(
+            "out-peers",
+            "Maximum number of outgoing P2P connections",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.p2pOutPeers)),
+            "#")(
+            "in-peers",
+            "Maximum number of incoming P2P connections",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.p2pInPeers)),
+            "#")(
             "p2p-reset-peerstate",
             "Generate a new peer ID and remove known peers saved previously",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
@@ -279,6 +304,14 @@ namespace DaemonConfig
             "sync-batch-max",
             "Maximum adaptive block request batch size",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.syncBatchMax)),
+            "#")(
+            "block-sync-size",
+            "Maximum number of blocks requested per sync chunk",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.blockSyncSize)),
+            "#")(
+            "block-sync-bytes",
+            "Maximum approximate bytes requested per sync chunk",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.blockSyncBytes)),
             "#");
 
         try
@@ -448,6 +481,16 @@ namespace DaemonConfig
                 config.p2pExternalPort = cli["p2p-external-port"].as<int>();
             }
 
+            if (cli.count("out-peers") > 0)
+            {
+                config.p2pOutPeers = std::max<uint32_t>(1, cli["out-peers"].as<uint32_t>());
+            }
+
+            if (cli.count("in-peers") > 0)
+            {
+                config.p2pInPeers = cli["in-peers"].as<uint32_t>();
+            }
+
             if (cli.count("p2p-reset-peerstate") > 0)
             {
                 config.p2pResetPeerstate = cli["p2p-reset-peerstate"].as<bool>();
@@ -579,6 +622,18 @@ namespace DaemonConfig
             {
                 config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, cli["sync-batch-max"].as<uint32_t>());
             }
+
+            if (cli.count("block-sync-size") > 0)
+            {
+                config.blockSyncSize = std::max<uint32_t>(1, cli["block-sync-size"].as<uint32_t>());
+            }
+
+            if (cli.count("block-sync-bytes") > 0)
+            {
+                config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, cli["block-sync-bytes"].as<uint64_t>());
+            }
+
+            config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "CLI/default");
 
             if (config.help) // Do we want to display the help message?
             {
@@ -773,6 +828,30 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("out-peers") == 0)
+                {
+                    try
+                    {
+                        config.p2pOutPeers = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("in-peers") == 0)
+                {
+                    try
+                    {
+                        config.p2pInPeers = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
                 else if (cfgKey.compare("rpc-bind-ip") == 0)
                 {
                     config.rpcInterface = cfgValue;
@@ -951,6 +1030,78 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("sync-max-peers") == 0)
+                {
+                    try
+                    {
+                        config.syncMaxPeers = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("sync-peer-failure-threshold") == 0)
+                {
+                    try
+                    {
+                        config.syncPeerFailureThreshold = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("sync-batch-min") == 0)
+                {
+                    try
+                    {
+                        config.syncBatchMin = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("sync-batch-max") == 0)
+                {
+                    try
+                    {
+                        config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("block-sync-size") == 0)
+                {
+                    try
+                    {
+                        config.blockSyncSize = std::max<uint32_t>(1, std::stoul(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("block-sync-bytes") == 0)
+                {
+                    try
+                    {
+                        config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, std::stoull(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
                 else
                 {
                     for (auto c : cfgKey)
@@ -964,6 +1115,8 @@ namespace DaemonConfig
                 }
             }
         }
+
+        config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "config file");
 
         if (!updated)
         {
@@ -1081,6 +1234,16 @@ namespace DaemonConfig
         if (j.HasMember("p2p-external-port"))
         {
             config.p2pExternalPort = j["p2p-external-port"].GetInt();
+        }
+
+        if (j.HasMember("out-peers"))
+        {
+            config.p2pOutPeers = std::max<uint32_t>(1, j["out-peers"].GetUint());
+        }
+
+        if (j.HasMember("in-peers"))
+        {
+            config.p2pInPeers = j["in-peers"].GetUint();
         }
 
         if (j.HasMember("p2p-reset-peerstate"))
@@ -1229,6 +1392,16 @@ namespace DaemonConfig
             config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, j["sync-batch-max"].GetUint());
         }
 
+        if (j.HasMember("block-sync-size"))
+        {
+            config.blockSyncSize = std::max<uint32_t>(1, j["block-sync-size"].GetUint());
+        }
+
+        if (j.HasMember("block-sync-bytes"))
+        {
+            config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, j["block-sync-bytes"].GetUint64());
+        }
+
         if (j.HasMember("prune"))
         {
             config.prune = j["prune"].GetBool();
@@ -1238,6 +1411,8 @@ namespace DaemonConfig
         {
             config.pruneDepth = clampPruneDepth(j["prune-depth"].GetUint(), "config file");
         }
+
+        config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "config file");
     }
 
     Document asJSON(const DaemonConfiguration &config)
@@ -1262,6 +1437,8 @@ namespace DaemonConfig
         j.AddMember("p2p-bind-ip", config.p2pInterface, alloc);
         j.AddMember("p2p-bind-port", config.p2pPort, alloc);
         j.AddMember("p2p-external-port", config.p2pExternalPort, alloc);
+        j.AddMember("out-peers", config.p2pOutPeers, alloc);
+        j.AddMember("in-peers", config.p2pInPeers, alloc);
         j.AddMember("p2p-reset-peerstate", config.p2pResetPeerstate, alloc);
         j.AddMember("rpc-bind-ip", config.rpcInterface, alloc);
         j.AddMember("rpc-bind-port", config.rpcPort, alloc);
@@ -1323,6 +1500,8 @@ namespace DaemonConfig
         j.AddMember("sync-peer-failure-threshold", config.syncPeerFailureThreshold, alloc);
         j.AddMember("sync-batch-min", config.syncBatchMin, alloc);
         j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
+        j.AddMember("block-sync-size", config.blockSyncSize, alloc);
+        j.AddMember("block-sync-bytes", config.blockSyncBytes, alloc);
 
         return j;
     }
