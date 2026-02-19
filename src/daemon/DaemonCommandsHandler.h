@@ -145,4 +145,6 @@ class DaemonCommandsHandler
     std::thread m_compactionSchedulerThread;
 
     std::atomic<bool> m_stopCompactionScheduler {false};
+
+    uint64_t m_lastAutoPruneAt = 0;
 };
