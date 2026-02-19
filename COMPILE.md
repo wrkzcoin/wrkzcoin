@@ -47,6 +47,8 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
+When changing target architecture/toolchain (for example x86_64 -> aarch64 or vice versa), use a fresh build directory or clear CMake cache first to avoid stale `-march`/ISA flags.
+
 ## Dependencies
 
 ### Linux
