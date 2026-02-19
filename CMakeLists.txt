@@ -16,6 +16,9 @@ endif ()
 set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
 set(ARCH default CACHE STRING "CPU to build for: -march value or native")
 set(CONSENSUS_SAFE_BUILD ON CACHE BOOL "Use reproducible, consensus-safe compiler optimizations")
+set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distributed across different machines")
+set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may reduce CPU portability")
+set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 
 project(WrkzCoin)
 
@@ -66,6 +69,9 @@ set(NO_OPTIMIZED_MULTIPLY_ON_ARM OFF CACHE BOOL "Turn off Optimized Multiplicati
 
 message(STATUS "Building for target architecture: ${ARCH}")
 message(STATUS "CONSENSUS_SAFE_BUILD: ${CONSENSUS_SAFE_BUILD}")
+message(STATUS "PORTABLE_BINARY: ${PORTABLE_BINARY}")
+message(STATUS "ENABLE_X86_AESNI: ${ENABLE_X86_AESNI}")
+message(STATUS "FULLY_STATIC: ${FULLY_STATIC}")
 
 if (FORCE_USE_HEAP)
     add_definitions(-DFORCE_USE_HEAP)
@@ -157,6 +163,44 @@ else ()
 endif ()
 
 if (NOT MSVC)
+    string(TOLOWER "${CMAKE_C_COMPILER}" WRKZ_C_COMPILER_LC)
+    string(TOLOWER "${CMAKE_CXX_COMPILER}" WRKZ_CXX_COMPILER_LC)
+    set(WRKZ_COMPILER_TARGETS_ARM FALSE)
+    set(WRKZ_COMPILER_TARGETS_AARCH64 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARM32 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMHF FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMEL FALSE)
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64"
+    )
+        set(WRKZ_COMPILER_TARGETS_AARCH64 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM32 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMHF TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMEL TRUE)
+    endif ()
+
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         # This option has no effect in glibc version less than 2.20.
         # Since glibc 2.20 _BSD_SOURCE is deprecated, this macro is recomended instead
@@ -165,9 +209,28 @@ if (NOT MSVC)
 
     ## This is here to support building for multiple architecture types... but we all know how well that usually goes...
     if ("${ARCH}" STREQUAL "default")
-        set(ARCH_FLAG "")
+        if (
+            PORTABLE_BINARY
+            AND NOT WRKZ_COMPILER_TARGETS_ARM
+            AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64"
+        )
+            set(ARCH_FLAG "-march=x86-64 -mtune=generic")
+        else ()
+            set(ARCH_FLAG "")
+        endif ()
     else ()
-        set(ARCH_FLAG "-march=${ARCH}")
+        if (
+            WRKZ_COMPILER_TARGETS_ARM
+            AND "${ARCH}" MATCHES "x86|X86|amd64|AMD64"
+        )
+            message(WARNING "Ignoring ARCH=${ARCH} because selected compiler targets ARM/aarch64.")
+            set(ARCH_FLAG "")
+        else ()
+            set(ARCH_FLAG "-march=${ARCH}")
+        endif ()
+        if (PORTABLE_BINARY AND "${ARCH}" STREQUAL "native")
+            message(WARNING "ARCH=native requested with PORTABLE_BINARY=ON. Result may not run on different CPUs.")
+        endif ()
     endif ()
 
     ## These options generate all those nice warnings we see while building
@@ -184,20 +247,24 @@ if (NOT MSVC)
     set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
     set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
 
-    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64")
+    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64" OR WRKZ_COMPILER_TARGETS_AARCH64)
         set(MAES_FLAG "")
         set(CRYPTOPP_AARCH64 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch64")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" OR WRKZ_COMPILER_TARGETS_ARMHF)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARMHF ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabihf")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi" OR WRKZ_COMPILER_TARGETS_ARMEL)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
         set(MAES_FLAG "")
         set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
-        set(MAES_FLAG "-maes")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT WRKZ_COMPILER_TARGETS_ARM AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+        if (ENABLE_X86_AESNI AND NOT NO_AES)
+            set(MAES_FLAG "-maes")
+        else ()
+            set(MAES_FLAG "")
+        endif ()
     else ()
         set(MAES_FLAG "")
     endif ()
@@ -254,6 +321,10 @@ if (NOT MSVC)
     ## Statically link our binaries
     if (NOT APPLE)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+        if (FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+            message(STATUS "FULLY_STATIC enabled: linking with -static")
+        endif ()
     endif ()
 endif ()
 

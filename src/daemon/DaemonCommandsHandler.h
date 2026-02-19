@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -14,9 +14,11 @@
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>
+#include <atomic>
 #include <future>
 #include <mutex>
 #include <system_error>
+#include <thread>
 
 namespace CryptoNote
 {
@@ -28,6 +30,8 @@ namespace CryptoNote
 class DaemonCommandsHandler
 {
   public:
+    ~DaemonCommandsHandler();
+
     DaemonCommandsHandler(
         CryptoNote::Core &core,
         CryptoNote::NodeServer &srv,
@@ -48,6 +52,12 @@ class DaemonCommandsHandler
     }
 
     bool exit(const std::vector<std::string> &args);
+
+    void start_boot_compaction_if_needed();
+
+    void stop_compaction_scheduler();
+
+    void wait_for_background_compaction();
 
   private:
     Common::ConsoleHandler m_consoleHandler;
@@ -108,6 +118,16 @@ class DaemonCommandsHandler
 
     void refresh_compaction_state_locked();
 
+    void compaction_scheduler_loop();
+
+    std::string get_compaction_marker_path() const;
+
+    bool compaction_marker_exists_locked() const;
+
+    void create_compaction_marker_locked();
+
+    void clear_compaction_marker_locked();
+
     std::mutex m_compactionMutex;
 
     std::future<std::error_code> m_compactionTask;
@@ -121,4 +141,8 @@ class DaemonCommandsHandler
     uint64_t m_compactionStartedAt = 0;
 
     uint64_t m_compactionFinishedAt = 0;
+
+    std::thread m_compactionSchedulerThread;
+
+    std::atomic<bool> m_stopCompactionScheduler {false};
 };

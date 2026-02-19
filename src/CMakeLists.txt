@@ -78,6 +78,39 @@ add_library(Utilities STATIC ${Utilities})
 add_library(Wallet STATIC ${Wallet})
 add_library(WalletBackend STATIC ${WalletBackend})
 
+# slow-hash-x86.c uses AES intrinsics and requires -maes when built on x86/x86_64.
+# Keep this flag local to the file so global CPU portability settings remain intact.
+if (NOT MSVC)
+    set(SLOW_HASH_X86_SRC "${CMAKE_CURRENT_SOURCE_DIR}/crypto/slow-hash-x86.c")
+    string(TOLOWER "${CMAKE_C_COMPILER}" WRKZ_C_COMPILER_LC)
+    string(TOLOWER "${CMAKE_C_COMPILER_TARGET}" WRKZ_C_COMPILER_TARGET_LC)
+    set(WRKZ_SLOWHASH_ARM_TARGET FALSE)
+    set(WRKZ_SLOWHASH_X86_TARGET FALSE)
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_C_COMPILER_TARGET_LC MATCHES "aarch64|arm64|arm"
+        OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|arm"
+    )
+        set(WRKZ_SLOWHASH_ARM_TARGET TRUE)
+    endif ()
+    if (
+        NOT WRKZ_SLOWHASH_ARM_TARGET
+        AND (
+            CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64|x86|i.86"
+            OR WRKZ_C_COMPILER_LC MATCHES "x86_64|amd64|i.86|mingw32"
+            OR WRKZ_C_COMPILER_TARGET_LC MATCHES "x86_64|amd64|i.86"
+        )
+    )
+        set(WRKZ_SLOWHASH_X86_TARGET TRUE)
+    endif ()
+    if (
+        EXISTS "${SLOW_HASH_X86_SRC}"
+        AND WRKZ_SLOWHASH_X86_TARGET
+    )
+        set_source_files_properties("${SLOW_HASH_X86_SRC}" PROPERTIES COMPILE_OPTIONS "-maes")
+    endif ()
+endif ()
+
 if (WIN32)
     set(DAEMON_SOURCES_OS
             binaryinfo/daemon.rc

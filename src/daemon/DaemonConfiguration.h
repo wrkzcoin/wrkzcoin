@@ -1,6 +1,6 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -73,6 +73,7 @@ namespace DaemonConfig
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
+            skipBootCompaction = false;
         }
 
         std::string dataDirectory;
@@ -168,6 +169,8 @@ namespace DaemonConfig
         uint32_t rpcMaxBlockCount;
 
         bool rpcTrustProxy;
+
+        bool skipBootCompaction;
 
         std::string configFile;
 

@@ -67,9 +67,17 @@ From repo root:
 source scripts/prep-aarch64.sh
 
 # 2) Configure and build
+rm -rf build-aarch64
 mkdir -p build-aarch64 && cd build-aarch64
-cmake -DARCH=default -DCMAKE_BUILD_TYPE=Release -DSTATIC=true ..
-cmake --build . --parallel
+cmake .. \
+  -DCMAKE_TOOLCHAIN_FILE=../scripts/cross-aarch64.cmake \
+  -DARCH=default \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DPORTABLE_BINARY=ON \
+  -DENABLE_X86_AESNI=OFF \
+  -DFULLY_STATIC=ON \
+  -DSTATIC=true
+cmake --build . --parallel -j4
 ```
 
 Optional explicit toolchain file:
@@ -79,8 +87,11 @@ cmake -S . -B build-aarch64 \
   -DCMAKE_TOOLCHAIN_FILE=scripts/cross-aarch64.cmake \
   -DARCH=default \
   -DCMAKE_BUILD_TYPE=Release \
+  -DPORTABLE_BINARY=ON \
+  -DENABLE_X86_AESNI=OFF \
+  -DFULLY_STATIC=ON \
   -DSTATIC=true
-cmake --build build-aarch64 --parallel
+cmake --build build-aarch64 --parallel -j4
 ```
 
 Build output directory:
@@ -90,6 +101,9 @@ build-aarch64/src
 ```
 
 Note:
+
+- If you switch between different targets (for example `build-windows-x86_64` and `build-aarch64`), do not reuse the same build directory.
+- Prefer deleting and recreating the target build directory before reconfiguring to avoid stale architecture flags.
 
 - `scripts/prep-aarch64.sh` installs Ubuntu cross packages and builds static
   target deps (`OpenSSL` and `Boost.DateTime`) into:

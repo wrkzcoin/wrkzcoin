@@ -1,6 +1,6 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -119,6 +119,9 @@ namespace DaemonConfig
             "#")(
             "no-console",
             "Disable daemon console commands",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "skip-boot-compaction",
+            "Skip automatic DB compaction start/check at daemon boot",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
             "save-config", "Save the configuration to the specified <file>", cxxopts::value<std::string>(), "<file>");
 
@@ -388,6 +391,11 @@ namespace DaemonConfig
             if (cli.count("no-console") > 0)
             {
                 config.noConsole = cli["no-console"].as<bool>();
+            }
+
+            if (cli.count("skip-boot-compaction") > 0)
+            {
+                config.skipBootCompaction = cli["skip-boot-compaction"].as<bool>();
             }
 
             config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
@@ -671,6 +679,11 @@ namespace DaemonConfig
                 else if (cfgKey.compare("no-console") == 0)
                 {
                     config.noConsole = cfgValue.at(0) == '1';
+                    updated = true;
+                }
+                else if (cfgKey.compare("skip-boot-compaction") == 0)
+                {
+                    config.skipBootCompaction = cfgValue.at(0) == '1';
                     updated = true;
                 }
                 else if (cfgKey.compare("db-max-open-files") == 0)
@@ -1020,6 +1033,11 @@ namespace DaemonConfig
             config.noConsole = j["no-console"].GetBool();
         }
 
+        if (j.HasMember("skip-boot-compaction"))
+        {
+            config.skipBootCompaction = j["skip-boot-compaction"].GetBool();
+        }
+
         if (j.HasMember("db-max-open-files"))
         {
             config.dbMaxOpenFiles = j["db-max-open-files"].GetInt();
@@ -1233,6 +1251,7 @@ namespace DaemonConfig
         j.AddMember("log-file", config.logFile, alloc);
         j.AddMember("log-level", config.logLevel, alloc);
         j.AddMember("no-console", config.noConsole, alloc);
+        j.AddMember("skip-boot-compaction", config.skipBootCompaction, alloc);
         j.AddMember("db-enable-compression", config.enableDbCompression, alloc);
         j.AddMember("db-max-open-files", config.dbMaxOpenFiles, alloc);
         j.AddMember("db-read-buffer-size", config.dbReadCacheSizeMB, alloc);
