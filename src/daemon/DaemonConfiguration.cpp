@@ -312,6 +312,22 @@ namespace DaemonConfig
             "block-sync-bytes",
             "Maximum approximate bytes requested per sync chunk",
             cxxopts::value<uint64_t>()->default_value(std::to_string(config.blockSyncBytes)),
+            "#")(
+            "auto-prune-min-gap-blocks",
+            "Minimum block gap between automatic prune passes (0 disables periodic auto-prune)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.autoPruneMinGapBlocks)),
+            "#")(
+            "auto-compaction-min-gap-blocks",
+            "Minimum block gap between automatic DB compactions (0 disables periodic auto-compaction)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.autoCompactionMinGapBlocks)),
+            "#")(
+            "auto-prune-min-free-bytes",
+            "Minimum free bytes required before regular auto-prune schedule (low-space mode can still force prune)",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.autoPruneMinFreeBytes)),
+            "#")(
+            "auto-compaction-min-free-bytes",
+            "Minimum free bytes required to start automatic DB compaction",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.autoCompactionMinFreeBytes)),
             "#");
 
         try
@@ -631,6 +647,26 @@ namespace DaemonConfig
             if (cli.count("block-sync-bytes") > 0)
             {
                 config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, cli["block-sync-bytes"].as<uint64_t>());
+            }
+
+            if (cli.count("auto-prune-min-gap-blocks") > 0)
+            {
+                config.autoPruneMinGapBlocks = cli["auto-prune-min-gap-blocks"].as<uint32_t>();
+            }
+
+            if (cli.count("auto-compaction-min-gap-blocks") > 0)
+            {
+                config.autoCompactionMinGapBlocks = cli["auto-compaction-min-gap-blocks"].as<uint32_t>();
+            }
+
+            if (cli.count("auto-prune-min-free-bytes") > 0)
+            {
+                config.autoPruneMinFreeBytes = cli["auto-prune-min-free-bytes"].as<uint64_t>();
+            }
+
+            if (cli.count("auto-compaction-min-free-bytes") > 0)
+            {
+                config.autoCompactionMinFreeBytes = cli["auto-compaction-min-free-bytes"].as<uint64_t>();
             }
 
             config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "CLI/default");
@@ -1102,6 +1138,54 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("auto-prune-min-gap-blocks") == 0)
+                {
+                    try
+                    {
+                        config.autoPruneMinGapBlocks = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-compaction-min-gap-blocks") == 0)
+                {
+                    try
+                    {
+                        config.autoCompactionMinGapBlocks = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-prune-min-free-bytes") == 0)
+                {
+                    try
+                    {
+                        config.autoPruneMinFreeBytes = std::stoull(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-compaction-min-free-bytes") == 0)
+                {
+                    try
+                    {
+                        config.autoCompactionMinFreeBytes = std::stoull(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
                 else
                 {
                     for (auto c : cfgKey)
@@ -1402,6 +1486,26 @@ namespace DaemonConfig
             config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, j["block-sync-bytes"].GetUint64());
         }
 
+        if (j.HasMember("auto-prune-min-gap-blocks"))
+        {
+            config.autoPruneMinGapBlocks = j["auto-prune-min-gap-blocks"].GetUint();
+        }
+
+        if (j.HasMember("auto-compaction-min-gap-blocks"))
+        {
+            config.autoCompactionMinGapBlocks = j["auto-compaction-min-gap-blocks"].GetUint();
+        }
+
+        if (j.HasMember("auto-prune-min-free-bytes"))
+        {
+            config.autoPruneMinFreeBytes = j["auto-prune-min-free-bytes"].GetUint64();
+        }
+
+        if (j.HasMember("auto-compaction-min-free-bytes"))
+        {
+            config.autoCompactionMinFreeBytes = j["auto-compaction-min-free-bytes"].GetUint64();
+        }
+
         if (j.HasMember("prune"))
         {
             config.prune = j["prune"].GetBool();
@@ -1502,6 +1606,10 @@ namespace DaemonConfig
         j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
         j.AddMember("block-sync-size", config.blockSyncSize, alloc);
         j.AddMember("block-sync-bytes", config.blockSyncBytes, alloc);
+        j.AddMember("auto-prune-min-gap-blocks", config.autoPruneMinGapBlocks, alloc);
+        j.AddMember("auto-compaction-min-gap-blocks", config.autoCompactionMinGapBlocks, alloc);
+        j.AddMember("auto-prune-min-free-bytes", config.autoPruneMinFreeBytes, alloc);
+        j.AddMember("auto-compaction-min-free-bytes", config.autoCompactionMinFreeBytes, alloc);
 
         return j;
     }

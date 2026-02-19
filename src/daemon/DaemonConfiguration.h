@@ -78,6 +78,10 @@ namespace DaemonConfig
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
             skipBootCompaction = false;
+            autoPruneMinGapBlocks = 120;
+            autoCompactionMinGapBlocks = 720;
+            autoPruneMinFreeBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+            autoCompactionMinFreeBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
         }
 
         std::string dataDirectory;
@@ -183,6 +187,14 @@ namespace DaemonConfig
         bool rpcTrustProxy;
 
         bool skipBootCompaction;
+
+        uint32_t autoPruneMinGapBlocks;
+
+        uint32_t autoCompactionMinGapBlocks;
+
+        uint64_t autoPruneMinFreeBytes;
+
+        uint64_t autoCompactionMinFreeBytes;
 
         std::string configFile;
 
