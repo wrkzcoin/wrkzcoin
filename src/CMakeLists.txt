@@ -51,6 +51,8 @@ endif ()
 
 if (WIN32)
     file(GLOB_RECURSE System system/* platform/windows/system/*)
+elseif (ANDROID)
+    file(GLOB_RECURSE System system/* platform/android/system/* platform/posix/system/*)
 elseif (APPLE)
     file(GLOB_RECURSE System system/* platform/osx/system/* platform/posix/system/*)
 else ()
