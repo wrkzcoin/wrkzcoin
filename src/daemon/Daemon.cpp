@@ -35,6 +35,7 @@
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
 #include <atomic>
+#include <optional>
 
 #if defined(WIN32)
 
@@ -50,6 +51,83 @@ using Common::JsonValue;
 using namespace CryptoNote;
 using namespace Logging;
 using namespace DaemonConfig;
+
+namespace
+{
+    const std::string DAEMON_MODE_PROFILE_KEY = "daemon_mode_profile";
+
+    class DaemonModeProfileReadBatch : public IReadBatch
+    {
+      public:
+        virtual ~DaemonModeProfileReadBatch() {}
+
+        virtual std::vector<std::string> getRawKeys() const override
+        {
+            return {DAEMON_MODE_PROFILE_KEY};
+        }
+
+        virtual void submitRawResult(const std::vector<std::string> &values, const std::vector<bool> &resultStates) override
+        {
+            if (values.size() != 1 || resultStates.size() != 1 || !resultStates[0])
+            {
+                return;
+            }
+
+            storedMode = values[0];
+        }
+
+        std::optional<std::string> getStoredMode() const
+        {
+            return storedMode;
+        }
+
+      private:
+        std::optional<std::string> storedMode;
+    };
+
+    class DaemonModeProfileWriteBatch : public IWriteBatch
+    {
+      public:
+        explicit DaemonModeProfileWriteBatch(std::string mode): daemonMode(std::move(mode)) {}
+
+        virtual ~DaemonModeProfileWriteBatch() {}
+
+        virtual std::vector<std::pair<std::string, std::string>> extractRawDataToInsert() override
+        {
+            return {std::make_pair(DAEMON_MODE_PROFILE_KEY, daemonMode)};
+        }
+
+        virtual std::vector<std::string> extractRawKeysToRemove() override
+        {
+            return {};
+        }
+
+      private:
+        std::string daemonMode;
+    };
+
+    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    {
+        DaemonModeProfileReadBatch readBatch;
+        const auto error = database.read(readBatch);
+        if (error)
+        {
+            throw std::system_error(error);
+        }
+
+        return readBatch.getStoredMode();
+    }
+
+    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    {
+        DaemonModeProfileWriteBatch writeBatch(mode);
+        const auto error = database.write(writeBatch);
+        if (error)
+        {
+            throw std::system_error(error);
+        }
+    }
+} // namespace
 
 void print_genesis_tx_hex(const bool blockExplorerMode, std::shared_ptr<LoggerManager> logManager)
 {
@@ -387,6 +465,34 @@ int main(int argc, char *argv[])
         ccore->load();
 
         logger(INFO) << "Core initialized OK";
+
+        const auto storedDaemonMode = readDaemonModeProfile(*database);
+        const bool hasHistoricalBlocks = ccore->getTopBlockIndex() > 0;
+
+        if (storedDaemonMode)
+        {
+            if (*storedDaemonMode != config.daemonMode)
+            {
+                logger(ERROR) << "Daemon mode mismatch for existing database. Stored mode: " << *storedDaemonMode
+                              << ", requested mode: " << config.daemonMode
+                              << ". Reindex is required before switching mode. Restart with --resync --daemon-mode "
+                              << config.daemonMode;
+                return 1;
+            }
+        }
+        else
+        {
+            if (hasHistoricalBlocks && config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+            {
+                logger(ERROR) << "Daemon database has historical blocks but no stored daemon mode profile. "
+                              << "To ensure explorer index consistency, reindex is required. "
+                              << "Restart with --resync --daemon-mode explorer";
+                return 1;
+            }
+
+            writeDaemonModeProfile(*database, config.daemonMode);
+            logger(INFO) << "Stored daemon mode profile in database: " << config.daemonMode;
+        }
 
         std::string error;
         std::string filepath = "blockchain.dump";
