@@ -39,6 +39,13 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6)
         message(FATAL_ERROR "Clang 6.0 or greater is required to compile. Please check the README.md for detailed compilation instructions.")
     endif ()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
+        message(WARNING
+            "Clang < 15 on Linux may fail with C++20 <chrono> depending on libstdc++ headers "
+            "(known issue: clang-14 with GCC 13 libstdc++). Prefer clang >= 15, GCC, clang+libc++, "
+            "or clang with an older GCC toolchain."
+        )
+    endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # Visual Studio 15 2017 or higher
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.10)
@@ -63,6 +70,28 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Validate the active compiler/standard-library tuple can compile C++20 <chrono>.
+# This catches known combinations such as clang-14 with GCC 13 libstdc++ headers.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_QUIET TRUE)
+check_cxx_source_compiles(
+    "
+    #include <chrono>
+    int main() {
+      std::chrono::nanoseconds n{1};
+      return static_cast<int>(n.count());
+    }
+    "
+    WRKZ_CXX20_CHRONO_WORKS
+)
+if (NOT WRKZ_CXX20_CHRONO_WORKS)
+    message(FATAL_ERROR
+        "This compiler/stdlib combination cannot compile C++20 <chrono>.\n"
+        "Known bad combo: clang-14 with GCC 13 libstdc++ headers.\n"
+        "Use GCC, clang >= 15, clang + libc++, or clang with an older GCC toolchain (e.g. g++-11 headers)."
+    )
+endif ()
 
 ## This section is for settings found in the slow-hash routine(s) that may benefit some systems (mostly ARM)
 set(FORCE_USE_HEAP ON CACHE BOOL "Force the use of heap memory allocation")

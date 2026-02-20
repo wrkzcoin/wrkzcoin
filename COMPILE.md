@@ -74,6 +74,10 @@ Minimum tooling:
 - C++ compiler:
   - GCC >= 7, or
   - Clang >= 6
+- C++20 `<chrono>` compatibility note (Linux):
+  - Confirmed: `clang-15` compiles successfully.
+  - `clang-14` with GCC 13 `libstdc++` headers is known to fail in `<chrono>`.
+  - Use GCC, `clang >= 15`, clang with `libc++`, or point clang at an older GCC toolchain (for example GCC 11 headers/libs).
 - OpenSSL development package
 - Git
 - Make or Ninja
