@@ -389,13 +389,27 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
         set(BOOST_ROOT "$ENV{BOOST_ROOT}")
     endif ()
 
-    if (DEFINED BOOST_ROOT AND EXISTS "${BOOST_ROOT}/include/boost/version.hpp")
-        set(Boost_INCLUDE_DIR "${BOOST_ROOT}/include")
-        set(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIR}")
-        message(STATUS "Boost headers from BOOST_ROOT: ${Boost_INCLUDE_DIRS}")
-    else ()
-        find_package(Boost REQUIRED)
+    set(_WRKZ_BOOST_HEADER_CANDIDATES "")
+    if (DEFINED BOOST_ROOT)
+        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
     endif ()
+    list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "/usr/include" "/usr/local/include")
+
+    set(Boost_INCLUDE_DIRS "")
+    foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
+        if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
+            set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
+            break()
+        endif ()
+    endforeach ()
+
+    if (Boost_INCLUDE_DIRS STREQUAL "")
+        message(FATAL_ERROR
+            "Android wallet_capi build requires Boost headers but none were found.\n"
+            "Install on host: sudo apt-get install -y libboost-dev\n"
+            "or set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
+    endif ()
+    message(STATUS "Boost headers for Android wallet_capi: ${Boost_INCLUDE_DIRS}")
 
     set(WRKZ_BOOST_LINK_LIBS "")
 else ()
