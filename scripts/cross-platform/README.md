@@ -218,7 +218,7 @@ Common environment knobs:
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-arm64`)
 - `JOBS` (default: `nproc`)
-- `BOOST_ROOT` (optional custom Boost prefix containing `include/boost/version.hpp`)
+- `BOOST_ROOT` (optional custom isolated Boost prefix containing `include/boost/version.hpp`)
 
 Notes:
 
@@ -227,6 +227,8 @@ Notes:
   - `WRKZ_BUILD_EXECUTABLES=OFF`
   - `WRKZ_BUILD_WALLET_CAPI=ON`
   - `ENABLE_ZMQ=OFF`
+- If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
+  `.android-boost/include/boost` and uses that isolated path for cross build.
 - Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
 
 ## Notes

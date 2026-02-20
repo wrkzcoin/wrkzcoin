@@ -22,21 +22,29 @@ if [ ! -f "$ANDROID_NDK/build/cmake/android.toolchain.cmake" ]; then
   exit 1
 fi
 
-if [ -z "${BOOST_ROOT:-}" ] && [ ! -f "/usr/include/boost/version.hpp" ]; then
-  echo "Boost headers not found."
-  echo "Install headers on host (Ubuntu):"
-  echo "  sudo apt-get install -y libboost-dev"
-  echo "or set BOOST_ROOT to a Boost prefix containing include/boost/version.hpp"
-  exit 1
-fi
-
 if [ -n "${BOOST_ROOT:-}" ]; then
   BOOST_INCLUDE_CANDIDATE="$BOOST_ROOT/include"
   if [ -f "$BOOST_ROOT/boost/version.hpp" ]; then
     BOOST_INCLUDE_CANDIDATE="$BOOST_ROOT"
   fi
 else
-  BOOST_INCLUDE_CANDIDATE="/usr/include"
+  if [ ! -f "/usr/include/boost/version.hpp" ]; then
+    echo "Boost headers not found."
+    echo "Install headers on host (Ubuntu):"
+    echo "  sudo apt-get install -y libboost-dev"
+    echo "or set BOOST_ROOT to a Boost prefix containing include/boost/version.hpp"
+    exit 1
+  fi
+
+  # Avoid injecting host /usr/include into Android cross compile.
+  # Stage only the boost/ tree into an isolated include prefix.
+  STAGED_BOOST_ROOT="${REPO_ROOT}/.android-boost"
+  STAGED_BOOST_INCLUDE="${STAGED_BOOST_ROOT}/include"
+  mkdir -p "${STAGED_BOOST_INCLUDE}"
+  rm -rf "${STAGED_BOOST_INCLUDE}/boost"
+  cp -a /usr/include/boost "${STAGED_BOOST_INCLUDE}/boost"
+  BOOST_ROOT="${STAGED_BOOST_ROOT}"
+  BOOST_INCLUDE_CANDIDATE="${STAGED_BOOST_INCLUDE}"
 fi
 
 for h in boost/version.hpp boost/uuid/uuid.hpp boost/variant.hpp boost/algorithm/string.hpp; do
@@ -58,7 +66,7 @@ cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DWRKZ_BUILD_EXECUTABLES=OFF \
   -DWRKZ_BUILD_WALLET_CAPI=ON \
   -DENABLE_ZMQ=OFF \
-  ${BOOST_ROOT:+-DBOOST_ROOT="$BOOST_ROOT"}
+  -DBOOST_ROOT="$BOOST_ROOT"
 
 echo "Building wallet C API target ..."
 cmake --build "$BUILD_DIR" --target wallet_capi --parallel "$JOBS"

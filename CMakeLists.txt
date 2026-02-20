@@ -396,7 +396,6 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
     if (DEFINED BOOST_ROOT)
         list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
     endif ()
-    list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "/usr/include" "/usr/local/include")
 
     set(Boost_INCLUDE_DIRS "")
     foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
@@ -409,8 +408,8 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
     if (Boost_INCLUDE_DIRS STREQUAL "")
         message(FATAL_ERROR
             "Android wallet_capi build requires Boost headers but none were found.\n"
-            "Install on host: sudo apt-get install -y libboost-dev\n"
-            "or set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
+            "Set BOOST_ROOT to an isolated Boost headers prefix containing include/boost/version.hpp.\n"
+            "Do not pass /usr/include directly in cross builds.")
     endif ()
 
     # Normalize include root: if the probe resolved to ".../boost", use its parent.
@@ -429,8 +428,7 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
             "  ${Boost_INCLUDE_DIRS}/boost/version.hpp\n"
             "  ${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp\n"
             "  ${Boost_INCLUDE_DIRS}/boost/variant.hpp\n"
-            "Install on host: sudo apt-get install -y libboost-dev\n"
-            "or set BOOST_ROOT to a valid Boost prefix.")
+            "Set BOOST_ROOT to a valid isolated Boost prefix.")
     endif ()
     message(STATUS "Boost headers for Android wallet_capi: ${Boost_INCLUDE_DIRS}")
 
@@ -449,21 +447,6 @@ if (Boost_INCLUDE_DIRS AND EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS
 endif ()
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABLES)
-    set(WRKZ_BOOST_INCLUDE_ROOT "")
-    if (Boost_INCLUDE_DIRS)
-        set(WRKZ_BOOST_INCLUDE_ROOT "${Boost_INCLUDE_DIRS}")
-        list(LENGTH Boost_INCLUDE_DIRS WRKZ_BOOST_INCLUDE_DIR_COUNT)
-        if (WRKZ_BOOST_INCLUDE_DIR_COUNT GREATER 1)
-            list(GET Boost_INCLUDE_DIRS 0 WRKZ_BOOST_INCLUDE_ROOT)
-        endif ()
-    endif ()
-    if (WRKZ_BOOST_INCLUDE_ROOT)
-        message(STATUS "Forcing Boost include root in Android wallet_capi flags: ${WRKZ_BOOST_INCLUDE_ROOT}")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${WRKZ_BOOST_INCLUDE_ROOT}")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${WRKZ_BOOST_INCLUDE_ROOT}")
-    endif ()
-endif ()
 
 ## Let's see if we have any OpenSSL static libraries available
 if (WRKZ_ANDROID_PROFILE)
