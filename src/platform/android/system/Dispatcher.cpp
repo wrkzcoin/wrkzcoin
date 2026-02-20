@@ -19,7 +19,7 @@
 #include <ucontext.h>
 #include <unistd.h>
 
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__BIONIC__)
 extern "C" {
 int getcontext(ucontext_t *ucp);
 int setcontext(const ucontext_t *ucp);

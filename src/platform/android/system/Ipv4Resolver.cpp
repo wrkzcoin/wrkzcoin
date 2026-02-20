@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <random>
 #include <stdexcept>
+#include <sys/socket.h>
 #include <system/Dispatcher.h>
 #include <system/ErrorMessage.h>
 #include <system/InterruptedException.h>
