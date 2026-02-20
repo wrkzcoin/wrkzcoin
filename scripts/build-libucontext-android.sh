@@ -104,12 +104,21 @@ endian = 'little'
 EOF
 
 echo "Configuring libucontext for $ABI ..."
-meson setup "$BUILD_DIR" "$SRC_DIR" \
-  --cross-file "$CROSS_FILE" \
-  --default-library=static \
-  --buildtype=release \
-  --prefix "$PREFIX" \
-  --wipe
+if [ -f "$BUILD_DIR/meson-private/coredata.dat" ]; then
+  meson setup "$BUILD_DIR" "$SRC_DIR" \
+    --cross-file "$CROSS_FILE" \
+    --default-library=static \
+    --buildtype=release \
+    --prefix "$PREFIX" \
+    --wipe
+else
+  rm -rf "$BUILD_DIR"
+  meson setup "$BUILD_DIR" "$SRC_DIR" \
+    --cross-file "$CROSS_FILE" \
+    --default-library=static \
+    --buildtype=release \
+    --prefix "$PREFIX"
+fi
 
 echo "Building libucontext ..."
 meson compile -C "$BUILD_DIR" -j "$JOBS"
