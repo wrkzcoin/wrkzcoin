@@ -176,23 +176,22 @@ if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
 endif ()
 
 if (ANDROID)
-    if (NOT LIBUCONTEXT_ROOT)
-        message(FATAL_ERROR
-            "Android build requires libucontext. Set LIBUCONTEXT_ROOT to a prefix containing "
-            "include/ and lib/libucontext.a")
+    if (LIBUCONTEXT_ROOT)
+        set(WRKZ_LIBUCONTEXT_LIB "${LIBUCONTEXT_ROOT}/lib/libucontext.a")
+        if (EXISTS "${WRKZ_LIBUCONTEXT_LIB}")
+            if (EXISTS "${LIBUCONTEXT_ROOT}/include")
+                target_include_directories(System PRIVATE "${LIBUCONTEXT_ROOT}/include")
+            endif ()
+            target_link_libraries(System "${WRKZ_LIBUCONTEXT_LIB}")
+            message(STATUS "Android System: linking libucontext from ${WRKZ_LIBUCONTEXT_LIB}")
+        else ()
+            message(WARNING
+                "LIBUCONTEXT_ROOT is set but libucontext was not found at ${WRKZ_LIBUCONTEXT_LIB}. "
+                "Continuing without libucontext.")
+        endif ()
+    else ()
+        message(STATUS "Android System: LIBUCONTEXT_ROOT not set, building without libucontext")
     endif ()
-
-    set(WRKZ_LIBUCONTEXT_LIB "${LIBUCONTEXT_ROOT}/lib/libucontext.a")
-    if (NOT EXISTS "${WRKZ_LIBUCONTEXT_LIB}")
-        message(FATAL_ERROR
-            "libucontext static library not found at ${WRKZ_LIBUCONTEXT_LIB}")
-    endif ()
-
-    if (EXISTS "${LIBUCONTEXT_ROOT}/include")
-        target_include_directories(System PRIVATE "${LIBUCONTEXT_ROOT}/include")
-    endif ()
-
-    target_link_libraries(System "${WRKZ_LIBUCONTEXT_LIB}")
 endif ()
 
 # A bit of hackery so we don't have to do the if/else/ for every target that

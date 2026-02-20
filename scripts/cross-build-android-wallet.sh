@@ -58,10 +58,9 @@ for h in boost/version.hpp boost/uuid/uuid.hpp boost/variant.hpp boost/algorithm
 done
 
 if [ ! -f "$LIBUCONTEXT_ROOT/lib/libucontext.a" ]; then
-  echo "Missing libucontext static library:"
+  echo "Warning: libucontext not found at:"
   echo "  $LIBUCONTEXT_ROOT/lib/libucontext.a"
-  echo "Build/provide libucontext for Android ABI '$ANDROID_ABI' and set LIBUCONTEXT_ROOT."
-  exit 1
+  echo "Continuing without libucontext. Link may fail on getcontext/swapcontext/makecontext."
 fi
 
 echo "Configuring Android wallet C API build in $BUILD_DIR ..."
