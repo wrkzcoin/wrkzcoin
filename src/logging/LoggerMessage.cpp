@@ -32,7 +32,7 @@ namespace Logging
         }
     }
 
-#ifndef __linux__
+#if !defined(__linux__) || defined(__ANDROID__) || !defined(__GLIBC__)
 
     LoggerMessage::LoggerMessage(LoggerMessage &&other):
         std::ostream(std::move(other)),
