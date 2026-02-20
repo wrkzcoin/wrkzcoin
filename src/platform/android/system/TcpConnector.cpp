@@ -11,8 +11,10 @@
 #include "TcpConnection.h"
 
 #include <cassert>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <system/InterruptedException.h>
