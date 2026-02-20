@@ -207,6 +207,11 @@ if (OPENSSL_FOUND)
     target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
 endif ()
 
+if (ENABLE_ZMQ)
+    target_link_libraries(Wrkzd ${ZMQ_LIBRARY})
+    target_compile_definitions(Wrkzd PRIVATE WRKZ_ENABLE_ZMQ=1)
+endif ()
+
 if (WIN32 AND NOT MSVC)
     # RocksDB Windows objects require shlwapi and rpc symbols; keep them late.
     target_link_libraries(Wrkzd shlwapi rpcrt4)

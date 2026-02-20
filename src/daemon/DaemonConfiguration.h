@@ -77,6 +77,8 @@ namespace DaemonConfig
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
+            zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
+            noZmq = false;
             skipBootCompaction = false;
             autoPruneMinGapBlocks = 120;
             autoCompactionMinGapBlocks = 720;
@@ -181,6 +183,10 @@ namespace DaemonConfig
         uint32_t rpcMaxBlockCount;
 
         bool rpcTrustProxy;
+
+        std::string zmqPub;
+
+        bool noZmq;
 
         bool skipBootCompaction;
 

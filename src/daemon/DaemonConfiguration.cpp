@@ -206,6 +206,14 @@ namespace DaemonConfig
             "#")(
             "rpc-trust-proxy",
             "Trust X-Forwarded-For header for client IP (enable only behind trusted reverse proxy)",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "zmq-pub",
+            "ZMQ PUB endpoint (for example tcp://127.0.0.1:"
+                + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT) + "). Empty disables ZMQ publisher.",
+            cxxopts::value<std::string>()->default_value(config.zmqPub),
+            "<address>")(
+            "no-zmq",
+            "Disable ZMQ publisher even if zmq-pub is set",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
 
         options.add_options("Network")(
@@ -612,6 +620,16 @@ namespace DaemonConfig
             if (cli.count("rpc-trust-proxy") > 0)
             {
                 config.rpcTrustProxy = cli["rpc-trust-proxy"].as<bool>();
+            }
+
+            if (cli.count("zmq-pub") > 0)
+            {
+                config.zmqPub = cli["zmq-pub"].as<std::string>();
+            }
+
+            if (cli.count("no-zmq") > 0)
+            {
+                config.noZmq = cli["no-zmq"].as<bool>();
             }
 
             if (cli.count("transaction-validation-threads") > 0)
@@ -1045,6 +1063,16 @@ namespace DaemonConfig
                     config.rpcTrustProxy = cfgValue.at(0) == '1';
                     updated = true;
                 }
+                else if (cfgKey.compare("zmq-pub") == 0)
+                {
+                    config.zmqPub = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("no-zmq") == 0)
+                {
+                    config.noZmq = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("transaction-validation-threads") == 0)
                 {
                     try
@@ -1432,6 +1460,16 @@ namespace DaemonConfig
             config.rpcTrustProxy = j["rpc-trust-proxy"].GetBool();
         }
 
+        if (j.HasMember("zmq-pub"))
+        {
+            config.zmqPub = j["zmq-pub"].GetString();
+        }
+
+        if (j.HasMember("no-zmq"))
+        {
+            config.noZmq = j["no-zmq"].GetBool();
+        }
+
         if (j.HasMember("transaction-validation-threads"))
         {
             config.transactionValidationThreads = j["transaction-validation-threads"].GetInt();
@@ -1576,6 +1614,8 @@ namespace DaemonConfig
         j.AddMember("rpc-max-global-index-range", config.rpcMaxGlobalIndexesRange, alloc);
         j.AddMember("rpc-max-block-count", config.rpcMaxBlockCount, alloc);
         j.AddMember("rpc-trust-proxy", config.rpcTrustProxy, alloc);
+        j.AddMember("zmq-pub", config.zmqPub, alloc);
+        j.AddMember("no-zmq", config.noZmq, alloc);
         j.AddMember("transaction-validation-threads", config.transactionValidationThreads, alloc);
         j.AddMember("prune", config.prune, alloc);
         j.AddMember("prune-depth", config.pruneDepth, alloc);
