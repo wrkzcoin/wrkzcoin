@@ -6,6 +6,7 @@
 
 #include <common/CryptoNoteTools.h>
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <sstream>
 #include <system/InterruptedException.h>
@@ -230,12 +231,22 @@ namespace Daemon
         if (zmq_send(m_zmqSocket, topic.data(), topic.size(), ZMQ_DONTWAIT | ZMQ_SNDMORE) == -1)
         {
             ++m_dropped;
+            if (zmq_errno() != EAGAIN)
+            {
+                m_logger(Logging::WARNING) << "ZMQ send failed on topic " << topic << ": "
+                                           << zmq_strerror(zmq_errno());
+            }
             return false;
         }
 
         if (zmq_send(m_zmqSocket, payload.data(), payload.size(), ZMQ_DONTWAIT) == -1)
         {
             ++m_dropped;
+            if (zmq_errno() != EAGAIN)
+            {
+                m_logger(Logging::WARNING) << "ZMQ send failed on topic " << topic << ": "
+                                           << zmq_strerror(zmq_errno());
+            }
             return false;
         }
 
