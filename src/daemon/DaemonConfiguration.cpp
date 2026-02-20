@@ -14,6 +14,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <cxxopts.hpp>
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <logging/ILogger.h>
 #include <rapidjson/document.h>
@@ -58,6 +59,21 @@ namespace DaemonConfig
                       << "). Using out-peers value to avoid oversubscription." << std::endl;
 
             return outPeers;
+        }
+
+        std::string normalizeDaemonMode(const std::string &rawMode)
+        {
+            std::string mode = rawMode;
+            std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (mode == DaemonConfiguration::DAEMON_MODE_STANDARD || mode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+            {
+                return mode;
+            }
+
+            throw std::runtime_error(
+                "Invalid daemon-mode: '" + rawMode + "'. Allowed values are '" + std::string(DaemonConfiguration::DAEMON_MODE_STANDARD)
+                + "' or '" + std::string(DaemonConfiguration::DAEMON_MODE_EXPLORER) + "'.");
         }
     } // namespace
 
@@ -143,15 +159,10 @@ namespace DaemonConfig
             "save-config", "Save the configuration to the specified <file>", cxxopts::value<std::string>(), "<file>");
 
         options.add_options("RPC")(
-            "enable-blockexplorer",
-            "Enable the Blockchain Explorer RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
-            "enable-blockexplorer-detailed",
-            "Enable the Blockchain Explorer Detailed RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
-            "enable-mining",
-            "Enable Mining RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "daemon-mode",
+            "Daemon RPC mode: standard or explorer",
+            cxxopts::value<std::string>()->default_value(config.daemonMode),
+            "<standard|explorer>")(
             "enable-cors",
             "Adds header 'Access-Control-Allow-Origin' to the RPC responses using the <domain>. Uses the value "
             "specified as the domain. Use * for all.",
@@ -542,19 +553,9 @@ namespace DaemonConfig
                 config.seedNodes = cli["seed-node"].as<std::vector<std::string>>();
             }
 
-            if (cli.count("enable-blockexplorer") > 0)
+            if (cli.count("daemon-mode") > 0)
             {
-                config.enableBlockExplorer = cli["enable-blockexplorer"].as<bool>();
-            }
-
-            if (cli.count("enable-blockexplorer-detailed") > 0)
-            {
-                config.enableBlockExplorerDetailed = cli["enable-blockexplorer-detailed"].as<bool>();
-            }
-
-            if (cli.count("enable-mining") > 0)
-            {
-                config.enableMining = cli["enable-mining"].as<bool>();
+                config.daemonMode = normalizeDaemonMode(cli["daemon-mode"].as<std::string>());
             }
 
             if (cli.count("enable-cors") > 0)
@@ -934,19 +935,9 @@ namespace DaemonConfig
                     config.seedNodes = seedNodes;
                     updated = true;
                 }
-                else if (cfgKey.compare("enable-blockexplorer") == 0)
+                else if (cfgKey.compare("daemon-mode") == 0)
                 {
-                    config.enableBlockExplorer = cfgValue.at(0) == '1';
-                    updated = true;
-                }
-                else if (cfgKey.compare("enable-blockexplorer-detailed") == 0)
-                {
-                    config.enableBlockExplorerDetailed = cfgValue.at(0) == '1';
-                    updated = true;
-                }
-                else if (cfgKey.compare("enable-mining") == 0)
-                {
-                    config.enableMining = cfgValue.at(0) == '1';
+                    config.daemonMode = normalizeDaemonMode(cfgValue);
                     updated = true;
                 }
                 else if (cfgKey.compare("enable-cors") == 0)
@@ -1381,19 +1372,9 @@ namespace DaemonConfig
             }
         }
 
-        if (j.HasMember("enable-blockexplorer"))
+        if (j.HasMember("daemon-mode"))
         {
-            config.enableBlockExplorer = j["enable-blockexplorer"].GetBool();
-        }
-
-        if (j.HasMember("enable-blockexplorer-detailed"))
-        {
-            config.enableBlockExplorerDetailed = j["enable-blockexplorer-detailed"].GetBool();
-        }
-
-        if (j.HasMember("enable-mining"))
-        {
-            config.enableMining = j["enable-mining"].GetBool();
+            config.daemonMode = normalizeDaemonMode(j["daemon-mode"].GetString());
         }
 
         if (j.HasMember("enable-cors"))
@@ -1584,9 +1565,7 @@ namespace DaemonConfig
         }
 
         j.AddMember("enable-cors", config.enableCors, alloc);
-        j.AddMember("enable-blockexplorer", config.enableBlockExplorer, alloc);
-        j.AddMember("enable-blockexplorer-detailed", config.enableBlockExplorerDetailed, alloc);
-        j.AddMember("enable-mining", config.enableMining, alloc);
+        j.AddMember("daemon-mode", Value().SetString(StringRef(config.daemonMode.c_str())), alloc);
         j.AddMember("fee-address", config.feeAddress, alloc);
         j.AddMember("fee-amount", config.feeAmount, alloc);
         j.AddMember("rpc-access-token", config.rpcAccessToken, alloc);

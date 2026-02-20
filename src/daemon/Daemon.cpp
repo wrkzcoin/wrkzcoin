@@ -283,8 +283,11 @@ int main(int argc, char *argv[])
         logger(INFO) << "Program Working Directory: " << cwdPath;
 
         // create objects and link them
+        const bool explorerMode = config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER;
+        logger(INFO) << "Daemon mode: " << config.daemonMode;
+
         CryptoNote::CurrencyBuilder currencyBuilder(logManager);
-        currencyBuilder.isBlockexplorer(config.enableBlockExplorer);
+        currencyBuilder.isBlockexplorer(explorerMode);
 
         try
         {
@@ -471,20 +474,7 @@ int main(int argc, char *argv[])
             logManager
         );
 
-        RpcMode rpcMode = RpcMode::Default;
-
-        if (config.enableBlockExplorerDetailed)
-        {
-            rpcMode = RpcMode::AllMethodsEnabled;
-        }
-        else if (config.enableBlockExplorer)
-        {
-            rpcMode = RpcMode::BlockExplorerEnabled;
-        }
-        else if (config.enableMining)
-        {
-            rpcMode = RpcMode::MiningEnabled;
-        }
+        RpcMode rpcMode = explorerMode ? RpcMode::Explorer : RpcMode::Standard;
 
         RpcServer rpcServer(
             config.rpcPort,

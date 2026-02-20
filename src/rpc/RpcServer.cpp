@@ -109,43 +109,43 @@ RpcServer::RpcServer(
 
         if (method == "getblocktemplate")
         {
-            router(&RpcServer::getBlockTemplate, RpcMode::MiningEnabled, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockTemplate, RpcMode::Standard, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "submitblock")
         {
-            router(&RpcServer::submitBlock, RpcMode::MiningEnabled, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::submitBlock, RpcMode::Standard, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "getblockcount")
         {
-            router(&RpcServer::getBlockCount, RpcMode::Default, bodyNotRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockCount, RpcMode::Standard, bodyNotRequired, syncNotRequired)(req, res);
         }
         else if (method == "getlastblockheader")
         {
-            router(&RpcServer::getLastBlockHeader, RpcMode::Default, bodyNotRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getLastBlockHeader, RpcMode::Standard, bodyNotRequired, syncNotRequired)(req, res);
         }
         else if (method == "getblockheaderbyhash")
         {
-            router(&RpcServer::getBlockHeaderByHash, RpcMode::Default, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockHeaderByHash, RpcMode::Standard, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "getblockheaderbyheight")
         {
-            router(&RpcServer::getBlockHeaderByHeight, RpcMode::Default, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockHeaderByHeight, RpcMode::Standard, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "f_blocks_list_json")
         {
-            router(&RpcServer::getBlocksByHeight, RpcMode::BlockExplorerEnabled, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlocksByHeight, RpcMode::Explorer, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "f_block_json")
         {
-            router(&RpcServer::getBlockDetailsByHash, RpcMode::BlockExplorerEnabled, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockDetailsByHash, RpcMode::Explorer, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "f_transaction_json")
         {
-            router(&RpcServer::getTransactionDetailsByHash, RpcMode::BlockExplorerEnabled, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getTransactionDetailsByHash, RpcMode::Explorer, bodyRequired, syncNotRequired)(req, res);
         }
         else if (method == "f_on_transactions_pool_json")
         {
-            router(&RpcServer::getTransactionsInPool, RpcMode::BlockExplorerEnabled, bodyNotRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getTransactionsInPool, RpcMode::Explorer, bodyNotRequired, syncNotRequired)(req, res);
         }
         else
         {
@@ -155,22 +155,22 @@ RpcServer::RpcServer(
 
     /* Note: /json_rpc is exposed on both GET and POST */
     m_server.Get("/json_rpc", jsonRpc)
-            .Get("/info", router(&RpcServer::info, RpcMode::Default, bodyNotRequired, syncNotRequired))
-            .Get("/fee", router(&RpcServer::fee, RpcMode::Default, bodyNotRequired, syncNotRequired))
-            .Get("/height", router(&RpcServer::height, RpcMode::Default, bodyNotRequired, syncNotRequired))
-            .Get("/peers", router(&RpcServer::peers, RpcMode::Default, bodyNotRequired, syncNotRequired))
+            .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/fee", router(&RpcServer::fee, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
             .Post("/json_rpc", jsonRpc)
-            .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Default, bodyRequired, syncRequired))
-            .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::AllMethodsEnabled, bodyRequired, syncNotRequired))
-            .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Default, bodyRequired, syncNotRequired))
-            .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Default, bodyRequired, syncNotRequired))
+            .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
+            .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::Explorer, bodyRequired, syncNotRequired))
+            .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Standard, bodyRequired, syncNotRequired))
+            .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Standard, bodyRequired, syncNotRequired))
 
             /* Matches everything */
             /* NOTE: Not passing through middleware */
@@ -331,15 +331,8 @@ void RpcServer::middleware(
     {
         std::stringstream stream;
 
-        stream << "You do not have permission to access this method. Please "
-                  "relaunch your daemon with the --enable-blockexplorer";
-
-        if (routePermissions == RpcMode::AllMethodsEnabled)
-        {
-            stream << "-detailed";
-        }
-
-        stream << " command line option to access this method.";
+        stream << "You do not have permission to access this method. Please relaunch your daemon with "
+                  "--daemon-mode explorer to access explorer RPC methods.";
 
         failRequest(403, stream.str(), res);
 
