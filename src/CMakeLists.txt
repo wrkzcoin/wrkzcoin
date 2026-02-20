@@ -182,7 +182,7 @@ add_library(__filesystem INTERFACE)
 # Windows works out of the box
 if (APPLE)
     target_link_libraries(__filesystem INTERFACE /usr/local/opt/llvm/lib/libc++fs.a)
-elseif (UNIX)
+elseif (UNIX AND NOT ANDROID)
     target_link_libraries(__filesystem INTERFACE stdc++fs)
 endif ()
 
