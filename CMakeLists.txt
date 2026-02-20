@@ -25,6 +25,7 @@ option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
 option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
 option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
+set(LIBUCONTEXT_ROOT "" CACHE PATH "Root of prebuilt libucontext for Android (expects include/ and lib/libucontext.a)")
 
 project(WrkzCoin)
 

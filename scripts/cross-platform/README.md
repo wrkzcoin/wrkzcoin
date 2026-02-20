@@ -187,7 +187,8 @@ Prerequisites:
 1. Android NDK installed (r26+ recommended).
 2. `ANDROID_NDK` exported to your local NDK path.
 3. Boost headers available on host (`libboost-dev`) or a custom `BOOST_ROOT`.
-4. `cmake` and `ninja`/build tools available on host.
+4. Android `libucontext` built for the target ABI.
+5. `cmake` and `ninja`/build tools available on host.
 
 Build default Android ABI (`arm64-v8a`):
 
@@ -219,6 +220,7 @@ Common environment knobs:
 - `BUILD_DIR` (default: `build-android-arm64`)
 - `JOBS` (default: `nproc`)
 - `BOOST_ROOT` (optional custom isolated Boost prefix containing `include/boost/version.hpp`)
+- `LIBUCONTEXT_ROOT` (default: `.android-libucontext/<ABI>`, must contain `lib/libucontext.a`)
 
 Notes:
 
@@ -229,6 +231,8 @@ Notes:
   - `ENABLE_ZMQ=OFF`
 - If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
   `.android-boost/include/boost` and uses that isolated path for cross build.
+- `LIBUCONTEXT_ROOT` must point to a prebuilt Android libucontext prefix for
+  the selected ABI. The build stops early if `lib/libucontext.a` is missing.
 - Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
 
 ## Notes

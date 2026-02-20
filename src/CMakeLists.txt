@@ -175,6 +175,26 @@ if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(WalletUpgrader ws2_32 advapi32 crypt32 gdi32 user32)
 endif ()
 
+if (ANDROID)
+    if (NOT LIBUCONTEXT_ROOT)
+        message(FATAL_ERROR
+            "Android build requires libucontext. Set LIBUCONTEXT_ROOT to a prefix containing "
+            "include/ and lib/libucontext.a")
+    endif ()
+
+    set(WRKZ_LIBUCONTEXT_LIB "${LIBUCONTEXT_ROOT}/lib/libucontext.a")
+    if (NOT EXISTS "${WRKZ_LIBUCONTEXT_LIB}")
+        message(FATAL_ERROR
+            "libucontext static library not found at ${WRKZ_LIBUCONTEXT_LIB}")
+    endif ()
+
+    if (EXISTS "${LIBUCONTEXT_ROOT}/include")
+        target_include_directories(System PRIVATE "${LIBUCONTEXT_ROOT}/include")
+    endif ()
+
+    target_link_libraries(System "${WRKZ_LIBUCONTEXT_LIB}")
+endif ()
+
 # A bit of hackery so we don't have to do the if/else/ for every target that
 # wants to use filesystem
 add_library(__filesystem INTERFACE)

@@ -8,6 +8,7 @@ BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build-android-arm64}"
 ANDROID_ABI="${ANDROID_ABI:-arm64-v8a}"
 ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-24}"
 JOBS="${JOBS:-$(nproc)}"
+LIBUCONTEXT_ROOT="${LIBUCONTEXT_ROOT:-$REPO_ROOT/.android-libucontext/$ANDROID_ABI}"
 
 if [ -z "${ANDROID_NDK:-}" ]; then
   echo "ANDROID_NDK is not set."
@@ -56,6 +57,13 @@ for h in boost/version.hpp boost/uuid/uuid.hpp boost/variant.hpp boost/algorithm
   fi
 done
 
+if [ ! -f "$LIBUCONTEXT_ROOT/lib/libucontext.a" ]; then
+  echo "Missing libucontext static library:"
+  echo "  $LIBUCONTEXT_ROOT/lib/libucontext.a"
+  echo "Build/provide libucontext for Android ABI '$ANDROID_ABI' and set LIBUCONTEXT_ROOT."
+  exit 1
+fi
+
 echo "Configuring Android wallet C API build in $BUILD_DIR ..."
 cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -66,7 +74,8 @@ cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DWRKZ_BUILD_EXECUTABLES=OFF \
   -DWRKZ_BUILD_WALLET_CAPI=ON \
   -DENABLE_ZMQ=OFF \
-  -DBOOST_ROOT="$BOOST_ROOT"
+  -DBOOST_ROOT="$BOOST_ROOT" \
+  -DLIBUCONTEXT_ROOT="$LIBUCONTEXT_ROOT"
 
 echo "Building wallet C API target ..."
 cmake --build "$BUILD_DIR" --target wallet_capi --parallel "$JOBS"
