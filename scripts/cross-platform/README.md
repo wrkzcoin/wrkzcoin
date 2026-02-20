@@ -173,6 +173,59 @@ builds/wrkzcoin-macos-x86_64-<timestamp>.tar.gz
 builds/wrkzcoin-macos-arm64-<timestamp>.tar.gz
 ```
 
+## Android wallet library from Ubuntu/Linux
+
+This repo provides a dedicated Android cross-build helper for the generic
+wallet C API shared library:
+
+- Script: `scripts/cross-build-android-wallet.sh`
+- CMake target: `wallet_capi`
+- Artifact: `libwallet_capi.so`
+
+Prerequisites:
+
+1. Android NDK installed (r26+ recommended).
+2. `ANDROID_NDK` exported to your local NDK path.
+3. `cmake` and `ninja`/build tools available on host.
+
+Build default Android ABI (`arm64-v8a`):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+bash scripts/cross-build-android-wallet.sh
+```
+
+Output:
+
+```text
+build-android-arm64/src/libwallet_capi.so
+```
+
+Build another ABI (example `x86_64`):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ANDROID_ABI=x86_64 BUILD_DIR=build-android-x86_64 \
+  bash scripts/cross-build-android-wallet.sh
+```
+
+Common environment knobs:
+
+- `ANDROID_ABI` (default: `arm64-v8a`)
+- `ANDROID_PLATFORM` (default: `android-24`)
+- `BUILD_TYPE` (default: `Release`)
+- `BUILD_DIR` (default: `build-android-arm64`)
+- `JOBS` (default: `nproc`)
+
+Notes:
+
+- Script enables wallet-lib profile flags:
+  - `WRKZ_ANDROID_PROFILE=ON`
+  - `WRKZ_BUILD_EXECUTABLES=OFF`
+  - `WRKZ_BUILD_WALLET_CAPI=ON`
+  - `ENABLE_ZMQ=OFF`
+- Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
+
 ## Notes
 
 - Windows prep builds target OpenSSL and Boost under:

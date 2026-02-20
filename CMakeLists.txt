@@ -21,6 +21,10 @@ set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
 set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
+option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
+option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
+option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
+option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
 
 project(WrkzCoin)
 
@@ -105,6 +109,16 @@ message(STATUS "ENABLE_X86_AESNI: ${ENABLE_X86_AESNI}")
 message(STATUS "FULLY_STATIC: ${FULLY_STATIC}")
 message(STATUS "ENABLE_ZMQ: ${ENABLE_ZMQ}")
 
+if (WRKZ_ANDROID_PROFILE)
+    message(STATUS "Applying Android profile defaults")
+    set(WRKZ_BUILD_EXECUTABLES OFF CACHE BOOL "Build CLI/daemon executables" FORCE)
+    set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+endif ()
+message(STATUS "WRKZ_BUILD_EXECUTABLES: ${WRKZ_BUILD_EXECUTABLES}")
+message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
+message(STATUS "WRKZ_ANDROID_PROFILE: ${WRKZ_ANDROID_PROFILE}")
+message(STATUS "WRKZ_FORCE_STATIC_INTERNALS: ${WRKZ_FORCE_STATIC_INTERNALS}")
+
 if (FORCE_USE_HEAP)
     add_definitions(-DFORCE_USE_HEAP)
     message(STATUS "FORCE_USE_HEAP: ENABLED")
@@ -133,8 +147,8 @@ if (DEFINED ENV{LABEL})
     message(STATUS "Found LABEL: ${LABEL}")
 endif ()
 
-## We only build static binaries -- this is left here for our dependencies
-set(STATIC ON CACHE BOOL FORCE "Link libraries statically? Forced to ON")
+## Keep static internal libraries by default for compatibility.
+set(STATIC ${WRKZ_FORCE_STATIC_INTERNALS} CACHE BOOL "Link libraries statically?" FORCE)
 
 ## This section helps us tag our builds with the git commit information
 set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include commit ID in version")
@@ -350,8 +364,8 @@ if (NOT MSVC)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${RELEASE_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
 
-    ## Statically link our binaries
-    if (NOT APPLE)
+    ## Statically link our binaries where it is supported.
+    if (NOT APPLE AND NOT ANDROID)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
         if (FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
             set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
@@ -362,14 +376,23 @@ endif ()
 
 ## Go get us some static BOOST libraries
 set(Boost_NO_BOOST_CMAKE ON)
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_STATIC_RUNTIME ON)
+if (WRKZ_ANDROID_PROFILE)
+    set(Boost_USE_STATIC_LIBS OFF)
+    set(Boost_USE_STATIC_RUNTIME OFF)
+else ()
+    set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_STATIC_RUNTIME ON)
+endif ()
 find_package(Boost REQUIRED COMPONENTS date_time)
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
 ## Let's see if we have any OpenSSL static libraries available
-set(OPENSSL_USE_STATIC_LIBS ON)
+if (WRKZ_ANDROID_PROFILE)
+    set(OPENSSL_USE_STATIC_LIBS OFF)
+else ()
+    set(OPENSSL_USE_STATIC_LIBS ON)
+endif ()
 ## On MSVC, we need to link the RT/MT libraries
 if (MSVC)
     set(OPENSSL_MSVC_STATIC_RT ON)
