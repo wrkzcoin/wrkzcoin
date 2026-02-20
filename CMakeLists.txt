@@ -412,6 +412,26 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
             "Install on host: sudo apt-get install -y libboost-dev\n"
             "or set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
     endif ()
+
+    # Normalize include root: if the probe resolved to ".../boost", use its parent.
+    if (EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
+        get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
+    endif ()
+
+    if (
+        NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/version.hpp"
+        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp"
+        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/variant.hpp"
+    )
+        message(FATAL_ERROR
+            "Boost include root is invalid for Android wallet_capi: ${Boost_INCLUDE_DIRS}\n"
+            "Expected headers:\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/version.hpp\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/variant.hpp\n"
+            "Install on host: sudo apt-get install -y libboost-dev\n"
+            "or set BOOST_ROOT to a valid Boost prefix.")
+    endif ()
     message(STATUS "Boost headers for Android wallet_capi: ${Boost_INCLUDE_DIRS}")
 
     set(WRKZ_BOOST_LINK_LIBS "")
@@ -423,6 +443,9 @@ if ((NOT Boost_INCLUDE_DIRS OR Boost_INCLUDE_DIRS STREQUAL "") AND DEFINED Boost
     if (NOT "${Boost_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
         set(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIR}")
     endif ()
+endif ()
+if (Boost_INCLUDE_DIRS AND EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
+    get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
 endif ()
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
