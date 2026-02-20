@@ -20,6 +20,7 @@ set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distri
 set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may reduce CPU portability")
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
+set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
 
 project(WrkzCoin)
 

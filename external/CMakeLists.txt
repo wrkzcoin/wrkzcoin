@@ -132,11 +132,27 @@ if (MSVC)
     set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
 elseif (NOT MSVC)
     set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+    if (NOT DEFINED ROCKSDB_BUILD_PARALLEL OR ROCKSDB_BUILD_PARALLEL STREQUAL "")
+        if (DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
+            set(ROCKSDB_BUILD_PARALLEL "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" CACHE STRING "Parallel jobs for RocksDB sub-build")
+        else ()
+            include(ProcessorCount)
+            ProcessorCount(_WRKZ_CPU_COUNT)
+            if (_WRKZ_CPU_COUNT GREATER 0)
+                set(ROCKSDB_BUILD_PARALLEL "${_WRKZ_CPU_COUNT}" CACHE STRING "Parallel jobs for RocksDB sub-build")
+            else ()
+                set(ROCKSDB_BUILD_PARALLEL "1" CACHE STRING "Parallel jobs for RocksDB sub-build")
+            endif ()
+            unset(_WRKZ_CPU_COUNT)
+        endif ()
+    endif ()
+    message(STATUS "RocksDB sub-build parallel jobs: ${ROCKSDB_BUILD_PARALLEL}")
+
     add_custom_target(
             rocksdb
             BYPRODUCTS
                 ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a
-            COMMAND ${CMAKE_COMMAND} --build ${PROJECT_BINARY_DIR}/rocksdb --target rocksdb --parallel 1
+            COMMAND ${CMAKE_COMMAND} --build ${PROJECT_BINARY_DIR}/rocksdb --target rocksdb --parallel ${ROCKSDB_BUILD_PARALLEL}
             WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/rocksdb
     )
     add_dependencies(rocksdb libzstd_static)

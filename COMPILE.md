@@ -13,6 +13,21 @@ cmake --build build -j
 
 Binaries are produced in `build/src`.
 
+### Build Parallelism (Top-level + RocksDB sub-build)
+
+RocksDB is built as a nested CMake sub-build. To keep parallel job count aligned across both top-level build and RocksDB, set:
+
+```bash
+export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)
+cmake --build build -j
+```
+
+You can also override only RocksDB jobs at configure time:
+
+```bash
+cmake -S . -B build -DROCKSDB_BUILD_PARALLEL=4
+```
+
 ## Build Modes
 
 ### Default (recommended for nodes / reproducible)
