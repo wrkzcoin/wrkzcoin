@@ -20,11 +20,13 @@ namespace DaemonConfig
 {
     struct DaemonConfiguration
     {
-        static constexpr uint32_t MIN_PRUNE_DEPTH_DAYS = 30;
+        static constexpr uint32_t MIN_PRUNE_DEPTH_DAYS = 7;
         static constexpr uint32_t MIN_PRUNE_DEPTH =
             CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * MIN_PRUNE_DEPTH_DAYS;
         static constexpr uint32_t DEFAULT_PRUNE_DEPTH =
             MIN_PRUNE_DEPTH;
+        static constexpr const char *DAEMON_MODE_STANDARD = "standard";
+        static constexpr const char *DAEMON_MODE_EXPLORER = "explorer";
 
         DaemonConfiguration()
         {
@@ -45,9 +47,7 @@ namespace DaemonConfig
             rpcInterface = "127.0.0.1";
             rpcPort = CryptoNote::RPC_DEFAULT_PORT;
             noConsole = false;
-            enableBlockExplorer = false;
-            enableBlockExplorerDetailed = false;
-            enableMining = false;
+            daemonMode = DAEMON_MODE_STANDARD;
             localIp = false;
             hideMyPort = false;
             p2pResetPeerstate = false;
@@ -78,6 +78,10 @@ namespace DaemonConfig
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
             skipBootCompaction = false;
+            autoPruneMinGapBlocks = 120;
+            autoCompactionMinGapBlocks = 720;
+            autoPruneMinFreeBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+            autoCompactionMinFreeBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
         }
 
         std::string dataDirectory;
@@ -130,11 +134,7 @@ namespace DaemonConfig
 
         bool noConsole;
 
-        bool enableBlockExplorer;
-
-        bool enableBlockExplorerDetailed;
-
-        bool enableMining;
+        std::string daemonMode;
 
         bool localIp;
 
@@ -183,6 +183,14 @@ namespace DaemonConfig
         bool rpcTrustProxy;
 
         bool skipBootCompaction;
+
+        uint32_t autoPruneMinGapBlocks;
+
+        uint32_t autoCompactionMinGapBlocks;
+
+        uint64_t autoPruneMinFreeBytes;
+
+        uint64_t autoCompactionMinFreeBytes;
 
         std::string configFile;
 

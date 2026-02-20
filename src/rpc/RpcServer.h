@@ -23,10 +23,8 @@
 
 enum class RpcMode
 {
-    Default = 0,
-    BlockExplorerEnabled = 1,
-	MiningEnabled = 2,
-    AllMethodsEnabled = 3,
+    Standard = 0,
+    Explorer = 1,
 };
 
 class RpcServer

@@ -25,15 +25,18 @@
 #include <map>
 #include <chrono>
 #include <fstream>
+#include <limits>
 #include <system/Ipv4Address.h>
 #include <p2p/P2pProtocolTypes.h>
 
 namespace
 {
     const char *COMPACTION_MARKER_FILE = ".compact_db_in_progress";
-    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_SECONDS = 300;
-    constexpr uint64_t AUTO_COMPACTION_MIN_GAP_SECONDS = 6 * 60 * 60;
-    constexpr uint64_t AUTO_PRUNE_MIN_GAP_SECONDS = 5 * 60;
+    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_FAST_SECONDS = 60;
+    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_SLOW_SECONDS = 30 * 60;
+    constexpr uint64_t AUTO_COMPACTION_NEAR_SYNC_LAG_BLOCKS = 2;
+    constexpr uint64_t AUTO_COMPACTION_RESYNC_LAG_BLOCKS = 20;
+    constexpr uint32_t AUTO_COMPACTION_NEAR_SYNC_STREAK_REQUIRED = 3;
 
     template<typename T> static bool print_as_json(const T &obj)
     {
@@ -122,6 +125,17 @@ namespace
         }
 
         return stats;
+    }
+
+    uint64_t getAvailableBytes(const fs::path &path)
+    {
+        std::error_code ec;
+        const auto spaceInfo = fs::space(path, ec);
+        if (ec)
+        {
+            return std::numeric_limits<uint64_t>::max();
+        }
+        return spaceInfo.available;
     }
 
 } // namespace
@@ -281,6 +295,7 @@ void DaemonCommandsHandler::start_boot_compaction_if_needed()
             m_compactionHasResult = false;
             m_compactionLastError = std::error_code();
             m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+            m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
             m_compactionRunning = true;
             create_compaction_marker_locked();
             logger(Logging::INFO) << "Starting DB compaction (boot background task).";
@@ -967,6 +982,7 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
     m_compactionHasResult = false;
     m_compactionLastError = std::error_code();
     m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+    m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
     m_compactionRunning = true;
     create_compaction_marker_locked();
     logger(Logging::INFO) << "Starting DB compaction (manual console request).";
@@ -993,6 +1009,7 @@ void DaemonCommandsHandler::refresh_compaction_state_locked()
     m_compactionRunning = false;
     m_compactionHasResult = true;
     m_compactionFinishedAt = static_cast<uint64_t>(time(nullptr));
+    m_compactionFinishedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
     clear_compaction_marker_locked();
 }
 
@@ -1036,7 +1053,9 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
 {
     while (!m_stopCompactionScheduler)
     {
-        for (uint64_t i = 0; i < AUTO_COMPACTION_CHECK_INTERVAL_SECONDS; ++i)
+        const uint64_t sleepSeconds = m_schedulerCheckIntervalSeconds;
+
+        for (uint64_t i = 0; i < sleepSeconds; ++i)
         {
             if (m_stopCompactionScheduler)
             {
@@ -1050,10 +1069,66 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
         refresh_compaction_state_locked();
 
         const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t currentHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
+
+        {
+            auto res = rpc_get("/info");
+            if (res && res->status == 200)
+            {
+                rapidjson::Document resp;
+                if (!resp.Parse(res->body.c_str()).HasParseError())
+                {
+                    const uint64_t localHeight = getUint64FromJSON(resp, "height");
+                    const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");
+                    const uint64_t lag = networkHeight > localHeight ? (networkHeight - localHeight) : 0;
+
+                    if (lag <= AUTO_COMPACTION_NEAR_SYNC_LAG_BLOCKS)
+                    {
+                        m_nearSyncStreak += 1;
+                    }
+                    else if (lag >= AUTO_COMPACTION_RESYNC_LAG_BLOCKS)
+                    {
+                        m_nearSyncStreak = 0;
+                    }
+
+                    const uint64_t desiredInterval =
+                        m_nearSyncStreak >= AUTO_COMPACTION_NEAR_SYNC_STREAK_REQUIRED
+                        ? AUTO_COMPACTION_CHECK_INTERVAL_SLOW_SECONDS
+                        : AUTO_COMPACTION_CHECK_INTERVAL_FAST_SECONDS;
+
+                    if (desiredInterval != m_schedulerCheckIntervalSeconds)
+                    {
+                        m_schedulerCheckIntervalSeconds = desiredInterval;
+                        logger(Logging::INFO)
+                            << "Adaptive maintenance scheduler interval switched to "
+                            << m_schedulerCheckIntervalSeconds << "s (local height: " << localHeight
+                            << ", network height: " << networkHeight
+                            << ", lag: " << lag << ").";
+                    }
+                }
+            }
+        }
+
+        const fs::path dbPath = fs::path(m_config.dataDirectory) / "DB";
+        const uint64_t freeBytes = getAvailableBytes(dbPath);
+        const bool lowSpaceForPrune = freeBytes < m_config.autoPruneMinFreeBytes;
+        const bool lowSpaceForCompaction = freeBytes < m_config.autoCompactionMinFreeBytes;
+        const bool pruneGapReached = m_config.autoPruneMinGapBlocks == 0
+            ? false
+            : (m_lastAutoPruneHeight == 0
+                || (currentHeight > m_lastAutoPruneHeight
+                    && (currentHeight - m_lastAutoPruneHeight) >= m_config.autoPruneMinGapBlocks));
 
         if (m_config.prune
-            && (m_lastAutoPruneAt == 0 || (now > m_lastAutoPruneAt && (now - m_lastAutoPruneAt) >= AUTO_PRUNE_MIN_GAP_SECONDS)))
+            && (pruneGapReached || lowSpaceForPrune))
         {
+            if (lowSpaceForPrune)
+            {
+                logger(Logging::WARNING)
+                    << "Low free disk space (" << freeBytes
+                    << " bytes). Forcing periodic prune pass regardless of block gap.";
+            }
+
             logger(Logging::INFO)
                 << "Starting periodic prune pass in background (depth " << m_config.pruneDepth << ").";
 
@@ -1067,7 +1142,7 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
                 logger(Logging::WARNING) << "Periodic prune pass failed: " << e.what();
             }
 
-            m_lastAutoPruneAt = now;
+            m_lastAutoPruneHeight = currentHeight;
         }
 
         if (m_compactionRunning)
@@ -1075,9 +1150,24 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
             continue;
         }
 
-        const uint64_t lastActivity = std::max(m_compactionStartedAt, m_compactionFinishedAt);
+        if (lowSpaceForCompaction)
+        {
+            logger(Logging::WARNING)
+                << "Skipping automatic DB compaction due to low free disk space ("
+                << freeBytes << " bytes, required at least " << m_config.autoCompactionMinFreeBytes << " bytes).";
+            continue;
+        }
 
-        if (lastActivity != 0 && now > lastActivity && (now - lastActivity) < AUTO_COMPACTION_MIN_GAP_SECONDS)
+        if (m_config.autoCompactionMinGapBlocks == 0)
+        {
+            continue;
+        }
+
+        const uint64_t lastActivityHeight = std::max(m_compactionStartedAtHeight, m_compactionFinishedAtHeight);
+
+        if (lastActivityHeight != 0
+            && currentHeight > lastActivityHeight
+            && (currentHeight - lastActivityHeight) < m_config.autoCompactionMinGapBlocks)
         {
             continue;
         }
@@ -1085,6 +1175,7 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
         m_compactionHasResult = false;
         m_compactionLastError = std::error_code();
         m_compactionStartedAt = now;
+        m_compactionStartedAtHeight = currentHeight;
         m_compactionRunning = true;
         create_compaction_marker_locked();
         logger(Logging::INFO) << "Starting DB compaction (automatic periodic background task).";

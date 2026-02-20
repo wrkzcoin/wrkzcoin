@@ -146,5 +146,13 @@ class DaemonCommandsHandler
 
     std::atomic<bool> m_stopCompactionScheduler {false};
 
-    uint64_t m_lastAutoPruneAt = 0;
+    uint64_t m_lastAutoPruneHeight = 0;
+
+    uint64_t m_compactionStartedAtHeight = 0;
+
+    uint64_t m_compactionFinishedAtHeight = 0;
+
+    uint64_t m_schedulerCheckIntervalSeconds = 60;
+
+    uint32_t m_nearSyncStreak = 0;
 };

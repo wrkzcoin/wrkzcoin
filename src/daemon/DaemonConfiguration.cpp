@@ -14,6 +14,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <cxxopts.hpp>
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <logging/ILogger.h>
 #include <rapidjson/document.h>
@@ -58,6 +59,21 @@ namespace DaemonConfig
                       << "). Using out-peers value to avoid oversubscription." << std::endl;
 
             return outPeers;
+        }
+
+        std::string normalizeDaemonMode(const std::string &rawMode)
+        {
+            std::string mode = rawMode;
+            std::transform(mode.begin(), mode.end(), mode.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+            if (mode == DaemonConfiguration::DAEMON_MODE_STANDARD || mode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+            {
+                return mode;
+            }
+
+            throw std::runtime_error(
+                "Invalid daemon-mode: '" + rawMode + "'. Allowed values are '" + std::string(DaemonConfiguration::DAEMON_MODE_STANDARD)
+                + "' or '" + std::string(DaemonConfiguration::DAEMON_MODE_EXPLORER) + "'.");
         }
     } // namespace
 
@@ -143,15 +159,10 @@ namespace DaemonConfig
             "save-config", "Save the configuration to the specified <file>", cxxopts::value<std::string>(), "<file>");
 
         options.add_options("RPC")(
-            "enable-blockexplorer",
-            "Enable the Blockchain Explorer RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
-            "enable-blockexplorer-detailed",
-            "Enable the Blockchain Explorer Detailed RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
-            "enable-mining",
-            "Enable Mining RPC",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "daemon-mode",
+            "Daemon RPC mode: standard or explorer",
+            cxxopts::value<std::string>()->default_value(config.daemonMode),
+            "<standard|explorer>")(
             "enable-cors",
             "Adds header 'Access-Control-Allow-Origin' to the RPC responses using the <domain>. Uses the value "
             "specified as the domain. Use * for all.",
@@ -312,6 +323,22 @@ namespace DaemonConfig
             "block-sync-bytes",
             "Maximum approximate bytes requested per sync chunk",
             cxxopts::value<uint64_t>()->default_value(std::to_string(config.blockSyncBytes)),
+            "#")(
+            "auto-prune-min-gap-blocks",
+            "Minimum block gap between automatic prune passes (0 disables periodic auto-prune)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.autoPruneMinGapBlocks)),
+            "#")(
+            "auto-compaction-min-gap-blocks",
+            "Minimum block gap between automatic DB compactions (0 disables periodic auto-compaction)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.autoCompactionMinGapBlocks)),
+            "#")(
+            "auto-prune-min-free-bytes",
+            "Minimum free bytes required before regular auto-prune schedule (low-space mode can still force prune)",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.autoPruneMinFreeBytes)),
+            "#")(
+            "auto-compaction-min-free-bytes",
+            "Minimum free bytes required to start automatic DB compaction",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.autoCompactionMinFreeBytes)),
             "#");
 
         try
@@ -526,19 +553,9 @@ namespace DaemonConfig
                 config.seedNodes = cli["seed-node"].as<std::vector<std::string>>();
             }
 
-            if (cli.count("enable-blockexplorer") > 0)
+            if (cli.count("daemon-mode") > 0)
             {
-                config.enableBlockExplorer = cli["enable-blockexplorer"].as<bool>();
-            }
-
-            if (cli.count("enable-blockexplorer-detailed") > 0)
-            {
-                config.enableBlockExplorerDetailed = cli["enable-blockexplorer-detailed"].as<bool>();
-            }
-
-            if (cli.count("enable-mining") > 0)
-            {
-                config.enableMining = cli["enable-mining"].as<bool>();
+                config.daemonMode = normalizeDaemonMode(cli["daemon-mode"].as<std::string>());
             }
 
             if (cli.count("enable-cors") > 0)
@@ -631,6 +648,26 @@ namespace DaemonConfig
             if (cli.count("block-sync-bytes") > 0)
             {
                 config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, cli["block-sync-bytes"].as<uint64_t>());
+            }
+
+            if (cli.count("auto-prune-min-gap-blocks") > 0)
+            {
+                config.autoPruneMinGapBlocks = cli["auto-prune-min-gap-blocks"].as<uint32_t>();
+            }
+
+            if (cli.count("auto-compaction-min-gap-blocks") > 0)
+            {
+                config.autoCompactionMinGapBlocks = cli["auto-compaction-min-gap-blocks"].as<uint32_t>();
+            }
+
+            if (cli.count("auto-prune-min-free-bytes") > 0)
+            {
+                config.autoPruneMinFreeBytes = cli["auto-prune-min-free-bytes"].as<uint64_t>();
+            }
+
+            if (cli.count("auto-compaction-min-free-bytes") > 0)
+            {
+                config.autoCompactionMinFreeBytes = cli["auto-compaction-min-free-bytes"].as<uint64_t>();
             }
 
             config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "CLI/default");
@@ -898,19 +935,9 @@ namespace DaemonConfig
                     config.seedNodes = seedNodes;
                     updated = true;
                 }
-                else if (cfgKey.compare("enable-blockexplorer") == 0)
+                else if (cfgKey.compare("daemon-mode") == 0)
                 {
-                    config.enableBlockExplorer = cfgValue.at(0) == '1';
-                    updated = true;
-                }
-                else if (cfgKey.compare("enable-blockexplorer-detailed") == 0)
-                {
-                    config.enableBlockExplorerDetailed = cfgValue.at(0) == '1';
-                    updated = true;
-                }
-                else if (cfgKey.compare("enable-mining") == 0)
-                {
-                    config.enableMining = cfgValue.at(0) == '1';
+                    config.daemonMode = normalizeDaemonMode(cfgValue);
                     updated = true;
                 }
                 else if (cfgKey.compare("enable-cors") == 0)
@@ -1095,6 +1122,54 @@ namespace DaemonConfig
                     try
                     {
                         config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, std::stoull(cfgValue));
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-prune-min-gap-blocks") == 0)
+                {
+                    try
+                    {
+                        config.autoPruneMinGapBlocks = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-compaction-min-gap-blocks") == 0)
+                {
+                    try
+                    {
+                        config.autoCompactionMinGapBlocks = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-prune-min-free-bytes") == 0)
+                {
+                    try
+                    {
+                        config.autoPruneMinFreeBytes = std::stoull(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("auto-compaction-min-free-bytes") == 0)
+                {
+                    try
+                    {
+                        config.autoCompactionMinFreeBytes = std::stoull(cfgValue);
                         updated = true;
                     }
                     catch (std::exception &e)
@@ -1297,19 +1372,9 @@ namespace DaemonConfig
             }
         }
 
-        if (j.HasMember("enable-blockexplorer"))
+        if (j.HasMember("daemon-mode"))
         {
-            config.enableBlockExplorer = j["enable-blockexplorer"].GetBool();
-        }
-
-        if (j.HasMember("enable-blockexplorer-detailed"))
-        {
-            config.enableBlockExplorerDetailed = j["enable-blockexplorer-detailed"].GetBool();
-        }
-
-        if (j.HasMember("enable-mining"))
-        {
-            config.enableMining = j["enable-mining"].GetBool();
+            config.daemonMode = normalizeDaemonMode(j["daemon-mode"].GetString());
         }
 
         if (j.HasMember("enable-cors"))
@@ -1402,6 +1467,26 @@ namespace DaemonConfig
             config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, j["block-sync-bytes"].GetUint64());
         }
 
+        if (j.HasMember("auto-prune-min-gap-blocks"))
+        {
+            config.autoPruneMinGapBlocks = j["auto-prune-min-gap-blocks"].GetUint();
+        }
+
+        if (j.HasMember("auto-compaction-min-gap-blocks"))
+        {
+            config.autoCompactionMinGapBlocks = j["auto-compaction-min-gap-blocks"].GetUint();
+        }
+
+        if (j.HasMember("auto-prune-min-free-bytes"))
+        {
+            config.autoPruneMinFreeBytes = j["auto-prune-min-free-bytes"].GetUint64();
+        }
+
+        if (j.HasMember("auto-compaction-min-free-bytes"))
+        {
+            config.autoCompactionMinFreeBytes = j["auto-compaction-min-free-bytes"].GetUint64();
+        }
+
         if (j.HasMember("prune"))
         {
             config.prune = j["prune"].GetBool();
@@ -1480,9 +1565,7 @@ namespace DaemonConfig
         }
 
         j.AddMember("enable-cors", config.enableCors, alloc);
-        j.AddMember("enable-blockexplorer", config.enableBlockExplorer, alloc);
-        j.AddMember("enable-blockexplorer-detailed", config.enableBlockExplorerDetailed, alloc);
-        j.AddMember("enable-mining", config.enableMining, alloc);
+        j.AddMember("daemon-mode", Value().SetString(StringRef(config.daemonMode.c_str())), alloc);
         j.AddMember("fee-address", config.feeAddress, alloc);
         j.AddMember("fee-amount", config.feeAmount, alloc);
         j.AddMember("rpc-access-token", config.rpcAccessToken, alloc);
@@ -1502,6 +1585,10 @@ namespace DaemonConfig
         j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
         j.AddMember("block-sync-size", config.blockSyncSize, alloc);
         j.AddMember("block-sync-bytes", config.blockSyncBytes, alloc);
+        j.AddMember("auto-prune-min-gap-blocks", config.autoPruneMinGapBlocks, alloc);
+        j.AddMember("auto-compaction-min-gap-blocks", config.autoCompactionMinGapBlocks, alloc);
+        j.AddMember("auto-prune-min-free-bytes", config.autoPruneMinFreeBytes, alloc);
+        j.AddMember("auto-compaction-min-free-bytes", config.autoCompactionMinFreeBytes, alloc);
 
         return j;
     }
