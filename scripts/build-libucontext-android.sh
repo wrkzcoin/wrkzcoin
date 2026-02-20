@@ -120,18 +120,71 @@ else
     --prefix "$PREFIX"
 fi
 
-echo "Building libucontext ..."
-meson compile -C "$BUILD_DIR" -j "$JOBS"
+echo "Resolving libucontext static library targets ..."
+TARGETS_JSON="$WORK_DIR/targets-$ABI.json"
+if ! meson introspect --targets "$BUILD_DIR" > "$TARGETS_JSON"; then
+  : > "$TARGETS_JSON"
+fi
 
-echo "Installing libucontext into $PREFIX ..."
-meson install -C "$BUILD_DIR"
+LIB_TARGETS="$(python3 - "$TARGETS_JSON" <<'PY'
+import json, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+data = p.read_text(encoding="utf-8").strip() if p.exists() else ""
+if not data:
+    print("")
+    raise SystemExit(0)
+try:
+    targets = json.loads(data)
+except Exception:
+    print("")
+    raise SystemExit(0)
+names = []
+for t in targets:
+    ttype = str(t.get("type", "")).lower()
+    if "static library" not in ttype:
+        continue
+    name = str(t.get("name", ""))
+    fnv = t.get("filename", [])
+    if isinstance(fnv, list):
+        fn = " ".join(str(x) for x in fnv)
+    else:
+        fn = str(fnv)
+    if "ucontext" in name.lower() or "ucontext" in fn.lower():
+        names.append(name)
+print("\n".join(dict.fromkeys(names)))
+PY
+)"
 
-if [ ! -f "$PREFIX/lib/libucontext.a" ]; then
-  FOUND="$(find "$BUILD_DIR" -name libucontext.a | head -n 1 || true)"
-  if [ -n "$FOUND" ]; then
-    mkdir -p "$PREFIX/lib"
-    cp -f "$FOUND" "$PREFIX/lib/libucontext.a"
+if [ -z "$LIB_TARGETS" ]; then
+  echo "No explicit static ucontext targets found via meson introspect."
+  echo "Trying full build (may run tests depending on upstream meson rules)..."
+  meson compile -C "$BUILD_DIR" -j "$JOBS" || true
+else
+  echo "Building targets:"
+  echo "$LIB_TARGETS"
+  while IFS= read -r target; do
+    [ -z "$target" ] && continue
+    meson compile -C "$BUILD_DIR" -j "$JOBS" "$target"
+  done <<< "$LIB_TARGETS"
+fi
+
+mkdir -p "$PREFIX/lib" "$PREFIX/include"
+
+FOUND=""
+for name in libucontext.a libucontext_posix.a; do
+  CANDIDATE="$(find "$BUILD_DIR" -name "$name" | head -n 1 || true)"
+  if [ -n "$CANDIDATE" ]; then
+    FOUND="$CANDIDATE"
+    break
   fi
+done
+
+if [ -n "$FOUND" ]; then
+  cp -f "$FOUND" "$PREFIX/lib/libucontext.a"
+fi
+
+if [ -d "$SRC_DIR/include" ]; then
+  cp -a "$SRC_DIR/include/." "$PREFIX/include/"
 fi
 
 if [ ! -f "$PREFIX/lib/libucontext.a" ]; then
