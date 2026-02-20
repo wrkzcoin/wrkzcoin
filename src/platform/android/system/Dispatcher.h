@@ -103,7 +103,11 @@ namespace System
         static const int SIZEOF_PTHREAD_MUTEX_T = 32;
 #endif
 #elif __aarch64__
+#if defined(__BIONIC__)
+        static const int SIZEOF_PTHREAD_MUTEX_T = 40;
+#else
         static const int SIZEOF_PTHREAD_MUTEX_T = 48;
+#endif
 #else
 
         static const int SIZEOF_PTHREAD_MUTEX_T = 24;
