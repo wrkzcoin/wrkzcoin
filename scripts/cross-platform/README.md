@@ -48,6 +48,9 @@ Parallel jobs:
 
 - `JOBS` is capped at a maximum of `8` in the build script.
 - Example: `JOBS=4 bash scripts/cross-build-windows-x86_64.sh`
+- Cross scripts also set `CMAKE_BUILD_PARALLEL_LEVEL=$JOBS` and
+  `-DROCKSDB_BUILD_PARALLEL=$JOBS` so RocksDB nested build uses the same
+  parallelism.
 
 Runtime note:
 
@@ -76,8 +79,10 @@ cmake .. \
   -DPORTABLE_BINARY=ON \
   -DENABLE_X86_AESNI=OFF \
   -DFULLY_STATIC=ON \
+  -DROCKSDB_BUILD_PARALLEL=4 \
   -DSTATIC=true
-cmake --build . --parallel -j4
+export CMAKE_BUILD_PARALLEL_LEVEL=4
+cmake --build . --parallel 4
 ```
 
 Optional explicit toolchain file:
@@ -90,8 +95,10 @@ cmake -S . -B build-aarch64 \
   -DPORTABLE_BINARY=ON \
   -DENABLE_X86_AESNI=OFF \
   -DFULLY_STATIC=ON \
+  -DROCKSDB_BUILD_PARALLEL=4 \
   -DSTATIC=true
-cmake --build build-aarch64 --parallel -j4
+export CMAKE_BUILD_PARALLEL_LEVEL=4
+cmake --build build-aarch64 --parallel 4
 ```
 
 Build output directory:

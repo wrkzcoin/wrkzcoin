@@ -21,6 +21,7 @@ fi
 if [ "$JOBS" -lt 1 ]; then
   JOBS=1
 fi
+export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
 GENERATOR="${GENERATOR:-Ninja}"
 SKIP_PREP="${SKIP_PREP:-0}"
 LOG_DIR="${LOG_DIR:-$REPO_ROOT/build-logs}"
@@ -45,6 +46,7 @@ cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DARCH=default \
   -DCONSENSUS_SAFE_BUILD=ON \
+  -DROCKSDB_BUILD_PARALLEL="$JOBS" \
   -DSTATIC=true
 
 echo "Building targets ..."
