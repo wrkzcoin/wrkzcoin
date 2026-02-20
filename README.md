@@ -54,6 +54,17 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 - Check status from daemon console: `compact_db status`.
 - Manual controls: `compact_db start` and `compact_db wait`.
 
+### Daemon ZMQ (Quick Test)
+
+- Default daemon ZMQ PUB endpoint: `tcp://127.0.0.1:17857`
+- Start daemon with explicit endpoint:
+  - `Wrkzd --zmq-pub tcp://127.0.0.1:17857`
+- Test subscriber script:
+  - `pip install pyzmq`
+  - `python scripts/zmq_sub_test.py --endpoint tcp://127.0.0.1:17857 --topics hashblock chain_main`
+
+Build requirements and static/portable notes are in [COMPILE.md](COMPILE.md).
+
 ### A note for contributing developers
 
 Hello, and thank you for helping us! Our work makes use of many brilliant projects from other communities who contributed their code which helped us get to where we are now. To make sure we're always doing things the right way, we try to make sure we get the proper license header in every file we modify. By the terms of this project's license, any open source project may use our software, but the licenses may only be appended to, not altered. 

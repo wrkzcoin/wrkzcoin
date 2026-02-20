@@ -390,14 +390,65 @@ endif ()
 
 if (ENABLE_ZMQ)
     find_path(ZMQ_INCLUDE_DIR NAMES zmq.h)
-    find_library(ZMQ_LIBRARY NAMES zmq libzmq)
-    if (NOT ZMQ_INCLUDE_DIR OR NOT ZMQ_LIBRARY)
-        message(WARNING "ENABLE_ZMQ=ON but ZeroMQ was not found. Disabling ZMQ support for this build.")
-        set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+    set(ZMQ_LIBRARY "")
+    set(ZMQ_LIBRARY_STATIC "")
+    set(ZMQ_EXTRA_LIBS "")
+
+    # Prefer static libzmq for static/full-static builds.
+    if (STATIC OR FULLY_STATIC)
+        set(_WRKZ_OLD_FIND_LIB_SUFFIXES "${CMAKE_FIND_LIBRARY_SUFFIXES}")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+        find_library(ZMQ_LIBRARY_STATIC NAMES zmq libzmq)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES "${_WRKZ_OLD_FIND_LIB_SUFFIXES}")
+
+        if (ZMQ_LIBRARY_STATIC)
+            set(ZMQ_LIBRARY "${ZMQ_LIBRARY_STATIC}")
+        else ()
+            message(WARNING
+                "ENABLE_ZMQ=ON but static libzmq (.a) was not found while STATIC/FULLY_STATIC is enabled. "
+                "Disabling ZMQ support for this build.")
+            set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+        endif ()
     else ()
-        include_directories(SYSTEM ${ZMQ_INCLUDE_DIR})
-        message(STATUS "ZeroMQ Found: ${ZMQ_INCLUDE_DIR}")
-        message(STATUS "ZeroMQ Library: ${ZMQ_LIBRARY}")
+        find_library(ZMQ_LIBRARY NAMES zmq libzmq)
+        if (NOT ZMQ_INCLUDE_DIR OR NOT ZMQ_LIBRARY)
+            message(WARNING "ENABLE_ZMQ=ON but ZeroMQ was not found. Disabling ZMQ support for this build.")
+            set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+        endif ()
+    endif ()
+
+    if (ENABLE_ZMQ)
+        if (NOT ZMQ_INCLUDE_DIR OR NOT ZMQ_LIBRARY)
+            message(WARNING "ENABLE_ZMQ resolved ON but zmq headers/library are incomplete. Disabling ZMQ support.")
+            set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+        else ()
+            # Static libzmq may require extra transitive static libs (for example libsodium/pthread/rt).
+            if (STATIC OR FULLY_STATIC)
+                find_package(PkgConfig QUIET)
+                if (PKG_CONFIG_FOUND)
+                    execute_process(
+                        COMMAND ${PKG_CONFIG_EXECUTABLE} --libs --static libzmq
+                        OUTPUT_VARIABLE ZMQ_STATIC_PKG_LIBS
+                        RESULT_VARIABLE ZMQ_STATIC_PKG_RESULT
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                    )
+                    if (ZMQ_STATIC_PKG_RESULT EQUAL 0 AND NOT "${ZMQ_STATIC_PKG_LIBS}" STREQUAL "")
+                        separate_arguments(ZMQ_EXTRA_LIBS UNIX_COMMAND "${ZMQ_STATIC_PKG_LIBS}")
+                        message(STATUS "ZeroMQ static extra libs: ${ZMQ_EXTRA_LIBS}")
+                    endif ()
+                endif ()
+
+                if ("${ZMQ_EXTRA_LIBS}" STREQUAL "" AND UNIX AND NOT APPLE)
+                    # Conservative fallback for typical distro libzmq static linkage.
+                    set(ZMQ_EXTRA_LIBS sodium pthread rt)
+                    message(STATUS "ZeroMQ static extra libs (fallback): ${ZMQ_EXTRA_LIBS}")
+                endif ()
+            endif ()
+
+            include_directories(SYSTEM ${ZMQ_INCLUDE_DIR})
+            message(STATUS "ZeroMQ Found: ${ZMQ_INCLUDE_DIR}")
+            message(STATUS "ZeroMQ Library: ${ZMQ_LIBRARY}")
+        endif ()
     endif ()
 endif ()
 

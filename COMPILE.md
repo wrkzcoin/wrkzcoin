@@ -68,6 +68,22 @@ Database/compression libs used by build:
 - RocksDB
 - Zstd
 
+### Optional: ZeroMQ (daemon publisher)
+
+ZMQ support is enabled by default at configure time (`ENABLE_ZMQ=ON`), but it is auto-disabled with a CMake warning if `libzmq` is not found.
+
+- Runtime feature: daemon `--zmq-pub` and `--no-zmq`
+- Default endpoint: `tcp://127.0.0.1:17857`
+
+For Linux builds:
+
+- Install headers/libs: `libzmq3-dev` and `libsodium-dev`
+- For portable/static builds, make sure static archives exist:
+  - `/usr/lib/x86_64-linux-gnu/libzmq.a`
+  - `/usr/lib/x86_64-linux-gnu/libsodium.a`
+
+If you changed dependencies, use a fresh build dir (or clear cache) so CMake does not reuse stale `ZMQ_LIBRARY` values.
+
 ### Boost status (updated)
 
 Boost is no longer required as a broad/full dependency package in build docs.
@@ -83,7 +99,7 @@ sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
   libssl-dev libboost-date-time-dev \
-  libzstd-dev
+  libzstd-dev libzmq3-dev libsodium-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)

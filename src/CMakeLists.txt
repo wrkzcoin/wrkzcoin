@@ -209,6 +209,9 @@ endif ()
 
 if (ENABLE_ZMQ)
     target_link_libraries(Wrkzd ${ZMQ_LIBRARY})
+    if (ZMQ_EXTRA_LIBS)
+        target_link_libraries(Wrkzd ${ZMQ_EXTRA_LIBS})
+    endif ()
     target_compile_definitions(Wrkzd PRIVATE WRKZ_ENABLE_ZMQ=1)
 endif ()
 
