@@ -35,6 +35,12 @@ const std::string getAddressBookName(const std::vector<AddressBookEntry> address
 
         Utilities::trim(friendlyName);
 
+        if (friendlyName.empty())
+        {
+            std::cout << WarningMsg("Friendly name cannot be empty.") << std::endl << std::endl;
+            continue;
+        }
+
         const auto it = std::find(addressBook.begin(), addressBook.end(), AddressBookEntry(friendlyName));
 
         if (it != addressBook.end())
@@ -227,6 +233,7 @@ void sendFromAddressBook(const std::shared_ptr<WalletBackend> walletBackend)
     if (!success)
     {
         std::cout << WarningMsg("Cancelling transaction.\n");
+        return;
     }
 
     sendTransaction(walletBackend, addressBookEntry.address, amount, addressBookEntry.paymentID);
@@ -277,7 +284,7 @@ void deleteFromAddressBook()
 
         if (it != addressBook.end())
         {
-            addressBook.erase(it);
+            addressBook.erase(it, addressBook.end());
 
             if (saveAddressBook(addressBook))
             {
@@ -344,13 +351,35 @@ std::vector<AddressBookEntry> getAddressBook()
     {
         rapidjson::IStreamWrapper isw(input);
         rapidjson::Document j;
-        if (!j.ParseStream(isw).HasParseError())
+        if (j.ParseStream(isw).HasParseError())
         {
-            for (auto &v : j.GetArray())
+            std::cout << WarningMsg("Failed to parse address book JSON. Using empty address book.") << std::endl;
+            return addressBook;
+        }
+
+        if (!j.IsArray())
+        {
+            std::cout << WarningMsg("Address book file has invalid format. Using empty address book.") << std::endl;
+            return addressBook;
+        }
+
+        for (auto &v : j.GetArray())
+        {
+            if (!v.IsObject())
+            {
+                std::cout << WarningMsg("Skipping invalid address book entry (expected JSON object).") << std::endl;
+                continue;
+            }
+
+            try
             {
                 AddressBookEntry entry;
                 entry.fromJSON(v);
                 addressBook.push_back(entry);
+            }
+            catch (const std::exception &)
+            {
+                std::cout << WarningMsg("Skipping malformed address book entry.") << std::endl;
             }
         }
     }
