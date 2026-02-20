@@ -30,6 +30,24 @@ if [ -z "${BOOST_ROOT:-}" ] && [ ! -f "/usr/include/boost/version.hpp" ]; then
   exit 1
 fi
 
+if [ -n "${BOOST_ROOT:-}" ]; then
+  BOOST_INCLUDE_CANDIDATE="$BOOST_ROOT/include"
+  if [ -f "$BOOST_ROOT/boost/version.hpp" ]; then
+    BOOST_INCLUDE_CANDIDATE="$BOOST_ROOT"
+  fi
+else
+  BOOST_INCLUDE_CANDIDATE="/usr/include"
+fi
+
+for h in boost/version.hpp boost/uuid/uuid.hpp boost/variant.hpp boost/algorithm/string.hpp; do
+  if [ ! -f "$BOOST_INCLUDE_CANDIDATE/$h" ]; then
+    echo "Missing required Boost header: $BOOST_INCLUDE_CANDIDATE/$h"
+    echo "Install full headers (Ubuntu): sudo apt-get install -y libboost-dev"
+    echo "or set BOOST_ROOT to a valid Boost prefix."
+    exit 1
+  fi
+done
+
 echo "Configuring Android wallet C API build in $BUILD_DIR ..."
 cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \

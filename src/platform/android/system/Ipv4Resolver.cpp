@@ -6,8 +6,10 @@
 
 #include "Ipv4Resolver.h"
 
+#include <arpa/inet.h>
 #include <cassert>
 #include <netdb.h>
+#include <netinet/in.h>
 #include <random>
 #include <stdexcept>
 #include <system/Dispatcher.h>

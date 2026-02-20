@@ -13,6 +13,9 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
+if (DEFINED Boost_INCLUDE_DIRS AND NOT "${Boost_INCLUDE_DIRS}" STREQUAL "")
+    include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+endif ()
 
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
