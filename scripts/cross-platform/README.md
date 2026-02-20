@@ -186,12 +186,14 @@ Prerequisites:
 
 1. Android NDK installed (r26+ recommended).
 2. `ANDROID_NDK` exported to your local NDK path.
-3. `cmake` and `ninja`/build tools available on host.
+3. Boost headers available on host (`libboost-dev`) or a custom `BOOST_ROOT`.
+4. `cmake` and `ninja`/build tools available on host.
 
 Build default Android ABI (`arm64-v8a`):
 
 ```bash
 export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+sudo apt-get install -y libboost-dev
 bash scripts/cross-build-android-wallet.sh
 ```
 
@@ -216,6 +218,7 @@ Common environment knobs:
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-arm64`)
 - `JOBS` (default: `nproc`)
+- `BOOST_ROOT` (optional custom Boost prefix containing `include/boost/version.hpp`)
 
 Notes:
 

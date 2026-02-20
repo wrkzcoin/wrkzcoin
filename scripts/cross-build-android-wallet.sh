@@ -22,6 +22,14 @@ if [ ! -f "$ANDROID_NDK/build/cmake/android.toolchain.cmake" ]; then
   exit 1
 fi
 
+if [ -z "${BOOST_ROOT:-}" ] && [ ! -f "/usr/include/boost/version.hpp" ]; then
+  echo "Boost headers not found."
+  echo "Install headers on host (Ubuntu):"
+  echo "  sudo apt-get install -y libboost-dev"
+  echo "or set BOOST_ROOT to a Boost prefix containing include/boost/version.hpp"
+  exit 1
+fi
+
 echo "Configuring Android wallet C API build in $BUILD_DIR ..."
 cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
@@ -31,7 +39,8 @@ cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DWRKZ_ANDROID_PROFILE=ON \
   -DWRKZ_BUILD_EXECUTABLES=OFF \
   -DWRKZ_BUILD_WALLET_CAPI=ON \
-  -DENABLE_ZMQ=OFF
+  -DENABLE_ZMQ=OFF \
+  ${BOOST_ROOT:+-DBOOST_ROOT="$BOOST_ROOT"}
 
 echo "Building wallet C API target ..."
 cmake --build "$BUILD_DIR" --target wallet_capi --parallel "$JOBS"
