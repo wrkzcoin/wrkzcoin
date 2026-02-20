@@ -13,6 +13,7 @@
 
 #include <JsonHelper.h>
 #include <boost/variant.hpp>
+#include <cstdint>
 #include <common/StringTools.h>
 #include <vector>
 

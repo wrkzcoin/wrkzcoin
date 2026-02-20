@@ -11,6 +11,8 @@
 #include <CryptoNote.h>
 #include <errors/Errors.h>
 #include <JsonHelper.h>
+#include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <unordered_map>
