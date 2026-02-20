@@ -4,6 +4,7 @@
 #include <common/FileSystemShim.h>
 #include <errors/Errors.h>
 #include <utilities/Addresses.h>
+#include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <walletbackend/WalletBackend.h>
@@ -37,6 +38,11 @@ struct wallet_handle
 namespace
 {
     const std::string kVersion = "wallet-capi/0.1";
+
+    bool json_has(const nlohmann::json &obj, const char *key)
+    {
+        return obj.find(key) != obj.end();
+    }
 
     wallet_status_t alloc_out_string(const std::string &value, char **out_ptr, size_t *out_len)
     {
@@ -700,7 +706,7 @@ wallet_status_t wallet_send_advanced_json(
         }
     }
 
-    if (!body.contains("destinations") || !body["destinations"].is_array())
+    if (!json_has(body, "destinations") || !body["destinations"].is_array())
     {
         return static_cast<wallet_status_t>(NO_DESTINATIONS_GIVEN);
     }
@@ -708,7 +714,7 @@ wallet_status_t wallet_send_advanced_json(
     std::vector<std::pair<std::string, uint64_t>> destinations;
     for (const auto &destination : body["destinations"])
     {
-        if (!destination.contains("address") || !destination.contains("amount"))
+        if (!json_has(destination, "address") || !json_has(destination, "amount"))
         {
             return static_cast<wallet_status_t>(UNKNOWN_ERROR);
         }
@@ -718,7 +724,7 @@ wallet_status_t wallet_send_advanced_json(
     }
 
     uint64_t mixin;
-    if (body.contains("mixin") && body["mixin"].is_number_unsigned())
+    if (json_has(body, "mixin") && body["mixin"].is_number_unsigned())
     {
         mixin = body["mixin"].get<uint64_t>();
     }
@@ -729,41 +735,41 @@ wallet_status_t wallet_send_advanced_json(
     }
 
     auto fee = WalletTypes::FeeType::MinimumFee();
-    if (body.contains("fee") && body["fee"].is_number_unsigned())
+    if (json_has(body, "fee") && body["fee"].is_number_unsigned())
     {
         fee = WalletTypes::FeeType::FixedFee(body["fee"].get<uint64_t>());
     }
-    else if (body.contains("feePerByte") && body["feePerByte"].is_number())
+    else if (json_has(body, "feePerByte") && body["feePerByte"].is_number())
     {
         fee = WalletTypes::FeeType::FeePerByte(body["feePerByte"].get<float>());
     }
 
     std::vector<std::string> sourceAddresses;
-    if (body.contains("sourceAddresses") && body["sourceAddresses"].is_array())
+    if (json_has(body, "sourceAddresses") && body["sourceAddresses"].is_array())
     {
         sourceAddresses = body["sourceAddresses"].get<std::vector<std::string>>();
     }
 
     std::string paymentID;
-    if (body.contains("paymentID") && body["paymentID"].is_string())
+    if (json_has(body, "paymentID") && body["paymentID"].is_string())
     {
         paymentID = body["paymentID"].get<std::string>();
     }
 
     std::string changeAddress;
-    if (body.contains("changeAddress") && body["changeAddress"].is_string())
+    if (json_has(body, "changeAddress") && body["changeAddress"].is_string())
     {
         changeAddress = body["changeAddress"].get<std::string>();
     }
 
     uint64_t unlockTime = 0;
-    if (body.contains("unlockTime") && body["unlockTime"].is_number_unsigned())
+    if (json_has(body, "unlockTime") && body["unlockTime"].is_number_unsigned())
     {
         unlockTime = body["unlockTime"].get<uint64_t>();
     }
 
     std::vector<uint8_t> extraData;
-    if (body.contains("extra") && body["extra"].is_string())
+    if (json_has(body, "extra") && body["extra"].is_string())
     {
         const std::string extra = body["extra"].get<std::string>();
         if (!Common::fromHex(extra, extraData))
@@ -854,7 +860,7 @@ wallet_status_t wallet_get_transactions_status_json(
     {
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
-    if (!body.contains("hashes") || !body["hashes"].is_array())
+    if (!json_has(body, "hashes") || !body["hashes"].is_array())
     {
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
@@ -1203,13 +1209,13 @@ wallet_status_t wallet_send_fusion_advanced_json(
     }
 
     std::string destination = instance->getPrimaryAddress();
-    if (body.contains("destination") && body["destination"].is_string())
+    if (json_has(body, "destination") && body["destination"].is_string())
     {
         destination = body["destination"].get<std::string>();
     }
 
     uint64_t mixin;
-    if (body.contains("mixin") && body["mixin"].is_number_unsigned())
+    if (json_has(body, "mixin") && body["mixin"].is_number_unsigned())
     {
         mixin = body["mixin"].get<uint64_t>();
     }
@@ -1220,13 +1226,13 @@ wallet_status_t wallet_send_fusion_advanced_json(
     }
 
     std::vector<std::string> sourceAddresses;
-    if (body.contains("sourceAddresses") && body["sourceAddresses"].is_array())
+    if (json_has(body, "sourceAddresses") && body["sourceAddresses"].is_array())
     {
         sourceAddresses = body["sourceAddresses"].get<std::vector<std::string>>();
     }
 
     std::vector<uint8_t> extraData;
-    if (body.contains("extra") && body["extra"].is_string())
+    if (json_has(body, "extra") && body["extra"].is_string())
     {
         const auto extraHex = body["extra"].get<std::string>();
         if (!Common::fromHex(extraHex, extraData))
@@ -1236,7 +1242,7 @@ wallet_status_t wallet_send_fusion_advanced_json(
     }
 
     std::optional<uint64_t> optimizeTarget;
-    if (body.contains("optimizeTarget") && body["optimizeTarget"].is_number_unsigned())
+    if (json_has(body, "optimizeTarget") && body["optimizeTarget"].is_number_unsigned())
     {
         optimizeTarget = body["optimizeTarget"].get<uint64_t>();
     }
