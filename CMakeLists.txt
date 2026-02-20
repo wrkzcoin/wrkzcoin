@@ -456,19 +456,43 @@ if (NOT OPENSSL_FOUND)
 endif()
 
 if (OPENSSL_FOUND)
-    ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
-    if (NOT MSVC AND NOT WIN32)
-        set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};dl")
-    endif ()
-    if (WIN32)
-        # Static OpenSSL for MinGW needs these system libs after libcrypto/libssl.
-        set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};crypt32;ws2_32;bcrypt;iphlpapi")
+    set(WRKZ_OPENSSL_INCLUDE_DIRS "")
+
+    if (DEFINED OPENSSL_INCLUDE_DIRS)
+        foreach(_WRKZ_SSL_DIR IN LISTS OPENSSL_INCLUDE_DIRS)
+            if (NOT "${_WRKZ_SSL_DIR}" MATCHES "-NOTFOUND$")
+                list(APPEND WRKZ_OPENSSL_INCLUDE_DIRS "${_WRKZ_SSL_DIR}")
+            endif ()
+        endforeach ()
     endif ()
 
-    include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
-    add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
-    message(STATUS "OpenSSL Found: ${OPENSSL_INCLUDE_DIR}")
-    message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
+    if (DEFINED OPENSSL_INCLUDE_DIR AND NOT "${OPENSSL_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
+        list(APPEND WRKZ_OPENSSL_INCLUDE_DIRS "${OPENSSL_INCLUDE_DIR}")
+    endif ()
+
+    list(REMOVE_DUPLICATES WRKZ_OPENSSL_INCLUDE_DIRS)
+
+    if (WRKZ_OPENSSL_INCLUDE_DIRS)
+        ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
+        if (NOT MSVC AND NOT WIN32)
+            set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};dl")
+        endif ()
+        if (WIN32)
+            # Static OpenSSL for MinGW needs these system libs after libcrypto/libssl.
+            set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};crypt32;ws2_32;bcrypt;iphlpapi")
+        endif ()
+
+        include_directories(SYSTEM ${WRKZ_OPENSSL_INCLUDE_DIRS})
+        add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
+        message(STATUS "OpenSSL Found: ${WRKZ_OPENSSL_INCLUDE_DIRS}")
+        message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
+    else ()
+        message(WARNING
+            "OpenSSL was detected but include directories are invalid. "
+            "Disabling OpenSSL integration for this build.")
+        set(OPENSSL_FOUND FALSE)
+        set(OPENSSL_LIBRARIES "")
+    endif ()
 else ()
     message(STATUS "OpenSSL Found: No... Skipping...")
 endif ()
