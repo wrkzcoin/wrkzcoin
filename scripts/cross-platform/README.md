@@ -212,15 +212,37 @@ ANDROID_ABI=x86_64 BUILD_DIR=build-android-x86_64 \
   bash scripts/cross-build-android-wallet.sh
 ```
 
+Build both `arm64-v8a` and `x86_64` in one command:
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ANDROID_ABIS="arm64-v8a x86_64" \
+  bash scripts/cross-build-android-wallet.sh
+```
+
+Build `libucontext` per ABI (recommended before wallet build):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ABI=arm64-v8a scripts/build-libucontext-android.sh
+ABI=x86_64 scripts/build-libucontext-android.sh
+```
+
+`scripts/build-libucontext-android.sh` auto-applies an Android bionic
+x86_64 compatibility patch to libucontext register macros (`REG_*`) to avoid
+`sys/ucontext.h` enum name collisions.
+
 Common environment knobs:
 
 - `ANDROID_ABI` (default: `arm64-v8a`)
+- `ANDROID_ABIS` (optional list, e.g. `"arm64-v8a x86_64"` or `"arm64-v8a,x86_64"`)
 - `ANDROID_PLATFORM` (default: `android-24`)
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-arm64`)
 - `JOBS` (default: `nproc`)
 - `BOOST_ROOT` (optional custom isolated Boost prefix containing `include/boost/version.hpp`)
 - `LIBUCONTEXT_ROOT` (default: `.android-libucontext/<ABI>`, must contain `lib/libucontext.a`)
+- `LIBUCONTEXT_ROOT_BASE` (default: `.android-libucontext`, used when `ANDROID_ABIS` is set)
 
 Notes:
 
@@ -231,8 +253,8 @@ Notes:
   - `ENABLE_ZMQ=OFF`
 - If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
   `.android-boost/include/boost` and uses that isolated path for cross build.
-- `LIBUCONTEXT_ROOT` must point to a prebuilt Android libucontext prefix for
-  the selected ABI. The build stops early if `lib/libucontext.a` is missing.
+- If `libucontext` is missing for an ABI, the script warns and continues.
+  Final link may still fail on `getcontext/swapcontext/makecontext`.
 - Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
 
 ## Notes

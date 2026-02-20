@@ -85,6 +85,69 @@ else
   git -C "$SRC_DIR" checkout -f FETCH_HEAD
 fi
 
+# Android x86_64 compatibility: bionic's <sys/ucontext.h> exposes REG_* enum
+# names that collide with libucontext's macro defines in arch/x86_64/defs.h.
+# Guard those macro defines out on __BIONIC__ builds.
+if [ "$ABI" = "x86_64" ]; then
+  DEFS_H=""
+  if [ -f "$SRC_DIR/arch/x86_64/defs.h" ]; then
+    DEFS_H="$SRC_DIR/arch/x86_64/defs.h"
+  elif [ -f "$SRC_DIR/src/arch/x86_64/defs.h" ]; then
+    DEFS_H="$SRC_DIR/src/arch/x86_64/defs.h"
+  fi
+
+  if [ -n "$DEFS_H" ] && ! grep -q "__BIONIC__" "$DEFS_H"; then
+    python3 - "$DEFS_H" <<'PY'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+pat = re.compile(r'(#\s*define\s+REG_R8[\s\S]*?#\s*define\s+REG_CSGSFS[^\n]*\n)', re.M)
+m = pat.search(s)
+if m:
+    block = m.group(1)
+    wrapped = "#if !defined(__BIONIC__)\n" + block + "#endif\n"
+    s = s[:m.start()] + wrapped + s[m.end():]
+    p.write_text(s, encoding="utf-8")
+PY
+    echo "Applied __BIONIC__ REG_* guard patch to: $DEFS_H"
+  elif [ -z "$DEFS_H" ]; then
+    echo "Warning: could not find x86_64 defs.h in libucontext sources."
+    echo "Tried:"
+    echo "  $SRC_DIR/arch/x86_64/defs.h"
+    echo "  $SRC_DIR/src/arch/x86_64/defs.h"
+  fi
+
+  # Additional Android x86_64 compatibility:
+  # Some libucontext trees include defs.h before libucontext.h in C files.
+  # That exposes REG_* macros before bionic's <ucontext.h> enum names.
+  # Reorder includes so <ucontext.h> is parsed first.
+  for f in \
+    "$SRC_DIR/arch/x86_64/makecontext.c" \
+    "$SRC_DIR/arch/x86_64/trampoline.c" \
+    "$SRC_DIR/src/arch/x86_64/makecontext.c" \
+    "$SRC_DIR/src/arch/x86_64/trampoline.c"
+  do
+    if [ -f "$f" ]; then
+      python3 - "$f" <<'PY'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+orig = s
+s = re.sub(
+    r'^\s*#\s*include\s+"defs\.h"\s*\n\s*#\s*include\s+<libucontext/libucontext\.h>\s*\n',
+    '#include <libucontext/libucontext.h>\n#include "defs.h"\n',
+    s,
+    count=1,
+    flags=re.M,
+)
+if s != orig:
+    p.write_text(s, encoding="utf-8")
+PY
+      echo "Patched include order for: $f"
+    fi
+  done
+fi
+
 mkdir -p "$(dirname "$BUILD_DIR")"
 mkdir -p "$PREFIX"
 
