@@ -213,24 +213,20 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     }
 
     try {
-      await this.tryFetchBlockHeaderRange(node, 0, 0);
+      await this.tryFetchBlockHeaderRange(node, 1, 1);
       supportsGetBlockHeadersRange = true;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (!isMethodMissing(reason)) {
-        supportsGetBlockHeadersRange = true;
-      }
+      supportsGetBlockHeadersRange = false;
       lastError = lastError ?? reason;
     }
 
     try {
-      await this.tryFetchBlockHeaderByHeight(node, 0, 0);
+      await this.tryFetchBlockHeaderByHeight(node, 1, 1);
       supportsGetBlockHeaderByHeight = true;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (!isMethodMissing(reason)) {
-        supportsGetBlockHeaderByHeight = true;
-      }
+      supportsGetBlockHeaderByHeight = false;
       lastError = lastError ?? reason;
     }
 
@@ -714,11 +710,18 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     const methodsTried: string[] = [];
     const capabilities = (await this.getNodeCapabilities(node)) ?? (await this.refreshNodeCapabilities(node));
 
+    if (!capabilities.supportsGetBlockHeadersRange && !capabilities.supportsGetBlockHeaderByHeight) {
+      return {
+        ok: false,
+        mode: "none",
+        methodsTried: ["header_methods_unavailable"],
+        headers: [],
+        error: "header_methods_unavailable"
+      };
+    }
+
     if (!capabilities.supportsGetBlockHeadersRange && capabilities.supportsGetBlockHeaderByHeight) {
       this.fetchMode = "by_height";
-    }
-    if (!capabilities.supportsGetBlockHeadersRange && !capabilities.supportsGetBlockHeaderByHeight) {
-      this.fetchMode = "none";
     }
 
     if (this.fetchMode === "range") {
