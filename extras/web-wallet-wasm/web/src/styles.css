@@ -48,6 +48,9 @@ button {
   color: #ffffff;
   padding: 0.6rem 1rem;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
 button.danger {
@@ -81,6 +84,40 @@ button.active {
 .theme-glyph.moon {
   border-radius: 50%;
   box-shadow: inset -5px 0 0 0 currentColor;
+}
+
+.menu-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.9;
+  flex: 0 0 auto;
+}
+
+.icon-wallet {
+  border-radius: 2px;
+}
+
+.icon-settings {
+  border-radius: 50%;
+}
+
+.icon-refresh,
+.icon-overview {
+  border-radius: 50%;
+}
+
+.icon-logout {
+  transform: rotate(45deg);
+}
+
+.icon-transactions,
+.icon-transfer,
+.icon-receive,
+.icon-nodes,
+.icon-backup {
+  border-radius: 2px;
 }
 
 pre {
@@ -221,6 +258,20 @@ select {
   display: block;
   margin-bottom: 0.35rem;
   font-size: 0.92rem;
+}
+
+.address-box {
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.7rem;
+  max-width: 760px;
+}
+
+.address-box code {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .actions {

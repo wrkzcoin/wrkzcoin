@@ -33,11 +33,9 @@ type ViewTab = "wallet" | "settings";
 type WalletTab =
   | "overview"
   | "transactions"
-  | "balances"
   | "transfer"
   | "receive"
-  | "nodes"
-  | "backup";
+  | "nodes";
 type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 type WelcomeMode = "create" | "importSeed" | "importKeys";
@@ -667,23 +665,6 @@ export function App(): JSX.Element {
     await copyText(receiveIntegratedAddress, "Integrated address", true);
   };
 
-  const onConfirmBackupSaved = (): void => {
-    if (!pendingBackup) {
-      setOutput("No pending backup data.");
-      return;
-    }
-    setPendingBackup({ ...pendingBackup, confirmed: true });
-    setOutput("Backup confirmed. Keep your seed and keys offline.");
-  };
-
-  const onClearBackupFromScreen = (): void => {
-    if (!pendingBackup) {
-      return;
-    }
-    setPendingBackup(null);
-    setOutput("Backup material removed from screen.");
-  };
-
   const onConfirmImportReview = async (): Promise<void> => {
     if (!pendingImportReview) {
       return;
@@ -1263,29 +1244,37 @@ export function App(): JSX.Element {
     <main className="container">
       <h1>Wrkz Web Wallet ({COIN_TICKER} WASM)</h1>
       <p>Browser wallet with onboarding, encrypted local vault, and configurable RPC nodes.</p>
-      <div className="actions">
-        <button className={activeView === "wallet" ? "active" : ""} onClick={() => setActiveView("wallet")}>
-          Wallet
-        </button>
-        <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
-          Settings
-        </button>
-        <button
-          className={`icon-button ${resolvedTheme === "light" ? "active" : ""}`}
-          onClick={() => setTheme("light")}
-          title="Light theme"
-          aria-label="Light theme"
-        >
-          <span className="theme-glyph sun" aria-hidden="true" />
-        </button>
-        <button
-          className={`icon-button ${resolvedTheme === "dark" ? "active" : ""}`}
-          onClick={() => setTheme("dark")}
-          title="Dark theme"
-          aria-label="Dark theme"
-        >
-          <span className="theme-glyph moon" aria-hidden="true" />
-        </button>
+      <div className="top-controls">
+        <div className="actions">
+          <button className={activeView === "wallet" ? "active" : ""} onClick={() => setActiveView("wallet")}>
+            <span className="menu-icon icon-wallet" aria-hidden="true" />
+            Wallet
+          </button>
+          <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
+            <span className="menu-icon icon-settings" aria-hidden="true" />
+            Settings
+          </button>
+          <button
+            className="icon-button"
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            title={resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            aria-label={resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+          >
+            <span className={`theme-glyph ${resolvedTheme === "dark" ? "moon" : "sun"}`} aria-hidden="true" />
+          </button>
+          {hasActiveWalletSession && !isLocked ? (
+            <>
+              <button onClick={onRefreshDirectStatus}>
+                <span className="menu-icon icon-refresh" aria-hidden="true" />
+                Refresh
+              </button>
+              <button onClick={onLogoutSession}>
+                <span className="menu-icon icon-logout" aria-hidden="true" />
+                Logout
+              </button>
+            </>
+          ) : null}
+        </div>
       </div>
 
       {activeView === "wallet" ? (
@@ -1404,32 +1393,27 @@ export function App(): JSX.Element {
             <>
               <div className="session-header">
                 <h2>Wallet Session</h2>
-                <div className="actions">
-                  <button onClick={onRefreshDirectStatus}>Refresh</button>
-                  <button onClick={onLogoutSession}>Logout</button>
-                </div>
               </div>
               <div className="actions tab-row">
                 <button className={walletTab === "overview" ? "active" : ""} onClick={() => setWalletTab("overview")}>
+                  <span className="menu-icon icon-overview" aria-hidden="true" />
                   Overview
                 </button>
                 <button className={walletTab === "transactions" ? "active" : ""} onClick={() => setWalletTab("transactions")}>
+                  <span className="menu-icon icon-transactions" aria-hidden="true" />
                   Transactions
                 </button>
-                <button className={walletTab === "balances" ? "active" : ""} onClick={() => setWalletTab("balances")}>
-                  Balances
-                </button>
                 <button className={walletTab === "transfer" ? "active" : ""} onClick={() => setWalletTab("transfer")}>
+                  <span className="menu-icon icon-transfer" aria-hidden="true" />
                   Transfer
                 </button>
                 <button className={walletTab === "receive" ? "active" : ""} onClick={() => setWalletTab("receive")}>
+                  <span className="menu-icon icon-receive" aria-hidden="true" />
                   Receive
                 </button>
                 <button className={walletTab === "nodes" ? "active" : ""} onClick={() => setWalletTab("nodes")}>
+                  <span className="menu-icon icon-nodes" aria-hidden="true" />
                   Nodes
-                </button>
-                <button className={walletTab === "backup" ? "active" : ""} onClick={() => setWalletTab("backup")}>
-                  Backup
                 </button>
               </div>
 
@@ -1496,27 +1480,6 @@ export function App(): JSX.Element {
                 </section>
               ) : null}
 
-              {walletTab === "balances" ? (
-                <section>
-                  <h3>Balances and Scan Stats</h3>
-                  <p>
-                    Unlocked: {formatAtomicAmount(directSummary?.unlockedBalanceAtomic ?? "0", COIN_DECIMALS)} {COIN_TICKER}
-                  </p>
-                  <p>
-                    Locked: {formatAtomicAmount(directSummary?.lockedBalanceAtomic ?? "0", COIN_DECIMALS)} {COIN_TICKER}
-                  </p>
-                  <p>
-                    Scan mode: {directSummary?.scanMode === "wallet_owned_outputs" ? "wallet-owned outputs" : "headers only"}
-                  </p>
-                  <p>
-                    Outputs: unspent {directSummary?.unspentOwnedOutputs ?? 0}, spent {directSummary?.spentOwnedOutputs ?? 0}
-                  </p>
-                  <p>
-                    Headers stored: {directSummary?.scannedHeaderCount ?? 0}, scanned tx {directSummary?.scannedTransactions ?? 0}
-                  </p>
-                </section>
-              ) : null}
-
               {walletTab === "transfer" ? (
                 <section>
                   <h3>Transfer</h3>
@@ -1545,7 +1508,9 @@ export function App(): JSX.Element {
                 <section>
                   <h3>Receive</h3>
                   <label className="field-label">Standard address</label>
-                  <input type="text" value={receiveAddress} readOnly />
+                  <div className="address-box">
+                    <code>{receiveAddress || "Wallet address is not available yet."}</code>
+                  </div>
                   <div className="actions">
                     <button disabled={!receiveAddress} onClick={onCopyStandardReceiveAddress}>
                       Copy Address
@@ -1624,48 +1589,6 @@ export function App(): JSX.Element {
                 </section>
               ) : null}
 
-              {walletTab === "backup" ? (
-                <section>
-                  <h3>Backup</h3>
-                  {pendingBackup ? (
-                    <>
-                      <p className="muted">Save these secrets securely. Anyone with these can spend your funds.</p>
-                      <label className="field-label">Address</label>
-                      <textarea className="input-area" value={pendingBackup.address} readOnly />
-                      <div className="actions">
-                        <button onClick={() => copyText(pendingBackup.address, "Address", true)}>Copy Address</button>
-                      </div>
-                      <label className="field-label">Mnemonic seed</label>
-                      <textarea className="input-area" value={pendingBackup.mnemonicSeed} readOnly />
-                      <div className="actions">
-                        <button onClick={() => copyText(pendingBackup.mnemonicSeed, "Mnemonic seed", true)}>Copy Seed</button>
-                      </div>
-                      <label className="field-label">Private spend key</label>
-                      <input type="text" value={pendingBackup.privateSpendKey} readOnly />
-                      <label className="field-label">Private view key</label>
-                      <input type="text" value={pendingBackup.privateViewKey} readOnly />
-                      <div className="actions">
-                        <button onClick={() => copyText(pendingBackup.privateSpendKey, "Private spend key", true)}>
-                          Copy Spend Key
-                        </button>
-                        <button onClick={() => copyText(pendingBackup.privateViewKey, "Private view key", true)}>
-                          Copy View Key
-                        </button>
-                        <button onClick={onConfirmBackupSaved}>
-                          {pendingBackup.confirmed ? "Backup Confirmed" : "I Backed This Up"}
-                        </button>
-                        <button className="danger" onClick={onClearBackupFromScreen}>
-                          Clear From Screen
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="muted">
-                      No backup payload is currently cached in this session. Backup is shown immediately after new wallet create.
-                    </p>
-                  )}
-                </section>
-              ) : null}
             </>
           )}
         </section>
