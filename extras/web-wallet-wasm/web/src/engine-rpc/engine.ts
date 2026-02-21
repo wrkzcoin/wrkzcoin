@@ -22,6 +22,7 @@ const CAPABILITY_TTL_MS = 10 * 60 * 1000;
 const NODE_SCORE_DECAY_INTERVAL_MS = 5 * 60 * 1000;
 const NODE_SCORE_DECAY_STEP = 3;
 const NODE_FAILURE_COOLDOWN_MS = 60 * 1000;
+const MAX_AUTO_SYNC_THREADS = 8;
 
 type WalletSyncDataResponse = {
   status?: string;
@@ -39,6 +40,16 @@ function nodeKey(node: RpcNode): string {
 
 function isMethodMissing(message: string): boolean {
   return /method not found|unknown method|invalid method|no method/i.test(message);
+}
+
+function detectSyncThreads(): number {
+  if (typeof navigator !== "undefined" && Number.isFinite(navigator.hardwareConcurrency)) {
+    const threads = Math.floor(Number(navigator.hardwareConcurrency));
+    if (threads > 0) {
+      return Math.max(1, Math.min(MAX_AUTO_SYNC_THREADS, threads));
+    }
+  }
+  return 2;
 }
 
 export class BrowserDirectRpcEngine implements DirectRpcEngine {
@@ -334,7 +345,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         daemonHost: this.currentNode.host,
         daemonPort: this.currentNode.port,
         daemonSsl: this.currentNode.ssl,
-        syncThreads: 2
+        syncThreads: detectSyncThreads()
       });
       walletId = restored.walletId;
       const sent = await this.worker.sendBasic(
@@ -642,12 +653,15 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   }
 
   private async ensureCursorInitialized(walletId: string): Promise<void> {
-    const existing = await this.storage.loadCursor();
-    if (existing && existing.walletId === walletId) {
-      return;
-    }
     const profile = await this.storage.loadProfile();
     const startHeight = Math.max(0, profile?.walletId === walletId ? profile.scanHeight : 0);
+    const existing = await this.storage.loadCursor();
+    if (existing && existing.walletId === walletId && existing.height >= startHeight) {
+      return;
+    }
+    if (existing && existing.walletId === walletId && existing.height < startHeight) {
+      await this.storage.clearSyncArtifacts();
+    }
     await this.storage.saveCursor({
       walletId,
       height: startHeight,

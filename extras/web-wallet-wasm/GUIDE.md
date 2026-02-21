@@ -31,6 +31,28 @@ Expected artifacts:
 - `extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.wasm`
 - `extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.worker.js` (when pthread build is enabled)
 
+## Multithread (pthreads) Runtime Requirements
+
+The WASM build is configured with pthreads. Browser runtime requires cross-origin isolation:
+
+- `Cross-Origin-Opener-Policy: same-origin`
+- `Cross-Origin-Embedder-Policy: require-corp`
+- `Cross-Origin-Resource-Policy: same-origin` (recommended for local assets)
+
+If these headers are missing, build may succeed but multithread execution will fail at runtime.
+
+Example nginx headers (wallet web domain):
+
+```nginx
+add_header Cross-Origin-Opener-Policy "same-origin" always;
+add_header Cross-Origin-Embedder-Policy "require-corp" always;
+add_header Cross-Origin-Resource-Policy "same-origin" always;
+
+types {
+    application/wasm wasm;
+}
+```
+
 ## Run Web UI
 
 From `extras/web-wallet-wasm`:

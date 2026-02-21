@@ -1571,14 +1571,7 @@ export function App(): JSX.Element {
       setOutput("Reset aborted: password confirmation is required.");
       return;
     }
-    localStorage.removeItem(SETTINGS_NODES_KEY);
-    localStorage.removeItem(SETTINGS_SCAN_FROM_COINBASE_KEY);
-    localStorage.removeItem(SETTINGS_THEME_KEY);
-    localStorage.removeItem(SETTINGS_DEFAULT_NODE_ID_KEY);
-    setNodes(DEFAULT_NODES);
-    setScanFromCoinbase(false);
-    setTheme("light");
-    setDefaultNodeId(DEFAULT_NODES[0].id);
+    // Keep user preferences (theme, nodes, default node, scan defaults, tx/fusion toggles).
     setWalletFilename("my.wallet");
     setWalletPassword("");
     setWalletPasswordConfirm("");
@@ -1614,13 +1607,11 @@ export function App(): JSX.Element {
     setAuthHash("");
     setIsLocked(false);
     setLoginPassword("");
-    setAutoLogoutMinutes(DEFAULT_AUTO_LOGOUT_MIN);
     localStorage.removeItem(SETTINGS_AUTH_HASH_KEY);
-    localStorage.removeItem(SETTINGS_AUTO_LOGOUT_MIN_KEY);
-    localStorage.removeItem(SETTINGS_WELCOME_MODAL_DISMISSED_KEY);
+    // Keep welcome modal dismissal preference too.
     setWelcomeModalOpen(true);
     setHideWelcomeModalNextTime(false);
-    setOutput("Wallet local vault data has been reset.");
+    setOutput("Wallet local vault data has been reset. Preferences were kept.");
   };
 
   const onDismissWelcomeModal = (): void => {

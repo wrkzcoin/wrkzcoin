@@ -292,7 +292,8 @@ if (WRKZ_BUILD_WALLET_WASM)
     target_link_options(wallet_wasm PRIVATE
         -fexceptions
         -sWASM=1
-        -sUSE_PTHREADS=0
+        -sUSE_PTHREADS=1
+        -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
         -sALLOW_MEMORY_GROWTH=1
         -sMODULARIZE=1
         -sEXPORT_ES6=1
