@@ -423,6 +423,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   public async initVault(password: string): Promise<void> {
     await this.worker.vaultInit(password);
     this.vaultUnlocked = true;
+    let loadedScanKeys = false;
     const existing = await this.worker.vaultGet("direct_rpc_scan_keys");
     const value = (existing as { value?: string }).value;
     if (typeof value === "string" && value.length > 0) {
@@ -433,10 +434,23 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
             privateSpendKey: parsed.privateSpendKey,
             privateViewKey: parsed.privateViewKey
           };
+          loadedScanKeys = true;
           this.scannerResetPending = true;
         }
       } catch {
         // Ignore corrupt vault entry.
+      }
+    }
+
+    // If keys are restored while a session is already running, rewind persisted sync state
+    // and immediately poll so scanner state is rebuilt from the configured scan start.
+    if (loadedScanKeys) {
+      const walletId = this.currentWalletId ?? (await this.storage.loadProfile())?.walletId;
+      if (walletId) {
+        await this.reinitializeScannerStateIfNeeded(walletId);
+      }
+      if (this.running) {
+        await this.pollOnce();
       }
     }
   }
