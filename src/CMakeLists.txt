@@ -288,6 +288,9 @@ if (WRKZ_BUILD_WALLET_WASM)
     )
     target_compile_options(wallet_wasm PRIVATE
         -fexceptions
+        -pthread
+        -matomics
+        -mbulk-memory
     )
     target_link_options(wallet_wasm PRIVATE
         -fexceptions
