@@ -580,6 +580,12 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     const clampedCursor = Math.min(cursor, daemonHeight);
     const remaining = Math.max(0, daemonHeight - clampedCursor);
 
+    const previousSummary = await this.storage.loadSummary();
+    const previousOwnedSummary =
+      previousSummary && previousSummary.walletId === this.currentWalletId && previousSummary.scanMode === "wallet_owned_outputs"
+        ? previousSummary
+        : null;
+
     let nextSyncedHeight = clampedCursor;
     let lastBatchStart: number | undefined;
     let lastBatchEnd: number | undefined;
@@ -592,9 +598,15 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     let scannedOutputs = 0;
     let unspentOwnedOutputs = 0;
     let spentOwnedOutputs = 0;
-    let unlockedBalanceAtomic = "0";
-    let lockedBalanceAtomic = "0";
-    let scanMode: WalletSummary["scanMode"] = "headers_only";
+    let unlockedBalanceAtomic = previousOwnedSummary?.unlockedBalanceAtomic ?? "0";
+    let lockedBalanceAtomic = previousOwnedSummary?.lockedBalanceAtomic ?? "0";
+    let scanMode: WalletSummary["scanMode"] = previousOwnedSummary ? "wallet_owned_outputs" : "headers_only";
+    if (previousOwnedSummary) {
+      scannedTransactions = previousOwnedSummary.scannedTransactions ?? scannedTransactions;
+      scannedOutputs = previousOwnedSummary.scannedOutputs ?? scannedOutputs;
+      unspentOwnedOutputs = previousOwnedSummary.unspentOwnedOutputs ?? unspentOwnedOutputs;
+      spentOwnedOutputs = previousOwnedSummary.spentOwnedOutputs ?? spentOwnedOutputs;
+    }
 
     if (remaining > 0) {
       lastBatchStart = clampedCursor + 1;
@@ -663,6 +675,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
           } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
           }
+        } else if (previousOwnedSummary) {
+          // Preserve prior computed wallet-owned balances until scan keys are reloaded.
+          lastError = lastError ?? "scan_keys_not_loaded";
         }
       } else {
         const fetchResult = await this.tryFetchHeaderBatch(node, lastBatchStart, lastBatchEnd);
