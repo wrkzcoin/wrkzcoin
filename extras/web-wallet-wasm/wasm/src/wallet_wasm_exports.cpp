@@ -371,7 +371,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             json txEntries = json::array();
 
             const auto scanTransaction = [&](const WalletTypes::RawCoinbaseTransaction &rawTX,
-                                             const std::vector<WalletTypes::KeyInput> *keyInputs,
+                                             const std::vector<CryptoNote::KeyInput> *keyInputs,
                                              const uint64_t blockHeight,
                                              const uint64_t blockTimestamp,
                                              const std::string &paymentID) {
