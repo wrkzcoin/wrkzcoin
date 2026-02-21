@@ -17,3 +17,7 @@ src/cmake_install.cmake
 *.swp
 .vscode
 .howto/
+node_modules/
+**/node_modules/
+dist/
+**/dist/

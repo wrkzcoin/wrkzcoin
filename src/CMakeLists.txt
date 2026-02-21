@@ -57,6 +57,11 @@ file(GLOB_RECURSE zedwallet++ zedwallet++/*)
 if (WRKZ_BUILD_WALLET_CAPI)
     file(GLOB_RECURSE WalletCAPI walletcapi/*)
 endif ()
+if (WRKZ_BUILD_WALLET_WASM)
+    set(WalletWasmBridge
+        ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/src/wallet_wasm_exports.cpp
+    )
+endif ()
 
 if (WIN32)
     file(GLOB_RECURSE System system/* platform/windows/system/*)
@@ -97,6 +102,9 @@ add_library(wallet_core ALIAS WalletBackend)
 if (WRKZ_BUILD_WALLET_CAPI)
     add_library(wallet_capi_c STATIC ${WalletCAPI})
     add_library(wallet_capi SHARED ${WalletCAPI})
+endif ()
+if (WRKZ_BUILD_WALLET_WASM)
+    add_executable(wallet_wasm ${WalletWasmBridge})
 endif ()
 
 if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
@@ -261,6 +269,39 @@ if (WRKZ_BUILD_WALLET_CAPI)
     target_link_libraries(wallet_capi PRIVATE WalletBackend)
     set_property(TARGET wallet_capi PROPERTY OUTPUT_NAME "wallet_capi")
 endif ()
+if (WRKZ_BUILD_WALLET_WASM)
+    if (NOT WRKZ_BUILD_WALLET_CAPI)
+        message(FATAL_ERROR "WRKZ_BUILD_WALLET_WASM requires WRKZ_BUILD_WALLET_CAPI=ON")
+    endif ()
+    if (NOT EMSCRIPTEN)
+        message(FATAL_ERROR "WRKZ_BUILD_WALLET_WASM requires Emscripten toolchain")
+    endif ()
+
+    target_include_directories(wallet_wasm PRIVATE
+        ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/include
+    )
+    target_link_libraries(wallet_wasm PRIVATE wallet_capi_c)
+    set_target_properties(wallet_wasm PROPERTIES
+        OUTPUT_NAME "wallet_wasm"
+        SUFFIX ".js"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/wasm"
+    )
+    target_compile_options(wallet_wasm PRIVATE
+        -fexceptions
+    )
+    target_link_options(wallet_wasm PRIVATE
+        -fexceptions
+        -sWASM=1
+        -sALLOW_MEMORY_GROWTH=1
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        -sENVIRONMENT=web,worker
+        -sNO_EXIT_RUNTIME=1
+        -sEXPORTED_FUNCTIONS=['_wallet_wasm_request','_malloc','_free']
+        -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8']
+        --no-entry
+    )
+endif ()
 
 if (OPENSSL_FOUND)
     target_link_libraries(Nigel ${OPENSSL_LIBRARIES})
@@ -304,6 +345,9 @@ endif ()
 if (WRKZ_BUILD_WALLET_CAPI)
     add_dependencies(wallet_capi_c version)
     add_dependencies(wallet_capi version)
+endif ()
+if (WRKZ_BUILD_WALLET_WASM)
+    add_dependencies(wallet_wasm version)
 endif ()
 
 # Finally build the binaries
