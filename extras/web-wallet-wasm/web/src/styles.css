@@ -58,6 +58,31 @@ button.active {
   background: var(--button-bg-active);
 }
 
+.icon-button {
+  width: 40px;
+  padding: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-glyph {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.theme-glyph.sun {
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.theme-glyph.moon {
+  border-radius: 50%;
+  box-shadow: inset -5px 0 0 0 currentColor;
+}
+
 pre {
   margin-top: 1rem;
   background: var(--pre-bg);

@@ -37,9 +37,7 @@ type WalletTab =
   | "transfer"
   | "receive"
   | "nodes"
-  | "backup"
-  | "security"
-  | "advanced";
+  | "backup";
 type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 type WelcomeMode = "create" | "importSeed" | "importKeys";
@@ -284,14 +282,18 @@ export function App(): JSX.Element {
       directProfile?.walletId &&
       directProfile.walletId === directWalletId
   );
-  const syncPercent = directSyncStats
-    ? Math.min(100, Math.max(0, Math.round((directSyncStats.syncedHeight / Math.max(1, directSyncStats.targetHeight)) * 100)))
+  const syncPercentRaw = directSyncStats
+    ? Math.min(100, Math.max(0, (directSyncStats.syncedHeight / Math.max(1, directSyncStats.targetHeight)) * 100))
     : 0;
+  const syncPercentLabel = directSyncStats
+    ? (syncPercentRaw > 0 && syncPercentRaw < 0.1 ? "<0.1%" : `${syncPercentRaw.toFixed(1)}%`)
+    : "0.0%";
   const receiveAddress = directProfile?.address ?? pendingBackup?.address ?? "";
   const receiveTarget = receiveIntegratedAddress || receiveAddress;
   const receiveQrSrc = receiveTarget
     ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(receiveTarget)}`
     : "";
+  const resolvedTheme: ResolvedTheme = theme === "auto" ? systemTheme : theme;
 
   const toRpcNode = (node: NodeEndpoint): RpcNode => ({
     id: node.id,
@@ -1268,6 +1270,22 @@ export function App(): JSX.Element {
         <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
           Settings
         </button>
+        <button
+          className={`icon-button ${resolvedTheme === "light" ? "active" : ""}`}
+          onClick={() => setTheme("light")}
+          title="Light theme"
+          aria-label="Light theme"
+        >
+          <span className="theme-glyph sun" aria-hidden="true" />
+        </button>
+        <button
+          className={`icon-button ${resolvedTheme === "dark" ? "active" : ""}`}
+          onClick={() => setTheme("dark")}
+          title="Dark theme"
+          aria-label="Dark theme"
+        >
+          <span className="theme-glyph moon" aria-hidden="true" />
+        </button>
       </div>
 
       {activeView === "wallet" ? (
@@ -1387,7 +1405,6 @@ export function App(): JSX.Element {
               <div className="session-header">
                 <h2>Wallet Session</h2>
                 <div className="actions">
-                  <button onClick={onPing}>Test RPC</button>
                   <button onClick={onRefreshDirectStatus}>Refresh</button>
                   <button onClick={onLogoutSession}>Logout</button>
                 </div>
@@ -1414,12 +1431,6 @@ export function App(): JSX.Element {
                 <button className={walletTab === "backup" ? "active" : ""} onClick={() => setWalletTab("backup")}>
                   Backup
                 </button>
-                <button className={walletTab === "security" ? "active" : ""} onClick={() => setWalletTab("security")}>
-                  Security
-                </button>
-                <button className={walletTab === "advanced" ? "active" : ""} onClick={() => setWalletTab("advanced")}>
-                  Advanced
-                </button>
               </div>
 
               {walletTab === "overview" ? (
@@ -1427,9 +1438,12 @@ export function App(): JSX.Element {
                   <section className="session-grid">
                     <article className="session-card">
                       <h3>Sync</h3>
-                      <p className="metric">{syncPercent}%</p>
+                      <p className="metric">{syncPercentLabel}</p>
                       <p className="muted">
                         {directSyncStats ? `${directSyncStats.syncedHeight} / ${directSyncStats.targetHeight}` : "waiting"}
+                      </p>
+                      <p className="muted">
+                        {directSyncStats ? `${directSyncStats.fetchMode}, batch ${directSyncStats.lastBatchSize}` : ""}
                       </p>
                     </article>
                     <article className="session-card">
@@ -1650,91 +1664,6 @@ export function App(): JSX.Element {
                       No backup payload is currently cached in this session. Backup is shown immediately after new wallet create.
                     </p>
                   )}
-                </section>
-              ) : null}
-
-              {walletTab === "security" ? (
-                <section>
-                  <h3>Security</h3>
-                  <p>Session password is enabled: {authHash ? "yes" : "no"}.</p>
-                  <label className="field-label">Auto logout minutes</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={240}
-                    value={String(autoLogoutMinutes)}
-                    onChange={(e) => {
-                      const parsed = Number(e.target.value);
-                      if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 240) {
-                        setAutoLogoutMinutes(parsed);
-                      }
-                    }}
-                  />
-                  <p className="muted">Session will lock after {autoLogoutMinutes} minute(s) of inactivity.</p>
-                  <div className="actions">
-                    <button onClick={onLogoutSession}>Lock Now</button>
-                    <button className="danger" onClick={onResetWallet}>
-                      Reset Wallet Local Data
-                    </button>
-                  </div>
-                </section>
-              ) : null}
-
-              {walletTab === "advanced" ? (
-                <section>
-                  <h3>Advanced</h3>
-                  <p>
-                    Tx policy: fee {useDynamicFee ? "dynamic" : "fixed/manual"}, tx-pow {enableTxPow ? "enabled" : "disabled"},
-                    fusion {fusionEnabled ? `enabled (target ${fusionTargetAtomic} atomic)` : "disabled"}.
-                  </p>
-                  {selectedNodeCapabilities ? (
-                    <p>
-                      Capabilities: blockcount {selectedNodeCapabilities.supportsGetBlockCount ? "yes" : "no"}, walletsync{" "}
-                      {selectedNodeCapabilities.supportsWalletSyncData ? "yes" : "no"}, range{" "}
-                      {selectedNodeCapabilities.supportsGetBlockHeadersRange ? "yes" : "no"}, by-height{" "}
-                      {selectedNodeCapabilities.supportsGetBlockHeaderByHeight ? "yes" : "no"}
-                    </p>
-                  ) : null}
-                  {nodeScores.length > 0 ? (
-                    <p>
-                      Node scores:{" "}
-                      {nodeScores
-                        .slice(0, 6)
-                        .map((score) => {
-                          const cooldown = score.cooldownUntil && score.cooldownUntil > Date.now() ? " cooldown" : "";
-                          return `${score.nodeId}=${score.score} (ok ${score.successCount}/fail ${score.failureCount}${cooldown})`;
-                        })
-                        .join(" | ")}
-                    </p>
-                  ) : null}
-                  {pendingImportReview ? (
-                    <div className="actions">
-                      <button onClick={onConfirmImportReview}>Confirm Pending Import</button>
-                    </div>
-                  ) : null}
-                  <div className="actions">
-                    <button onClick={onProbeDefaultNode}>Probe Default Node</button>
-                    <button onClick={onRefreshNodeCapabilities}>Refresh Node Capabilities</button>
-                    <button onClick={onRefreshNodeScores}>Refresh Node Scores</button>
-                    <button onClick={onRefreshDirectStatus}>Refresh Direct RPC Status</button>
-                    <button className="danger" onClick={onStopDirectSession}>
-                      Stop Direct RPC Session
-                    </button>
-                  </div>
-                  {scanHistory.length > 0 ? (
-                    <>
-                      <h4>Recent Header Scan</h4>
-                      <ul className="node-list">
-                        {scanHistory.slice(0, 10).map((entry) => (
-                          <li key={`${entry.height}-${entry.hash ?? "nohash"}`} className="node-item">
-                            <span className="node-meta">height {entry.height}</span>
-                            <span className="node-meta">ts {entry.timestamp ?? "-"}</span>
-                            <code>{entry.hash ?? "no-hash"}</code>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  ) : null}
                 </section>
               ) : null}
             </>
