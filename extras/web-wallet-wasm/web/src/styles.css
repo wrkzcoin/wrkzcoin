@@ -51,6 +51,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  transition: background-color 140ms ease, transform 140ms ease;
 }
 
 button.danger {
@@ -59,6 +60,11 @@ button.danger {
 
 button.active {
   background: var(--button-bg-active);
+}
+
+button.copied {
+  background: #0ea5a0;
+  transform: translateY(-1px);
 }
 
 .icon-button {
@@ -148,6 +154,40 @@ pre {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-bg);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.58);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-card {
+  width: min(680px, 100%);
+  background: var(--panel-bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.35);
+}
+
+.modal-card h2 {
+  margin-top: 0;
+}
+
+.modal-list {
+  margin: 0.6rem 0 1rem;
+  padding-left: 1.15rem;
+}
+
+.modal-list li {
+  margin-bottom: 0.45rem;
 }
 
 .panel.compact {

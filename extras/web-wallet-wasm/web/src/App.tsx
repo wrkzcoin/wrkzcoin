@@ -28,6 +28,7 @@ const SETTINGS_TX_DYNAMIC_FEE_KEY = "wrkz_web_wallet_tx_dynamic_fee_v1";
 const SETTINGS_TX_POW_KEY = "wrkz_web_wallet_tx_pow_v1";
 const SETTINGS_FUSION_ENABLED_KEY = "wrkz_web_wallet_fusion_enabled_v1";
 const SETTINGS_FUSION_TARGET_KEY = "wrkz_web_wallet_fusion_target_v1";
+const SETTINGS_WELCOME_MODAL_DISMISSED_KEY = "wrkz_web_wallet_welcome_modal_dismissed_v1";
 const DEFAULT_AUTO_LOGOUT_MIN = 15;
 
 type ViewTab = "wallet" | "settings";
@@ -155,6 +156,14 @@ function loadNumberSetting(key: string, fallback: number, min: number, max: numb
   }
 }
 
+function loadWelcomeModalDismissed(): boolean {
+  try {
+    return localStorage.getItem(SETTINGS_WELCOME_MODAL_DISMISSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 function getSystemTheme(): ResolvedTheme {
   if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
     return "dark";
@@ -256,6 +265,9 @@ export function App(): JSX.Element {
   const [nodeLatencyById, setNodeLatencyById] = useState<Record<string, number | null>>({});
   const [pendingImportReview, setPendingImportReview] = useState<ImportReview | null>(null);
   const [pendingBackup, setPendingBackup] = useState<BackupState | null>(null);
+  const [copiedFlash, setCopiedFlash] = useState<Record<string, boolean>>({});
+  const [welcomeModalOpen, setWelcomeModalOpen] = useState<boolean>(() => !loadWelcomeModalDismissed());
+  const [hideWelcomeModalNextTime, setHideWelcomeModalNextTime] = useState<boolean>(false);
 
   const [walletFilename, setWalletFilename] = useState<string>("my.wallet");
   const [walletPassword, setWalletPassword] = useState<string>("");
@@ -621,12 +633,19 @@ export function App(): JSX.Element {
     return scanFromCoinbase ? 0 : parsed;
   };
 
-  const copyText = async (value: string, label: string, alertOnCopy = false): Promise<boolean> => {
+  const triggerCopyFlash = (key: string): void => {
+    setCopiedFlash((prev) => ({ ...prev, [key]: true }));
+    window.setTimeout(() => {
+      setCopiedFlash((prev) => ({ ...prev, [key]: false }));
+    }, 1400);
+  };
+
+  const copyText = async (value: string, label: string, flashKey?: string): Promise<boolean> => {
     try {
       await navigator.clipboard.writeText(value);
       setOutput(`${label} copied to clipboard.`);
-      if (alertOnCopy) {
-        window.alert(`${label} copied.`);
+      if (flashKey) {
+        triggerCopyFlash(flashKey);
       }
       return true;
     } catch {
@@ -663,7 +682,7 @@ export function App(): JSX.Element {
     if (!valid) {
       return;
     }
-    await copyText(receiveAddress, "Standard address", true);
+    await copyText(receiveAddress, "Standard address", "receive-standard");
   };
 
   const onCopyIntegratedReceiveAddress = async (): Promise<void> => {
@@ -671,7 +690,7 @@ export function App(): JSX.Element {
     if (!valid) {
       return;
     }
-    await copyText(receiveIntegratedAddress, "Integrated address", true);
+    await copyText(receiveIntegratedAddress, "Integrated address", "receive-integrated");
   };
 
   const markBackupCopied = (field: "seed" | "spend" | "view" | "address"): void => {
@@ -697,7 +716,7 @@ export function App(): JSX.Element {
     value: string,
     label: string
   ): Promise<void> => {
-    const copied = await copyText(value, label, true);
+    const copied = await copyText(value, label, `backup-${field}`);
     if (copied) {
       markBackupCopied(field);
     }
@@ -1378,12 +1397,47 @@ export function App(): JSX.Element {
     setAutoLogoutMinutes(DEFAULT_AUTO_LOGOUT_MIN);
     localStorage.removeItem(SETTINGS_AUTH_HASH_KEY);
     localStorage.removeItem(SETTINGS_AUTO_LOGOUT_MIN_KEY);
+    localStorage.removeItem(SETTINGS_WELCOME_MODAL_DISMISSED_KEY);
+    setWelcomeModalOpen(true);
+    setHideWelcomeModalNextTime(false);
     setOutput("Wallet local vault data has been reset.");
+  };
+
+  const onDismissWelcomeModal = (): void => {
+    if (hideWelcomeModalNextTime) {
+      localStorage.setItem(SETTINGS_WELCOME_MODAL_DISMISSED_KEY, "true");
+    }
+    setWelcomeModalOpen(false);
   };
 
   return (
     <main className="container">
-      <h1>Wrkz Web Wallet ({COIN_TICKER} WASM)</h1>
+      {!hasActiveWalletSession && welcomeModalOpen ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
+          <section className="modal-card">
+            <h2 id="welcome-modal-title">Before You Start</h2>
+            <ul className="modal-list">
+              <li>This is a non-custodial web wallet. You must backup and safely store your seed and private keys.</li>
+              <li>No wallet logs or database are stored on our server. Wallet data stays in your browser storage.</li>
+              <li>You can point the remote node to your own node endpoint.</li>
+              <li>We will not be able to recover your wallet, seed, or keys for you.</li>
+              <li>Use a strong password and verify node URLs before creating, importing, or sending funds.</li>
+            </ul>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={hideWelcomeModalNextTime}
+                onChange={(e) => setHideWelcomeModalNextTime(e.target.checked)}
+              />
+              Do not show this message again on this browser
+            </label>
+            <div className="actions">
+              <button onClick={onDismissWelcomeModal}>I Understand</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      <h1>Web Wallet</h1>
       <p>Browser wallet with onboarding, encrypted local vault, and configurable RPC nodes.</p>
       <div className="top-controls">
         <div className="actions">
@@ -1544,29 +1598,41 @@ export function App(): JSX.Element {
                     <code>{pendingBackup.address}</code>
                   </div>
                   <div className="actions">
-                    <button onClick={() => onCopyBackupSecret("address", pendingBackup.address, "Address")}>
-                      Copy Address {pendingBackup.copiedAddress ? "✓" : ""}
+                    <button
+                      className={copiedFlash["backup-address"] ? "copied" : ""}
+                      onClick={() => onCopyBackupSecret("address", pendingBackup.address, "Address")}
+                    >
+                      Copy Address
                     </button>
                   </div>
                   <label className="field-label">Mnemonic seed</label>
                   <textarea className="input-area" value={pendingBackup.mnemonicSeed} readOnly />
                   <div className="actions">
-                    <button onClick={() => onCopyBackupSecret("seed", pendingBackup.mnemonicSeed, "Mnemonic seed")}>
-                      Copy Seed {pendingBackup.copiedSeed ? "✓" : ""}
+                    <button
+                      className={copiedFlash["backup-seed"] ? "copied" : ""}
+                      onClick={() => onCopyBackupSecret("seed", pendingBackup.mnemonicSeed, "Mnemonic seed")}
+                    >
+                      Copy Seed
                     </button>
                   </div>
                   <label className="field-label">Private spend key</label>
                   <input type="text" value={pendingBackup.privateSpendKey} readOnly />
                   <div className="actions">
-                    <button onClick={() => onCopyBackupSecret("spend", pendingBackup.privateSpendKey, "Private spend key")}>
-                      Copy Spend Key {pendingBackup.copiedSpend ? "✓" : ""}
+                    <button
+                      className={copiedFlash["backup-spend"] ? "copied" : ""}
+                      onClick={() => onCopyBackupSecret("spend", pendingBackup.privateSpendKey, "Private spend key")}
+                    >
+                      Copy Spend Key
                     </button>
                   </div>
                   <label className="field-label">Private view key</label>
                   <input type="text" value={pendingBackup.privateViewKey} readOnly />
                   <div className="actions">
-                    <button onClick={() => onCopyBackupSecret("view", pendingBackup.privateViewKey, "Private view key")}>
-                      Copy View Key {pendingBackup.copiedView ? "✓" : ""}
+                    <button
+                      className={copiedFlash["backup-view"] ? "copied" : ""}
+                      onClick={() => onCopyBackupSecret("view", pendingBackup.privateViewKey, "Private view key")}
+                    >
+                      Copy View Key
                     </button>
                   </div>
                   <label className="field-label">Confirm seed (paste full mnemonic)</label>
@@ -1700,7 +1766,11 @@ export function App(): JSX.Element {
                     <code>{receiveAddress || "Wallet address is not available yet."}</code>
                   </div>
                   <div className="actions">
-                    <button disabled={!receiveAddress} onClick={onCopyStandardReceiveAddress}>
+                    <button
+                      className={copiedFlash["receive-standard"] ? "copied" : ""}
+                      disabled={!receiveAddress}
+                      onClick={onCopyStandardReceiveAddress}
+                    >
                       Copy Address
                     </button>
                   </div>
@@ -1722,7 +1792,10 @@ export function App(): JSX.Element {
                       <label className="field-label">Integrated address</label>
                       <textarea className="input-area" value={receiveIntegratedAddress} readOnly />
                       <div className="actions">
-                        <button onClick={onCopyIntegratedReceiveAddress}>
+                        <button
+                          className={copiedFlash["receive-integrated"] ? "copied" : ""}
+                          onClick={onCopyIntegratedReceiveAddress}
+                        >
                           Copy Integrated
                         </button>
                       </div>
