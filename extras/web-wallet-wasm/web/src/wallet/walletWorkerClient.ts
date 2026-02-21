@@ -125,6 +125,19 @@ export class WalletWorkerClient {
     });
   }
 
+  public async sendBasic(
+    walletId: number,
+    destination: string,
+    amountAtomic: string,
+    paymentId = ""
+  ): Promise<{ txHash: string }> {
+    return this.sendWasm<{ txHash: string }>({
+      id: createRequestId(),
+      command: "sendBasic",
+      payload: { walletId, destination, amountAtomic, paymentId }
+    });
+  }
+
   public async scanSyncDataBalance(payload: ScanSyncDataBalanceRequest): Promise<ScanSyncDataBalanceResult> {
     return this.sendWasm<ScanSyncDataBalanceResult>({ id: createRequestId(), command: "scanSyncDataBalance", payload });
   }

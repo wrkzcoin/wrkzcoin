@@ -1370,19 +1370,31 @@ export function App(): JSX.Element {
     return parsed.result ?? null;
   };
 
-  const onReviewTransfer = async (): Promise<void> => {
+  const runTransferPreflight = async (): Promise<{
+    recipient: string;
+    paymentId: string;
+    amountAtomic: bigint;
+    networkFeeAtomic: bigint;
+    nodeFeeAtomic: bigint;
+    nodeFeeAddress: string;
+    totalAtomic: bigint;
+  } | null> => {
     if (!selectedNode) {
       setOutput("No default node selected.");
-      return;
+      return null;
     }
     const valid = await validateWalletAddress(transferAddress, true);
     if (!valid) {
-      return;
+      return null;
     }
     const amountAtomic = parseCoinAmountToAtomic(transferAmount, COIN_DECIMALS);
     if (amountAtomic === null || amountAtomic <= 0n) {
       setOutput(`Transfer amount is invalid. Use up to ${COIN_DECIMALS} decimals.`);
-      return;
+      return null;
+    }
+    if (amountAtomic > unlockedAtomic) {
+      setOutput(`Amount exceeds available balance (${maxTransferAmount} ${COIN_TICKER}).`);
+      return null;
     }
 
     let nodeFeeAtomic = 0n;
@@ -1419,14 +1431,24 @@ export function App(): JSX.Element {
     }
 
     const totalAtomic = amountAtomic + networkFeeAtomic + nodeFeeAtomic;
+    const recipient = transferAddress.trim();
+    const paymentId = transferPaymentId.trim();
+    return { recipient, paymentId, amountAtomic, networkFeeAtomic, nodeFeeAtomic, nodeFeeAddress, totalAtomic };
+  };
+
+  const onReviewTransfer = async (): Promise<void> => {
+    const preflight = await runTransferPreflight();
+    if (!preflight) {
+      return;
+    }
     const confirmed = window.confirm(
       [
         "Confirm transfer:",
-        `Recipient: ${transferAddress.trim()}`,
-        `Amount: ${formatAtomicAmount(amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Network fee: ${formatAtomicAmount(networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Node fee: ${formatAtomicAmount(nodeFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}${nodeFeeAddress ? ` (${nodeFeeAddress})` : ""}`,
-        `Total debit: ${formatAtomicAmount(totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+        `Recipient: ${preflight.recipient}`,
+        `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+        `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+        `Node fee: ${formatAtomicAmount(preflight.nodeFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}${preflight.nodeFeeAddress ? ` (${preflight.nodeFeeAddress})` : ""}`,
+        `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
         ""
       ].join("\n")
     );
@@ -1435,7 +1457,49 @@ export function App(): JSX.Element {
       return;
     }
 
-    setOutput("Transfer preflight confirmed. Submission to remote node is not enabled in this build yet.");
+    setOutput("Transfer preflight confirmed. Ready to submit.");
+  };
+
+  const onSubmitTransfer = async (): Promise<void> => {
+    const preflight = await runTransferPreflight();
+    if (!preflight) {
+      return;
+    }
+    const confirmed = window.confirm(
+      [
+        "Submit transfer now?",
+        `Recipient: ${preflight.recipient}`,
+        `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+        `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+        `Node fee: ${formatAtomicAmount(preflight.nodeFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}${preflight.nodeFeeAddress ? ` (${preflight.nodeFeeAddress})` : ""}`,
+        `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`
+      ].join("\n")
+    );
+    if (!confirmed) {
+      setOutput("Transfer submission cancelled by user.");
+      return;
+    }
+
+    const password = walletPassword.trim() || window.prompt("Enter wallet password to submit transaction:")?.trim() || "";
+    if (!password) {
+      setOutput("Wallet password is required to submit transfer.");
+      return;
+    }
+
+    try {
+      const sent = await directRpcEngine.sendBasicTransfer({
+        destination: preflight.recipient,
+        amountAtomic: preflight.amountAtomic.toString(),
+        paymentId: preflight.paymentId,
+        password,
+        filenameHint: walletFilename
+      });
+      setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
+      setTransferAmount("");
+      setTransferPaymentId("");
+    } catch (error) {
+      setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
+    }
   };
 
   const onTransferAmountChange = (value: string): void => {
@@ -2164,7 +2228,7 @@ export function App(): JSX.Element {
                   </p>
                   <div className="actions">
                     <button onClick={onReviewTransfer}>Review Transfer</button>
-                    <button disabled>Submit Transfer (coming soon)</button>
+                    <button onClick={onSubmitTransfer}>Submit Transfer</button>
                   </div>
                 </section>
               ) : null}

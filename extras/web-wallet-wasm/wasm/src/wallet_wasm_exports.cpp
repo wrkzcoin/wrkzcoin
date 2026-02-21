@@ -575,6 +575,55 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             return g_response.c_str();
         }
 
+        if (command == "sendBasic")
+        {
+            const std::string destination = req.value("destination", "");
+            const std::string paymentId = req.value("paymentId", "");
+            const std::string amountAtomicStr = req.value("amountAtomic", "0");
+            if (destination.empty())
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            uint64_t amountAtomic = 0;
+            try
+            {
+                amountAtomic = static_cast<uint64_t>(std::stoull(amountAtomicStr));
+            }
+            catch (...)
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            char *txHashOut = nullptr;
+            size_t txHashLen = 0;
+            const wallet_status_t status = wallet_send_basic(
+                wallet,
+                destination.c_str(),
+                amountAtomic,
+                paymentId.c_str(),
+                false,
+                true,
+                &txHashOut,
+                &txHashLen);
+
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string txHash = txHashOut != nullptr ? std::string(txHashOut, txHashLen) : "";
+            if (txHashOut != nullptr)
+            {
+                wallet_string_free(txHashOut);
+            }
+            g_response = ok(json{{"txHash", txHash}}).dump();
+            return g_response.c_str();
+        }
+
         if (command == "swapNode")
         {
             const std::string daemonHost = req.value("daemonHost", "");
