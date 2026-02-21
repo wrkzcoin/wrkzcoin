@@ -91,9 +91,20 @@ build_one_abi() {
 }
 
 if [ -n "$ANDROID_ABIS" ]; then
-  # Accept space- or comma-separated ABI list.
-  ABIS_NORMALIZED="$(echo "$ANDROID_ABIS" | tr ',' ' ')"
-  for abi in $ABIS_NORMALIZED; do
+  # Accept space/comma/newline-separated ABI list and strip CRs.
+  ABIS_NORMALIZED="$(printf '%s' "$ANDROID_ABIS" | tr ',;\r\n\t' '     ')"
+  # shellcheck disable=SC2206
+  ABI_LIST=($ABIS_NORMALIZED)
+
+  if [ "${#ABI_LIST[@]}" -eq 0 ]; then
+    echo "ANDROID_ABIS is set but no ABI values were parsed."
+    echo "Provided value: '$ANDROID_ABIS'"
+    exit 1
+  fi
+
+  echo "Multi-ABI mode enabled. ABIs: ${ABI_LIST[*]}"
+
+  for abi in "${ABI_LIST[@]}"; do
     build_one_abi \
       "$abi" \
       "$REPO_ROOT/build-android-$abi" \

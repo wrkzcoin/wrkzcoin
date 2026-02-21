@@ -216,8 +216,8 @@ Build both `arm64-v8a` and `x86_64` in one command:
 
 ```bash
 export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
-ANDROID_ABIS="arm64-v8a x86_64" \
-  bash scripts/cross-build-android-wallet.sh
+ANDROID_ABIS=arm64-v8a,x86_64 LIBUCONTEXT_ROOT_BASE="$PWD/.android-libucontext" \
+bash scripts/cross-build-android-wallet.sh
 ```
 
 Build `libucontext` per ABI (recommended before wallet build):
@@ -235,7 +235,7 @@ x86_64 compatibility patch to libucontext register macros (`REG_*`) to avoid
 Common environment knobs:
 
 - `ANDROID_ABI` (default: `arm64-v8a`)
-- `ANDROID_ABIS` (optional list, e.g. `"arm64-v8a x86_64"` or `"arm64-v8a,x86_64"`)
+- `ANDROID_ABIS` (optional list; supports space/comma/newline separators, e.g. `"arm64-v8a x86_64"` or `"arm64-v8a,x86_64"`)
 - `ANDROID_PLATFORM` (default: `android-24`)
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-arm64`)
