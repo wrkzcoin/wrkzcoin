@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_NODES, DEFAULT_RPC_PORT, DEFAULT_RPC_SSL } from "./config/nodes";
 import { COIN_ADDRESS_PREFIX, COIN_DECIMALS, COIN_TICKER, formatAtomicAmount } from "./config/coin";
 import { RESCAN_HEIGHT_WARN_THRESHOLD } from "./config/sync";
@@ -62,6 +62,14 @@ type BackupState = {
   copiedSpend: boolean;
   copiedView: boolean;
   copiedAddress: boolean;
+};
+
+type SyncHealthState = {
+  avgBlocksPerSec: number;
+  etaSeconds: number | null;
+  stagnantPolls: number;
+  lastDeltaBlocks: number;
+  lastDeltaSeconds: number;
 };
 
 function loadNodesFromStorage(): NodeEndpoint[] {
@@ -216,6 +224,36 @@ function parseCoinAmountToAtomic(amount: string, decimals: number): bigint | nul
   }
 }
 
+function formatAgeFromTs(ts?: number): string {
+  if (!ts || ts <= 0) {
+    return "n/a";
+  }
+  const deltaSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (deltaSec < 60) {
+    return `${deltaSec}s ago`;
+  }
+  const mins = Math.floor(deltaSec / 60);
+  const secs = deltaSec % 60;
+  return `${mins}m ${secs}s ago`;
+}
+
+function formatEta(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) {
+    return "n/a";
+  }
+  if (seconds < 60) {
+    return `${Math.floor(seconds)}s`;
+  }
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  if (mins < 60) {
+    return `${mins}m ${secs}s`;
+  }
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hours}h ${remMins}m`;
+}
+
 async function sha256Hex(input: string): Promise<string> {
   if (!crypto?.subtle) {
     let hash = 5381;
@@ -290,6 +328,14 @@ export function App(): JSX.Element {
   const [rescanHeightInput, setRescanHeightInput] = useState<string>("0");
   const [txPage, setTxPage] = useState<number>(1);
   const [txHeightFilterInput, setTxHeightFilterInput] = useState<string>("");
+  const [syncHealth, setSyncHealth] = useState<SyncHealthState>({
+    avgBlocksPerSec: 0,
+    etaSeconds: null,
+    stagnantPolls: 0,
+    lastDeltaBlocks: 0,
+    lastDeltaSeconds: 0
+  });
+  const lastSyncRef = useRef<{ syncedHeight: number; updatedAt: number; walletId: string } | null>(null);
 
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
@@ -397,6 +443,60 @@ export function App(): JSX.Element {
   useEffect(() => {
     setTxPage(1);
   }, [txHeightFilterInput, txHistory.length]);
+
+  useEffect(() => {
+    if (!directSyncStats || !directWalletId) {
+      setSyncHealth({
+        avgBlocksPerSec: 0,
+        etaSeconds: null,
+        stagnantPolls: 0,
+        lastDeltaBlocks: 0,
+        lastDeltaSeconds: 0
+      });
+      lastSyncRef.current = null;
+      return;
+    }
+
+    const prev = lastSyncRef.current;
+    if (!prev || prev.walletId !== directWalletId) {
+      const initialEta = directSyncStats.remainingBlocks > 0 ? null : 0;
+      setSyncHealth({
+        avgBlocksPerSec: 0,
+        etaSeconds: initialEta,
+        stagnantPolls: 0,
+        lastDeltaBlocks: 0,
+        lastDeltaSeconds: 0
+      });
+      lastSyncRef.current = {
+        syncedHeight: directSyncStats.syncedHeight,
+        updatedAt: directSyncStats.updatedAt,
+        walletId: directWalletId
+      };
+      return;
+    }
+
+    const deltaBlocks = Math.max(0, directSyncStats.syncedHeight - prev.syncedHeight);
+    const deltaSeconds = Math.max(0, (directSyncStats.updatedAt - prev.updatedAt) / 1000);
+    setSyncHealth((current) => {
+      const instantBps = deltaSeconds > 0 ? deltaBlocks / deltaSeconds : 0;
+      const nextAvg = instantBps > 0 ? (current.avgBlocksPerSec > 0 ? (current.avgBlocksPerSec * 0.7) + (instantBps * 0.3) : instantBps) : current.avgBlocksPerSec;
+      const remaining = Math.max(0, directSyncStats.remainingBlocks);
+      const nextEta = remaining === 0 ? 0 : (nextAvg > 0 ? (remaining / nextAvg) : null);
+      return {
+        avgBlocksPerSec: nextAvg,
+        etaSeconds: nextEta,
+        stagnantPolls: deltaBlocks === 0 ? current.stagnantPolls + 1 : 0,
+        lastDeltaBlocks: deltaBlocks,
+        lastDeltaSeconds: deltaSeconds
+      };
+    });
+
+    lastSyncRef.current = {
+      syncedHeight: directSyncStats.syncedHeight,
+      updatedAt: directSyncStats.updatedAt,
+      walletId: directWalletId
+    };
+  }, [directSyncStats, directWalletId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) {
@@ -1923,6 +2023,30 @@ export function App(): JSX.Element {
                       </p>
                     ) : null}
                     {directCursor ? <p>Cursor height: {directCursor.height}</p> : null}
+                    {directSyncStats ? (
+                      <>
+                        <div className="sync-health">
+                          <p>
+                            Target: {directSyncStats.targetHeight} | Remaining: {directSyncStats.remainingBlocks} | Last
+                            update: {formatAgeFromTs(directSyncStats.updatedAt)}
+                            {Date.now() - directSyncStats.updatedAt > 120000 ? " (possible stall)" : ""}
+                          </p>
+                          <p>
+                            Speed: {syncHealth.avgBlocksPerSec > 0 ? `${syncHealth.avgBlocksPerSec.toFixed(2)} blk/s` : "warming up"}
+                            {" | "}ETA: {formatEta(syncHealth.etaSeconds)}
+                          </p>
+                          <p>
+                            Cursor movement: {syncHealth.lastDeltaBlocks} blocks in{" "}
+                            {syncHealth.lastDeltaSeconds > 0 ? `${syncHealth.lastDeltaSeconds.toFixed(1)}s` : "n/a"} {" | "}
+                            stagnant polls: {syncHealth.stagnantPolls}
+                          </p>
+                          <p>
+                            Last batch: {directSyncStats.lastBatchStart ?? "-"} {"->"} {directSyncStats.lastBatchEnd ?? "-"} (
+                            {directSyncStats.lastBatchSize}), mode {directSyncStats.fetchMode}
+                          </p>
+                        </div>
+                      </>
+                    ) : null}
                     {directSyncStats?.methodsTried?.length ? <p>Methods: {directSyncStats.methodsTried.join(" -> ")}</p> : null}
                     {directSyncStats?.lastError ? <p>Last error: {directSyncStats.lastError}</p> : null}
                   </details>

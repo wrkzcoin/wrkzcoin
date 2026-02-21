@@ -241,6 +241,18 @@ pre {
   padding-top: 0.8rem;
 }
 
+.sync-health {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  background: color-mix(in srgb, var(--panel-bg) 85%, var(--border) 15%);
+  margin-bottom: 0.55rem;
+}
+
+.sync-health p {
+  margin: 0.32rem 0;
+}
+
 .muted {
   color: var(--muted);
 }
