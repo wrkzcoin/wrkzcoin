@@ -8,7 +8,7 @@ export interface NodeEndpoint {
 
 export function normalizeNodeHost(input: string): string {
   let value = input.trim();
-  value = value.replace(/^https?:\/\//i, "");
+  value = value.replace(/^(https?|wss?):\/\//i, "");
   value = value.split(/[/?#]/, 1)[0];
 
   if (value.startsWith("[")) {
@@ -30,6 +30,10 @@ export function normalizeNodeHost(input: string): string {
 }
 
 export function buildNodeRpcUrl(node: Pick<NodeEndpoint, "host" | "port" | "ssl">): string {
+  return `${node.ssl ? "wss" : "ws"}://${node.host}:${node.port}`;
+}
+
+export function buildNodeHttpUrl(node: Pick<NodeEndpoint, "host" | "port" | "ssl">): string {
   return `${node.ssl ? "https" : "http"}://${node.host}:${node.port}`;
 }
 
@@ -69,4 +73,45 @@ export interface WalletBackupSecrets {
   mnemonicSeed: string;
   privateViewKey: string;
   privateSpendKey: string;
+}
+
+export interface ScanSyncDataBalanceRequest {
+  scannerId: string;
+  privateSpendKey: string;
+  privateViewKey: string;
+  daemonHeight: number;
+  reset?: boolean;
+  items: unknown[];
+}
+
+export interface ScanSyncDataBalanceResult {
+  unlocked: string;
+  locked: string;
+  unspentOwnedOutputs: number;
+  spentOwnedOutputs: number;
+  scannedBlocks: number;
+  scannedTransactions: number;
+  scannedOutputs: number;
+  transactions?: Array<{
+    txHash: string;
+    blockHeight: number;
+    blockTimestamp?: number;
+    paymentId?: string;
+    incomingAtomic: string;
+    outgoingAtomic: string;
+    netAtomic: string;
+    direction: "incoming" | "outgoing" | "self";
+  }>;
+}
+
+export interface DerivedWalletKeys {
+  mnemonicSeed: string;
+  privateSpendKey: string;
+  privateViewKey: string;
+  address: string;
+}
+
+export interface AddressValidationResult {
+  valid: boolean;
+  reason?: string;
 }

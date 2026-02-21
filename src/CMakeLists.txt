@@ -292,13 +292,16 @@ if (WRKZ_BUILD_WALLET_WASM)
     target_link_options(wallet_wasm PRIVATE
         -fexceptions
         -sWASM=1
+        -sUSE_PTHREADS=0
         -sALLOW_MEMORY_GROWTH=1
         -sMODULARIZE=1
         -sEXPORT_ES6=1
         -sENVIRONMENT=web,worker
+        -sWEBSOCKET_URL=wss://
         -sNO_EXIT_RUNTIME=1
         -sEXPORTED_FUNCTIONS=['_wallet_wasm_request','_malloc','_free']
         -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','stringToUTF8','lengthBytesUTF8']
+        -sERROR_ON_UNDEFINED_SYMBOLS=0
         --no-entry
     )
 endif ()

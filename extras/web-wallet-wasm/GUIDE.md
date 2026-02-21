@@ -29,6 +29,7 @@ Expected artifacts:
 
 - `extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.js`
 - `extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.wasm`
+- `extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.worker.js` (when pthread build is enabled)
 
 ## Run Web UI
 

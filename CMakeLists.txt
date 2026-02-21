@@ -338,7 +338,7 @@ if (NOT MSVC)
         endif ()
     endif ()
 
-    if (NOT APPLE AND NOT WIN32)
+    if (NOT APPLE AND NOT WIN32 AND NOT EMSCRIPTEN)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
 
@@ -439,7 +439,41 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
     set(WRKZ_BOOST_LINK_LIBS "")
 else ()
     if (EMSCRIPTEN)
-        find_package(Boost REQUIRED)
+        set(_WRKZ_BOOST_HEADER_CANDIDATES "")
+        if (DEFINED BOOST_ROOT)
+            list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
+        endif ()
+        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES
+            "/usr/include"
+            "/usr/local/include"
+            "/opt/homebrew/include"
+            "/opt/local/include")
+
+        set(Boost_INCLUDE_DIRS "")
+        foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
+            if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
+                set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
+                break()
+            endif ()
+        endforeach ()
+
+        if (Boost_INCLUDE_DIRS STREQUAL "")
+            message(FATAL_ERROR
+                "Emscripten wallet_wasm build requires Boost headers but none were found.\n"
+                "Set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
+        endif ()
+
+        # Avoid injecting full host include roots (e.g. /usr/include) into the
+        # Emscripten compile command, which can shadow sysroot libc headers.
+        # Build a shim include dir that only exposes boost/*.
+        set(_WRKZ_BOOST_SHIM_ROOT "${CMAKE_BINARY_DIR}/boost-headers")
+        file(MAKE_DIRECTORY "${_WRKZ_BOOST_SHIM_ROOT}")
+        if (NOT EXISTS "${_WRKZ_BOOST_SHIM_ROOT}/boost")
+            file(CREATE_LINK "${Boost_INCLUDE_DIRS}/boost" "${_WRKZ_BOOST_SHIM_ROOT}/boost" SYMBOLIC)
+        endif ()
+        set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_SHIM_ROOT}")
+
+        message(STATUS "Boost headers for Emscripten wallet_wasm: ${Boost_INCLUDE_DIRS}")
         set(WRKZ_BOOST_LINK_LIBS "")
     else ()
         find_package(Boost REQUIRED COMPONENTS date_time)
@@ -483,15 +517,19 @@ if (APPLE)
     endif ()
 endif ()
 
-find_package(OpenSSL)
+if (EMSCRIPTEN)
+    set(OPENSSL_FOUND FALSE)
+else ()
+    find_package(OpenSSL)
 
-if (NOT OPENSSL_FOUND)
-    find_package(PkgConfig)
+    if (NOT OPENSSL_FOUND)
+        find_package(PkgConfig)
 
-    if (PKG_CONFIG_FOUND)
-        pkg_search_module(OPENSSL openssl)
+        if (PKG_CONFIG_FOUND)
+            pkg_search_module(OPENSSL openssl)
+        endif()
     endif()
-endif()
+endif ()
 
 if (OPENSSL_FOUND)
     set(WRKZ_OPENSSL_INCLUDE_DIRS "")

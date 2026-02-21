@@ -22,7 +22,13 @@ cmake --build "$BUILD_DIR" --target wallet_wasm --parallel "$JOBS"
 mkdir -p "$OUT_DIR"
 cp -f "$BUILD_DIR/wasm/wallet_wasm.js" "$OUT_DIR/wallet_wasm.js"
 cp -f "$BUILD_DIR/wasm/wallet_wasm.wasm" "$OUT_DIR/wallet_wasm.wasm"
+if [[ -f "$BUILD_DIR/wasm/wallet_wasm.worker.js" ]]; then
+  cp -f "$BUILD_DIR/wasm/wallet_wasm.worker.js" "$OUT_DIR/wallet_wasm.worker.js"
+fi
 
 echo "WASM artifacts copied to:"
 echo "  $OUT_DIR/wallet_wasm.js"
 echo "  $OUT_DIR/wallet_wasm.wasm"
+if [[ -f "$OUT_DIR/wallet_wasm.worker.js" ]]; then
+  echo "  $OUT_DIR/wallet_wasm.worker.js"
+fi

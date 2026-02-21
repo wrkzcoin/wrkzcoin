@@ -2,11 +2,21 @@
 
 #include <walletcapi/wallet_capi.h>
 #include "json.hpp"
+#include <WalletTypes.h>
+#include <common/StringTools.h>
+#include <crypto/crypto.h>
+#include <mnemonics/Mnemonics.h>
+#include <subwallets/SubWallet.h>
+#include <utilities/Addresses.h>
+#include <utilities/Utilities.h>
+#include <errors/ValidateParameters.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 #if defined(__EMSCRIPTEN__)
@@ -21,6 +31,28 @@ namespace
 
     std::mutex g_mutex;
     std::unordered_map<int32_t, wallet_handle_t *> g_wallets;
+    struct ScannerInput
+    {
+        uint64_t amount;
+        uint64_t unlockTime;
+    };
+
+    struct BalanceScannerState
+    {
+        Crypto::SecretKey privateSpendKey{};
+        Crypto::SecretKey privateViewKey{};
+        Crypto::PublicKey publicSpendKey{};
+        std::unordered_map<std::string, ScannerInput> unspent;
+        std::unordered_map<std::string, uint64_t> ownedAmounts;
+        uint64_t scannedBlocks = 0;
+        uint64_t scannedTransactions = 0;
+        uint64_t scannedOutputs = 0;
+        uint64_t ownedOutputsSeen = 0;
+        uint64_t spentOwnedOutputs = 0;
+        bool initialized = false;
+    };
+
+    std::unordered_map<std::string, BalanceScannerState> g_scanners;
     int32_t g_next_id = 1;
 
     thread_local std::string g_response;
@@ -39,6 +71,11 @@ namespace
     bool has(const json &j, const char *key)
     {
         return j.find(key) != j.end();
+    }
+
+    json scannerError(const char *message)
+    {
+        return json{{"ok", false}, {"code", -1}, {"error", message}};
     }
 }
 
@@ -196,6 +233,283 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             wallet_close(it->second);
             g_wallets.erase(it);
             g_response = ok().dump();
+            return g_response.c_str();
+        }
+
+        if (command == "deriveKeysFromSeed")
+        {
+            const std::string mnemonicSeed = req.value("mnemonicSeed", "");
+            const auto [mnemonicError, privateSpendKey] = Mnemonics::MnemonicToPrivateKey(mnemonicSeed);
+            if (mnemonicError)
+            {
+                g_response = json{
+                    {"ok", false},
+                    {"code", static_cast<int32_t>(mnemonicError.getErrorCode())},
+                    {"error", mnemonicError.getErrorMessage()}}
+                                 .dump();
+                return g_response.c_str();
+            }
+
+            Crypto::SecretKey privateViewKey;
+            Crypto::crypto_ops::generateViewFromSpend(privateSpendKey, privateViewKey);
+            const std::string address = Utilities::privateKeysToAddress(privateSpendKey, privateViewKey);
+
+            g_response = ok(json{
+                                {"mnemonicSeed", mnemonicSeed},
+                                {"privateSpendKey", Common::podToHex(privateSpendKey)},
+                                {"privateViewKey", Common::podToHex(privateViewKey)},
+                                {"address", address}})
+                             .dump();
+            return g_response.c_str();
+        }
+
+        if (command == "generateSeedKeys")
+        {
+            Crypto::PublicKey publicSpendKey;
+            Crypto::SecretKey privateSpendKey;
+            Crypto::generate_keys(publicSpendKey, privateSpendKey);
+
+            Crypto::SecretKey privateViewKey;
+            Crypto::crypto_ops::generateViewFromSpend(privateSpendKey, privateViewKey);
+            const std::string mnemonicSeed = Mnemonics::PrivateKeyToMnemonic(privateSpendKey);
+            const std::string address = Utilities::privateKeysToAddress(privateSpendKey, privateViewKey);
+
+            g_response = ok(json{
+                                {"mnemonicSeed", mnemonicSeed},
+                                {"privateSpendKey", Common::podToHex(privateSpendKey)},
+                                {"privateViewKey", Common::podToHex(privateViewKey)},
+                                {"address", address}})
+                             .dump();
+            return g_response.c_str();
+        }
+
+        if (command == "deriveAddressFromKeys")
+        {
+            const std::string privateSpendHex = req.value("privateSpendKey", "");
+            const std::string privateViewHex = req.value("privateViewKey", "");
+            Crypto::SecretKey privateSpendKey;
+            Crypto::SecretKey privateViewKey;
+            if (!Common::podFromHex(privateSpendHex, privateSpendKey) || !Common::podFromHex(privateViewHex, privateViewKey))
+            {
+                g_response = scannerError("derive_address_invalid_keys").dump();
+                return g_response.c_str();
+            }
+            const std::string address = Utilities::privateKeysToAddress(privateSpendKey, privateViewKey);
+            g_response = ok(json{{"address", address}}).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "validateAddress")
+        {
+            const std::string address = req.value("address", "");
+            const bool allowIntegrated = req.value("allowIntegrated", true);
+            const Error error = validateAddresses({address}, allowIntegrated);
+            if (error != SUCCESS)
+            {
+                g_response = ok(json{
+                                    {"valid", false},
+                                    {"reason", error.getErrorMessage()}})
+                                 .dump();
+                return g_response.c_str();
+            }
+            g_response = ok(json{{"valid", true}}).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "scanSyncDataBalance")
+        {
+            if (!has(req, "scannerId") || !has(req, "privateSpendKey") || !has(req, "privateViewKey") || !has(req, "items"))
+            {
+                g_response = scannerError("scan_sync_data_missing_fields").dump();
+                return g_response.c_str();
+            }
+
+            const std::string scannerId = req.at("scannerId").get<std::string>();
+            const std::string privateSpendHex = req.at("privateSpendKey").get<std::string>();
+            const std::string privateViewHex = req.at("privateViewKey").get<std::string>();
+            const bool reset = req.value("reset", false);
+            const uint64_t daemonHeight = req.value("daemonHeight", 0ULL);
+
+            BalanceScannerState *scanner = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                auto &entry = g_scanners[scannerId];
+                scanner = &entry;
+            }
+
+            if (reset || !scanner->initialized)
+            {
+                Crypto::SecretKey privateSpendKey;
+                Crypto::SecretKey privateViewKey;
+
+                if (!Common::podFromHex(privateSpendHex, privateSpendKey) || !Common::podFromHex(privateViewHex, privateViewKey))
+                {
+                    g_response = scannerError("scan_sync_data_invalid_keys").dump();
+                    return g_response.c_str();
+                }
+
+                Crypto::PublicKey publicSpendKey;
+                if (!Crypto::secret_key_to_public_key(privateSpendKey, publicSpendKey))
+                {
+                    g_response = scannerError("scan_sync_data_public_spend_derivation_failed").dump();
+                    return g_response.c_str();
+                }
+
+                scanner->privateSpendKey = privateSpendKey;
+                scanner->privateViewKey = privateViewKey;
+                scanner->publicSpendKey = publicSpendKey;
+                scanner->unspent.clear();
+                scanner->ownedAmounts.clear();
+                scanner->scannedBlocks = 0;
+                scanner->scannedTransactions = 0;
+                scanner->scannedOutputs = 0;
+                scanner->ownedOutputsSeen = 0;
+                scanner->spentOwnedOutputs = 0;
+                scanner->initialized = true;
+            }
+
+            json txEntries = json::array();
+
+            const auto scanTransaction = [&](const WalletTypes::RawCoinbaseTransaction &rawTX,
+                                             const std::vector<WalletTypes::KeyInput> *keyInputs,
+                                             const uint64_t blockHeight,
+                                             const uint64_t blockTimestamp,
+                                             const std::string &paymentID) {
+                Crypto::KeyDerivation derivation;
+                if (!Crypto::generate_key_derivation(rawTX.transactionPublicKey, scanner->privateViewKey, derivation))
+                {
+                    return;
+                }
+
+                SubWallet subwallet(
+                    scanner->publicSpendKey,
+                    scanner->privateSpendKey,
+                    "",
+                    0,
+                    0,
+                    true,
+                    0);
+
+                uint64_t outputIndex = 0;
+                uint64_t incoming = 0;
+                for (const auto &output : rawTX.keyOutputs)
+                {
+                    scanner->scannedOutputs += 1;
+                    Crypto::PublicKey derivedSpendKey;
+                    if (!Crypto::underive_public_key(derivation, outputIndex, output.key, derivedSpendKey))
+                    {
+                        outputIndex += 1;
+                        continue;
+                    }
+
+                    if (derivedSpendKey == scanner->publicSpendKey)
+                    {
+                        const auto [keyImage, _privateEphemeral] = subwallet.getTxInputKeyImage(derivation, outputIndex, false);
+                        const std::string keyImageHex = Common::podToHex(keyImage);
+                        incoming += output.amount;
+                        scanner->ownedAmounts[keyImageHex] = output.amount;
+                        if (!scanner->unspent.count(keyImageHex))
+                        {
+                            scanner->unspent[keyImageHex] = ScannerInput{output.amount, rawTX.unlockTime};
+                            scanner->ownedOutputsSeen += 1;
+                        }
+                    }
+
+                    outputIndex += 1;
+                }
+
+                uint64_t outgoing = 0;
+                if (keyInputs != nullptr)
+                {
+                    for (const auto &input : *keyInputs)
+                    {
+                        const std::string keyImageHex = Common::podToHex(input.keyImage);
+                        const auto unspentIt = scanner->unspent.find(keyImageHex);
+                        if (unspentIt != scanner->unspent.end())
+                        {
+                            outgoing += unspentIt->second.amount;
+                            scanner->unspent.erase(unspentIt);
+                            scanner->spentOwnedOutputs += 1;
+                        }
+                        else
+                        {
+                            const auto amountIt = scanner->ownedAmounts.find(keyImageHex);
+                            if (amountIt != scanner->ownedAmounts.end())
+                            {
+                                outgoing += amountIt->second;
+                            }
+                        }
+                    }
+                }
+
+                if (incoming > 0 || outgoing > 0)
+                {
+                    const std::string direction = incoming > 0 && outgoing > 0
+                        ? "self"
+                        : (incoming > 0 ? "incoming" : "outgoing");
+                    const int64_t net = static_cast<int64_t>(incoming) - static_cast<int64_t>(outgoing);
+                    txEntries.push_back(json{
+                        {"txHash", Common::podToHex(rawTX.hash)},
+                        {"blockHeight", blockHeight},
+                        {"blockTimestamp", blockTimestamp},
+                        {"paymentId", paymentID},
+                        {"incomingAtomic", std::to_string(incoming)},
+                        {"outgoingAtomic", std::to_string(outgoing)},
+                        {"netAtomic", std::to_string(net)},
+                        {"direction", direction}
+                    });
+                }
+            };
+
+            try
+            {
+                const auto items = req.at("items").get<std::vector<WalletTypes::WalletBlockInfo>>();
+                for (const auto &block : items)
+                {
+                    scanner->scannedBlocks += 1;
+                    if (block.coinbaseTransaction)
+                    {
+                        scanner->scannedTransactions += 1;
+                        scanTransaction(*(block.coinbaseTransaction), nullptr, block.blockHeight, block.blockTimestamp, "");
+                    }
+
+                    for (const auto &tx : block.transactions)
+                    {
+                        scanner->scannedTransactions += 1;
+                        scanTransaction(tx, &(tx.keyInputs), block.blockHeight, block.blockTimestamp, tx.paymentID);
+                    }
+                }
+            }
+            catch (...)
+            {
+                g_response = scannerError("scan_sync_data_parse_failed").dump();
+                return g_response.c_str();
+            }
+
+            uint64_t unlocked = 0;
+            uint64_t locked = 0;
+            for (const auto &[_, input] : scanner->unspent)
+            {
+                if (Utilities::isInputUnlocked(input.unlockTime, daemonHeight))
+                {
+                    unlocked += input.amount;
+                }
+                else
+                {
+                    locked += input.amount;
+                }
+            }
+
+            g_response = ok(json{
+                                {"unlocked", std::to_string(unlocked)},
+                                {"locked", std::to_string(locked)},
+                                {"unspentOwnedOutputs", scanner->unspent.size()},
+                                {"spentOwnedOutputs", scanner->spentOwnedOutputs},
+                                {"scannedBlocks", scanner->scannedBlocks},
+                                {"scannedTransactions", scanner->scannedTransactions},
+                                {"scannedOutputs", scanner->scannedOutputs},
+                                {"transactions", txEntries}})
+                             .dump();
             return g_response.c_str();
         }
 

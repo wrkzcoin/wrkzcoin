@@ -1,0 +1,830 @@
+import { probeNode } from "./nodeProbe";
+import { HttpRpcClient } from "./rpcClient";
+import { RpcEngineStorage } from "./storage";
+import { WalletWorkerClient } from "../wallet/walletWorkerClient";
+import type {
+  DirectRpcEngine,
+  DirectRpcSessionProfile,
+  NodeCapabilities,
+  NodeScore,
+  RpcEngineStatus,
+  RpcNode,
+  ScannedHeaderEntry,
+  SyncCursor,
+  SyncRuntimeStats,
+  WalletTxHistoryEntry,
+  WalletSummary
+} from "./types";
+
+const SYNC_BATCH_SIZE = 250;
+const CAPABILITY_TTL_MS = 10 * 60 * 1000;
+const NODE_SCORE_DECAY_INTERVAL_MS = 5 * 60 * 1000;
+const NODE_SCORE_DECAY_STEP = 3;
+const NODE_FAILURE_COOLDOWN_MS = 60 * 1000;
+
+type WalletSyncDataResponse = {
+  status?: string;
+  items?: Array<Record<string, unknown>>;
+  topBlock?: {
+    hash?: string;
+    height?: number;
+  };
+  synced?: boolean;
+};
+
+function nodeKey(node: RpcNode): string {
+  return `${node.ssl ? "https" : "http"}://${node.host}:${node.port}`;
+}
+
+function isMethodMissing(message: string): boolean {
+  return /method not found|unknown method|invalid method|no method/i.test(message);
+}
+
+export class BrowserDirectRpcEngine implements DirectRpcEngine {
+  private readonly storage = new RpcEngineStorage();
+  private readonly rpc = new HttpRpcClient({ timeoutMs: 15000, retries: 1 });
+  private readonly worker = new WalletWorkerClient();
+  private running = false;
+  private currentWalletId?: string;
+  private currentNodeId?: string;
+  private currentNode?: RpcNode;
+  private nodePool: RpcNode[] = [];
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private fetchMode: "unknown" | "range" | "by_height" | "none" = "unknown";
+  private failoverCount = 0;
+  private scanKeys: { privateSpendKey: string; privateViewKey: string } | null = null;
+  private scannerResetPending = true;
+  private vaultUnlocked = false;
+
+  public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
+    const uniqueByKey = new Map<string, RpcNode>();
+    for (const node of nodes) {
+      uniqueByKey.set(nodeKey(node), node);
+    }
+    let normalized = Array.from(uniqueByKey.values()).sort((a, b) => a.priority - b.priority);
+    if (preferredNodeId) {
+      const preferredIdx = normalized.findIndex((n) => n.id === preferredNodeId);
+      if (preferredIdx > 0) {
+        const [preferred] = normalized.splice(preferredIdx, 1);
+        normalized = [preferred, ...normalized];
+      }
+    }
+    this.nodePool = normalized;
+  }
+
+  public async probeNode(node: RpcNode) {
+    return probeNode(node);
+  }
+
+  public async start(walletId: string, node: RpcNode): Promise<RpcEngineStatus> {
+    await this.stop();
+    this.running = true;
+    this.currentWalletId = walletId;
+    this.currentNodeId = node.id;
+    this.currentNode = node;
+    this.fetchMode = "unknown";
+    this.failoverCount = 0;
+    this.scannerResetPending = true;
+    if (this.nodePool.length === 0) {
+      await this.configureNodePool([node], node.id);
+    }
+    const cachedCapabilities = await this.getNodeCapabilities(node);
+    if (!cachedCapabilities) {
+      await this.refreshNodeCapabilities(node).catch(() => undefined);
+    }
+
+    const status: RpcEngineStatus = {
+      running: true,
+      walletId,
+      nodeId: node.id,
+      activeNodeEndpoint: nodeKey(node),
+      failoverCount: this.failoverCount,
+      message: "direct_rpc_engine_started"
+    };
+    await this.ensureCursorInitialized(walletId);
+    await this.storage.saveStatus(status);
+    await this.pollOnce();
+    this.pollTimer = setInterval(() => {
+      this.pollOnce().catch(() => undefined);
+    }, 15000);
+    return status;
+  }
+
+  public async stop(): Promise<void> {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.running = false;
+    this.currentWalletId = undefined;
+    this.currentNodeId = undefined;
+    this.currentNode = undefined;
+    this.fetchMode = "unknown";
+    this.failoverCount = 0;
+    this.scannerResetPending = true;
+    await this.storage.saveStatus({ running: false, message: "direct_rpc_engine_stopped", failoverCount: 0 });
+  }
+
+  public async getStatus(): Promise<RpcEngineStatus> {
+    if (this.running) {
+      return {
+        running: true,
+        walletId: this.currentWalletId,
+        nodeId: this.currentNodeId,
+        activeNodeEndpoint: this.currentNode ? nodeKey(this.currentNode) : undefined,
+        failoverCount: this.failoverCount
+      };
+    }
+    return (await this.storage.loadStatus()) ?? { running: false };
+  }
+
+  public async getSummary(): Promise<WalletSummary | null> {
+    return this.storage.loadSummary();
+  }
+
+  public async getHistory(limit = 50): Promise<ScannedHeaderEntry[]> {
+    const history = await this.storage.loadHistory();
+    return history.slice(0, Math.max(1, limit));
+  }
+
+  public async getTransactionHistory(limit = 100): Promise<WalletTxHistoryEntry[]> {
+    const history = await this.storage.loadTransactionHistory();
+    const walletId = this.currentWalletId ?? (await this.storage.loadProfile())?.walletId;
+    const filtered = walletId ? history.filter((entry) => entry.walletId === walletId) : history;
+    return filtered.slice(0, Math.max(1, limit));
+  }
+
+  public async getCursor(): Promise<SyncCursor | null> {
+    return this.storage.loadCursor();
+  }
+
+  public async getSyncStats(): Promise<SyncRuntimeStats | null> {
+    return this.storage.loadSyncStats();
+  }
+
+  public async getNodeCapabilities(node: RpcNode): Promise<NodeCapabilities | null> {
+    const cached = await this.storage.loadNodeCapabilities(nodeKey(node));
+    if (!cached) {
+      return null;
+    }
+    if (Date.now() - cached.checkedAt > CAPABILITY_TTL_MS) {
+      return null;
+    }
+    return cached;
+  }
+
+  public async refreshNodeCapabilities(node: RpcNode): Promise<NodeCapabilities> {
+    const key = nodeKey(node);
+    let supportsGetBlockCount = false;
+    let supportsWalletSyncData = false;
+    let supportsGetBlockHeadersRange = false;
+    let supportsGetBlockHeaderByHeight = false;
+    let corsLikely = true;
+    let lastError: string | undefined;
+
+    try {
+      await this.rpc.call(node, "getblockcount");
+      supportsGetBlockCount = true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      lastError = reason;
+      corsLikely = !reason.includes("Failed to fetch");
+    }
+
+    try {
+      const walletSync = await this.rpc.postPath<WalletSyncDataResponse>(node, "/getwalletsyncdata", {
+        startHeight: 0,
+        startTimestamp: 0,
+        blockCount: 1,
+        skipCoinbaseTransactions: false,
+        blockHashCheckpoints: []
+      });
+      supportsWalletSyncData = walletSync.status === "OK";
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      lastError = lastError ?? reason;
+    }
+
+    try {
+      await this.tryFetchBlockHeaderRange(node, 0, 0);
+      supportsGetBlockHeadersRange = true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!isMethodMissing(reason)) {
+        supportsGetBlockHeadersRange = true;
+      }
+      lastError = lastError ?? reason;
+    }
+
+    try {
+      await this.tryFetchBlockHeaderByHeight(node, 0, 0);
+      supportsGetBlockHeaderByHeight = true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!isMethodMissing(reason)) {
+        supportsGetBlockHeaderByHeight = true;
+      }
+      lastError = lastError ?? reason;
+    }
+
+    const capabilities: NodeCapabilities = {
+      nodeKey: key,
+      checkedAt: Date.now(),
+      supportsGetBlockCount,
+      supportsWalletSyncData,
+      supportsGetBlockHeadersRange,
+      supportsGetBlockHeaderByHeight,
+      corsLikely,
+      lastError
+    };
+    await this.storage.saveNodeCapabilities(capabilities);
+    return capabilities;
+  }
+
+  public async getNodeScores(): Promise<NodeScore[]> {
+    const scores = await this.storage.loadNodeScores();
+    return scores.sort((a, b) => b.score - a.score);
+  }
+
+  public async setProfile(profile: DirectRpcSessionProfile): Promise<void> {
+    await this.storage.saveProfile(profile);
+  }
+
+  public async clearProfile(): Promise<void> {
+    await this.storage.clearProfile();
+  }
+
+  public async setScanKeys(privateSpendKey: string, privateViewKey: string): Promise<void> {
+    this.scanKeys = {
+      privateSpendKey: privateSpendKey.trim().toLowerCase(),
+      privateViewKey: privateViewKey.trim().toLowerCase()
+    };
+    this.scannerResetPending = true;
+    if (this.vaultUnlocked) {
+      await this.worker.vaultPut(
+        "direct_rpc_scan_keys",
+        JSON.stringify({
+          privateSpendKey: this.scanKeys.privateSpendKey,
+          privateViewKey: this.scanKeys.privateViewKey
+        })
+      );
+    }
+  }
+
+  public async deriveScanKeysFromSeed(
+    mnemonicSeed: string
+  ): Promise<{ privateSpendKey: string; privateViewKey: string; mnemonicSeed: string; address: string }> {
+    const derived = await this.worker.deriveKeysFromSeed(mnemonicSeed);
+    await this.setScanKeys(derived.privateSpendKey, derived.privateViewKey);
+    return derived;
+  }
+
+  public async generateScanKeys(): Promise<{ privateSpendKey: string; privateViewKey: string; mnemonicSeed: string; address: string }> {
+    const generated = await this.worker.generateSeedKeys();
+    await this.setScanKeys(generated.privateSpendKey, generated.privateViewKey);
+    return generated;
+  }
+
+  public async deriveAddressFromKeys(privateSpendKey: string, privateViewKey: string): Promise<string> {
+    const result = await this.worker.deriveAddressFromKeys(privateSpendKey, privateViewKey);
+    return result.address;
+  }
+
+  public async clearScanKeys(): Promise<void> {
+    this.scanKeys = null;
+    this.scannerResetPending = true;
+    if (this.vaultUnlocked) {
+      await this.worker.vaultDelete("direct_rpc_scan_keys");
+    }
+  }
+
+  public async initVault(password: string): Promise<void> {
+    await this.worker.vaultInit(password);
+    this.vaultUnlocked = true;
+    const existing = await this.worker.vaultGet("direct_rpc_scan_keys");
+    const value = (existing as { value?: string }).value;
+    if (typeof value === "string" && value.length > 0) {
+      try {
+        const parsed = JSON.parse(value) as { privateSpendKey?: string; privateViewKey?: string };
+        if (typeof parsed.privateSpendKey === "string" && typeof parsed.privateViewKey === "string") {
+          this.scanKeys = {
+            privateSpendKey: parsed.privateSpendKey,
+            privateViewKey: parsed.privateViewKey
+          };
+          this.scannerResetPending = true;
+        }
+      } catch {
+        // Ignore corrupt vault entry.
+      }
+    }
+  }
+
+  public async lockVault(): Promise<void> {
+    if (this.vaultUnlocked) {
+      await this.worker.vaultLock();
+      this.vaultUnlocked = false;
+    }
+  }
+
+  public async getProfile(): Promise<DirectRpcSessionProfile | null> {
+    return this.storage.loadProfile();
+  }
+
+  public async fetchHeight(node: RpcNode): Promise<number> {
+    const started = Date.now();
+    try {
+      const result = await this.rpc.call<{ count?: number }>(node, "getblockcount");
+      const latency = Date.now() - started;
+      await this.recordNodeScore(node, true, latency);
+      return Number(result.count ?? 0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.recordNodeScore(node, false, undefined, message);
+      throw error;
+    }
+  }
+
+  private async pollOnce(): Promise<void> {
+    if (!this.running || !this.currentWalletId || !this.currentNode) {
+      return;
+    }
+    try {
+      await this.syncWithNode(this.currentNode);
+      return;
+    } catch (error) {
+      const baseError = error instanceof Error ? error.message : String(error);
+      const failoverNode = await this.tryFailoverNode();
+      if (!failoverNode) {
+        await this.storage.saveStatus({
+          running: true,
+          walletId: this.currentWalletId,
+          nodeId: this.currentNode.id,
+          activeNodeEndpoint: nodeKey(this.currentNode),
+          failoverCount: this.failoverCount,
+          message: `direct_rpc_sync_error_${baseError}`
+        });
+        return;
+      }
+      this.currentNode = failoverNode;
+      this.currentNodeId = failoverNode.id;
+      this.failoverCount += 1;
+      this.fetchMode = "unknown";
+      await this.storage.saveStatus({
+        running: true,
+        walletId: this.currentWalletId,
+        nodeId: failoverNode.id,
+        activeNodeEndpoint: nodeKey(failoverNode),
+        failoverCount: this.failoverCount,
+        message: `direct_rpc_failover_to_${failoverNode.id}`
+      });
+      await this.syncWithNode(failoverNode);
+    }
+  }
+
+  private async syncWithNode(node: RpcNode): Promise<void> {
+    if (!this.currentWalletId) {
+      return;
+    }
+    const daemonHeight = await this.fetchHeight(node);
+    const profile = await this.storage.loadProfile();
+    const currentCursor = await this.storage.loadCursor();
+    const baseline = Math.max(0, profile?.scanHeight ?? 0);
+    const cursor = currentCursor && currentCursor.walletId === this.currentWalletId ? currentCursor.height : baseline;
+    const clampedCursor = Math.min(cursor, daemonHeight);
+    const remaining = Math.max(0, daemonHeight - clampedCursor);
+
+    let nextSyncedHeight = clampedCursor;
+    let lastBatchStart: number | undefined;
+    let lastBatchEnd: number | undefined;
+    let lastBatchSize = 0;
+    let rangeFetchOk = false;
+    let methodsTried: string[] = [];
+    let usedFetchMode: "walletsync" | "range" | "by_height" | "none" = "none";
+    let lastError: string | undefined;
+    let scannedTransactions = 0;
+    let scannedOutputs = 0;
+    let unspentOwnedOutputs = 0;
+    let spentOwnedOutputs = 0;
+    let unlockedBalanceAtomic = "0";
+    let lockedBalanceAtomic = "0";
+    let scanMode: WalletSummary["scanMode"] = "headers_only";
+
+    if (remaining > 0) {
+      lastBatchStart = clampedCursor + 1;
+      lastBatchEnd = Math.min(lastBatchStart + SYNC_BATCH_SIZE - 1, daemonHeight);
+      lastBatchSize = lastBatchEnd - lastBatchStart + 1;
+      const walletSync = await this.tryFetchWalletSyncBatch(node, lastBatchStart, lastBatchSize);
+      if (walletSync.ok) {
+        usedFetchMode = "walletsync";
+        rangeFetchOk = true;
+        methodsTried = walletSync.methodsTried;
+        scannedTransactions = walletSync.scannedTransactions;
+        scannedOutputs = walletSync.scannedOutputs;
+        lastError = walletSync.error;
+
+        if (walletSync.items.length > 0) {
+          await this.storage.appendHistory(
+            walletSync.items.map((item) => ({
+              walletId: this.currentWalletId as string,
+              height: Number(item.blockHeight ?? 0),
+              hash: typeof item.blockHash === "string" ? item.blockHash : undefined,
+              timestamp: Number.isFinite(Number(item.blockTimestamp)) ? Number(item.blockTimestamp) : undefined,
+              scannedAt: Date.now()
+            }))
+          );
+
+          const highest = walletSync.items.reduce((max, item) => Math.max(max, Number(item.blockHeight ?? max)), clampedCursor);
+          nextSyncedHeight = Math.min(highest, daemonHeight);
+        } else {
+          nextSyncedHeight = Math.min(lastBatchEnd, daemonHeight);
+        }
+
+        if (this.scanKeys) {
+          try {
+            const scanResult = await this.worker.scanSyncDataBalance({
+              scannerId: this.currentWalletId,
+              privateSpendKey: this.scanKeys.privateSpendKey,
+              privateViewKey: this.scanKeys.privateViewKey,
+              daemonHeight,
+              reset: this.scannerResetPending,
+              items: walletSync.items
+            });
+            this.scannerResetPending = false;
+            unlockedBalanceAtomic = scanResult.unlocked;
+            lockedBalanceAtomic = scanResult.locked;
+            unspentOwnedOutputs = scanResult.unspentOwnedOutputs;
+            spentOwnedOutputs = scanResult.spentOwnedOutputs;
+            scannedTransactions = scanResult.scannedTransactions;
+            scannedOutputs = scanResult.scannedOutputs;
+            scanMode = "wallet_owned_outputs";
+            if (Array.isArray(scanResult.transactions) && scanResult.transactions.length > 0) {
+              await this.storage.appendTransactionHistory(
+                scanResult.transactions.map((entry) => ({
+                  walletId: this.currentWalletId as string,
+                  txHash: entry.txHash,
+                  blockHeight: entry.blockHeight,
+                  blockTimestamp: entry.blockTimestamp,
+                  paymentId: entry.paymentId,
+                  incomingAtomic: entry.incomingAtomic,
+                  outgoingAtomic: entry.outgoingAtomic,
+                  netAtomic: entry.netAtomic,
+                  direction: entry.direction,
+                  scannedAt: Date.now()
+                }))
+              );
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : String(error);
+          }
+        }
+      } else {
+        const fetchResult = await this.tryFetchHeaderBatch(node, lastBatchStart, lastBatchEnd);
+        rangeFetchOk = fetchResult.ok;
+        methodsTried = [...walletSync.methodsTried, ...fetchResult.methodsTried];
+        usedFetchMode = fetchResult.mode;
+        lastError = walletSync.error ?? fetchResult.error;
+        if (fetchResult.headers.length > 0) {
+          await this.storage.appendHistory(
+            fetchResult.headers.map((header) => ({
+              walletId: this.currentWalletId as string,
+              height: Number(header.height ?? 0),
+              hash: typeof header.hash === "string" ? header.hash : undefined,
+              timestamp: Number.isFinite(Number(header.timestamp)) ? Number(header.timestamp) : undefined,
+              reward: header.reward !== undefined ? String(header.reward) : undefined,
+              scannedAt: Date.now()
+            }))
+          );
+        }
+        nextSyncedHeight = lastBatchEnd;
+      }
+    }
+
+    const historyCount = (await this.storage.loadHistory()).length;
+    const summary: WalletSummary = {
+      walletId: this.currentWalletId,
+      daemonHeight,
+      syncedHeight: nextSyncedHeight,
+      unlockedBalanceAtomic,
+      lockedBalanceAtomic,
+      scanMode,
+      scannedTransactions,
+      scannedOutputs,
+      unspentOwnedOutputs,
+      spentOwnedOutputs,
+      scannedHeaderCount: historyCount
+    };
+
+    await this.storage.saveSummary(summary);
+    await this.storage.saveCursor({
+      walletId: this.currentWalletId,
+      height: nextSyncedHeight,
+      updatedAt: Date.now()
+    });
+    await this.storage.saveSyncStats({
+      walletId: this.currentWalletId,
+      targetHeight: daemonHeight,
+      syncedHeight: nextSyncedHeight,
+      remainingBlocks: Math.max(0, daemonHeight - nextSyncedHeight),
+      lastBatchStart,
+      lastBatchEnd,
+      lastBatchSize,
+      fetchMode: usedFetchMode,
+      rangeFetchOk,
+      methodsTried,
+      lastError,
+      updatedAt: Date.now()
+    });
+    await this.storage.saveStatus({
+      running: true,
+      walletId: this.currentWalletId,
+      nodeId: node.id,
+      activeNodeEndpoint: nodeKey(node),
+      failoverCount: this.failoverCount,
+      message: `direct_rpc_sync_${nextSyncedHeight}_of_${daemonHeight}`
+    });
+  }
+
+  private async ensureCursorInitialized(walletId: string): Promise<void> {
+    const existing = await this.storage.loadCursor();
+    if (existing && existing.walletId === walletId) {
+      return;
+    }
+    const profile = await this.storage.loadProfile();
+    const startHeight = Math.max(0, profile?.walletId === walletId ? profile.scanHeight : 0);
+    await this.storage.saveCursor({
+      walletId,
+      height: startHeight,
+      updatedAt: Date.now()
+    });
+  }
+
+  private async tryFetchWalletSyncBatch(
+    node: RpcNode,
+    startHeight: number,
+    blockCount: number
+  ): Promise<{
+    ok: boolean;
+    methodsTried: string[];
+    items: Array<Record<string, unknown>>;
+    scannedTransactions: number;
+    scannedOutputs: number;
+    error?: string;
+  }> {
+    const methodsTried: string[] = [];
+    const profile = await this.storage.loadProfile();
+    const skipCoinbaseTransactions = profile?.scanFromCoinbase === true ? false : true;
+    try {
+      methodsTried.push("/getwalletsyncdata");
+      const response = await this.rpc.postPath<WalletSyncDataResponse>(node, "/getwalletsyncdata", {
+        startHeight,
+        startTimestamp: 0,
+        blockCount,
+        skipCoinbaseTransactions,
+        blockHashCheckpoints: []
+      });
+
+      if (response.status !== "OK") {
+        return {
+          ok: false,
+          methodsTried,
+          items: [],
+          scannedTransactions: 0,
+          scannedOutputs: 0,
+          error: `walletsync_status_${response.status ?? "unknown"}`
+        };
+      }
+
+      const items = Array.isArray(response.items) ? response.items : [];
+      let scannedTransactions = 0;
+      let scannedOutputs = 0;
+      for (const block of items) {
+        const coinbase = block.coinbaseTX as { outputs?: unknown[] } | undefined;
+        if (coinbase) {
+          scannedTransactions += 1;
+          scannedOutputs += Array.isArray(coinbase.outputs) ? coinbase.outputs.length : 0;
+        }
+        const txs = Array.isArray(block.transactions) ? block.transactions : [];
+        scannedTransactions += txs.length;
+        for (const tx of txs) {
+          const outputs = (tx as { outputs?: unknown[] }).outputs;
+          scannedOutputs += Array.isArray(outputs) ? outputs.length : 0;
+        }
+      }
+
+      return {
+        ok: true,
+        methodsTried,
+        items,
+        scannedTransactions,
+        scannedOutputs
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      methodsTried.push(`/getwalletsyncdata:${reason}`);
+      return {
+        ok: false,
+        methodsTried,
+        items: [],
+        scannedTransactions: 0,
+        scannedOutputs: 0,
+        error: reason
+      };
+    }
+  }
+
+  private async tryFetchHeaderBatch(
+    node: RpcNode,
+    startHeight: number,
+    endHeight: number
+  ): Promise<{
+    ok: boolean;
+    mode: "range" | "by_height" | "none";
+    methodsTried: string[];
+    headers: Array<Record<string, unknown>>;
+    error?: string;
+  }> {
+    const methodsTried: string[] = [];
+    const capabilities = (await this.getNodeCapabilities(node)) ?? (await this.refreshNodeCapabilities(node));
+
+    if (!capabilities.supportsGetBlockHeadersRange && capabilities.supportsGetBlockHeaderByHeight) {
+      this.fetchMode = "by_height";
+    }
+    if (!capabilities.supportsGetBlockHeadersRange && !capabilities.supportsGetBlockHeaderByHeight) {
+      this.fetchMode = "none";
+    }
+
+    if (this.fetchMode === "range") {
+      try {
+        const headers = await this.tryFetchBlockHeaderRange(node, startHeight, endHeight);
+        return { ok: true, mode: "range", methodsTried: ["getblockheadersrange"], headers };
+      } catch (error) {
+        this.fetchMode = "unknown";
+        const reason = error instanceof Error ? error.message : String(error);
+        methodsTried.push(`getblockheadersrange:${reason}`);
+      }
+    }
+
+    if (this.fetchMode === "unknown") {
+      try {
+        const headers = await this.tryFetchBlockHeaderRange(node, startHeight, endHeight);
+        this.fetchMode = "range";
+        return { ok: true, mode: "range", methodsTried: [...methodsTried, "getblockheadersrange"], headers };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        methodsTried.push(`getblockheadersrange:${reason}`);
+      }
+    }
+
+    try {
+      const headers = await this.tryFetchBlockHeaderByHeight(node, startHeight, endHeight);
+      this.fetchMode = "by_height";
+      await this.storage.saveNodeCapabilities({
+        ...(capabilities ?? (await this.refreshNodeCapabilities(node))),
+        supportsGetBlockHeaderByHeight: true,
+        checkedAt: Date.now()
+      });
+      return { ok: true, mode: "by_height", methodsTried: [...methodsTried, "getblockheaderbyheight"], headers };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.fetchMode = "none";
+      await this.storage.saveNodeCapabilities({
+        ...(capabilities ?? (await this.refreshNodeCapabilities(node))),
+        supportsGetBlockHeadersRange: false,
+        supportsGetBlockHeaderByHeight: false,
+        checkedAt: Date.now(),
+        lastError: reason
+      });
+      return {
+        ok: false,
+        mode: "none",
+        methodsTried: [...methodsTried, `getblockheaderbyheight:${reason}`],
+        headers: [],
+        error: reason
+      };
+    }
+  }
+
+  private async tryFetchBlockHeaderRange(
+    node: RpcNode,
+    startHeight: number,
+    endHeight: number
+  ): Promise<Array<Record<string, unknown>>> {
+    let response: unknown;
+    try {
+      response = await this.rpc.call(node, "getblockheadersrange", { startHeight, endHeight });
+    } catch {
+      response = await this.rpc.call(node, "getblockheadersrange", { start_height: startHeight, end_height: endHeight });
+    }
+    const parsed = response as { headers?: Array<Record<string, unknown>> };
+    return Array.isArray(parsed.headers) ? parsed.headers : [];
+  }
+
+  private async tryFetchBlockHeaderByHeight(
+    node: RpcNode,
+    startHeight: number,
+    endHeight: number
+  ): Promise<Array<Record<string, unknown>>> {
+    const headers: Array<Record<string, unknown>> = [];
+    for (let height = startHeight; height <= endHeight; height += 1) {
+      let response: unknown;
+      try {
+        response = await this.rpc.call(node, "getblockheaderbyheight", { height });
+      } catch {
+        response = await this.rpc.call(node, "getblockheaderbyheight", { height: String(height) });
+      }
+      const parsed = response as { block_header?: Record<string, unknown> };
+      if (parsed.block_header) {
+        headers.push(parsed.block_header);
+      }
+    }
+    return headers;
+  }
+
+  private async tryFailoverNode(): Promise<RpcNode | null> {
+    if (!this.currentNode) {
+      return null;
+    }
+    const currentKey = nodeKey(this.currentNode);
+    const candidates = await this.rankNodesForFailover(this.nodePool.filter((n) => nodeKey(n) !== currentKey));
+    for (const candidate of candidates) {
+      try {
+        await this.fetchHeight(candidate);
+        return candidate;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private async rankNodesForFailover(candidates: RpcNode[]): Promise<RpcNode[]> {
+    const scores = await this.storage.loadNodeScores();
+    const now = Date.now();
+    const scoreMap = new Map(scores.map((s) => [s.nodeKey, s]));
+    const eligible = candidates.filter((node) => {
+      const score = scoreMap.get(nodeKey(node));
+      if (!score?.cooldownUntil) {
+        return true;
+      }
+      return score.cooldownUntil <= now;
+    });
+    return candidates
+      .slice()
+      .filter((node) => eligible.some((ok) => nodeKey(ok) === nodeKey(node)))
+      .slice()
+      .sort((a, b) => {
+        const sa = scoreMap.get(nodeKey(a));
+        const sb = scoreMap.get(nodeKey(b));
+        const aval = this.effectiveScore(sa, now);
+        const bval = this.effectiveScore(sb, now);
+        if (bval !== aval) {
+          return bval - aval;
+        }
+        return a.priority - b.priority;
+      });
+  }
+
+  private effectiveScore(score: NodeScore | undefined, now: number): number {
+    if (!score) {
+      return -999;
+    }
+    const reference = score.lastSuccessAt ?? score.lastFailureAt ?? now;
+    const elapsed = Math.max(0, now - reference);
+    const decaySteps = Math.floor(elapsed / NODE_SCORE_DECAY_INTERVAL_MS);
+    const decayed = score.score - decaySteps * NODE_SCORE_DECAY_STEP;
+    return Math.max(-1000, decayed);
+  }
+
+  private async recordNodeScore(
+    node: RpcNode,
+    success: boolean,
+    latencyMs?: number,
+    lastError?: string
+  ): Promise<void> {
+    const key = nodeKey(node);
+    const now = Date.now();
+    const existing = (await this.storage.loadNodeScores()).find((item) => item.nodeKey === key);
+    const successCount = (existing?.successCount ?? 0) + (success ? 1 : 0);
+    const failureCount = (existing?.failureCount ?? 0) + (success ? 0 : 1);
+    const penalty = failureCount * 15;
+    const latencyPenalty = latencyMs ? Math.floor(latencyMs / 50) : 0;
+    const reward = successCount * 2;
+    const baseScore = this.effectiveScore(existing, now);
+    const score = Math.max(-1000, baseScore + (success ? 6 : -20) + reward - penalty - latencyPenalty);
+    const cooldownUntil = success ? undefined : now + NODE_FAILURE_COOLDOWN_MS;
+
+    const next: NodeScore = {
+      nodeKey: key,
+      nodeId: node.id,
+      lastLatencyMs: latencyMs ?? existing?.lastLatencyMs,
+      successCount,
+      failureCount,
+      lastSuccessAt: success ? now : existing?.lastSuccessAt,
+      lastFailureAt: success ? existing?.lastFailureAt : now,
+      cooldownUntil,
+      lastError: success ? undefined : lastError,
+      score
+    };
+    await this.storage.saveNodeScore(next);
+  }
+}

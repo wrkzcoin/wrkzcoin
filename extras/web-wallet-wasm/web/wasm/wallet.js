@@ -46,6 +46,13 @@ function locateFile(path) {
   return new URL(`./generated/${path}`, import.meta.url).toString();
 }
 
+function websocketUrlPrefix() {
+  if (typeof globalThis !== "undefined" && globalThis.location && globalThis.location.protocol === "https:") {
+    return "wss://";
+  }
+  return "ws://";
+}
+
 export default async function createWalletModule() {
   try {
     const factory = await resolveFactory();
@@ -56,7 +63,10 @@ export default async function createWalletModule() {
     const module = await factory({
       noInitialRun: true,
       noExitRuntime: true,
-      locateFile
+      locateFile,
+      websocket: {
+        url: websocketUrlPrefix()
+      }
     });
 
     if (!module || typeof module.ccall !== "function") {

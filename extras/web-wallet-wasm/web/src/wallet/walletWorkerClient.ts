@@ -1,5 +1,16 @@
 import type { WorkerCommand, WorkerReply } from "./workerMessages";
-import type { ImportFromKeysRequest, ImportFromSeedRequest, OpenWalletRequest, WalletBackupSecrets, WalletCreateResult, WasmResponse } from "./types";
+import type {
+  ImportFromKeysRequest,
+  ImportFromSeedRequest,
+  OpenWalletRequest,
+  AddressValidationResult,
+  DerivedWalletKeys,
+  ScanSyncDataBalanceRequest,
+  ScanSyncDataBalanceResult,
+  WalletBackupSecrets,
+  WalletCreateResult,
+  WasmResponse
+} from "./types";
 
 const WORKER_REQUEST_TIMEOUT_MS = 20000;
 
@@ -8,6 +19,19 @@ type InflightRequest = {
   reject: (error: Error) => void;
   timeoutId: ReturnType<typeof setTimeout>;
 };
+
+function createRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    return `req-${hex}`;
+  }
+  return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 export class WalletWorkerClient {
   private readonly worker: Worker;
@@ -34,59 +58,94 @@ export class WalletWorkerClient {
   }
 
   public async apiVersion(): Promise<unknown> {
-    return this.sendWasm({ id: crypto.randomUUID(), command: "apiVersion" });
+    return this.sendWasm({ id: createRequestId(), command: "apiVersion" });
   }
 
   public async create(payload: OpenWalletRequest): Promise<WalletCreateResult> {
-    return this.sendWasm<WalletCreateResult>({ id: crypto.randomUUID(), command: "create", payload });
+    return this.sendWasm<WalletCreateResult>({ id: createRequestId(), command: "create", payload });
   }
 
   public async restoreFromSeed(payload: ImportFromSeedRequest): Promise<WalletCreateResult> {
-    return this.sendWasm<WalletCreateResult>({ id: crypto.randomUUID(), command: "restoreFromSeed", payload });
+    return this.sendWasm<WalletCreateResult>({ id: createRequestId(), command: "restoreFromSeed", payload });
   }
 
   public async restoreFromKeys(payload: ImportFromKeysRequest): Promise<WalletCreateResult> {
-    return this.sendWasm<WalletCreateResult>({ id: crypto.randomUUID(), command: "restoreFromKeys", payload });
+    return this.sendWasm<WalletCreateResult>({ id: createRequestId(), command: "restoreFromKeys", payload });
   }
 
   public async backupSecrets(walletId: number): Promise<WalletBackupSecrets> {
-    return this.sendWasm<WalletBackupSecrets>({ id: crypto.randomUUID(), command: "backupSecrets", payload: { walletId } });
+    return this.sendWasm<WalletBackupSecrets>({ id: createRequestId(), command: "backupSecrets", payload: { walletId } });
   }
 
   public async swapNode(walletId: number, daemonHost: string, daemonPort: number, daemonSsl: boolean): Promise<unknown> {
-    return this.sendWasm({ id: crypto.randomUUID(), command: "swapNode", payload: { walletId, daemonHost, daemonPort, daemonSsl } });
+    return this.sendWasm({ id: createRequestId(), command: "swapNode", payload: { walletId, daemonHost, daemonPort, daemonSsl } });
   }
 
   public async close(walletId: number): Promise<unknown> {
-    return this.sendWasm({ id: crypto.randomUUID(), command: "close", payload: { walletId } });
+    return this.sendWasm({ id: createRequestId(), command: "close", payload: { walletId } });
+  }
+
+  public async deriveKeysFromSeed(mnemonicSeed: string): Promise<DerivedWalletKeys> {
+    return this.sendWasm<DerivedWalletKeys>({
+      id: createRequestId(),
+      command: "deriveKeysFromSeed",
+      payload: { mnemonicSeed }
+    });
+  }
+
+  public async generateSeedKeys(): Promise<DerivedWalletKeys> {
+    return this.sendWasm<DerivedWalletKeys>({
+      id: createRequestId(),
+      command: "generateSeedKeys"
+    });
+  }
+
+  public async deriveAddressFromKeys(privateSpendKey: string, privateViewKey: string): Promise<{ address: string }> {
+    return this.sendWasm<{ address: string }>({
+      id: createRequestId(),
+      command: "deriveAddressFromKeys",
+      payload: { privateSpendKey, privateViewKey }
+    });
+  }
+
+  public async validateAddress(address: string, allowIntegrated = true): Promise<AddressValidationResult> {
+    return this.sendWasm<AddressValidationResult>({
+      id: createRequestId(),
+      command: "validateAddress",
+      payload: { address, allowIntegrated }
+    });
+  }
+
+  public async scanSyncDataBalance(payload: ScanSyncDataBalanceRequest): Promise<ScanSyncDataBalanceResult> {
+    return this.sendWasm<ScanSyncDataBalanceResult>({ id: createRequestId(), command: "scanSyncDataBalance", payload });
   }
 
   public async vaultInit(password: string): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultInit", payload: { password } });
+    return this.send({ id: createRequestId(), command: "vaultInit", payload: { password } });
   }
 
   public async vaultStatus(): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultStatus" });
+    return this.send({ id: createRequestId(), command: "vaultStatus" });
   }
 
   public async vaultPut(key: string, value: string): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultPut", payload: { key, value } });
+    return this.send({ id: createRequestId(), command: "vaultPut", payload: { key, value } });
   }
 
   public async vaultGet(key: string): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultGet", payload: { key } });
+    return this.send({ id: createRequestId(), command: "vaultGet", payload: { key } });
   }
 
   public async vaultDelete(key: string): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultDelete", payload: { key } });
+    return this.send({ id: createRequestId(), command: "vaultDelete", payload: { key } });
   }
 
   public async vaultLock(): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultLock" });
+    return this.send({ id: createRequestId(), command: "vaultLock" });
   }
 
   public async vaultReset(): Promise<unknown> {
-    return this.send({ id: crypto.randomUUID(), command: "vaultReset" });
+    return this.send({ id: createRequestId(), command: "vaultReset" });
   }
 
   private rejectAll(error: Error): void {
@@ -100,9 +159,13 @@ export class WalletWorkerClient {
 
   private async sendWasm<T = unknown>(message: WorkerCommand): Promise<T> {
     const result = await this.send(message);
-    const response = result as WasmResponse<T>;
+    const response = result as WasmResponse<T> & { reason?: unknown };
     if (!response.ok) {
-      throw new Error(response.error ?? "WASM command failed");
+      const details = typeof response.data === "object" && response.data !== null ? response.data as Record<string, unknown> : {};
+      const topLevelReason = typeof response.reason === "string" ? response.reason : undefined;
+      const dataReason = typeof details.reason === "string" ? details.reason : undefined;
+      const reason = topLevelReason ?? dataReason;
+      throw new Error(reason ? `${response.error ?? "WASM command failed"} (${reason})` : (response.error ?? "WASM command failed"));
     }
     return (response.data as T) ?? ({} as T);
   }

@@ -19,7 +19,13 @@ cmake --build $BuildDir --target wallet_wasm --parallel
 New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 Copy-Item -Force (Join-Path $BuildDir "wasm\\wallet_wasm.js") (Join-Path $OutDir "wallet_wasm.js")
 Copy-Item -Force (Join-Path $BuildDir "wasm\\wallet_wasm.wasm") (Join-Path $OutDir "wallet_wasm.wasm")
+if (Test-Path (Join-Path $BuildDir "wasm\\wallet_wasm.worker.js")) {
+  Copy-Item -Force (Join-Path $BuildDir "wasm\\wallet_wasm.worker.js") (Join-Path $OutDir "wallet_wasm.worker.js")
+}
 
 Write-Host "WASM artifacts copied to:"
 Write-Host "  $OutDir\\wallet_wasm.js"
 Write-Host "  $OutDir\\wallet_wasm.wasm"
+if (Test-Path (Join-Path $OutDir "wallet_wasm.worker.js")) {
+  Write-Host "  $OutDir\\wallet_wasm.worker.js"
+}

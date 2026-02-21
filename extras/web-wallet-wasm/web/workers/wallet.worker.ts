@@ -9,8 +9,12 @@ let modulePromise: Promise<WasmModuleLike> | null = null;
 
 async function loadWasmModule(): Promise<WasmModuleLike> {
   if (!modulePromise) {
-    modulePromise = import("../wasm/wallet.js").then((factory: unknown) => {
-      const create = factory as () => Promise<WasmModuleLike>;
+    modulePromise = import("../wasm/wallet.js").then((factoryModule: unknown) => {
+      const moduleObject = factoryModule as { default?: () => Promise<WasmModuleLike> };
+      const create = moduleObject.default ?? (factoryModule as () => Promise<WasmModuleLike>);
+      if (typeof create !== "function") {
+        throw new Error("wasm_factory_missing");
+      }
       return create();
     });
   }
@@ -57,10 +61,22 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>): Promise<void> => {
 
     reply = { id: msg.id, ok: true, result };
   } catch (error) {
+    let message = "Unknown worker error";
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error === "string") {
+      message = error;
+    } else {
+      try {
+        message = JSON.stringify(error);
+      } catch {
+        message = String(error);
+      }
+    }
     reply = {
       id: msg.id,
       ok: false,
-      error: error instanceof Error ? error.message : "Unknown worker error"
+      error: message
     };
   }
 

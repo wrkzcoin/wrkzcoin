@@ -26,3 +26,4 @@ This workspace contains a browser-first wallet stack:
   - `powershell -ExecutionPolicy Bypass -File extras/web-wallet-wasm/scripts/build-wasm.ps1`
 
 See `extras/web-wallet-wasm/GUIDE.md` for full steps.
+
