@@ -50,7 +50,6 @@ type ImportReview = {
   hasPrivateKeys: boolean;
   address: string;
   scanHeight: number;
-  scanTimestamp: number;
 };
 type BackupState = {
   mnemonicSeed: string;
@@ -767,23 +766,12 @@ export function App(): JSX.Element {
     return scanFromCoinbase ? 0 : parsed;
   };
 
-  const validateScanTimestamp = (): number | null => {
-    const parsed = Number(scanTimestamp || "0");
-    if (!Number.isInteger(parsed) || parsed < 0) {
-      return null;
-    }
-    return scanFromCoinbase ? 0 : parsed;
-  };
-
-  const validateImportStartPoint = (height: number, timestamp: number): string | null => {
+  const validateImportStartPoint = (height: number): string | null => {
     if (scanFromCoinbase) {
       return null;
     }
-    if (height > 0 && timestamp > 0) {
-      return "Use either scan height or scan timestamp, not both.";
-    }
-    if (height <= 0 && timestamp <= 0) {
-      return "For import, set scan height or scan timestamp to a value greater than 0.";
+    if (height <= 0) {
+      return "For import, set scan height to a value greater than 0.";
     }
     return null;
   };
@@ -911,11 +899,11 @@ export function App(): JSX.Element {
         address: pendingImportReview.address
       },
       true,
-      { height: pendingImportReview.scanHeight, timestamp: pendingImportReview.scanTimestamp }
+      { height: pendingImportReview.scanHeight }
     );
     setPendingImportReview(null);
     setOutput(
-      `Import confirmed. Address ${pendingImportReview.address} is syncing from height ${pendingImportReview.scanHeight} (timestamp ${pendingImportReview.scanTimestamp}).`
+      `Import confirmed. Address ${pendingImportReview.address} is syncing from height ${pendingImportReview.scanHeight}.`
     );
   };
 
@@ -926,7 +914,7 @@ export function App(): JSX.Element {
       Pick<DirectRpcSessionProfile, "sourceFingerprint" | "hasMnemonicSeed" | "hasPrivateKeys" | "address">
     >,
     suppressOutput = false,
-    scanOverride?: { height: number; timestamp: number }
+    scanOverride?: { height: number }
   ): Promise<void> => {
     if (!isNodeAllowedForWallet(selectedNode)) {
       return;
@@ -937,20 +925,15 @@ export function App(): JSX.Element {
       return;
     }
     const parsedScanHeight = validateScanHeight();
-    const parsedScanTimestamp = validateScanTimestamp();
     if (parsedScanHeight === null) {
       setOutput("Scan height must be a non-negative integer.");
       return;
     }
-    if (parsedScanTimestamp === null) {
-      setOutput("Scan timestamp must be a non-negative integer.");
-      return;
-    }
     let effectiveScanHeight = scanOverride?.height ?? parsedScanHeight;
-    let effectiveScanTimestamp = scanOverride?.timestamp ?? parsedScanTimestamp;
+    let effectiveScanTimestamp = 0;
     if (kind === "create") {
       effectiveScanHeight = Math.max(0, probe.height ?? 0);
-      effectiveScanTimestamp = Math.floor(Date.now() / 1000);
+      effectiveScanTimestamp = 0;
     }
     if (scanFromCoinbase) {
       effectiveScanHeight = 0;
@@ -980,7 +963,7 @@ export function App(): JSX.Element {
     setTxHistory(await directRpcEngine.getTransactionHistory(40));
     if (!suppressOutput) {
       setOutput(
-        `Direct RPC ${kind} session started on ${buildNodeHttpUrl(selectedNode)}. Scan starts from height ${effectiveScanHeight} with timestamp ${effectiveScanTimestamp} (earlier point is used).`
+        `Direct RPC ${kind} session started on ${buildNodeHttpUrl(selectedNode)}. Scan starts from height ${effectiveScanHeight}.`
       );
     }
   };
@@ -1049,12 +1032,7 @@ export function App(): JSX.Element {
       setOutput("Scan height must be a non-negative integer.");
       return;
     }
-    const parsedScanTimestamp = validateScanTimestamp();
-    if (parsedScanTimestamp === null) {
-      setOutput("Scan timestamp must be a non-negative integer.");
-      return;
-    }
-    const startPointError = validateImportStartPoint(parsedScanHeight, parsedScanTimestamp);
+    const startPointError = validateImportStartPoint(parsedScanHeight);
     if (startPointError) {
       setOutput(startPointError);
       return;
@@ -1078,8 +1056,7 @@ export function App(): JSX.Element {
       hasMnemonicSeed: true,
       hasPrivateKeys: true,
       address: derived.address,
-      scanHeight: scanFrom,
-      scanTimestamp: parsedScanTimestamp
+      scanHeight: scanFrom
     });
     setOutput(`Review import details, then confirm to start sync.`);
   };
@@ -1104,12 +1081,7 @@ export function App(): JSX.Element {
       setOutput("Scan height must be a non-negative integer.");
       return;
     }
-    const parsedScanTimestamp = validateScanTimestamp();
-    if (parsedScanTimestamp === null) {
-      setOutput("Scan timestamp must be a non-negative integer.");
-      return;
-    }
-    const startPointError = validateImportStartPoint(parsedScanHeight, parsedScanTimestamp);
+    const startPointError = validateImportStartPoint(parsedScanHeight);
     if (startPointError) {
       setOutput(startPointError);
       return;
@@ -1127,8 +1099,7 @@ export function App(): JSX.Element {
       hasMnemonicSeed: false,
       hasPrivateKeys: true,
       address: derivedAddress || "(unable to derive)",
-      scanHeight: parsedScanHeight,
-      scanTimestamp: parsedScanTimestamp
+      scanHeight: parsedScanHeight
     });
     setOutput("Review import details, then confirm to start sync.");
   };
@@ -1669,12 +1640,7 @@ export function App(): JSX.Element {
     setMobileMenuOpen(false);
   };
 
-  const scanHeightNum = Number(scanHeight || "0");
-  const scanTimestampNum = Number(scanTimestamp || "0");
-  const heightHasPositiveValue = Number.isFinite(scanHeightNum) && scanHeightNum > 0;
-  const timestampHasPositiveValue = Number.isFinite(scanTimestampNum) && scanTimestampNum > 0;
-  const disableScanHeightInput = scanFromCoinbase || timestampHasPositiveValue;
-  const disableScanTimestampInput = scanFromCoinbase || heightHasPositiveValue;
+  const disableScanHeightInput = scanFromCoinbase;
 
   return (
     <main className="container">
@@ -1877,29 +1843,7 @@ export function App(): JSX.Element {
                     min={0}
                     value={scanHeight}
                     disabled={disableScanHeightInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const parsed = Number(value || "0");
-                      setScanHeight(value);
-                      if (Number.isFinite(parsed) && parsed > 0) {
-                        setScanTimestamp("0");
-                      }
-                    }}
-                  />
-                  <label className="field-label">Scan timestamp (unix, optional)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={scanTimestamp}
-                    disabled={disableScanTimestampInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const parsed = Number(value || "0");
-                      setScanTimestamp(value);
-                      if (Number.isFinite(parsed) && parsed > 0) {
-                        setScanHeight("0");
-                      }
-                    }}
+                    onChange={(e) => setScanHeight(e.target.value)}
                   />
                   <label className="checkbox">
                     <input type="checkbox" checked={scanFromCoinbase} onChange={(e) => setScanFromCoinbase(e.target.checked)} />
@@ -1908,7 +1852,7 @@ export function App(): JSX.Element {
                 </>
               ) : (
                 <p className="muted">
-                  New wallet starts from current network height with current timestamp, not from block 0.
+                  New wallet starts from current network height (height-only sync), not from block 0.
                 </p>
               )}
               {welcomeMode === "importSeed" ? (
@@ -1941,7 +1885,7 @@ export function App(): JSX.Element {
                   <h3>Pending Import Review</h3>
                   <p>Address: {pendingImportReview.address}</p>
                   <p>
-                    Start point: height {pendingImportReview.scanHeight}, timestamp {pendingImportReview.scanTimestamp}
+                    Start point: height {pendingImportReview.scanHeight}
                   </p>
                   <div className="actions">
                     <button onClick={onConfirmImportReview}>Confirm Import and Start Sync</button>
@@ -2082,8 +2026,7 @@ export function App(): JSX.Element {
                     <p>Wallet ID: {directWalletId}</p>
                     {directProfile ? (
                       <p>
-                        Profile: {directProfile.kind}, scan height {directProfile.scanHeight}, scan timestamp{" "}
-                        {directProfile.scanTimestamp ?? 0}
+                        Profile: {directProfile.kind}, scan height {directProfile.scanHeight}
                       </p>
                     ) : null}
                     {directCursor ? <p>Cursor height: {directCursor.height}</p> : null}

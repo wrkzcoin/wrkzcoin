@@ -393,7 +393,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async resetScanFromHeight(height: number, timestamp = 0): Promise<void> {
     const target = Math.max(0, Math.floor(height));
-    const ts = Math.max(0, Math.floor(timestamp));
+    const ts = 0;
     const profile = await this.storage.loadProfile();
     const walletId = this.currentWalletId ?? profile?.walletId;
     if (!walletId) {
@@ -670,9 +670,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     const methodsTried: string[] = [];
     const profile = await this.storage.loadProfile();
     const skipCoinbaseTransactions = profile?.scanFromCoinbase === true ? false : true;
-    const startTimestamp = !this.scanTimestampPrimed && Number(profile?.scanTimestamp ?? 0) > 0
-      ? Number(profile?.scanTimestamp ?? 0)
-      : 0;
+    const startTimestamp = 0;
     const candidateCounts = Array.from(
       new Set([blockCount, 200, 100, 50, 25, 10, 5, 1].filter((count) => count <= blockCount && count >= MIN_SYNC_BATCH_SIZE))
     ).sort((a, b) => b - a);
@@ -714,9 +712,6 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         }
 
         this.walletSyncBatchSize = candidateCount;
-        if (startTimestamp > 0) {
-          this.scanTimestampPrimed = true;
-        }
         return {
           ok: true,
           methodsTried,
