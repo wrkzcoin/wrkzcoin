@@ -98,6 +98,57 @@ cmake -S extras/desktop-wallet -B build-desktop-wallet-win \
   -DWALLET_CAPI_LIBRARY="C:/path/to/wallet_capi.lib"
 ```
 
+## Build (Windows native, Visual Studio 2022)
+
+Prerequisites:
+
+1. Visual Studio 2022 with C++ workload
+2. Qt 6 built for MSVC (for example `msvc2019_64` / `msvc2022_64`)
+3. CMake available in terminal
+
+From repo root in `x64 Native Tools Command Prompt for VS 2022` (or PowerShell):
+
+```powershell
+# 1) Build static wallet backend library
+cmake -S . -B build-windows-wallet-msvc -G "Visual Studio 17 2022" -A x64 `
+  -DWRKZ_BUILD_EXECUTABLES=OFF `
+  -DWRKZ_BUILD_WALLET_CAPI=ON `
+  -DENABLE_ZMQ=OFF
+
+cmake --build build-windows-wallet-msvc --config Release --target wallet_capi_c
+```
+
+Expected wallet static library:
+
+```text
+build-windows-wallet-msvc/src/Release/wallet_capi_c.lib
+```
+
+Then configure and build desktop wallet:
+
+```powershell
+cmake -S extras/desktop-wallet -B build-desktop-wallet-win -G "Visual Studio 17 2022" -A x64 `
+  -DQt6_DIR="C:/Qt/6.6.3/msvc2019_64/lib/cmake/Qt6" `
+  -DDESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON `
+  -DWALLET_CAPI_INCLUDE_DIR="$PWD/include" `
+  -DWALLET_CAPI_LIBRARY="$PWD/build-windows-wallet-msvc/src/Release/wallet_capi_c.lib"
+
+cmake --build build-desktop-wallet-win --config Release --target gui_wallet
+```
+
+Run:
+
+```powershell
+.\build-desktop-wallet-win\Release\gui_wallet.exe
+```
+
+If Qt DLLs are missing at runtime, add Qt bin to `PATH`:
+
+```powershell
+$env:Path = "C:\Qt\6.6.3\msvc2019_64\bin;$env:Path"
+.\build-desktop-wallet-win\Release\gui_wallet.exe
+```
+
 ## Notes
 
 - Current app uses direct C API calls on UI thread for simplicity.

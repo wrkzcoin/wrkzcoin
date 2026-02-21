@@ -54,13 +54,26 @@ if (NOT EXISTS "${WALLET_CAPI_LIBRARY}")
 endif ()
 
 if (DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI)
+    get_filename_component(_wallet_capi_name_only "${WALLET_CAPI_LIBRARY}" NAME_WE)
     get_filename_component(_wallet_capi_ext "${WALLET_CAPI_LIBRARY}" EXT)
-    if (NOT _wallet_capi_ext STREQUAL ".a")
-        message(FATAL_ERROR
-            "DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON but WALLET_CAPI_LIBRARY is not a static archive:\n"
-            "  ${WALLET_CAPI_LIBRARY}\n"
-            "Use libwallet_capi_c.a, e.g.:\n"
-            "  -DWALLET_CAPI_LIBRARY=<repo>/build-linux-wallet-capi/src/libwallet_capi_c.a")
+
+    if (WIN32)
+        # On Windows, static and import libraries both use .lib.
+        # Enforce static backend by requiring wallet_capi_c naming.
+        if (NOT _wallet_capi_ext STREQUAL ".lib" OR NOT _wallet_capi_name_only MATCHES "wallet_capi_c$")
+            message(FATAL_ERROR
+                "DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON expects static wallet_capi_c.lib on Windows:\n"
+                "  ${WALLET_CAPI_LIBRARY}\n"
+                "Use -DWALLET_CAPI_LIBRARY=<repo>/build-.../src/wallet_capi_c.lib")
+        endif ()
+    else ()
+        if (NOT _wallet_capi_ext STREQUAL ".a")
+            message(FATAL_ERROR
+                "DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON but WALLET_CAPI_LIBRARY is not a static archive:\n"
+                "  ${WALLET_CAPI_LIBRARY}\n"
+                "Use libwallet_capi_c.a, e.g.:\n"
+                "  -DWALLET_CAPI_LIBRARY=<repo>/build-linux-wallet-capi/src/libwallet_capi_c.a")
+        endif ()
     endif ()
 endif ()
 
