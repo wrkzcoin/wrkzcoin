@@ -46,8 +46,6 @@ class RpcServer
         const uint32_t rpcMaxGlobalIndexesRange,
         const uint32_t rpcMaxBlockCount,
         const bool rpcTrustProxy,
-        const std::string feeAddress,
-        const uint64_t feeAmount,
         const RpcMode rpcMode,
         const std::shared_ptr<CryptoNote::Core> core,
         const std::shared_ptr<CryptoNote::NodeServer> p2p,
@@ -116,9 +114,6 @@ class RpcServer
 
     std::tuple<Error, uint16_t>
         info(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
-
-    std::tuple<Error, uint16_t>
-        fee(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
     std::tuple<Error, uint16_t>
         height(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
@@ -233,12 +228,6 @@ class RpcServer
 
     /* The thread running the server */
     std::thread m_serverThread;
-
-    /* The address to return from the /fee endpoint */
-    const std::string m_feeAddress;
-
-    /* The amount to return from the /fee endpoint */
-    const uint64_t m_feeAmount;
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;

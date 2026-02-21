@@ -596,8 +596,6 @@ int main(int argc, char *argv[])
             config.rpcMaxGlobalIndexesRange,
             config.rpcMaxBlockCount,
             config.rpcTrustProxy,
-            config.feeAddress,
-            config.feeAmount,
             rpcMode,
             ccore,
             p2psrv,

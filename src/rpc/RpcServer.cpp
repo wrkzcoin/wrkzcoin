@@ -33,8 +33,6 @@ RpcServer::RpcServer(
     const uint32_t rpcMaxGlobalIndexesRange,
     const uint32_t rpcMaxBlockCount,
     const bool rpcTrustProxy,
-    const std::string feeAddress,
-    const uint64_t feeAmount,
     const RpcMode rpcMode,
     const std::shared_ptr<CryptoNote::Core> core,
     const std::shared_ptr<CryptoNote::NodeServer> p2p,
@@ -50,24 +48,11 @@ RpcServer::RpcServer(
     m_rpcMaxGlobalIndexesRange(std::max<uint32_t>(100, rpcMaxGlobalIndexesRange)),
     m_rpcMaxBlockCount(std::max<uint32_t>(1, rpcMaxBlockCount)),
     m_rpcTrustProxy(rpcTrustProxy),
-    m_feeAddress(feeAddress),
-    m_feeAmount(feeAmount),
     m_rpcMode(rpcMode),
     m_core(core),
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
-    if (m_feeAddress != "")
-    {
-        Error error = validateAddresses({m_feeAddress}, false);
-
-        if (error != SUCCESS)
-        {
-            std::cout << WarningMsg("Fee address given is not valid: " + error.getErrorMessage()) << std::endl;
-            exit(1);
-        }
-    }
-
     const bool bodyRequired = true;
     const bool bodyNotRequired = false;
 
@@ -156,7 +141,6 @@ RpcServer::RpcServer(
     /* Note: /json_rpc is exposed on both GET and POST */
     m_server.Get("/json_rpc", jsonRpc)
             .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-            .Get("/fee", router(&RpcServer::fee, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
@@ -654,32 +638,6 @@ std::tuple<Error, uint16_t> RpcServer::info(
 
     writer.Key("start_time");
     writer.Uint64(m_core->getStartTime());
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
-
-    return {SUCCESS, 200};
-}
-
-std::tuple<Error, uint16_t> RpcServer::fee(
-    const httplib::Request &req,
-    httplib::Response &res,
-    const rapidjson::Document &body)
-{
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("address");
-    writer.String(m_feeAddress);
-
-    writer.Key("amount");
-    writer.Uint64(m_feeAmount);
-
-    writer.Key("status");
-    writer.String("OK");
 
     writer.EndObject();
 

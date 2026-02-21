@@ -12,7 +12,6 @@
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
-#include <errors/ValidateParameters.h>
 #include <utilities/Utilities.h>
 #include <version.h>
 
@@ -261,12 +260,8 @@ void Nigel::init()
 {
     m_shouldStop = false;
 
-    /* Get the initial daemon info, and the initial fee info before returning.
-       This way the info is always valid, and there's no race on accessing
-       the fee info or something */
+    /* Get initial daemon info before returning so the status is valid. */
     getDaemonInfo();
-
-    getFeeInfo();
 
     /* Now launch the background thread to constantly update the heights etc */
     m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
@@ -313,39 +308,6 @@ bool Nigel::getDaemonInfo()
         if (j.find("isCacheApi") != j.end())
         {
             m_isBlockchainCache = j.at("isCacheApi").get<bool>();
-        }
-
-        return true;
-    });
-
-    return parsedResponse.has_value();
-}
-
-bool Nigel::getFeeInfo()
-{
-    Logger::logger.log("Fetching fee info", Logger::DEBUG, {Logger::DAEMON});
-
-    Logger::logger.log(
-        "Sending /fee request to daemon",
-        Logger::TRACE,
-        { Logger::SYNC, Logger::DAEMON }
-    );
-
-    auto res = m_nodeClient->Get("/fee", m_requestHeaders);
-
-    const auto parsedResponse = tryParseJSONResponse(res, "Failed to update fee info", [this](const nlohmann::json j) {
-        std::string tmpAddress = j.at("address").get<std::string>();
-
-        uint32_t tmpFee = j.at("amount").get<uint32_t>();
-
-        const bool integratedAddressesAllowed = false;
-
-        Error error = validateAddresses({tmpAddress}, integratedAddressesAllowed);
-
-        if (!error)
-        {
-            m_nodeFeeAddress = tmpAddress;
-            m_nodeFeeAmount = tmpFee;
         }
 
         return true;

@@ -69,7 +69,7 @@ std::string Error::getErrorMessage() const
         {
             return "Not enough unlocked funds were found to cover this "
                    "transaction in the subwallets specified (or all wallets, "
-                   "if not specified). (Sum of amounts + fee + node fee)";
+                   "if not specified). (Sum of amounts + fee)";
         }
         case ADDRESS_WRONG_LENGTH:
         {

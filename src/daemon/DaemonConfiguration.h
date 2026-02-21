@@ -90,8 +90,6 @@ namespace DaemonConfig
 
         std::string logFile;
 
-        std::string feeAddress;
-
         std::string rpcInterface;
 
         std::string p2pInterface;
@@ -109,8 +107,6 @@ namespace DaemonConfig
         std::string enableCors;
 
         int logLevel;
-
-        int feeAmount;
 
         int rpcPort;
 

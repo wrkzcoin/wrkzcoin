@@ -168,14 +168,6 @@ namespace DaemonConfig
             "specified as the domain. Use * for all.",
             cxxopts::value<std::string>(),
             "<domain>")(
-            "fee-address",
-            "Sets the convenience charge <address> for light wallets that use the daemon",
-            cxxopts::value<std::string>(),
-            "<address>")(
-            "fee-amount",
-            "Sets the convenience charge amount for light wallets that use the daemon",
-            cxxopts::value<int>()->default_value("0"),
-            "#")(
             "rpc-access-token",
             "Require this token in RPC header X-API-Key (or Authorization: Bearer <token>)",
             cxxopts::value<std::string>()->default_value(config.rpcAccessToken),
@@ -571,16 +563,6 @@ namespace DaemonConfig
                 config.enableCors = cli["enable-cors"].as<std::string>();
             }
 
-            if (cli.count("fee-address") > 0)
-            {
-                config.feeAddress = cli["fee-address"].as<std::string>();
-            }
-
-            if (cli.count("fee-amount") > 0)
-            {
-                config.feeAmount = cli["fee-amount"].as<int>();
-            }
-
             if (cli.count("rpc-access-token") > 0)
             {
                 config.rpcAccessToken = cli["rpc-access-token"].as<std::string>();
@@ -966,20 +948,13 @@ namespace DaemonConfig
                 }
                 else if (cfgKey.compare("fee-address") == 0)
                 {
-                    config.feeAddress = cfgValue;
+                    /* Deprecated: accepted for backward compatibility, ignored. */
                     updated = true;
                 }
                 else if (cfgKey.compare("fee-amount") == 0)
                 {
-                    try
-                    {
-                        config.feeAmount = std::stoi(cfgValue);
-                        updated = true;
-                    }
-                    catch (std::exception &e)
-                    {
-                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
-                    }
+                    /* Deprecated: accepted for backward compatibility, ignored. */
+                    updated = true;
                 }
                 else if (cfgKey.compare("rpc-access-token") == 0)
                 {
@@ -1412,12 +1387,12 @@ namespace DaemonConfig
 
         if (j.HasMember("fee-address"))
         {
-            config.feeAddress = j["fee-address"].GetString();
+            /* Deprecated: accepted for backward compatibility, ignored. */
         }
 
         if (j.HasMember("fee-amount"))
         {
-            config.feeAmount = j["fee-amount"].GetInt();
+            /* Deprecated: accepted for backward compatibility, ignored. */
         }
 
         if (j.HasMember("rpc-access-token"))
@@ -1604,8 +1579,6 @@ namespace DaemonConfig
 
         j.AddMember("enable-cors", config.enableCors, alloc);
         j.AddMember("daemon-mode", Value().SetString(StringRef(config.daemonMode.c_str())), alloc);
-        j.AddMember("fee-address", config.feeAddress, alloc);
-        j.AddMember("fee-amount", config.feeAmount, alloc);
         j.AddMember("rpc-access-token", config.rpcAccessToken, alloc);
         j.AddMember("rpc-read-timeout", config.rpcReadTimeout, alloc);
         j.AddMember("rpc-write-timeout", config.rpcWriteTimeout, alloc);
