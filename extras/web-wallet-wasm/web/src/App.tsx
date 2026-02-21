@@ -335,6 +335,7 @@ export function App(): JSX.Element {
     lastDeltaSeconds: 0
   });
   const lastSyncRef = useRef<{ syncedHeight: number; updatedAt: number; walletId: string } | null>(null);
+  const bootstrapDoneRef = useRef<boolean>(false);
 
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
@@ -580,16 +581,62 @@ export function App(): JSX.Element {
   }, [nodes, defaultNodeId, isSecurePage, directRpcEngine]);
 
   useEffect(() => {
-    Promise.all([
-      directRpcEngine.getStatus().catch(() => ({ running: false } as RpcEngineStatus)),
-      directRpcEngine.getSummary().catch(() => null),
-      directRpcEngine.getProfile().catch(() => null),
-      directRpcEngine.getCursor().catch(() => null),
-      directRpcEngine.getSyncStats().catch(() => null),
-      directRpcEngine.getNodeScores().catch(() => [] as NodeScore[]),
-      directRpcEngine.getHistory(30).catch(() => [] as ScannedHeaderEntry[]),
-      directRpcEngine.getTransactionHistory(40).catch(() => [] as WalletTxHistoryEntry[])
-    ]).then(([status, summary, profile, cursor, stats, scores, history, txs]) => {
+    if (bootstrapDoneRef.current) {
+      return;
+    }
+    if (nodes.length === 0) {
+      return;
+    }
+    bootstrapDoneRef.current = true;
+    let cancelled = false;
+    const bootstrap = async (): Promise<void> => {
+      const [savedStatus, savedProfile] = await Promise.all([
+        directRpcEngine.getStatus().catch(() => ({ running: false } as RpcEngineStatus)),
+        directRpcEngine.getProfile().catch(() => null)
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (savedStatus.running && savedProfile?.walletId) {
+        const eligibleNodes = nodes.filter((node) => (isSecurePage ? node.ssl : true));
+        const resumeNode =
+          eligibleNodes.find((node) => node.id === savedStatus.nodeId) ??
+          eligibleNodes.find((node) => node.id === defaultNodeId) ??
+          eligibleNodes[0];
+        if (resumeNode) {
+          try {
+            await directRpcEngine.start(savedProfile.walletId, toRpcNode(resumeNode));
+            if (!cancelled) {
+              setOutput(`Session auto-resumed on ${buildNodeHttpUrl(resumeNode)}.`);
+            }
+          } catch (error) {
+            await directRpcEngine.stop().catch(() => undefined);
+            if (!cancelled) {
+              setOutput(`Auto-resume failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+        } else if (!cancelled) {
+          setOutput("Auto-resume skipped: no eligible node available.");
+        }
+      }
+
+      const [status, summary, profile, cursor, stats, scores, history, txs] = await Promise.all([
+        directRpcEngine.getStatus().catch(() => ({ running: false } as RpcEngineStatus)),
+        directRpcEngine.getSummary().catch(() => null),
+        directRpcEngine.getProfile().catch(() => null),
+        directRpcEngine.getCursor().catch(() => null),
+        directRpcEngine.getSyncStats().catch(() => null),
+        directRpcEngine.getNodeScores().catch(() => [] as NodeScore[]),
+        directRpcEngine.getHistory(30).catch(() => [] as ScannedHeaderEntry[]),
+        directRpcEngine.getTransactionHistory(40).catch(() => [] as WalletTxHistoryEntry[])
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
       setDirectStatus(status);
       setDirectSummary(summary);
       setDirectProfile(profile);
@@ -599,8 +646,18 @@ export function App(): JSX.Element {
       setScanHistory(history);
       setTxHistory(txs);
       setDirectWalletId(status.running && profile?.walletId ? profile.walletId : null);
+    };
+
+    bootstrap().catch((error) => {
+      if (!cancelled) {
+        setOutput(`Startup failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     });
-  }, [directRpcEngine]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [directRpcEngine, nodes, defaultNodeId, isSecurePage]);
 
   useEffect(() => {
     if (!selectedNode) {
