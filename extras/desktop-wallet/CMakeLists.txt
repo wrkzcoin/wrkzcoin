@@ -8,6 +8,8 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+option(DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI "Require static libwallet_capi_c.a backend linkage" ON)
+
 find_package(Qt6 REQUIRED COMPONENTS Gui Qml Concurrent)
 
 set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
@@ -49,6 +51,17 @@ if (NOT EXISTS "${WALLET_CAPI_LIBRARY}")
         "  -DWALLET_CAPI_LIBRARY=<repo>/build-linux-wallet-capi/src/libwallet_capi_c.a\n"
         "If you need shared, build with:\n"
         "  WALLET_LIB_KIND=both bash scripts/build-linux-wallet-lib.sh")
+endif ()
+
+if (DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI)
+    get_filename_component(_wallet_capi_ext "${WALLET_CAPI_LIBRARY}" EXT)
+    if (NOT _wallet_capi_ext STREQUAL ".a")
+        message(FATAL_ERROR
+            "DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON but WALLET_CAPI_LIBRARY is not a static archive:\n"
+            "  ${WALLET_CAPI_LIBRARY}\n"
+            "Use libwallet_capi_c.a, e.g.:\n"
+            "  -DWALLET_CAPI_LIBRARY=<repo>/build-linux-wallet-capi/src/libwallet_capi_c.a")
+    endif ()
 endif ()
 
 if (COMMAND qt_standard_project_setup)

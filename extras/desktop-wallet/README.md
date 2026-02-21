@@ -49,6 +49,7 @@ WALLET_LIB_KIND=both bash scripts/build-linux-wallet-lib.sh
 
 # Configure desktop-wallet
 cmake -S extras/desktop-wallet -B build-desktop-wallet \
+  -DDESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON \
   -DWALLET_CAPI_INCLUDE_DIR="$PWD/include" \
   -DWALLET_CAPI_LIBRARY="$PWD/build-linux-wallet-capi/src/libwallet_capi_c.a"
 
@@ -62,12 +63,15 @@ Static-link note:
   automatically pull additional static archives from the same wallet build tree
   (for example `build-linux-wallet-capi/src` and `build-linux-wallet-capi/external`)
   so unresolved backend symbols are linked.
+- `DESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI` defaults to `ON`. Set it `OFF`
+  only if you intentionally want to link against a shared `libwallet_capi.so`.
 
 If CMake still cannot find Qt6, pass `Qt6_DIR` (or `CMAKE_PREFIX_PATH`) explicitly:
 
 ```bash
 cmake -S extras/desktop-wallet -B build-desktop-wallet \
   -DQt6_DIR=/path/to/Qt/6.x.x/gcc_64/lib/cmake/Qt6 \
+  -DDESKTOP_WALLET_REQUIRE_STATIC_WALLET_CAPI=ON \
   -DWALLET_CAPI_INCLUDE_DIR="$PWD/include" \
   -DWALLET_CAPI_LIBRARY="$PWD/build-linux-wallet-capi/src/libwallet_capi_c.a"
 ```
