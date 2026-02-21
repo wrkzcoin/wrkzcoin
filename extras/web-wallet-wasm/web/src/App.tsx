@@ -1399,22 +1399,6 @@ export function App(): JSX.Element {
     }
   };
 
-  const fetchJsonRpcMethod = async (method: string): Promise<Record<string, unknown> | null> => {
-    if (!selectedNode) {
-      return null;
-    }
-    const response = await fetch(`${buildNodeHttpUrl(selectedNode)}/json_rpc`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: "0", method })
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const parsed = (await response.json()) as { result?: Record<string, unknown> };
-    return parsed.result ?? null;
-  };
-
   const runTransferPreflight = async (): Promise<{
     recipient: string;
     paymentId: string;
@@ -1457,37 +1441,23 @@ export function App(): JSX.Element {
     }
 
     let networkFeeAtomic = 0n;
-    if (useDynamicFee) {
-      try {
-        const estimated = await directRpcEngine.estimateBasicTransferFee({
-          destination: transferAddress.trim(),
-          amountAtomic: amountAtomic.toString(),
-          paymentId,
-          filenameHint: walletFilename
-        });
-        networkFeeAtomic = BigInt(estimated.feeAtomic);
-      } catch {
-        // Fall back to daemon fee endpoints below.
-      }
+    try {
+      const estimated = await directRpcEngine.estimateBasicTransferFee({
+        destination: transferAddress.trim(),
+        amountAtomic: amountAtomic.toString(),
+        paymentId,
+        filenameHint: walletFilename
+      });
+      networkFeeAtomic = BigInt(estimated.feeAtomic);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      setOutput(`Unable to prepare transfer fee: ${reason}`);
+      return null;
+    }
 
-      if (networkFeeAtomic <= 0n) {
-      const dynamicMethods = ["getfeeinfo", "get_fee_info", "feeinfo"];
-      for (const method of dynamicMethods) {
-        try {
-          const result = await fetchJsonRpcMethod(method);
-          if (!result) {
-            continue;
-          }
-          const candidate = result.fee ?? result.minimumFee ?? result.minFee ?? result.defaultFee;
-          if (candidate !== undefined) {
-            networkFeeAtomic = BigInt(String(candidate));
-            break;
-          }
-        } catch {
-          continue;
-        }
-      }
-      }
+    if (networkFeeAtomic <= 0n) {
+      setOutput("Unable to prepare transfer fee: wallet returned zero estimated fee.");
+      return null;
     }
 
     const totalAtomic = amountAtomic + networkFeeAtomic + nodeFeeAtomic;
@@ -1500,30 +1470,6 @@ export function App(): JSX.Element {
     }
     const recipient = transferAddress.trim();
     return { recipient, paymentId, amountAtomic, networkFeeAtomic, nodeFeeAtomic, nodeFeeAddress, totalAtomic };
-  };
-
-  const onReviewTransfer = async (): Promise<void> => {
-    const preflight = await runTransferPreflight();
-    if (!preflight) {
-      return;
-    }
-    const confirmed = window.confirm(
-      [
-        "Confirm transfer:",
-        `Recipient: ${preflight.recipient}`,
-        `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Node fee: ${formatAtomicAmount(preflight.nodeFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}${preflight.nodeFeeAddress ? ` (${preflight.nodeFeeAddress})` : ""}`,
-        `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        ""
-      ].join("\n")
-    );
-    if (!confirmed) {
-      setOutput("Transfer cancelled by user.");
-      return;
-    }
-
-    setOutput("Transfer preflight confirmed. Ready to submit.");
   };
 
   const onSubmitTransfer = async (): Promise<void> => {
@@ -2253,11 +2199,10 @@ export function App(): JSX.Element {
                   <label className="field-label">Payment ID (optional)</label>
                   <input type="text" value={transferPaymentId} onChange={(e) => setTransferPaymentId(e.target.value)} />
                   <p className="muted">
-                    Automatic fee preflight is enabled. You must confirm recipient, amount, network fee and node fee before submit.
+                    Transfer will run automatic preflight, then ask for confirmation before sending.
                   </p>
                   <div className="actions">
-                    <button onClick={onReviewTransfer}>Review Transfer</button>
-                    <button onClick={onSubmitTransfer}>Submit Transfer</button>
+                    <button onClick={onSubmitTransfer}>Review & Submit Transfer</button>
                   </div>
                 </section>
               ) : null}
