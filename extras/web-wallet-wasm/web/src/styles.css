@@ -463,6 +463,11 @@ select {
   overflow-wrap: anywhere;
 }
 
+.tx-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
 .tx-pager {
   margin-top: 0.7rem;
   align-items: center;

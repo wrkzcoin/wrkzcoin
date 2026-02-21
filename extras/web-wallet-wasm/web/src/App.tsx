@@ -324,6 +324,25 @@ export function App(): JSX.Element {
     const start = (txCurrentPage - 1) * TX_PAGE_SIZE;
     return filteredTxHistory.slice(start, start + TX_PAGE_SIZE);
   }, [filteredTxHistory, txCurrentPage]);
+  const formatTxType = (direction: WalletTxHistoryEntry["direction"]): string => {
+    if (direction === "incoming") {
+      return "Incoming";
+    }
+    if (direction === "outgoing") {
+      return "Outgoing";
+    }
+    return "Outgoing + Change";
+  };
+  const formatTxTime = (timestamp?: number): string => {
+    if (!timestamp || timestamp <= 0) {
+      return "-";
+    }
+    try {
+      return new Date(timestamp * 1000).toLocaleString();
+    } catch {
+      return String(timestamp);
+    }
+  };
   const receiveAddress = directProfile?.address ?? pendingBackup?.address ?? "";
   const receiveTarget = receiveIntegratedAddress || receiveAddress;
   const receiveQrSrc = receiveTarget
@@ -1935,8 +1954,12 @@ export function App(): JSX.Element {
                           <thead>
                             <tr>
                               <th>Height</th>
-                              <th>Direction</th>
-                              <th>Amount</th>
+                              <th>Time</th>
+                              <th>Type</th>
+                              <th>In</th>
+                              <th>Out</th>
+                              <th>Net</th>
+                              <th>Payment ID</th>
                               <th>Tx Hash</th>
                             </tr>
                           </thead>
@@ -1944,9 +1967,19 @@ export function App(): JSX.Element {
                             {txPageItems.map((entry) => (
                               <tr key={`${entry.txHash}-${entry.blockHeight}`}>
                                 <td>#{entry.blockHeight}</td>
-                                <td>{entry.direction}</td>
-                                <td>
+                                <td>{formatTxTime(entry.blockTimestamp)}</td>
+                                <td>{formatTxType(entry.direction)}</td>
+                                <td className="tx-num">
+                                  {formatAtomicAmount(entry.incomingAtomic, COIN_DECIMALS)} {COIN_TICKER}
+                                </td>
+                                <td className="tx-num">
+                                  {formatAtomicAmount(entry.outgoingAtomic, COIN_DECIMALS)} {COIN_TICKER}
+                                </td>
+                                <td className="tx-num">
                                   {formatAtomicAmount(entry.netAtomic, COIN_DECIMALS)} {COIN_TICKER}
+                                </td>
+                                <td>
+                                  {entry.paymentId ? <code>{entry.paymentId}</code> : <span className="node-meta">-</span>}
                                 </td>
                                 <td>
                                   <code>{entry.txHash}</code>
@@ -1976,6 +2009,10 @@ export function App(): JSX.Element {
                           Last
                         </button>
                       </div>
+                      <p className="muted">
+                        Note: Incoming = funds received, Outgoing = funds sent, Self = outgoing transaction with wallet change
+                        returned (shown as "Outgoing + Change").
+                      </p>
                     </>
                   ) : null}
                 </section>
