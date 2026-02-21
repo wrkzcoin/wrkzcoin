@@ -1,9 +1,7 @@
-const generatedModules = import.meta.glob("./generated/*.js");
-
 const PREFERRED_GENERATED_FILES = [
-  "./generated/wallet_wasm.js",
-  "./generated/wallet.js",
-  "./generated/wallet_backend.js"
+  "wallet_wasm.js",
+  "wallet.js",
+  "wallet_backend.js"
 ];
 
 function notBuiltModule(reason) {
@@ -20,30 +18,26 @@ function notBuiltModule(reason) {
 }
 
 async function resolveFactory() {
-  for (const key of PREFERRED_GENERATED_FILES) {
-    const loader = generatedModules[key];
-    if (!loader) {
-      continue;
-    }
-
-    const mod = await loader();
-    if (typeof mod.default === "function") {
-      return mod.default;
-    }
-  }
-
-  for (const loader of Object.values(generatedModules)) {
-    const mod = await loader();
-    if (typeof mod.default === "function") {
-      return mod.default;
+  for (const file of PREFERRED_GENERATED_FILES) {
+    try {
+      const moduleUrl = new URL(`./generated/${file}`, import.meta.url).toString();
+      const mod = await import(/* @vite-ignore */ moduleUrl);
+      if (typeof mod.default === "function") {
+        return mod.default;
+      }
+    } catch {
+      // Try next candidate.
     }
   }
-
   return null;
 }
 
 function locateFile(path) {
   return new URL(`./generated/${path}`, import.meta.url).toString();
+}
+
+function mainScriptUrl() {
+  return new URL("./generated/wallet_wasm.js", import.meta.url).toString();
 }
 
 function websocketUrlPrefix() {
@@ -64,6 +58,7 @@ export default async function createWalletModule() {
       noInitialRun: true,
       noExitRuntime: true,
       locateFile,
+      mainScriptUrlOrBlob: mainScriptUrl(),
       websocket: {
         url: websocketUrlPrefix()
       }

@@ -13,7 +13,7 @@ import type {
   WasmResponse
 } from "./types";
 
-const WORKER_REQUEST_TIMEOUT_MS = 20000;
+const WORKER_REQUEST_TIMEOUT_MS = 120000;
 
 type InflightRequest = {
   resolve: (reply: WorkerReply) => void;
