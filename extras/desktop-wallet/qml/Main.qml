@@ -54,17 +54,30 @@ ApplicationWindow {
         }
     }
 
-    TabView {
+    ColumnLayout {
         anchors.fill: parent
 
-        Tab {
-            title: "Session"
-            ScrollView {
+        TabBar {
+            id: tabs
+            Layout.fillWidth: true
+            TabButton { text: "Session" }
+            TabButton { text: "Dashboard" }
+            TabButton { text: "Send" }
+            TabButton { text: "Node" }
+            TabButton { text: "Transactions" }
+        }
+
+        StackLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            currentIndex: tabs.currentIndex
+
+            Item {
+                ScrollView {
                 anchors.fill: parent
                 ColumnLayout {
                     width: parent.width
                     spacing: 10
-                    padding: 12
 
                     TextField { id: walletPath; placeholderText: "Wallet file path"; text: "wallet.wallet" }
                     TextField { id: walletPassword; placeholderText: "Wallet password"; echoMode: TextInput.Password }
@@ -121,16 +134,14 @@ ApplicationWindow {
                     }
                 }
             }
-        }
+            }
 
-        Tab {
-            title: "Dashboard"
-            ScrollView {
+            Item {
+                ScrollView {
                 anchors.fill: parent
                 ColumnLayout {
                     width: parent.width
                     spacing: 10
-                    padding: 12
 
                     RowLayout {
                         Button { text: "Refresh"; onClicked: walletBridge.refresh() }
@@ -162,16 +173,14 @@ ApplicationWindow {
                     }
                 }
             }
-        }
+            }
 
-        Tab {
-            title: "Send"
-            ScrollView {
+            Item {
+                ScrollView {
                 anchors.fill: parent
                 ColumnLayout {
                     width: parent.width
                     spacing: 10
-                    padding: 12
 
                     TextField { id: sendDestination; placeholderText: "Destination address"; Layout.fillWidth: true }
                     TextField { id: sendAmount; placeholderText: "Amount (atomic units)"; text: "1000" }
@@ -213,16 +222,14 @@ ApplicationWindow {
                     }
                 }
             }
-        }
+            }
 
-        Tab {
-            title: "Node"
-            ScrollView {
+            Item {
+                ScrollView {
                 anchors.fill: parent
                 ColumnLayout {
                     width: parent.width
                     spacing: 10
-                    padding: 12
 
                     TextField { id: swapHost; placeholderText: "New daemon host"; text: "127.0.0.1" }
                     SpinBox { id: swapPort; from: 1; to: 65535; value: 11898 }
@@ -242,16 +249,14 @@ ApplicationWindow {
                     }
                 }
             }
-        }
+            }
 
-        Tab {
-            title: "Transactions"
-            ScrollView {
+            Item {
+                ScrollView {
                 anchors.fill: parent
                 ColumnLayout {
                     width: parent.width
                     spacing: 10
-                    padding: 12
 
                     RowLayout {
                         Button { text: "Refresh TX"; onClicked: walletBridge.refresh() }
@@ -265,6 +270,7 @@ ApplicationWindow {
                         Layout.preferredHeight: 600
                     }
                 }
+            }
             }
         }
     }

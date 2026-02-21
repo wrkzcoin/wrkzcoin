@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick Qml QuickControls2 Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Gui Qml Concurrent)
 
 set(REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 set(WALLET_CAPI_INCLUDE_DIR "${WALLET_CAPI_INCLUDE_DIR}" CACHE PATH
@@ -41,7 +41,19 @@ if (NOT WALLET_CAPI_LIBRARY)
         "Set -DWALLET_CAPI_LIBRARY=/path/to/libwallet_capi.so (or static/import lib).")
 endif ()
 
-qt_standard_project_setup()
+if (NOT EXISTS "${WALLET_CAPI_LIBRARY}")
+    message(FATAL_ERROR
+        "WALLET_CAPI_LIBRARY path does not exist:\n"
+        "  ${WALLET_CAPI_LIBRARY}\n"
+        "If you built static-only wallet lib, use:\n"
+        "  -DWALLET_CAPI_LIBRARY=<repo>/build-linux-wallet-capi/src/libwallet_capi_c.a\n"
+        "If you need shared, build with:\n"
+        "  WALLET_LIB_KIND=both bash scripts/build-linux-wallet-lib.sh")
+endif ()
+
+if (COMMAND qt_standard_project_setup)
+    qt_standard_project_setup()
+endif ()
 
 qt_add_executable(gui_wallet
     src/main.cpp
@@ -61,12 +73,46 @@ target_include_directories(gui_wallet PRIVATE
 )
 
 target_link_libraries(gui_wallet PRIVATE
-    Qt6::Quick
+    Qt6::Gui
     Qt6::Qml
-    Qt6::QuickControls2
     Qt6::Concurrent
-    "${WALLET_CAPI_LIBRARY}"
 )
+
+set(_wallet_capi_name "${WALLET_CAPI_LIBRARY}")
+get_filename_component(_wallet_capi_name "${_wallet_capi_name}" NAME)
+
+if (UNIX AND NOT APPLE AND _wallet_capi_name MATCHES "libwallet_capi_c\\.a$")
+    # Static wallet_capi_c is not a monolithic archive; pull transitive static
+    # deps from the same wallet build tree and link as one group.
+    get_filename_component(_wallet_build_src_dir "${WALLET_CAPI_LIBRARY}" DIRECTORY)
+    get_filename_component(_wallet_build_root "${_wallet_build_src_dir}" DIRECTORY)
+
+    file(GLOB_RECURSE _wallet_dep_archives
+        "${_wallet_build_root}/src/lib*.a"
+        "${_wallet_build_root}/external/*.a"
+        "${_wallet_build_root}/external/*/*.a"
+        "${_wallet_build_root}/external/*/*/*.a"
+    )
+
+    list(FILTER _wallet_dep_archives EXCLUDE REGEX ".*/CMakeFiles/.*")
+
+    # Keep provided wallet_capi archive first in the group.
+    list(REMOVE_ITEM _wallet_dep_archives "${WALLET_CAPI_LIBRARY}")
+    list(INSERT _wallet_dep_archives 0 "${WALLET_CAPI_LIBRARY}")
+
+    target_link_libraries(gui_wallet PRIVATE
+        "-Wl,--start-group"
+        ${_wallet_dep_archives}
+        "-Wl,--end-group"
+        ssl
+        crypto
+        dl
+        pthread
+        m
+    )
+else ()
+    target_link_libraries(gui_wallet PRIVATE "${WALLET_CAPI_LIBRARY}")
+endif ()
 
 if (WIN32)
     set_target_properties(gui_wallet PROPERTIES WIN32_EXECUTABLE ON)

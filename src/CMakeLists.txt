@@ -17,6 +17,12 @@ if (DEFINED Boost_INCLUDE_DIRS AND NOT "${Boost_INCLUDE_DIRS}" STREQUAL "")
     include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 endif ()
 
+# wallet_capi shared target links many internal static libraries. Ensure they
+# are built with PIC so shared linking succeeds on ELF/Mach-O platforms.
+if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif ()
+
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
 # can find the new file
@@ -91,6 +97,19 @@ add_library(wallet_core ALIAS WalletBackend)
 if (WRKZ_BUILD_WALLET_CAPI)
     add_library(wallet_capi_c STATIC ${WalletCAPI})
     add_library(wallet_capi SHARED ${WalletCAPI})
+endif ()
+
+if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
+    set(_WRKZ_WALLET_CAPI_DEPS
+        Common Config Crypto CryptoNoteCore Errors Http JsonRpcServer Logging
+        Logger Mnemonics Nigel NodeRpcProxy P2P Rpc Serialization SubWallets
+        System Transfers Utilities Wallet WalletBackend
+    )
+    foreach(_t IN LISTS _WRKZ_WALLET_CAPI_DEPS)
+        if (TARGET ${_t})
+            set_target_properties(${_t} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif ()
+    endforeach ()
 endif ()
 
 # slow-hash-x86.c uses AES intrinsics and requires -maes when built on x86/x86_64.
