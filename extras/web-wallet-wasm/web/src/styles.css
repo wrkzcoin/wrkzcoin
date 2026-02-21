@@ -1,32 +1,67 @@
 :root {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #111827;
-  background: #f5f7fb;
+  --bg: #f5f7fb;
+  --text: #111827;
+  --panel-bg: #ffffff;
+  --border: #dbe2ee;
+  --input-border: #c5d2e7;
+  --button-bg: #0f766e;
+  --button-bg-active: #0b4b46;
+  --button-danger: #b91c1c;
+  --pre-bg: #0b1020;
+  --pre-text: #d1e3ff;
+  --muted: #4b5563;
+  color: var(--text);
+  background: var(--bg);
+}
+
+[data-theme="dark"] {
+  --bg: #0f172a;
+  --text: #e5e7eb;
+  --panel-bg: #111827;
+  --border: #334155;
+  --input-border: #475569;
+  --button-bg: #0f766e;
+  --button-bg-active: #0d5f59;
+  --button-danger: #dc2626;
+  --pre-bg: #020617;
+  --pre-text: #dbeafe;
+  --muted: #9ca3af;
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 .container {
-  max-width: 860px;
+  max-width: 980px;
   margin: 2rem auto;
-  padding: 1rem;
+  padding: 1rem 1rem 2rem;
 }
 
 button {
   border: 0;
   border-radius: 8px;
-  background: #0f766e;
+  background: var(--button-bg);
   color: #ffffff;
   padding: 0.6rem 1rem;
   cursor: pointer;
 }
 
+button.danger {
+  background: var(--button-danger);
+}
+
+button.active {
+  background: var(--button-bg-active);
+}
+
 pre {
   margin-top: 1rem;
-  background: #0b1020;
-  color: #d1e3ff;
+  background: var(--pre-bg);
+  color: var(--pre-text);
   border-radius: 8px;
   padding: 1rem;
   overflow: auto;
@@ -35,23 +70,112 @@ pre {
 .panel {
   margin-top: 1rem;
   padding: 1rem;
-  border: 1px solid #dbe2ee;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--panel-bg);
 }
 
-input {
+input,
+select {
   display: block;
   width: 100%;
   max-width: 420px;
   margin-bottom: 0.7rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid #c5d2e7;
+  border: 1px solid var(--input-border);
   border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.92rem;
 }
 
 .actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.node-inputs {
+  display: flex;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.node-inputs input[type="text"] {
+  min-width: 260px;
+}
+
+.node-inputs input[type="number"] {
+  width: 120px;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+}
+
+.checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.node-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.node-meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 768px) {
+  .container {
+    margin: 1rem auto;
+    padding: 0.8rem 0.8rem 1.5rem;
+  }
+
+  .panel {
+    padding: 0.8rem;
+  }
+
+  input,
+  select,
+  .node-inputs input[type="text"],
+  .node-inputs input[type="number"] {
+    max-width: none;
+    width: 100%;
+  }
+
+  .actions button,
+  .node-inputs button {
+    width: 100%;
+  }
+
+  .node-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

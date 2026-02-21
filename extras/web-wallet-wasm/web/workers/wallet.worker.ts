@@ -1,5 +1,5 @@
 import type { WorkerCommand, WorkerReply } from "../src/wallet/workerMessages";
-import { deleteSecret, getSecret, initializeVault, isVaultUnlocked, lockVault, putSecret } from "./encryptedVault";
+import { deleteSecret, getSecret, initializeVault, isVaultUnlocked, lockVault, putSecret, resetVault } from "./encryptedVault";
 
 interface WasmModuleLike {
   ccall: (ident: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
@@ -47,6 +47,9 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>): Promise<void> => {
     } else if (msg.command === "vaultLock") {
       lockVault();
       result = { locked: true };
+    } else if (msg.command === "vaultReset") {
+      await resetVault();
+      result = { reset: true };
     } else {
       const payload = "payload" in msg ? msg.payload : {};
       result = await invoke(msg.command, payload as Record<string, unknown>);

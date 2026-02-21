@@ -45,6 +45,10 @@ export class WalletWorkerClient {
     return this.send({ id: crypto.randomUUID(), command: "vaultLock" });
   }
 
+  public async vaultReset(): Promise<unknown> {
+    return this.send({ id: crypto.randomUUID(), command: "vaultReset" });
+  }
+
   private async send(message: WorkerCommand): Promise<unknown> {
     const reply = await new Promise<WorkerReply>((resolve) => {
       this.inflight.set(message.id, resolve);

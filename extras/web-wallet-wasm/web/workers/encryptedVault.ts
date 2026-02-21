@@ -182,6 +182,16 @@ export function lockVault(): void {
   session = null;
 }
 
+export async function resetVault(): Promise<void> {
+  session = null;
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error("indexeddb_delete_database_failed"));
+    request.onblocked = () => reject(new Error("indexeddb_delete_database_blocked"));
+  });
+}
+
 export async function putSecret(secretKey: string, secretValue: string): Promise<void> {
   if (!session) {
     throw new Error("vault_locked");

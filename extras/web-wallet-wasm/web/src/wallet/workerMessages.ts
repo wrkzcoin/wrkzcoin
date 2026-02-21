@@ -10,7 +10,8 @@ export type WorkerCommand =
   | { id: string; command: "vaultPut"; payload: { key: string; value: string } }
   | { id: string; command: "vaultGet"; payload: { key: string } }
   | { id: string; command: "vaultDelete"; payload: { key: string } }
-  | { id: string; command: "vaultLock" };
+  | { id: string; command: "vaultLock" }
+  | { id: string; command: "vaultReset" };
 
 export interface WorkerReply {
   id: string;
