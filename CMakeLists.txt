@@ -612,6 +612,21 @@ if (ENABLE_ZMQ)
 endif ()
 
 add_subdirectory(external)
+
+# Emscripten pthread builds require every linked object to be compiled with
+# atomics/bulk-memory support, including external static libraries.
+if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
+    foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
+        if (TARGET ${_wrkz_pthread_target})
+            target_compile_options(${_wrkz_pthread_target} PRIVATE
+                -pthread
+                -matomics
+                -mbulk-memory
+            )
+        endif ()
+    endforeach ()
+endif ()
+
 add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
