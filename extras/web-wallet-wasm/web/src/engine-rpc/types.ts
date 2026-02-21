@@ -163,11 +163,12 @@ export interface DirectRpcEngine {
   generateScanKeys(): Promise<{ privateSpendKey: string; privateViewKey: string; mnemonicSeed: string; address: string }>;
   deriveAddressFromKeys(privateSpendKey: string, privateViewKey: string): Promise<string>;
   validateAddress(address: string, allowIntegrated?: boolean): Promise<{ valid: boolean; reason?: string }>;
-  createIntegratedAddress(address: string, paymentId: string): Promise<string>;
+  createIntegratedAddress(address: string, paymentId: string): Promise<{ integratedAddress: string; error?: string }>;
   clearScanKeys(): Promise<void>;
   initVault(password: string): Promise<void>;
   lockVault(): Promise<void>;
   setProfile(profile: DirectRpcSessionProfile): Promise<void>;
   clearProfile(): Promise<void>;
   getProfile(): Promise<DirectRpcSessionProfile | null>;
+  resetScanFromHeight(height: number, timestamp?: number): Promise<void>;
 }

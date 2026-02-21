@@ -178,4 +178,12 @@ export class RpcEngineStorage {
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TX_HISTORY_KEY);
   }
+
+  public async clearSyncArtifacts(): Promise<void> {
+    localStorage.removeItem(CURSOR_KEY);
+    localStorage.removeItem(SUMMARY_KEY);
+    localStorage.removeItem(STATS_KEY);
+    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(TX_HISTORY_KEY);
+  }
 }

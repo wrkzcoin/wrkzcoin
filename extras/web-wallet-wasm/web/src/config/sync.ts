@@ -1,0 +1,1 @@
+export const RESCAN_HEIGHT_WARN_THRESHOLD = 1_000_000;

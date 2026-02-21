@@ -301,9 +301,11 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     return this.worker.validateAddress(address, allowIntegrated);
   }
 
-  public async createIntegratedAddress(address: string, paymentId: string): Promise<string> {
-    const result = await this.worker.createIntegratedAddress(address, paymentId);
-    return result.integratedAddress;
+  public async createIntegratedAddress(
+    address: string,
+    paymentId: string
+  ): Promise<{ integratedAddress: string; error?: string }> {
+    return this.worker.createIntegratedAddress(address, paymentId);
   }
 
   public async clearScanKeys(): Promise<void> {
@@ -344,6 +346,42 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async getProfile(): Promise<DirectRpcSessionProfile | null> {
     return this.storage.loadProfile();
+  }
+
+  public async resetScanFromHeight(height: number, timestamp = 0): Promise<void> {
+    const target = Math.max(0, Math.floor(height));
+    const ts = Math.max(0, Math.floor(timestamp));
+    const profile = await this.storage.loadProfile();
+    const walletId = this.currentWalletId ?? profile?.walletId;
+    if (!walletId) {
+      throw new Error("no_active_wallet_for_rescan");
+    }
+    await this.storage.clearSyncArtifacts();
+    if (profile && profile.walletId === walletId) {
+      await this.storage.saveProfile({
+        ...profile,
+        scanHeight: target,
+        scanTimestamp: ts
+      });
+    }
+    this.scannerResetPending = true;
+    this.scanTimestampPrimed = false;
+    await this.storage.saveCursor({
+      walletId,
+      height: target,
+      updatedAt: Date.now()
+    });
+    await this.storage.saveStatus({
+      running: this.running,
+      walletId,
+      nodeId: this.currentNodeId,
+      activeNodeEndpoint: this.currentNode ? nodeKey(this.currentNode) : undefined,
+      failoverCount: this.failoverCount,
+      message: `direct_rpc_rescan_from_${target}`
+    });
+    if (this.running) {
+      await this.pollOnce();
+    }
   }
 
   public async fetchHeight(node: RpcNode): Promise<number> {

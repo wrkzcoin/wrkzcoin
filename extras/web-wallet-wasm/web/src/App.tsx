@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DEFAULT_NODES, DEFAULT_RPC_PORT, DEFAULT_RPC_SSL } from "./config/nodes";
 import { COIN_ADDRESS_PREFIX, COIN_DECIMALS, COIN_TICKER, formatAtomicAmount } from "./config/coin";
+import { RESCAN_HEIGHT_WARN_THRESHOLD } from "./config/sync";
 import { WEB_WALLET_UI_VERSION } from "./config/version";
 import { buildNodeHttpUrl, buildNodeRpcUrl, normalizeNodeHost, type NodeEndpoint } from "./wallet/types";
 import {
@@ -55,6 +56,10 @@ type BackupState = {
   privateViewKey: string;
   address: string;
   confirmed: boolean;
+  copiedSeed: boolean;
+  copiedSpend: boolean;
+  copiedView: boolean;
+  copiedAddress: boolean;
 };
 
 function loadNodesFromStorage(): NodeEndpoint[] {
@@ -267,6 +272,8 @@ export function App(): JSX.Element {
   const [transferAddressReason, setTransferAddressReason] = useState<string>("");
   const [receivePaymentId, setReceivePaymentId] = useState<string>("");
   const [receiveIntegratedAddress, setReceiveIntegratedAddress] = useState<string>("");
+  const [backupSeedConfirmInput, setBackupSeedConfirmInput] = useState<string>("");
+  const [rescanHeightInput, setRescanHeightInput] = useState<string>("0");
 
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
@@ -614,15 +621,17 @@ export function App(): JSX.Element {
     return scanFromCoinbase ? 0 : parsed;
   };
 
-  const copyText = async (value: string, label: string, alertOnCopy = false): Promise<void> => {
+  const copyText = async (value: string, label: string, alertOnCopy = false): Promise<boolean> => {
     try {
       await navigator.clipboard.writeText(value);
       setOutput(`${label} copied to clipboard.`);
       if (alertOnCopy) {
         window.alert(`${label} copied.`);
       }
+      return true;
     } catch {
       setOutput(`Unable to copy ${label}.`);
+      return false;
     }
   };
 
@@ -663,6 +672,55 @@ export function App(): JSX.Element {
       return;
     }
     await copyText(receiveIntegratedAddress, "Integrated address", true);
+  };
+
+  const markBackupCopied = (field: "seed" | "spend" | "view" | "address"): void => {
+    setPendingBackup((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      if (field === "seed") {
+        return { ...prev, copiedSeed: true };
+      }
+      if (field === "spend") {
+        return { ...prev, copiedSpend: true };
+      }
+      if (field === "view") {
+        return { ...prev, copiedView: true };
+      }
+      return { ...prev, copiedAddress: true };
+    });
+  };
+
+  const onCopyBackupSecret = async (
+    field: "seed" | "spend" | "view" | "address",
+    value: string,
+    label: string
+  ): Promise<void> => {
+    const copied = await copyText(value, label, true);
+    if (copied) {
+      markBackupCopied(field);
+    }
+  };
+
+  const onConfirmBackupGate = (): void => {
+    if (!pendingBackup) {
+      setOutput("No pending backup data.");
+      return;
+    }
+    const copiedAll =
+      pendingBackup.copiedSeed && pendingBackup.copiedSpend && pendingBackup.copiedView && pendingBackup.copiedAddress;
+    if (!copiedAll) {
+      setOutput("Please copy address, seed, spend key and view key first.");
+      return;
+    }
+    if (normalizeSeed(backupSeedConfirmInput) !== normalizeSeed(pendingBackup.mnemonicSeed)) {
+      setOutput("Seed confirmation mismatch. Re-enter your seed to continue.");
+      return;
+    }
+    setPendingBackup({ ...pendingBackup, confirmed: true });
+    setBackupSeedConfirmInput("");
+    setOutput("Backup confirmed. Wallet session unlocked.");
   };
 
   const onConfirmImportReview = async (): Promise<void> => {
@@ -785,8 +843,13 @@ export function App(): JSX.Element {
       privateSpendKey: generated.privateSpendKey,
       privateViewKey: generated.privateViewKey,
       address: generated.address,
-      confirmed: false
+      confirmed: false,
+      copiedSeed: false,
+      copiedSpend: false,
+      copiedView: false,
+      copiedAddress: false
     });
+    setBackupSeedConfirmInput("");
     setOutput(`Wallet created. Backup step required before accessing session.`);
   };
 
@@ -1007,6 +1070,56 @@ export function App(): JSX.Element {
     setOutput(`Node scores refreshed (${scores.length} nodes).`);
   };
 
+  const onResetScanFromHeight = async (): Promise<void> => {
+    if (!hasActiveWalletSession || !directWalletId) {
+      setOutput("Open a wallet session first.");
+      return;
+    }
+    const parsed = Number(rescanHeightInput.trim());
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      setOutput("Rescan height must be a non-negative integer.");
+      return;
+    }
+    if (parsed > RESCAN_HEIGHT_WARN_THRESHOLD) {
+      const largeConfirm = window.confirm(
+        `Rescan from height ${parsed} is more than ${RESCAN_HEIGHT_WARN_THRESHOLD}. Continue?`
+      );
+      if (!largeConfirm) {
+        setOutput("Rescan cancelled.");
+        return;
+      }
+    }
+
+    const networkHeight = Number(directSummary?.daemonHeight ?? 0);
+    if (networkHeight > 0 && parsed > networkHeight) {
+      const reenter = window.confirm(
+        `Rescan height ${parsed} is beyond network height ${networkHeight}. Press OK to re-enter, or Cancel to abort.`
+      );
+      if (reenter) {
+        setOutput(`Height is beyond network height (${networkHeight}). Please re-enter height.`);
+      } else {
+        setOutput("Rescan cancelled.");
+      }
+      return;
+    }
+
+    await directRpcEngine.resetScanFromHeight(parsed, 0);
+    const status = await directRpcEngine.getStatus();
+    const summary = await directRpcEngine.getSummary();
+    const cursor = await directRpcEngine.getCursor();
+    const stats = await directRpcEngine.getSyncStats();
+    const history = await directRpcEngine.getHistory(30);
+    const txs = await directRpcEngine.getTransactionHistory(40);
+    setDirectStatus(status);
+    setDirectSummary(summary);
+    setDirectCursor(cursor);
+    setDirectSyncStats(stats);
+    setScanHistory(history);
+    setTxHistory(txs);
+    setWalletTab("overview");
+    setOutput(`Rescan reset to height ${parsed}. Sync restarted.`);
+  };
+
   const onProbeNodeLatencies = async (): Promise<void> => {
     const results = await Promise.all(
       nodes.map(async (node) => {
@@ -1026,7 +1139,11 @@ export function App(): JSX.Element {
     setOutput(`Node probe updated for ${results.length} node(s).`);
   };
 
-  const onGenerateReceivePaymentId = (): void => {
+  const onGenerateReceivePaymentIdShort = (): void => {
+    setReceivePaymentId(randomHex(16));
+  };
+
+  const onGenerateReceivePaymentIdLong = (): void => {
     setReceivePaymentId(randomHex(64));
   };
 
@@ -1041,12 +1158,12 @@ export function App(): JSX.Element {
       return;
     }
     try {
-      const integrated = await directRpcEngine.createIntegratedAddress(receiveAddress, normalizedPaymentId);
-      if (!integrated) {
-        setOutput("Unable to create integrated address.");
+      const result = await directRpcEngine.createIntegratedAddress(receiveAddress, normalizedPaymentId);
+      if (!result.integratedAddress) {
+        setOutput(result.error ? `Unable to create integrated address: ${result.error}` : "Unable to create integrated address.");
         return;
       }
-      setReceiveIntegratedAddress(integrated);
+      setReceiveIntegratedAddress(result.integratedAddress);
       setOutput("Integrated address generated.");
     } catch (error) {
       setOutput(error instanceof Error ? error.message : String(error));
@@ -1190,8 +1307,29 @@ export function App(): JSX.Element {
   };
 
   const onResetWallet = async (): Promise<void> => {
-    const confirmed = window.confirm("Reset wallet local data? This clears encrypted vault data in this browser.");
-    if (!confirmed) {
+    const firstConfirm = window.confirm("Reset wallet local data? This action is destructive and cannot be undone.");
+    if (!firstConfirm) {
+      return;
+    }
+    const secondConfirm = window.confirm(
+      "Final warning: this will delete wallet session data, encrypted vault data, and local settings in this browser. Continue?"
+    );
+    if (!secondConfirm) {
+      return;
+    }
+    const passwordPrompt = window.prompt("Enter wallet password to confirm reset:");
+    if (passwordPrompt === null) {
+      setOutput("Wallet reset cancelled.");
+      return;
+    }
+    if (authHash) {
+      const computed = await sha256Hex(`pwd:${passwordPrompt}`);
+      if (computed !== authHash) {
+        setOutput("Reset aborted: incorrect password.");
+        return;
+      }
+    } else if (passwordPrompt.trim().length === 0) {
+      setOutput("Reset aborted: password confirmation is required.");
       return;
     }
     localStorage.removeItem(SETTINGS_NODES_KEY);
@@ -1215,6 +1353,7 @@ export function App(): JSX.Element {
     setTransferPaymentId("");
     setReceivePaymentId("");
     setReceiveIntegratedAddress("");
+    setRescanHeightInput("0");
     await directRpcEngine.stop();
     await directRpcEngine.clearScanKeys();
     await directRpcEngine.lockVault();
@@ -1231,6 +1370,8 @@ export function App(): JSX.Element {
     setPendingBackup(null);
     setPendingImportReview(null);
     setWalletTab("overview");
+    setActiveView("wallet");
+    setWelcomeMode("create");
     setAuthHash("");
     setIsLocked(false);
     setLoginPassword("");
@@ -1394,28 +1535,75 @@ export function App(): JSX.Element {
               <div className="session-header">
                 <h2>Wallet Session</h2>
               </div>
-              <div className="actions tab-row">
-                <button className={walletTab === "overview" ? "active" : ""} onClick={() => setWalletTab("overview")}>
-                  <span className="menu-icon icon-overview" aria-hidden="true" />
-                  Overview
-                </button>
-                <button className={walletTab === "transactions" ? "active" : ""} onClick={() => setWalletTab("transactions")}>
-                  <span className="menu-icon icon-transactions" aria-hidden="true" />
-                  Transactions
-                </button>
-                <button className={walletTab === "transfer" ? "active" : ""} onClick={() => setWalletTab("transfer")}>
-                  <span className="menu-icon icon-transfer" aria-hidden="true" />
-                  Transfer
-                </button>
-                <button className={walletTab === "receive" ? "active" : ""} onClick={() => setWalletTab("receive")}>
-                  <span className="menu-icon icon-receive" aria-hidden="true" />
-                  Receive
-                </button>
-                <button className={walletTab === "nodes" ? "active" : ""} onClick={() => setWalletTab("nodes")}>
-                  <span className="menu-icon icon-nodes" aria-hidden="true" />
-                  Nodes
-                </button>
-              </div>
+              {pendingBackup && !pendingBackup.confirmed ? (
+                <section className="panel compact">
+                  <h3>Backup Required</h3>
+                  <p className="muted">Copy all secrets and confirm your mnemonic seed before wallet usage.</p>
+                  <label className="field-label">Address</label>
+                  <div className="address-box">
+                    <code>{pendingBackup.address}</code>
+                  </div>
+                  <div className="actions">
+                    <button onClick={() => onCopyBackupSecret("address", pendingBackup.address, "Address")}>
+                      Copy Address {pendingBackup.copiedAddress ? "✓" : ""}
+                    </button>
+                  </div>
+                  <label className="field-label">Mnemonic seed</label>
+                  <textarea className="input-area" value={pendingBackup.mnemonicSeed} readOnly />
+                  <div className="actions">
+                    <button onClick={() => onCopyBackupSecret("seed", pendingBackup.mnemonicSeed, "Mnemonic seed")}>
+                      Copy Seed {pendingBackup.copiedSeed ? "✓" : ""}
+                    </button>
+                  </div>
+                  <label className="field-label">Private spend key</label>
+                  <input type="text" value={pendingBackup.privateSpendKey} readOnly />
+                  <div className="actions">
+                    <button onClick={() => onCopyBackupSecret("spend", pendingBackup.privateSpendKey, "Private spend key")}>
+                      Copy Spend Key {pendingBackup.copiedSpend ? "✓" : ""}
+                    </button>
+                  </div>
+                  <label className="field-label">Private view key</label>
+                  <input type="text" value={pendingBackup.privateViewKey} readOnly />
+                  <div className="actions">
+                    <button onClick={() => onCopyBackupSecret("view", pendingBackup.privateViewKey, "Private view key")}>
+                      Copy View Key {pendingBackup.copiedView ? "✓" : ""}
+                    </button>
+                  </div>
+                  <label className="field-label">Confirm seed (paste full mnemonic)</label>
+                  <textarea
+                    className="input-area"
+                    value={backupSeedConfirmInput}
+                    onChange={(e) => setBackupSeedConfirmInput(e.target.value)}
+                    placeholder="Re-enter the same mnemonic seed"
+                  />
+                  <div className="actions">
+                    <button onClick={onConfirmBackupGate}>I Confirm Backup and Seed</button>
+                  </div>
+                </section>
+              ) : (
+                <>
+                  <div className="actions tab-row">
+                    <button className={walletTab === "overview" ? "active" : ""} onClick={() => setWalletTab("overview")}>
+                      <span className="menu-icon icon-overview" aria-hidden="true" />
+                      Overview
+                    </button>
+                    <button className={walletTab === "transactions" ? "active" : ""} onClick={() => setWalletTab("transactions")}>
+                      <span className="menu-icon icon-transactions" aria-hidden="true" />
+                      Transactions
+                    </button>
+                    <button className={walletTab === "transfer" ? "active" : ""} onClick={() => setWalletTab("transfer")}>
+                      <span className="menu-icon icon-transfer" aria-hidden="true" />
+                      Transfer
+                    </button>
+                    <button className={walletTab === "receive" ? "active" : ""} onClick={() => setWalletTab("receive")}>
+                      <span className="menu-icon icon-receive" aria-hidden="true" />
+                      Receive
+                    </button>
+                    <button className={walletTab === "nodes" ? "active" : ""} onClick={() => setWalletTab("nodes")}>
+                      <span className="menu-icon icon-nodes" aria-hidden="true" />
+                      Nodes
+                    </button>
+                  </div>
 
               {walletTab === "overview" ? (
                 <>
@@ -1524,7 +1712,8 @@ export function App(): JSX.Element {
                     placeholder="16 or 64 hex chars"
                   />
                   <div className="actions">
-                    <button onClick={onGenerateReceivePaymentId}>Generate Payment ID</button>
+                    <button onClick={onGenerateReceivePaymentIdShort}>Generate Short Payment ID</button>
+                    <button onClick={onGenerateReceivePaymentIdLong}>Generate Long Payment ID</button>
                     <button onClick={onBuildIntegratedAddress}>Generate Integrated Address</button>
                     <button onClick={() => setReceiveIntegratedAddress("")}>Use Standard Address</button>
                   </div>
@@ -1588,6 +1777,8 @@ export function App(): JSX.Element {
                   </ul>
                 </section>
               ) : null}
+                </>
+              )}
 
             </>
           )}
@@ -1649,6 +1840,24 @@ export function App(): JSX.Element {
                     }
                   }}
                 />
+              </>
+            ) : null}
+            {hasActiveWalletSession ? (
+              <>
+                <label className="field-label">Rescan wallet from height</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={rescanHeightInput}
+                  onChange={(e) => setRescanHeightInput(e.target.value)}
+                />
+                <p>
+                  If height is above {RESCAN_HEIGHT_WARN_THRESHOLD}, confirmation will be required. Network height:{" "}
+                  {directSummary?.daemonHeight ?? "unknown"}.
+                </p>
+                <div className="actions">
+                  <button onClick={onResetScanFromHeight}>Reset Scan Height</button>
+                </div>
               </>
             ) : null}
             <div className="actions">

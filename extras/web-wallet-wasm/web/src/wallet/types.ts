@@ -118,4 +118,5 @@ export interface AddressValidationResult {
 
 export interface IntegratedAddressResult {
   integratedAddress: string;
+  error?: string;
 }
