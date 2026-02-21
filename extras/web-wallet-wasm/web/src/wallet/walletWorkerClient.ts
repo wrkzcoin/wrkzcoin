@@ -196,7 +196,7 @@ export class WalletWorkerClient {
     const reply = await new Promise<WorkerReply>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.inflight.delete(message.id);
-        reject(new Error(`Worker command timed out after ${WORKER_REQUEST_TIMEOUT_MS}ms`));
+        reject(new Error(`Worker command "${message.command}" timed out after ${WORKER_REQUEST_TIMEOUT_MS}ms`));
       }, WORKER_REQUEST_TIMEOUT_MS);
 
       this.inflight.set(message.id, { resolve, reject, timeoutId });

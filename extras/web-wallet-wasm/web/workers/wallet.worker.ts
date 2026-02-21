@@ -5,18 +5,54 @@ interface WasmModuleLike {
   ccall: (ident: string, returnType: string | null, argTypes: string[], args: unknown[]) => unknown;
 }
 
+const WASM_LOAD_TIMEOUT_MS = 45000;
+
 let modulePromise: Promise<WasmModuleLike> | null = null;
+let moduleLoadStage = "idle";
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 async function loadWasmModule(): Promise<WasmModuleLike> {
   if (!modulePromise) {
-    modulePromise = import("../wasm/wallet.js").then((factoryModule: unknown) => {
-      const moduleObject = factoryModule as { default?: () => Promise<WasmModuleLike> };
-      const create = moduleObject.default ?? (factoryModule as () => Promise<WasmModuleLike>);
-      if (typeof create !== "function") {
-        throw new Error("wasm_factory_missing");
-      }
-      return create();
-    });
+    moduleLoadStage = "import_wallet_loader";
+    modulePromise = withTimeout(
+      import("../wasm/wallet.js").then((factoryModule: unknown) => {
+        moduleLoadStage = "resolve_factory";
+        const moduleObject = factoryModule as { default?: () => Promise<WasmModuleLike> };
+        const create = moduleObject.default ?? (factoryModule as () => Promise<WasmModuleLike>);
+        if (typeof create !== "function") {
+          throw new Error("wasm_factory_missing");
+        }
+        moduleLoadStage = "create_module";
+        return create();
+      }),
+      WASM_LOAD_TIMEOUT_MS,
+      `wasm_load_timeout:${moduleLoadStage}:${WASM_LOAD_TIMEOUT_MS}ms`
+    )
+      .then((mod) => {
+        moduleLoadStage = "module_ready";
+        return mod;
+      })
+      .catch((error) => {
+        modulePromise = null;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`wasm_load_failed:${moduleLoadStage}:${message}`);
+      });
   }
 
   return modulePromise;
@@ -76,7 +112,7 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>): Promise<void> => {
     reply = {
       id: msg.id,
       ok: false,
-      error: message
+      error: `${message} (command=${msg.command}, stage=${moduleLoadStage})`
     };
   }
 
