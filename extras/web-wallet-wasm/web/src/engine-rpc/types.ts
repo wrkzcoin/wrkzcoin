@@ -171,6 +171,12 @@ export interface DirectRpcEngine {
     password: string;
     filenameHint?: string;
   }): Promise<{ txHash: string }>;
+  estimateBasicTransferFee(request: {
+    destination: string;
+    amountAtomic: string;
+    paymentId?: string;
+    filenameHint?: string;
+  }): Promise<{ feeAtomic: string }>;
   clearScanKeys(): Promise<void>;
   initVault(password: string): Promise<void>;
   lockVault(): Promise<void>;

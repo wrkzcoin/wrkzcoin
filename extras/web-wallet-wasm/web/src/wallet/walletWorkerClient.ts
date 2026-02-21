@@ -138,6 +138,19 @@ export class WalletWorkerClient {
     });
   }
 
+  public async estimateBasicFee(
+    walletId: number,
+    destination: string,
+    amountAtomic: string,
+    paymentId = ""
+  ): Promise<{ feeAtomic: string }> {
+    return this.sendWasm<{ feeAtomic: string }>({
+      id: createRequestId(),
+      command: "estimateBasicFee",
+      payload: { walletId, destination, amountAtomic, paymentId }
+    });
+  }
+
   public async scanSyncDataBalance(payload: ScanSyncDataBalanceRequest): Promise<ScanSyncDataBalanceResult> {
     return this.sendWasm<ScanSyncDataBalanceResult>({ id: createRequestId(), command: "scanSyncDataBalance", payload });
   }

@@ -1437,8 +1437,9 @@ export function App(): JSX.Element {
       setOutput(`Transfer amount is invalid. Use up to ${COIN_DECIMALS} decimals.`);
       return null;
     }
-    if (amountAtomic > unlockedAtomic) {
-      setOutput(`Amount exceeds available balance (${maxTransferAmount} ${COIN_TICKER}).`);
+    const paymentId = transferPaymentId.trim();
+    if (paymentId.length > 0 && !/^[0-9a-fA-F]{16}$|^[0-9a-fA-F]{64}$/.test(paymentId)) {
+      setOutput("Payment ID must be 16 or 64 hex chars.");
       return null;
     }
 
@@ -1457,6 +1458,19 @@ export function App(): JSX.Element {
 
     let networkFeeAtomic = 0n;
     if (useDynamicFee) {
+      try {
+        const estimated = await directRpcEngine.estimateBasicTransferFee({
+          destination: transferAddress.trim(),
+          amountAtomic: amountAtomic.toString(),
+          paymentId,
+          filenameHint: walletFilename
+        });
+        networkFeeAtomic = BigInt(estimated.feeAtomic);
+      } catch {
+        // Fall back to daemon fee endpoints below.
+      }
+
+      if (networkFeeAtomic <= 0n) {
       const dynamicMethods = ["getfeeinfo", "get_fee_info", "feeinfo"];
       for (const method of dynamicMethods) {
         try {
@@ -1473,11 +1487,18 @@ export function App(): JSX.Element {
           continue;
         }
       }
+      }
     }
 
     const totalAtomic = amountAtomic + networkFeeAtomic + nodeFeeAtomic;
+    if (totalAtomic > unlockedAtomic) {
+      setOutput(
+        `Amount + fees exceed available balance (${maxTransferAmount} ${COIN_TICKER}). ` +
+        `Required: ${formatAtomicAmount(totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}.`
+      );
+      return null;
+    }
     const recipient = transferAddress.trim();
-    const paymentId = transferPaymentId.trim();
     return { recipient, paymentId, amountAtomic, networkFeeAtomic, nodeFeeAtomic, nodeFeeAddress, totalAtomic };
   };
 

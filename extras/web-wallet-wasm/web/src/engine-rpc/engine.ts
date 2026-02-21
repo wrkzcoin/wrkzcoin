@@ -367,6 +367,51 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     }
   }
 
+  public async estimateBasicTransferFee(request: {
+    destination: string;
+    amountAtomic: string;
+    paymentId?: string;
+    filenameHint?: string;
+  }): Promise<{ feeAtomic: string }> {
+    if (!this.currentNode) {
+      throw new Error("no_active_node");
+    }
+    if (!this.scanKeys) {
+      throw new Error("scan_keys_not_loaded");
+    }
+    const profile = await this.storage.loadProfile();
+    if (!profile) {
+      throw new Error("no_wallet_profile");
+    }
+    const filenameBase = request.filenameHint?.trim() || profile.filename || "wallet";
+    const ephemeralFilename = `${filenameBase}.preflight-${Date.now()}.wallet`;
+    let walletId: number | null = null;
+    try {
+      const restored = await this.worker.restoreFromKeys({
+        filename: ephemeralFilename,
+        password: "__preflight__",
+        privateSpendKey: this.scanKeys.privateSpendKey,
+        privateViewKey: this.scanKeys.privateViewKey,
+        scanHeight: Math.max(0, profile.scanHeight || 0),
+        daemonHost: this.currentNode.host,
+        daemonPort: this.currentNode.port,
+        daemonSsl: this.currentNode.ssl,
+        syncThreads: detectSyncThreads()
+      });
+      walletId = restored.walletId;
+      return await this.worker.estimateBasicFee(
+        walletId,
+        request.destination,
+        request.amountAtomic,
+        request.paymentId?.trim() ?? ""
+      );
+    } finally {
+      if (walletId !== null) {
+        await this.worker.close(walletId).catch(() => undefined);
+      }
+    }
+  }
+
   public async clearScanKeys(): Promise<void> {
     this.scanKeys = null;
     this.scannerResetPending = true;

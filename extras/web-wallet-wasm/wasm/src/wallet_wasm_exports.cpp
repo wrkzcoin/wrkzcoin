@@ -624,6 +624,69 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             return g_response.c_str();
         }
 
+        if (command == "estimateBasicFee")
+        {
+            const std::string destination = req.value("destination", "");
+            const std::string paymentId = req.value("paymentId", "");
+            const std::string amountAtomicStr = req.value("amountAtomic", "0");
+            if (destination.empty())
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            uint64_t amountAtomic = 0;
+            try
+            {
+                amountAtomic = static_cast<uint64_t>(std::stoull(amountAtomicStr));
+            }
+            catch (...)
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            const json requestBody = json{
+                {"destinations", json::array({json{{"address", destination}, {"amount", amountAtomic}}})},
+                {"paymentID", paymentId}};
+
+            char *resultOut = nullptr;
+            size_t resultLen = 0;
+            const wallet_status_t status = wallet_send_advanced_json(
+                wallet,
+                requestBody.dump().c_str(),
+                false,
+                &resultOut,
+                &resultLen);
+
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string payload(resultOut != nullptr ? std::string(resultOut, resultLen) : "{}");
+            if (resultOut != nullptr)
+            {
+                wallet_string_free(resultOut);
+            }
+
+            uint64_t fee = 0;
+            try
+            {
+                const auto parsed = json::parse(payload);
+                fee = parsed.value("fee", 0ull);
+            }
+            catch (...)
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            g_response = ok(json{{"feeAtomic", std::to_string(fee)}}).dump();
+            return g_response.c_str();
+        }
+
         if (command == "swapNode")
         {
             const std::string daemonHost = req.value("daemonHost", "");
