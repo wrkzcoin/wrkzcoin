@@ -48,3 +48,25 @@ export interface OpenWalletRequest {
   daemonSsl: boolean;
   syncThreads?: number;
 }
+
+export interface ImportFromSeedRequest extends OpenWalletRequest {
+  mnemonicSeed: string;
+  scanHeight: number;
+}
+
+export interface ImportFromKeysRequest extends OpenWalletRequest {
+  privateSpendKey: string;
+  privateViewKey: string;
+  scanHeight: number;
+}
+
+export interface WalletCreateResult {
+  walletId: number;
+}
+
+export interface WalletBackupSecrets {
+  address: string;
+  mnemonicSeed: string;
+  privateViewKey: string;
+  privateSpendKey: string;
+}

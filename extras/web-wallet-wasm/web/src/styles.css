@@ -88,6 +88,18 @@ select {
   color: var(--text);
 }
 
+.input-area {
+  display: block;
+  width: 100%;
+  min-height: 96px;
+  margin-bottom: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
 .field-label {
   display: block;
   margin-bottom: 0.35rem;
@@ -151,6 +163,20 @@ select {
   font-size: 0.92rem;
 }
 
+.backup-row {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+
+.backup-row code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 @media (max-width: 768px) {
   .container {
     margin: 1rem auto;
@@ -163,6 +189,7 @@ select {
 
   input,
   select,
+  .input-area,
   .node-inputs input[type="text"],
   .node-inputs input[type="number"] {
     max-width: none;

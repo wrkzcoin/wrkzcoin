@@ -1,7 +1,14 @@
+import type { ImportFromKeysRequest, ImportFromSeedRequest, OpenWalletRequest } from "./types";
+
 export type WorkerCommand =
   | { id: string; command: "apiVersion" }
   | { id: string; command: "version" }
-  | { id: string; command: "open"; payload: Record<string, unknown> }
+  | { id: string; command: "open"; payload: OpenWalletRequest }
+  | { id: string; command: "create"; payload: OpenWalletRequest }
+  | { id: string; command: "restoreFromSeed"; payload: ImportFromSeedRequest }
+  | { id: string; command: "restoreFromKeys"; payload: ImportFromKeysRequest }
+  | { id: string; command: "backupSecrets"; payload: { walletId: number } }
+  | { id: string; command: "close"; payload: { walletId: number } }
   | { id: string; command: "status"; payload: { walletId: number } }
   | { id: string; command: "balance"; payload: { walletId: number } }
   | { id: string; command: "swapNode"; payload: { walletId: number; daemonHost: string; daemonPort: number; daemonSsl: boolean } }

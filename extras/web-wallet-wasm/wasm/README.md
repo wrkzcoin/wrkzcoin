@@ -11,6 +11,9 @@ This folder contains the WebAssembly bridge source used by the Emscripten build.
   - `version`
   - `open`
   - `create`
+  - `restoreFromSeed`
+  - `restoreFromKeys`
+  - `backupSecrets`
   - `close`
   - `status`
   - `balance`

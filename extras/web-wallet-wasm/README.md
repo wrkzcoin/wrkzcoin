@@ -11,7 +11,7 @@ This workspace contains a browser-first wallet stack:
 
 - Keep private keys in-browser
 - Support remote node(s) only
-- Include multi-node failover from day one
+- Include multi-node management from day one
 
 ## Non-Custodial Rules
 

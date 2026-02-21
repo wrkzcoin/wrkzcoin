@@ -5,7 +5,7 @@
 - Wallet core runs in browser worker via WASM.
 - UI talks to worker over message commands.
 - Worker calls `wallet_wasm_request` exported from WASM.
-- Remote node connectivity uses ordered endpoints with failover.
+- Remote node connectivity uses ordered endpoints with manual switching from Settings.
 
 ## Non-Custodial Rules
 
@@ -45,10 +45,9 @@ From `extras/web-wallet-wasm`:
 4. Click `Load Demo Secret` to confirm decrypt.
 5. Click `Lock Vault`, then verify load returns `vault_locked`.
 
-## Remote Node Failover
+## Remote Node Management
 
 1. Keep ordered endpoints: primary, secondary, tertiary.
-2. Probe on startup and periodically.
-3. Route traffic to best healthy endpoint.
-4. Swap endpoint on timeout/error threshold.
-5. Periodically compare chain height with alternate endpoint.
+2. Set one endpoint as default for create/import actions.
+3. During an active wallet session, use `Use For Wallet` to call `swapNode`.
+4. Add/remove custom endpoints as needed.

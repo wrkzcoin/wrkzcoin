@@ -120,6 +120,68 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             return g_response.c_str();
         }
 
+        if (command == "restoreFromSeed" || command == "restoreFromKeys")
+        {
+            if (!has(req, "filename") || !has(req, "password") || !has(req, "daemonHost") || !has(req, "daemonPort"))
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            wallet_handle_t *handle = nullptr;
+            const std::string filename = req.at("filename").get<std::string>();
+            const std::string password = req.at("password").get<std::string>();
+            const uint64_t scanHeight = req.value("scanHeight", 0ull);
+            const std::string daemonHost = req.at("daemonHost").get<std::string>();
+            const uint16_t daemonPort = static_cast<uint16_t>(req.at("daemonPort").get<uint32_t>());
+            const bool daemonSsl = req.value("daemonSsl", false);
+            const uint32_t syncThreads = req.value("syncThreads", 2u);
+
+            wallet_status_t status = 0;
+            if (command == "restoreFromSeed")
+            {
+                const std::string mnemonicSeed = req.value("mnemonicSeed", "");
+                status = wallet_restore_from_seed(
+                    mnemonicSeed.c_str(),
+                    filename.c_str(),
+                    password.c_str(),
+                    scanHeight,
+                    daemonHost.c_str(),
+                    daemonPort,
+                    daemonSsl,
+                    syncThreads,
+                    &handle);
+            }
+            else
+            {
+                const std::string privateSpendKey = req.value("privateSpendKey", "");
+                const std::string privateViewKey = req.value("privateViewKey", "");
+                status = wallet_restore_from_keys(
+                    privateSpendKey.c_str(),
+                    privateViewKey.c_str(),
+                    filename.c_str(),
+                    password.c_str(),
+                    scanHeight,
+                    daemonHost.c_str(),
+                    daemonPort,
+                    daemonSsl,
+                    syncThreads,
+                    &handle);
+            }
+
+            if (status != 0 || handle == nullptr)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            std::lock_guard<std::mutex> lock(g_mutex);
+            const int32_t id = g_next_id++;
+            g_wallets[id] = handle;
+            g_response = ok(json{{"walletId", id}}).dump();
+            return g_response.c_str();
+        }
+
         if (command == "close")
         {
             const int32_t walletId = req.value("walletId", 0);
@@ -210,6 +272,66 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             }
 
             g_response = ok(json{{"online", online}}).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "backupSecrets")
+        {
+            char *addressOut = nullptr;
+            size_t addressLen = 0;
+            wallet_status_t status = wallet_get_primary_address(wallet, &addressOut, &addressLen);
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string address(addressOut, addressLen);
+            wallet_string_free(addressOut);
+
+            char *seedOut = nullptr;
+            size_t seedLen = 0;
+            status = wallet_get_mnemonic_seed(wallet, &seedOut, &seedLen);
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string mnemonicSeed(seedOut, seedLen);
+            wallet_string_free(seedOut);
+
+            char *viewKeyOut = nullptr;
+            size_t viewKeyLen = 0;
+            status = wallet_get_private_view_key(wallet, &viewKeyOut, &viewKeyLen);
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string privateViewKey(viewKeyOut, viewKeyLen);
+            wallet_string_free(viewKeyOut);
+
+            char *spendKeysOut = nullptr;
+            size_t spendKeysLen = 0;
+            status = wallet_get_spend_keys_json(wallet, address.c_str(), &spendKeysOut, &spendKeysLen);
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string spendKeysPayload(spendKeysOut, spendKeysLen);
+            wallet_string_free(spendKeysOut);
+
+            const json spendKeys = json::parse(spendKeysPayload);
+            g_response = ok(json{
+                                {"address", address},
+                                {"mnemonicSeed", mnemonicSeed},
+                                {"privateViewKey", privateViewKey},
+                                {"privateSpendKey", spendKeys.value("privateSpendKey", "")}})
+                             .dump();
             return g_response.c_str();
         }
 
