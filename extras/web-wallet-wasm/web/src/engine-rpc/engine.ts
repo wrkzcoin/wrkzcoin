@@ -18,6 +18,9 @@ import type {
 
 const SYNC_BATCH_SIZE = 250;
 const MIN_SYNC_BATCH_SIZE = 1;
+const SYNC_POLL_INTERVAL_MS = 1500;
+const SYNC_NEAR_TIP_INTERVAL_MS = 5000;
+const SYNC_NEAR_TIP_BLOCKS = 10;
 const CAPABILITY_TTL_MS = 10 * 60 * 1000;
 const NODE_SCORE_DECAY_INTERVAL_MS = 5 * 60 * 1000;
 const NODE_SCORE_DECAY_STEP = 3;
@@ -61,7 +64,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private currentNodeId?: string;
   private currentNode?: RpcNode;
   private nodePool: RpcNode[] = [];
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private fetchMode: "unknown" | "range" | "by_height" | "none" = "unknown";
   private failoverCount = 0;
   private scanKeys: { privateSpendKey: string; privateViewKey: string } | null = null;
@@ -120,15 +123,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     await this.ensureCursorInitialized(walletId);
     await this.storage.saveStatus(status);
     await this.pollOnce();
-    this.pollTimer = setInterval(() => {
-      this.pollOnce().catch(() => undefined);
-    }, 15000);
+    const stats = await this.storage.loadSyncStats();
+    this.scheduleNextPoll(this.selectPollIntervalMs(stats?.remainingBlocks));
     return status;
   }
 
   public async stop(): Promise<void> {
     if (this.pollTimer) {
-      clearInterval(this.pollTimer);
+      clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
     this.running = false;
@@ -487,6 +489,35 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       });
       await this.syncWithNode(failoverNode);
     }
+  }
+
+  private selectPollIntervalMs(remainingBlocks?: number): number {
+    if (typeof remainingBlocks === "number" && Number.isFinite(remainingBlocks) && remainingBlocks > SYNC_NEAR_TIP_BLOCKS) {
+      return SYNC_POLL_INTERVAL_MS;
+    }
+    return SYNC_NEAR_TIP_INTERVAL_MS;
+  }
+
+  private scheduleNextPoll(intervalMs: number): void {
+    if (!this.running) {
+      return;
+    }
+    if (this.pollTimer) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+    this.pollTimer = setTimeout(() => {
+      this.pollTick().catch(() => undefined);
+    }, intervalMs);
+  }
+
+  private async pollTick(): Promise<void> {
+    if (!this.running) {
+      return;
+    }
+    await this.pollOnce().catch(() => undefined);
+    const stats = await this.storage.loadSyncStats().catch(() => null);
+    this.scheduleNextPoll(this.selectPollIntervalMs(stats?.remainingBlocks));
   }
 
   private async syncWithNode(node: RpcNode): Promise<void> {

@@ -37,7 +37,7 @@ The WASM build is configured with pthreads. Browser runtime requires cross-origi
 
 - `Cross-Origin-Opener-Policy: same-origin`
 - `Cross-Origin-Embedder-Policy: require-corp`
-- `Cross-Origin-Resource-Policy: same-origin` (recommended for local assets)
+- `Cross-Origin-Resource-Policy: cross-origin` (recommended for wallet assets)
 
 If these headers are missing, build may succeed but multithread execution will fail at runtime.
 
@@ -46,12 +46,17 @@ Example nginx headers (wallet web domain):
 ```nginx
 add_header Cross-Origin-Opener-Policy "same-origin" always;
 add_header Cross-Origin-Embedder-Policy "require-corp" always;
-add_header Cross-Origin-Resource-Policy "same-origin" always;
+add_header Cross-Origin-Resource-Policy "cross-origin" always;
 
 types {
     application/wasm wasm;
 }
 ```
+
+Browser verification:
+
+- `window.crossOriginIsolated` must be `true`
+- `typeof SharedArrayBuffer` must be `"function"`
 
 ## Run Web UI
 
@@ -59,6 +64,7 @@ From `extras/web-wallet-wasm`:
 
 - `yarn install`
 - `yarn dev:web`
+- `yarn build` (production bundle)
 
 ## Vault Smoke Test
 
@@ -74,3 +80,24 @@ From `extras/web-wallet-wasm`:
 2. Set one endpoint as default for create/import actions.
 3. During an active wallet session, use `Use For Wallet` to call `swapNode`.
 4. Add/remove custom endpoints as needed.
+
+## Troubleshooting
+
+1. `wallet_wasm_not_built (SharedArrayBuffer is not defined)`:
+- COOP/COEP headers are missing on page and/or assets.
+- Verify headers on `/`, `/index.html`, and `/assets/*.js` + `/assets/*.wasm`.
+
+2. `Failed to resolve module specifier './wallet_wasm.js'`:
+- Rebuild/redeploy web bundle and clear CDN/browser cache.
+- Ensure worker/module assets are served from the same domain and current hash.
+
+3. `Worker command timed out ...`:
+- Check first worker error in status/console. The worker now reports stage-based errors:
+  - `wasm_load_failed:import_wallet_loader:*`
+  - `wasm_load_failed:resolve_factory:*`
+  - `wasm_load_failed:create_module:*`
+- If stage errors mention COEP/CORP, verify headers and disable extension injection.
+
+4. Worker blocked by COEP while headers look correct:
+- Browser extensions often inject scripts (`inject*.js`, `provider.js`, `content_script.js`) and break isolation.
+- Test in Guest profile or with all wallet/Web3 extensions disabled.
