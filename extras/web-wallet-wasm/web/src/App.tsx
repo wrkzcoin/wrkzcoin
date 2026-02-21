@@ -30,6 +30,7 @@ const SETTINGS_FUSION_ENABLED_KEY = "wrkz_web_wallet_fusion_enabled_v1";
 const SETTINGS_FUSION_TARGET_KEY = "wrkz_web_wallet_fusion_target_v1";
 const SETTINGS_WELCOME_MODAL_DISMISSED_KEY = "wrkz_web_wallet_welcome_modal_dismissed_v1";
 const DEFAULT_AUTO_LOGOUT_MIN = 15;
+const TX_PAGE_SIZE = 10;
 
 type ViewTab = "wallet" | "settings";
 type WalletTab =
@@ -268,6 +269,7 @@ export function App(): JSX.Element {
   const [copiedFlash, setCopiedFlash] = useState<Record<string, boolean>>({});
   const [welcomeModalOpen, setWelcomeModalOpen] = useState<boolean>(() => !loadWelcomeModalDismissed());
   const [hideWelcomeModalNextTime, setHideWelcomeModalNextTime] = useState<boolean>(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
   const [walletFilename, setWalletFilename] = useState<string>("my.wallet");
   const [walletPassword, setWalletPassword] = useState<string>("");
@@ -286,6 +288,8 @@ export function App(): JSX.Element {
   const [receiveIntegratedAddress, setReceiveIntegratedAddress] = useState<string>("");
   const [backupSeedConfirmInput, setBackupSeedConfirmInput] = useState<string>("");
   const [rescanHeightInput, setRescanHeightInput] = useState<string>("0");
+  const [txPage, setTxPage] = useState<number>(1);
+  const [txHeightFilterInput, setTxHeightFilterInput] = useState<string>("");
 
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
@@ -305,6 +309,21 @@ export function App(): JSX.Element {
   const syncPercentLabel = directSyncStats
     ? (syncPercentRaw > 0 && syncPercentRaw < 0.1 ? "<0.1%" : `${syncPercentRaw.toFixed(1)}%`)
     : "0.0%";
+  const unlockedAtomic = BigInt(directSummary?.unlockedBalanceAtomic ?? "0");
+  const maxTransferAmount = formatAtomicAmount(unlockedAtomic.toString(), COIN_DECIMALS);
+  const txHeightFilter = Number(txHeightFilterInput.trim() || "0");
+  const filteredTxHistory = useMemo(() => {
+    if (!Number.isInteger(txHeightFilter) || txHeightFilter <= 0) {
+      return txHistory;
+    }
+    return txHistory.filter((entry) => entry.blockHeight >= txHeightFilter);
+  }, [txHistory, txHeightFilter]);
+  const txTotalPages = Math.max(1, Math.ceil(filteredTxHistory.length / TX_PAGE_SIZE));
+  const txCurrentPage = Math.min(txPage, txTotalPages);
+  const txPageItems = useMemo(() => {
+    const start = (txCurrentPage - 1) * TX_PAGE_SIZE;
+    return filteredTxHistory.slice(start, start + TX_PAGE_SIZE);
+  }, [filteredTxHistory, txCurrentPage]);
   const receiveAddress = directProfile?.address ?? pendingBackup?.address ?? "";
   const receiveTarget = receiveIntegratedAddress || receiveAddress;
   const receiveQrSrc = receiveTarget
@@ -355,6 +374,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     localStorage.setItem(SETTINGS_FUSION_TARGET_KEY, String(fusionTargetAtomic));
   }, [fusionTargetAtomic]);
+
+  useEffect(() => {
+    setTxPage(1);
+  }, [txHeightFilterInput, txHistory.length]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) {
@@ -633,6 +656,19 @@ export function App(): JSX.Element {
     return scanFromCoinbase ? 0 : parsed;
   };
 
+  const validateImportStartPoint = (height: number, timestamp: number): string | null => {
+    if (scanFromCoinbase) {
+      return null;
+    }
+    if (height > 0 && timestamp > 0) {
+      return "Use either scan height or scan timestamp, not both.";
+    }
+    if (height <= 0 && timestamp <= 0) {
+      return "For import, set scan height or scan timestamp to a value greater than 0.";
+    }
+    return null;
+  };
+
   const triggerCopyFlash = (key: string): void => {
     setCopiedFlash((prev) => ({ ...prev, [key]: true }));
     window.setTimeout(() => {
@@ -899,6 +935,11 @@ export function App(): JSX.Element {
       setOutput("Scan timestamp must be a non-negative integer.");
       return;
     }
+    const startPointError = validateImportStartPoint(parsedScanHeight, parsedScanTimestamp);
+    if (startPointError) {
+      setOutput(startPointError);
+      return;
+    }
     let derived: Awaited<ReturnType<typeof directRpcEngine.deriveScanKeysFromSeed>>;
     try {
       derived = await directRpcEngine.deriveScanKeysFromSeed(normalizedSeed);
@@ -947,6 +988,11 @@ export function App(): JSX.Element {
     const parsedScanTimestamp = validateScanTimestamp();
     if (parsedScanTimestamp === null) {
       setOutput("Scan timestamp must be a non-negative integer.");
+      return;
+    }
+    const startPointError = validateImportStartPoint(parsedScanHeight, parsedScanTimestamp);
+    if (startPointError) {
+      setOutput(startPointError);
       return;
     }
     const normalizedSpend = privateSpendKey.trim().toLowerCase();
@@ -1273,6 +1319,26 @@ export function App(): JSX.Element {
     setOutput("Transfer preflight confirmed. Submission to remote node is not enabled in this build yet.");
   };
 
+  const onTransferAmountChange = (value: string): void => {
+    const normalized = value.replace(",", ".").trim();
+    if (normalized === "") {
+      setTransferAmount("");
+      return;
+    }
+    if (!/^\d*(\.\d{0,2})?$/.test(normalized)) {
+      return;
+    }
+    const parsedAtomic = parseCoinAmountToAtomic(normalized, COIN_DECIMALS);
+    if (parsedAtomic === null) {
+      return;
+    }
+    if (parsedAtomic > unlockedAtomic) {
+      setTransferAmount(maxTransferAmount);
+      return;
+    }
+    setTransferAmount(normalized);
+  };
+
   const onUnlockSession = async (): Promise<void> => {
     if (!authHash) {
       setOutput("No wallet password configured yet.");
@@ -1410,6 +1476,23 @@ export function App(): JSX.Element {
     setWelcomeModalOpen(false);
   };
 
+  const onSelectView = (view: ViewTab): void => {
+    setActiveView(view);
+    setMobileMenuOpen(false);
+  };
+
+  const onSelectWalletTab = (tab: WalletTab): void => {
+    setWalletTab(tab);
+    setMobileMenuOpen(false);
+  };
+
+  const scanHeightNum = Number(scanHeight || "0");
+  const scanTimestampNum = Number(scanTimestamp || "0");
+  const heightHasPositiveValue = Number.isFinite(scanHeightNum) && scanHeightNum > 0;
+  const timestampHasPositiveValue = Number.isFinite(scanTimestampNum) && scanTimestampNum > 0;
+  const disableScanHeightInput = scanFromCoinbase || timestampHasPositiveValue;
+  const disableScanTimestampInput = scanFromCoinbase || heightHasPositiveValue;
+
   return (
     <main className="container">
       {!hasActiveWalletSession && welcomeModalOpen ? (
@@ -1437,15 +1520,25 @@ export function App(): JSX.Element {
           </section>
         </div>
       ) : null}
-      <h1>Web Wallet</h1>
+      <div className="title-row">
+        <h1>Web Wallet</h1>
+        <button
+          className="mobile-menu-toggle"
+          onClick={() => setMobileMenuOpen((prev) => !prev)}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+          title={mobileMenuOpen ? "Close menu" : "Open menu"}
+        >
+          {mobileMenuOpen ? "Close" : "Menu"}
+        </button>
+      </div>
       <p>Browser wallet with onboarding, encrypted local vault, and configurable RPC nodes.</p>
-      <div className="top-controls">
+      <div className="top-controls desktop-controls">
         <div className="actions">
-          <button className={activeView === "wallet" ? "active" : ""} onClick={() => setActiveView("wallet")}>
+          <button className={activeView === "wallet" ? "active" : ""} onClick={() => onSelectView("wallet")}>
             <span className="menu-icon icon-wallet" aria-hidden="true" />
             Wallet
           </button>
-          <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
+          <button className={activeView === "settings" ? "active" : ""} onClick={() => onSelectView("settings")}>
             <span className="menu-icon icon-settings" aria-hidden="true" />
             Settings
           </button>
@@ -1471,6 +1564,82 @@ export function App(): JSX.Element {
           ) : null}
         </div>
       </div>
+      {mobileMenuOpen ? <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)} /> : null}
+      <aside className={`mobile-side-menu${mobileMenuOpen ? " open" : ""}`} aria-hidden={!mobileMenuOpen}>
+        <div className="mobile-side-menu-inner">
+          <h3>Menu</h3>
+          <div className="actions">
+            <button className={activeView === "wallet" ? "active" : ""} onClick={() => onSelectView("wallet")}>
+              <span className="menu-icon icon-wallet" aria-hidden="true" />
+              Wallet
+            </button>
+            <button className={activeView === "settings" ? "active" : ""} onClick={() => onSelectView("settings")}>
+              <span className="menu-icon icon-settings" aria-hidden="true" />
+              Settings
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              title={resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={resolvedTheme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              <span className={`theme-glyph ${resolvedTheme === "dark" ? "moon" : "sun"}`} aria-hidden="true" />
+            </button>
+            {hasActiveWalletSession && !isLocked ? (
+              <>
+                <button
+                  onClick={async () => {
+                    await onRefreshDirectStatus();
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <span className="menu-icon icon-refresh" aria-hidden="true" />
+                  Refresh
+                </button>
+                <button
+                  onClick={async () => {
+                    await onLogoutSession();
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <span className="menu-icon icon-logout" aria-hidden="true" />
+                  Logout
+                </button>
+              </>
+            ) : null}
+          </div>
+          {activeView === "wallet" && hasActiveWalletSession && !isLocked && !(pendingBackup && !pendingBackup.confirmed) ? (
+            <>
+              <h3>Wallet Tabs</h3>
+              <div className="actions">
+                <button className={walletTab === "overview" ? "active" : ""} onClick={() => onSelectWalletTab("overview")}>
+                  <span className="menu-icon icon-overview" aria-hidden="true" />
+                  Overview
+                </button>
+                <button
+                  className={walletTab === "transactions" ? "active" : ""}
+                  onClick={() => onSelectWalletTab("transactions")}
+                >
+                  <span className="menu-icon icon-transactions" aria-hidden="true" />
+                  Transactions
+                </button>
+                <button className={walletTab === "transfer" ? "active" : ""} onClick={() => onSelectWalletTab("transfer")}>
+                  <span className="menu-icon icon-transfer" aria-hidden="true" />
+                  Transfer
+                </button>
+                <button className={walletTab === "receive" ? "active" : ""} onClick={() => onSelectWalletTab("receive")}>
+                  <span className="menu-icon icon-receive" aria-hidden="true" />
+                  Receive
+                </button>
+                <button className={walletTab === "nodes" ? "active" : ""} onClick={() => onSelectWalletTab("nodes")}>
+                  <span className="menu-icon icon-nodes" aria-hidden="true" />
+                  Nodes
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </aside>
 
       {activeView === "wallet" ? (
         <section className="panel">
@@ -1520,9 +1689,35 @@ export function App(): JSX.Element {
               {welcomeMode !== "create" ? (
                 <>
                   <label className="field-label">Scan height</label>
-                  <input type="number" min={0} value={scanHeight} onChange={(e) => setScanHeight(e.target.value)} />
+                  <input
+                    type="number"
+                    min={0}
+                    value={scanHeight}
+                    disabled={disableScanHeightInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const parsed = Number(value || "0");
+                      setScanHeight(value);
+                      if (Number.isFinite(parsed) && parsed > 0) {
+                        setScanTimestamp("0");
+                      }
+                    }}
+                  />
                   <label className="field-label">Scan timestamp (unix, optional)</label>
-                  <input type="number" min={0} value={scanTimestamp} onChange={(e) => setScanTimestamp(e.target.value)} />
+                  <input
+                    type="number"
+                    min={0}
+                    value={scanTimestamp}
+                    disabled={disableScanTimestampInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const parsed = Number(value || "0");
+                      setScanTimestamp(value);
+                      if (Number.isFinite(parsed) && parsed > 0) {
+                        setScanHeight("0");
+                      }
+                    }}
+                  />
                   <label className="checkbox">
                     <input type="checkbox" checked={scanFromCoinbase} onChange={(e) => setScanFromCoinbase(e.target.checked)} />
                     Scan from coinbase (force height 0)
@@ -1648,24 +1843,24 @@ export function App(): JSX.Element {
                 </section>
               ) : (
                 <>
-                  <div className="actions tab-row">
-                    <button className={walletTab === "overview" ? "active" : ""} onClick={() => setWalletTab("overview")}>
+                  <div className="actions tab-row desktop-tab-row">
+                    <button className={walletTab === "overview" ? "active" : ""} onClick={() => onSelectWalletTab("overview")}>
                       <span className="menu-icon icon-overview" aria-hidden="true" />
                       Overview
                     </button>
-                    <button className={walletTab === "transactions" ? "active" : ""} onClick={() => setWalletTab("transactions")}>
+                    <button className={walletTab === "transactions" ? "active" : ""} onClick={() => onSelectWalletTab("transactions")}>
                       <span className="menu-icon icon-transactions" aria-hidden="true" />
                       Transactions
                     </button>
-                    <button className={walletTab === "transfer" ? "active" : ""} onClick={() => setWalletTab("transfer")}>
+                    <button className={walletTab === "transfer" ? "active" : ""} onClick={() => onSelectWalletTab("transfer")}>
                       <span className="menu-icon icon-transfer" aria-hidden="true" />
                       Transfer
                     </button>
-                    <button className={walletTab === "receive" ? "active" : ""} onClick={() => setWalletTab("receive")}>
+                    <button className={walletTab === "receive" ? "active" : ""} onClick={() => onSelectWalletTab("receive")}>
                       <span className="menu-icon icon-receive" aria-hidden="true" />
                       Receive
                     </button>
-                    <button className={walletTab === "nodes" ? "active" : ""} onClick={() => setWalletTab("nodes")}>
+                    <button className={walletTab === "nodes" ? "active" : ""} onClick={() => onSelectWalletTab("nodes")}>
                       <span className="menu-icon icon-nodes" aria-hidden="true" />
                       Nodes
                     </button>
@@ -1718,19 +1913,71 @@ export function App(): JSX.Element {
               {walletTab === "transactions" ? (
                 <section>
                   <h3>Transaction History</h3>
-                  {txHistory.length === 0 ? <p className="muted">No wallet-owned transactions scanned yet.</p> : null}
-                  <ul className="node-list">
-                    {txHistory.slice(0, 25).map((entry) => (
-                      <li key={`${entry.txHash}-${entry.blockHeight}`} className="node-item">
-                        <span className="node-meta">#{entry.blockHeight}</span>
-                        <span className="node-meta">{entry.direction}</span>
+                  <div className="actions">
+                    <label className="field-label tx-filter-label" htmlFor="tx-height-filter">
+                      Min height filter
+                    </label>
+                    <input
+                      id="tx-height-filter"
+                      className="tx-filter-input"
+                      type="number"
+                      min={0}
+                      value={txHeightFilterInput}
+                      onChange={(e) => setTxHeightFilterInput(e.target.value)}
+                      placeholder="0 = all heights"
+                    />
+                  </div>
+                  {filteredTxHistory.length === 0 ? <p className="muted">No wallet-owned transactions scanned yet.</p> : null}
+                  {filteredTxHistory.length > 0 ? (
+                    <>
+                      <div className="tx-table-wrap">
+                        <table className="tx-table">
+                          <thead>
+                            <tr>
+                              <th>Height</th>
+                              <th>Direction</th>
+                              <th>Amount</th>
+                              <th>Tx Hash</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {txPageItems.map((entry) => (
+                              <tr key={`${entry.txHash}-${entry.blockHeight}`}>
+                                <td>#{entry.blockHeight}</td>
+                                <td>{entry.direction}</td>
+                                <td>
+                                  {formatAtomicAmount(entry.netAtomic, COIN_DECIMALS)} {COIN_TICKER}
+                                </td>
+                                <td>
+                                  <code>{entry.txHash}</code>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="actions tx-pager">
+                        <button disabled={txCurrentPage <= 1} onClick={() => setTxPage(1)}>
+                          First
+                        </button>
+                        <button disabled={txCurrentPage <= 1} onClick={() => setTxPage((prev) => Math.max(1, prev - 1))}>
+                          Prev
+                        </button>
                         <span className="node-meta">
-                          {formatAtomicAmount(entry.netAtomic, COIN_DECIMALS)} {COIN_TICKER}
+                          Page {txCurrentPage} / {txTotalPages}
                         </span>
-                        <code>{entry.txHash}</code>
-                      </li>
-                    ))}
-                  </ul>
+                        <button
+                          disabled={txCurrentPage >= txTotalPages}
+                          onClick={() => setTxPage((prev) => Math.min(txTotalPages, prev + 1))}
+                        >
+                          Next
+                        </button>
+                        <button disabled={txCurrentPage >= txTotalPages} onClick={() => setTxPage(txTotalPages)}>
+                          Last
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -1745,7 +1992,10 @@ export function App(): JSX.Element {
                     </p>
                   ) : null}
                   <label className="field-label">Amount ({COIN_TICKER})</label>
-                  <input type="text" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} />
+                  <input type="text" value={transferAmount} onChange={(e) => onTransferAmountChange(e.target.value)} />
+                  <p className="muted">
+                    Max available: {maxTransferAmount} {COIN_TICKER}. Amount accepts numbers only with up to {COIN_DECIMALS} decimals.
+                  </p>
                   <label className="field-label">Payment ID (optional)</label>
                   <input type="text" value={transferPaymentId} onChange={(e) => setTransferPaymentId(e.target.value)} />
                   <p className="muted">
@@ -1916,7 +2166,8 @@ export function App(): JSX.Element {
               </>
             ) : null}
             {hasActiveWalletSession ? (
-              <>
+              <section className="settings-block">
+                <h3>Sync Controls</h3>
                 <label className="field-label">Rescan wallet from height</label>
                 <input
                   type="number"
@@ -1928,20 +2179,28 @@ export function App(): JSX.Element {
                   If height is above {RESCAN_HEIGHT_WARN_THRESHOLD}, confirmation will be required. Network height:{" "}
                   {directSummary?.daemonHeight ?? "unknown"}.
                 </p>
-                <div className="actions">
+                <div className="actions settings-actions">
                   <button onClick={onResetScanFromHeight}>Reset Scan Height</button>
                 </div>
-              </>
+              </section>
             ) : null}
-            <div className="actions">
-              <button onClick={onProbeDefaultNode}>Probe Default Node</button>
-              <button onClick={onRefreshNodeCapabilities}>Refresh Node Capabilities</button>
-              <button onClick={onRefreshNodeScores}>Refresh Node Scores</button>
-              <button onClick={onRefreshDirectStatus}>Refresh Direct RPC Status</button>
-              <button className="danger" onClick={onStopDirectSession}>
-                Stop Direct RPC Session
-              </button>
-            </div>
+            <section className="settings-block">
+              <h3>Node Diagnostics</h3>
+              <div className="actions settings-actions">
+                <button onClick={onProbeDefaultNode}>Probe Default Node</button>
+                <button onClick={onRefreshNodeCapabilities}>Refresh Node Capabilities</button>
+                <button onClick={onRefreshNodeScores}>Refresh Node Scores</button>
+                <button onClick={onRefreshDirectStatus}>Refresh Direct RPC Status</button>
+              </div>
+            </section>
+            <section className="settings-block">
+              <h3>Session Control</h3>
+              <div className="actions settings-actions">
+                <button className="danger" onClick={onStopDirectSession}>
+                  Stop Direct RPC Session
+                </button>
+              </div>
+            </section>
             {selectedNodeCapabilities ? (
               <p>
                 Capabilities: blockcount {selectedNodeCapabilities.supportsGetBlockCount ? "yes" : "no"}, walletsync{" "}
@@ -1962,11 +2221,14 @@ export function App(): JSX.Element {
                   .join(" | ")}
               </p>
             ) : null}
-            <div className="actions">
-              <button className="danger" onClick={onResetWallet}>
-                Reset Wallet Local Data
-              </button>
-            </div>
+            <section className="settings-block danger-zone">
+              <h3>Danger Zone</h3>
+              <div className="actions settings-actions">
+                <button className="danger" onClick={onResetWallet}>
+                  Reset Wallet Local Data
+                </button>
+              </div>
+            </section>
           </section>
           <section className="panel">
             <h2>RPC Nodes</h2>
