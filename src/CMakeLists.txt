@@ -23,6 +23,16 @@ if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif ()
 
+# Emscripten pthreads require all linked objects to be compiled with atomics
+# and bulk-memory when shared memory is enabled.
+if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
+    add_compile_options(
+        -pthread
+        -matomics
+        -mbulk-memory
+    )
+endif ()
+
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
 # can find the new file
