@@ -4,6 +4,7 @@ import type {
   ImportFromSeedRequest,
   OpenWalletRequest,
   AddressValidationResult,
+  IntegratedAddressResult,
   DerivedWalletKeys,
   ScanSyncDataBalanceRequest,
   ScanSyncDataBalanceResult,
@@ -113,6 +114,14 @@ export class WalletWorkerClient {
       id: createRequestId(),
       command: "validateAddress",
       payload: { address, allowIntegrated }
+    });
+  }
+
+  public async createIntegratedAddress(address: string, paymentId: string): Promise<IntegratedAddressResult> {
+    return this.sendWasm<IntegratedAddressResult>({
+      id: createRequestId(),
+      command: "createIntegratedAddress",
+      payload: { address, paymentId }
     });
   }
 

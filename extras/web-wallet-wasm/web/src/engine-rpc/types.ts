@@ -85,7 +85,9 @@ export interface DirectRpcSessionProfile {
   walletId: string;
   kind: DirectRpcSessionKind;
   filename: string;
+  address?: string;
   scanHeight: number;
+  scanTimestamp?: number;
   createdAt: number;
   sourceFingerprint?: string;
   hasMnemonicSeed: boolean;
@@ -160,6 +162,8 @@ export interface DirectRpcEngine {
   deriveScanKeysFromSeed(mnemonicSeed: string): Promise<{ privateSpendKey: string; privateViewKey: string; mnemonicSeed: string; address: string }>;
   generateScanKeys(): Promise<{ privateSpendKey: string; privateViewKey: string; mnemonicSeed: string; address: string }>;
   deriveAddressFromKeys(privateSpendKey: string, privateViewKey: string): Promise<string>;
+  validateAddress(address: string, allowIntegrated?: boolean): Promise<{ valid: boolean; reason?: string }>;
+  createIntegratedAddress(address: string, paymentId: string): Promise<string>;
   clearScanKeys(): Promise<void>;
   initVault(password: string): Promise<void>;
   lockVault(): Promise<void>;

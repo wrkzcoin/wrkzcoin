@@ -17,6 +17,7 @@ import type {
 } from "./types";
 
 const SYNC_BATCH_SIZE = 250;
+const MIN_SYNC_BATCH_SIZE = 1;
 const CAPABILITY_TTL_MS = 10 * 60 * 1000;
 const NODE_SCORE_DECAY_INTERVAL_MS = 5 * 60 * 1000;
 const NODE_SCORE_DECAY_STEP = 3;
@@ -54,7 +55,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private failoverCount = 0;
   private scanKeys: { privateSpendKey: string; privateViewKey: string } | null = null;
   private scannerResetPending = true;
+  private scanTimestampPrimed = false;
   private vaultUnlocked = false;
+  private walletSyncBatchSize = SYNC_BATCH_SIZE;
 
   public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
     const uniqueByKey = new Map<string, RpcNode>();
@@ -85,6 +88,8 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     this.fetchMode = "unknown";
     this.failoverCount = 0;
     this.scannerResetPending = true;
+    this.scanTimestampPrimed = false;
+    this.walletSyncBatchSize = SYNC_BATCH_SIZE;
     if (this.nodePool.length === 0) {
       await this.configureNodePool([node], node.id);
     }
@@ -122,6 +127,8 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     this.fetchMode = "unknown";
     this.failoverCount = 0;
     this.scannerResetPending = true;
+    this.scanTimestampPrimed = false;
+    this.walletSyncBatchSize = SYNC_BATCH_SIZE;
     await this.storage.saveStatus({ running: false, message: "direct_rpc_engine_stopped", failoverCount: 0 });
   }
 
@@ -290,6 +297,15 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     return result.address;
   }
 
+  public async validateAddress(address: string, allowIntegrated = true): Promise<{ valid: boolean; reason?: string }> {
+    return this.worker.validateAddress(address, allowIntegrated);
+  }
+
+  public async createIntegratedAddress(address: string, paymentId: string): Promise<string> {
+    const result = await this.worker.createIntegratedAddress(address, paymentId);
+    return result.integratedAddress;
+  }
+
   public async clearScanKeys(): Promise<void> {
     this.scanKeys = null;
     this.scannerResetPending = true;
@@ -411,7 +427,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
     if (remaining > 0) {
       lastBatchStart = clampedCursor + 1;
-      lastBatchEnd = Math.min(lastBatchStart + SYNC_BATCH_SIZE - 1, daemonHeight);
+      lastBatchEnd = Math.min(lastBatchStart + this.walletSyncBatchSize - 1, daemonHeight);
       lastBatchSize = lastBatchEnd - lastBatchStart + 1;
       const walletSync = await this.tryFetchWalletSyncBatch(node, lastBatchStart, lastBatchSize);
       if (walletSync.ok) {
@@ -573,63 +589,77 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     const methodsTried: string[] = [];
     const profile = await this.storage.loadProfile();
     const skipCoinbaseTransactions = profile?.scanFromCoinbase === true ? false : true;
-    try {
-      methodsTried.push("/getwalletsyncdata");
-      const response = await this.rpc.postPath<WalletSyncDataResponse>(node, "/getwalletsyncdata", {
-        startHeight,
-        startTimestamp: 0,
-        blockCount,
-        skipCoinbaseTransactions,
-        blockHashCheckpoints: []
-      });
-
-      if (response.status !== "OK") {
-        return {
-          ok: false,
-          methodsTried,
-          items: [],
-          scannedTransactions: 0,
-          scannedOutputs: 0,
-          error: `walletsync_status_${response.status ?? "unknown"}`
-        };
-      }
-
-      const items = Array.isArray(response.items) ? response.items : [];
-      let scannedTransactions = 0;
-      let scannedOutputs = 0;
-      for (const block of items) {
-        const coinbase = block.coinbaseTX as { outputs?: unknown[] } | undefined;
-        if (coinbase) {
-          scannedTransactions += 1;
-          scannedOutputs += Array.isArray(coinbase.outputs) ? coinbase.outputs.length : 0;
-        }
-        const txs = Array.isArray(block.transactions) ? block.transactions : [];
-        scannedTransactions += txs.length;
-        for (const tx of txs) {
-          const outputs = (tx as { outputs?: unknown[] }).outputs;
-          scannedOutputs += Array.isArray(outputs) ? outputs.length : 0;
-        }
-      }
-
-      return {
-        ok: true,
-        methodsTried,
-        items,
-        scannedTransactions,
-        scannedOutputs
-      };
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      methodsTried.push(`/getwalletsyncdata:${reason}`);
-      return {
-        ok: false,
-        methodsTried,
-        items: [],
-        scannedTransactions: 0,
-        scannedOutputs: 0,
-        error: reason
-      };
+    const startTimestamp = !this.scanTimestampPrimed && Number(profile?.scanTimestamp ?? 0) > 0
+      ? Number(profile?.scanTimestamp ?? 0)
+      : 0;
+    const candidateCounts = Array.from(
+      new Set([blockCount, 200, 100, 50, 25, 10, 5, 1].filter((count) => count <= blockCount && count >= MIN_SYNC_BATCH_SIZE))
+    ).sort((a, b) => b - a);
+    if (candidateCounts.length === 0) {
+      candidateCounts.push(Math.max(MIN_SYNC_BATCH_SIZE, blockCount));
     }
+    let lastError: string | undefined;
+    for (const candidateCount of candidateCounts) {
+      try {
+        methodsTried.push(`/getwalletsyncdata:blockCount=${candidateCount}`);
+        const response = await this.rpc.postPath<WalletSyncDataResponse>(node, "/getwalletsyncdata", {
+          startHeight,
+          startTimestamp,
+          blockCount: candidateCount,
+          skipCoinbaseTransactions,
+          blockHashCheckpoints: []
+        });
+
+        if (response.status !== "OK") {
+          lastError = `walletsync_status_${response.status ?? "unknown"}`;
+          continue;
+        }
+
+        const items = Array.isArray(response.items) ? response.items : [];
+        let scannedTransactions = 0;
+        let scannedOutputs = 0;
+        for (const block of items) {
+          const coinbase = block.coinbaseTX as { outputs?: unknown[] } | undefined;
+          if (coinbase) {
+            scannedTransactions += 1;
+            scannedOutputs += Array.isArray(coinbase.outputs) ? coinbase.outputs.length : 0;
+          }
+          const txs = Array.isArray(block.transactions) ? block.transactions : [];
+          scannedTransactions += txs.length;
+          for (const tx of txs) {
+            const outputs = (tx as { outputs?: unknown[] }).outputs;
+            scannedOutputs += Array.isArray(outputs) ? outputs.length : 0;
+          }
+        }
+
+        this.walletSyncBatchSize = candidateCount;
+        if (startTimestamp > 0) {
+          this.scanTimestampPrimed = true;
+        }
+        return {
+          ok: true,
+          methodsTried,
+          items,
+          scannedTransactions,
+          scannedOutputs
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        methodsTried.push(`/getwalletsyncdata:blockCount=${candidateCount}:${reason}`);
+        lastError = reason;
+        if (!reason.includes("rpc_http_400")) {
+          break;
+        }
+      }
+    }
+    return {
+      ok: false,
+      methodsTried,
+      items: [],
+      scannedTransactions: 0,
+      scannedOutputs: 0,
+      error: lastError
+    };
   }
 
   private async tryFetchHeaderBatch(

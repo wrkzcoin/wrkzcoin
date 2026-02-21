@@ -316,6 +316,23 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             return g_response.c_str();
         }
 
+        if (command == "createIntegratedAddress")
+        {
+            const std::string address = req.value("address", "");
+            const std::string paymentID = req.value("paymentId", "");
+            const auto [error, integratedAddress] = Utilities::createIntegratedAddress(address, paymentID);
+            if (error != SUCCESS)
+            {
+                g_response = ok(json{
+                                    {"integratedAddress", ""},
+                                    {"error", error.getErrorMessage()}})
+                                 .dump();
+                return g_response.c_str();
+            }
+            g_response = ok(json{{"integratedAddress", integratedAddress}}).dump();
+            return g_response.c_str();
+        }
+
         if (command == "scanSyncDataBalance")
         {
             if (!has(req, "scannerId") || !has(req, "privateSpendKey") || !has(req, "privateViewKey") || !has(req, "items"))

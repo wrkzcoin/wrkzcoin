@@ -15,6 +15,7 @@ export type WorkerCommand =
   | { id: string; command: "generateSeedKeys" }
   | { id: string; command: "deriveAddressFromKeys"; payload: { privateSpendKey: string; privateViewKey: string } }
   | { id: string; command: "validateAddress"; payload: { address: string; allowIntegrated?: boolean } }
+  | { id: string; command: "createIntegratedAddress"; payload: { address: string; paymentId: string } }
   | { id: string; command: "swapNode"; payload: { walletId: number; daemonHost: string; daemonPort: number; daemonSsl: boolean } }
   | { id: string; command: "scanSyncDataBalance"; payload: ScanSyncDataBalanceRequest }
   | { id: string; command: "vaultInit"; payload: { password: string } }

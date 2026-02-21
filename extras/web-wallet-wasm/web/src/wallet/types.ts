@@ -115,3 +115,7 @@ export interface AddressValidationResult {
   valid: boolean;
   reason?: string;
 }
+
+export interface IntegratedAddressResult {
+  integratedAddress: string;
+}
