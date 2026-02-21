@@ -889,22 +889,27 @@ export function App(): JSX.Element {
     if (!pendingImportReview) {
       return;
     }
-    await startDirectSession(
-      pendingImportReview.kind,
-      pendingImportReview.sessionId,
-      {
-        sourceFingerprint: pendingImportReview.sourceFingerprint,
-        hasMnemonicSeed: pendingImportReview.hasMnemonicSeed,
-        hasPrivateKeys: pendingImportReview.hasPrivateKeys,
-        address: pendingImportReview.address
-      },
-      true,
-      { height: pendingImportReview.scanHeight }
-    );
-    setPendingImportReview(null);
-    setOutput(
-      `Import confirmed. Address ${pendingImportReview.address} is syncing from height ${pendingImportReview.scanHeight}.`
-    );
+    setOutput("Starting import sync session...");
+    try {
+      await startDirectSession(
+        pendingImportReview.kind,
+        pendingImportReview.sessionId,
+        {
+          sourceFingerprint: pendingImportReview.sourceFingerprint,
+          hasMnemonicSeed: pendingImportReview.hasMnemonicSeed,
+          hasPrivateKeys: pendingImportReview.hasPrivateKeys,
+          address: pendingImportReview.address
+        },
+        true,
+        { height: pendingImportReview.scanHeight }
+      );
+      setPendingImportReview(null);
+      setOutput(
+        `Import confirmed. Address ${pendingImportReview.address} is syncing from height ${pendingImportReview.scanHeight}.`
+      );
+    } catch (error) {
+      setOutput(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const startDirectSession = async (
@@ -979,6 +984,7 @@ export function App(): JSX.Element {
       setOutput(passwordError);
       return;
     }
+    setOutput("Creating wallet keys...");
     let generated: Awaited<ReturnType<typeof directRpcEngine.generateScanKeys>>;
     try {
       generated = await directRpcEngine.generateScanKeys();
@@ -990,11 +996,16 @@ export function App(): JSX.Element {
     setPrivateSpendKey(generated.privateSpendKey);
     setPrivateViewKey(generated.privateViewKey);
     const sessionId = `direct-create-${Date.now()}`;
-    await startDirectSession("create", sessionId, {
-      hasMnemonicSeed: true,
-      hasPrivateKeys: true,
-      address: generated.address
-    }, true);
+    try {
+      await startDirectSession("create", sessionId, {
+        hasMnemonicSeed: true,
+        hasPrivateKeys: true,
+        address: generated.address
+      }, true);
+    } catch (error) {
+      setOutput(error instanceof Error ? error.message : String(error));
+      return;
+    }
     setPendingBackup({
       mnemonicSeed: generated.mnemonicSeed,
       privateSpendKey: generated.privateSpendKey,
@@ -1037,6 +1048,7 @@ export function App(): JSX.Element {
       setOutput(startPointError);
       return;
     }
+    setOutput("Deriving keys from mnemonic seed...");
     let derived: Awaited<ReturnType<typeof directRpcEngine.deriveScanKeysFromSeed>>;
     try {
       derived = await directRpcEngine.deriveScanKeysFromSeed(normalizedSeed);
@@ -1086,22 +1098,27 @@ export function App(): JSX.Element {
       setOutput(startPointError);
       return;
     }
+    setOutput("Validating private keys...");
     const normalizedSpend = privateSpendKey.trim().toLowerCase();
     const normalizedView = privateViewKey.trim().toLowerCase();
-    const derivedAddress = await directRpcEngine.deriveAddressFromKeys(normalizedSpend, normalizedView).catch(() => "");
-    const fingerprint = await sha256Hex(`keys:${normalizedSpend}:${normalizedView}`);
-    const sessionId = `direct-keys-${fingerprint.slice(0, 16)}`;
-    await directRpcEngine.setScanKeys(normalizedSpend, normalizedView);
-    setPendingImportReview({
-      kind: "import_keys",
-      sessionId,
-      sourceFingerprint: fingerprint,
-      hasMnemonicSeed: false,
-      hasPrivateKeys: true,
-      address: derivedAddress || "(unable to derive)",
-      scanHeight: parsedScanHeight
-    });
-    setOutput("Review import details, then confirm to start sync.");
+    try {
+      const derivedAddress = await directRpcEngine.deriveAddressFromKeys(normalizedSpend, normalizedView).catch(() => "");
+      const fingerprint = await sha256Hex(`keys:${normalizedSpend}:${normalizedView}`);
+      const sessionId = `direct-keys-${fingerprint.slice(0, 16)}`;
+      await directRpcEngine.setScanKeys(normalizedSpend, normalizedView);
+      setPendingImportReview({
+        kind: "import_keys",
+        sessionId,
+        sourceFingerprint: fingerprint,
+        hasMnemonicSeed: false,
+        hasPrivateKeys: true,
+        address: derivedAddress || "(unable to derive)",
+        scanHeight: parsedScanHeight
+      });
+      setOutput("Review import details, then confirm to start sync.");
+    } catch (error) {
+      setOutput(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const onAddCustomNode = (): void => {
