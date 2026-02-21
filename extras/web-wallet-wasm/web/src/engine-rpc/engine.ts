@@ -74,6 +74,8 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private scanTimestampPrimed = false;
   private vaultUnlocked = false;
   private walletSyncBatchSize = SYNC_BATCH_SIZE;
+  private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 30000;
+  private static readonly TRANSFER_SYNC_POLL_MS = 400;
 
   public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
     const uniqueByKey = new Map<string, RpcNode>();
@@ -353,6 +355,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         syncThreads: detectSyncThreads()
       });
       walletId = restored.walletId;
+      await this.waitForTransferWalletSync(walletId);
       const sent = await this.worker.sendBasic(
         walletId,
         request.destination,
@@ -399,6 +402,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         syncThreads: detectSyncThreads()
       });
       walletId = restored.walletId;
+      await this.waitForTransferWalletSync(walletId);
       return await this.worker.estimateBasicFee(
         walletId,
         request.destination,
@@ -409,6 +413,23 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       if (walletId !== null) {
         await this.worker.close(walletId).catch(() => undefined);
       }
+    }
+  }
+
+  private async waitForTransferWalletSync(walletId: number): Promise<void> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS) {
+      const status = await this.worker.status(walletId).catch(() => null);
+      if (status) {
+        const walletHeight = Number(status.walletBlockCount ?? 0);
+        const localDaemonHeight = Number(status.localDaemonBlockCount ?? 0);
+        const networkHeight = Number(status.networkBlockCount ?? 0);
+        const targetHeight = localDaemonHeight > 0 ? localDaemonHeight : networkHeight;
+        if (!Number.isFinite(targetHeight) || targetHeight <= 0 || walletHeight >= Math.max(0, targetHeight - 1)) {
+          return;
+        }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, BrowserDirectRpcEngine.TRANSFER_SYNC_POLL_MS));
     }
   }
 

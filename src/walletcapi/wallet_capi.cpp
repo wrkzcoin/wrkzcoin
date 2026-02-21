@@ -1344,7 +1344,14 @@ void wallet_string_free(char *p)
 const char *wallet_error_code_to_string(wallet_status_t code)
 {
     static thread_local std::string last;
-    last = Error(static_cast<ErrorCode>(code)).getErrorMessage();
+    try
+    {
+        last = Error(static_cast<ErrorCode>(code)).getErrorMessage();
+    }
+    catch (...)
+    {
+        last = "Unknown wallet error code: " + std::to_string(code);
+    }
     return last.c_str();
 }
 

@@ -86,6 +86,10 @@ export class WalletWorkerClient {
     return this.sendWasm({ id: createRequestId(), command: "close", payload: { walletId } });
   }
 
+  public async status(walletId: number): Promise<Record<string, unknown>> {
+    return this.sendWasm<Record<string, unknown>>({ id: createRequestId(), command: "status", payload: { walletId } });
+  }
+
   public async deriveKeysFromSeed(mnemonicSeed: string): Promise<DerivedWalletKeys> {
     return this.sendWasm<DerivedWalletKeys>({
       id: createRequestId(),

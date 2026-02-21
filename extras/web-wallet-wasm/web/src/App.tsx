@@ -1404,8 +1404,6 @@ export function App(): JSX.Element {
     paymentId: string;
     amountAtomic: bigint;
     networkFeeAtomic: bigint;
-    nodeFeeAtomic: bigint;
-    nodeFeeAddress: string;
     totalAtomic: bigint;
   } | null> => {
     if (!selectedNode) {
@@ -1425,19 +1423,6 @@ export function App(): JSX.Element {
     if (paymentId.length > 0 && !/^[0-9a-fA-F]{16}$|^[0-9a-fA-F]{64}$/.test(paymentId)) {
       setOutput("Payment ID must be 16 or 64 hex chars.");
       return null;
-    }
-
-    let nodeFeeAtomic = 0n;
-    let nodeFeeAddress = "";
-    try {
-      const feeRes = await fetch(`${buildNodeHttpUrl(selectedNode)}/fee`);
-      if (feeRes.ok) {
-        const payload = (await feeRes.json()) as { amount?: number | string; fee?: number | string; address?: string };
-        nodeFeeAtomic = BigInt(String(payload.amount ?? payload.fee ?? 0));
-        nodeFeeAddress = String(payload.address ?? "");
-      }
-    } catch {
-      // Ignore; node fee endpoint is optional.
     }
 
     let networkFeeAtomic = 0n;
@@ -1460,7 +1445,7 @@ export function App(): JSX.Element {
       return null;
     }
 
-    const totalAtomic = amountAtomic + networkFeeAtomic + nodeFeeAtomic;
+    const totalAtomic = amountAtomic + networkFeeAtomic;
     if (totalAtomic > unlockedAtomic) {
       setOutput(
         `Amount + fees exceed available balance (${maxTransferAmount} ${COIN_TICKER}). ` +
@@ -1469,7 +1454,7 @@ export function App(): JSX.Element {
       return null;
     }
     const recipient = transferAddress.trim();
-    return { recipient, paymentId, amountAtomic, networkFeeAtomic, nodeFeeAtomic, nodeFeeAddress, totalAtomic };
+    return { recipient, paymentId, amountAtomic, networkFeeAtomic, totalAtomic };
   };
 
   const onSubmitTransfer = async (): Promise<void> => {
@@ -1483,7 +1468,6 @@ export function App(): JSX.Element {
         `Recipient: ${preflight.recipient}`,
         `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
         `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Node fee: ${formatAtomicAmount(preflight.nodeFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}${preflight.nodeFeeAddress ? ` (${preflight.nodeFeeAddress})` : ""}`,
         `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`
       ].join("\n")
     );
