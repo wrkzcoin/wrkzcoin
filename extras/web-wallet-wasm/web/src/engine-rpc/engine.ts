@@ -2,6 +2,11 @@ import { probeNode } from "./nodeProbe";
 import { HttpRpcClient } from "./rpcClient";
 import { RpcEngineStorage } from "./storage";
 import { WalletWorkerClient } from "../wallet/walletWorkerClient";
+import {
+  SYNC_NEAR_TIP_BLOCKS,
+  SYNC_NEAR_TIP_INTERVAL_MS,
+  SYNC_POLL_INTERVAL_MS
+} from "../config/sync";
 import type {
   DirectRpcEngine,
   DirectRpcSessionProfile,
@@ -18,9 +23,6 @@ import type {
 
 const SYNC_BATCH_SIZE = 250;
 const MIN_SYNC_BATCH_SIZE = 1;
-const SYNC_POLL_INTERVAL_MS = 1500;
-const SYNC_NEAR_TIP_INTERVAL_MS = 5000;
-const SYNC_NEAR_TIP_BLOCKS = 10;
 const CAPABILITY_TTL_MS = 10 * 60 * 1000;
 const NODE_SCORE_DECAY_INTERVAL_MS = 5 * 60 * 1000;
 const NODE_SCORE_DECAY_STEP = 3;
@@ -121,6 +123,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       message: "direct_rpc_engine_started"
     };
     await this.ensureCursorInitialized(walletId);
+    await this.reinitializeScannerStateIfNeeded(walletId);
     await this.storage.saveStatus(status);
     await this.pollOnce();
     const stats = await this.storage.loadSyncStats();
@@ -693,6 +696,32 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     if (existing && existing.walletId === walletId && existing.height < startHeight) {
       await this.storage.clearSyncArtifacts();
     }
+    await this.storage.saveCursor({
+      walletId,
+      height: startHeight,
+      updatedAt: Date.now()
+    });
+  }
+
+  private async reinitializeScannerStateIfNeeded(walletId: string): Promise<void> {
+    if (!this.scannerResetPending || !this.scanKeys) {
+      return;
+    }
+    const profile = await this.storage.loadProfile();
+    if (!profile || profile.walletId !== walletId) {
+      return;
+    }
+    const summary = await this.storage.loadSummary();
+    const cursor = await this.storage.loadCursor();
+    const startHeight = Math.max(0, profile.scanHeight || 0);
+    const hasOwnedOutputState = summary?.walletId === walletId && summary.scanMode === "wallet_owned_outputs";
+    const cursorAheadOfStart = Boolean(cursor && cursor.walletId === walletId && cursor.height > startHeight);
+    if (!hasOwnedOutputState || !cursorAheadOfStart) {
+      return;
+    }
+
+    // Worker scanner state is in-memory. After reload, rebuild from configured scan start.
+    await this.storage.clearSyncArtifacts();
     await this.storage.saveCursor({
       walletId,
       height: startHeight,
