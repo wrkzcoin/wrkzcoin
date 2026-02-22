@@ -618,6 +618,17 @@ add_subdirectory(external)
 # Optional Emscripten pthread builds require every linked object to be compiled
 # with atomics/bulk-memory support, including external static libraries.
 if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM AND WRKZ_WASM_PTHREADS)
+    # Pthread WASM requires every linked object to be built with atomics and
+    # bulk-memory features, not only final link target.
+    add_compile_options(
+        -pthread
+        -matomics
+        -mbulk-memory
+    )
+    add_link_options(
+        -pthread
+    )
+
     foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
         if (TARGET ${_wrkz_pthread_target})
             target_compile_options(${_wrkz_pthread_target} PRIVATE
