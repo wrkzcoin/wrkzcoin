@@ -554,6 +554,14 @@ namespace WalletTypes
         Crypto::Hash transactionHash;
     };
 
+    /* Forward declare nlohmann converters used by nested/vector serializers. */
+    inline void to_json(nlohmann::json &j, const KeyOutput &k);
+    inline void from_json(const nlohmann::json &j, KeyOutput &k);
+    inline void to_json(nlohmann::json &j, const RawCoinbaseTransaction &r);
+    inline void from_json(const nlohmann::json &j, RawCoinbaseTransaction &r);
+    inline void to_json(nlohmann::json &j, const RawTransaction &r);
+    inline void from_json(const nlohmann::json &j, RawTransaction &r);
+
     inline void to_json(nlohmann::json &j, const TopBlock &t)
     {
         j = {{"hash", t.hash}, {"height", t.height}};

@@ -269,6 +269,10 @@ namespace CryptoNote
         }
     };
 
+    /* Forward declare converters so RandomOuts vector conversion resolves under newer nlohmann::json. */
+    inline void to_json(nlohmann::json &j, const OutputEntry &o);
+    inline void from_json(const nlohmann::json &j, OutputEntry &o);
+
     inline void to_json(nlohmann::json &j, const RandomOuts &r)
     {
         j = {{"amount", r.amount}, {"outs", r.outs}};
