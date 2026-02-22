@@ -111,6 +111,51 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
             return g_response.c_str();
         }
 
+        if (command == "setBackendLogLevel")
+        {
+            const std::string level = req.value("level", "trace");
+            wallet_clear_logs();
+            const wallet_status_t status = wallet_set_log_level(level.c_str());
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+            g_response = ok(json{{"level", level}}).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "takeBackendLogs")
+        {
+            char *jsonOut = nullptr;
+            size_t jsonLen = 0;
+            const wallet_status_t status = wallet_take_logs_json(&jsonOut, &jsonLen);
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+            const std::string payload(jsonOut != nullptr ? std::string(jsonOut, jsonLen) : "{\"entries\":[]}");
+            if (jsonOut != nullptr)
+            {
+                wallet_string_free(jsonOut);
+            }
+            g_response = ok(json::parse(payload)).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "clearBackendLogs")
+        {
+            const wallet_status_t status = wallet_clear_logs();
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+            g_response = ok().dump();
+            return g_response.c_str();
+        }
+
         if (command == "open" || command == "create")
         {
             if (!has(req, "filename") || !has(req, "password") || !has(req, "daemonHost") || !has(req, "daemonPort"))

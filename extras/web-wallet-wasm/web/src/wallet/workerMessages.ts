@@ -3,6 +3,9 @@ import type { ImportFromKeysRequest, ImportFromSeedRequest, OpenWalletRequest, S
 export type WorkerCommand =
   | { id: string; command: "apiVersion" }
   | { id: string; command: "version" }
+  | { id: string; command: "setBackendLogLevel"; payload: { level: string } }
+  | { id: string; command: "takeBackendLogs" }
+  | { id: string; command: "clearBackendLogs" }
   | { id: string; command: "open"; payload: OpenWalletRequest }
   | { id: string; command: "create"; payload: OpenWalletRequest }
   | { id: string; command: "restoreFromSeed"; payload: ImportFromSeedRequest }

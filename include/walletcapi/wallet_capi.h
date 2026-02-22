@@ -273,6 +273,9 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_poll_event(
 WALLET_CAPI_EXPORT const char *wallet_error_code_to_string(wallet_status_t code);
 WALLET_CAPI_EXPORT const char *wallet_last_error_message(void);
 WALLET_CAPI_EXPORT void wallet_clear_last_error_message(void);
+WALLET_CAPI_EXPORT wallet_status_t wallet_set_log_level(const char *level);
+WALLET_CAPI_EXPORT wallet_status_t wallet_take_logs_json(char **out_json, size_t *out_len);
+WALLET_CAPI_EXPORT wallet_status_t wallet_clear_logs(void);
 
 #ifdef __cplusplus
 }

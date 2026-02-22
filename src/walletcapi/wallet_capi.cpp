@@ -8,18 +8,22 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <walletbackend/WalletBackend.h>
+#include <logger/Logger.h>
 
 #include "json.hpp"
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <cctype>
 #include <cstring>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <sstream>
 
 struct wallet_event_state
 {
@@ -39,6 +43,10 @@ namespace
 {
     const std::string kVersion = "wallet-capi/0.1";
     thread_local std::string g_last_error_message;
+    std::mutex g_log_mutex;
+    std::deque<nlohmann::json> g_logs;
+    std::once_flag g_log_bridge_once;
+    constexpr size_t kMaxLogs = 2000;
 
     void set_last_error_message(const std::string &message)
     {
@@ -48,6 +56,46 @@ namespace
     void clear_last_error_message()
     {
         g_last_error_message.clear();
+    }
+
+    std::string lower_copy(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    }
+
+    void ensure_log_bridge()
+    {
+        std::call_once(g_log_bridge_once, [] {
+            Logger::logger.setLogCallback([](
+                const std::string prettyMessage,
+                const std::string message,
+                const Logger::LogLevel level,
+                const std::vector<Logger::LogCategory> categories) {
+                nlohmann::json entry;
+                entry["pretty"] = prettyMessage;
+                entry["message"] = message;
+                entry["level"] = lower_copy(Logger::logLevelToString(level));
+                nlohmann::json cats = nlohmann::json::array();
+                for (const auto &c : categories)
+                {
+                    cats.push_back(lower_copy(Logger::logCategoryToString(c)));
+                }
+                entry["categories"] = cats;
+                entry["ts"] = static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count());
+
+                std::lock_guard<std::mutex> lock(g_log_mutex);
+                g_logs.push_back(std::move(entry));
+                while (g_logs.size() > kMaxLogs)
+                {
+                    g_logs.pop_front();
+                }
+            });
+            Logger::logger.setLogLevel(Logger::TRACE);
+        });
     }
 
     bool json_has(const nlohmann::json &obj, const char *key)
@@ -73,6 +121,7 @@ namespace
 
     wallet_status_t get_wallet(wallet_handle_t *handle, std::shared_ptr<WalletBackend> &out_wallet)
     {
+        ensure_log_bridge();
         if (handle == nullptr || !handle->wallet)
         {
             return static_cast<wallet_status_t>(UNKNOWN_ERROR);
@@ -144,6 +193,7 @@ namespace
 
 uint32_t wallet_capi_api_version(void)
 {
+    ensure_log_bridge();
     return WALLET_CAPI_API_VERSION;
 }
 
@@ -1466,5 +1516,54 @@ const char *wallet_last_error_message(void)
 void wallet_clear_last_error_message(void)
 {
     clear_last_error_message();
+}
+
+wallet_status_t wallet_set_log_level(const char *level)
+{
+    ensure_log_bridge();
+    if (level == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    try
+    {
+        Logger::logger.setLogLevel(Logger::stringToLogLevel(std::string(level)));
+        return static_cast<wallet_status_t>(SUCCESS);
+    }
+    catch (...)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+}
+
+wallet_status_t wallet_take_logs_json(char **out_json, size_t *out_len)
+{
+    ensure_log_bridge();
+    if (out_json == nullptr || out_len == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    nlohmann::json payload;
+    payload["entries"] = nlohmann::json::array();
+    {
+        std::lock_guard<std::mutex> lock(g_log_mutex);
+        while (!g_logs.empty())
+        {
+            payload["entries"].push_back(g_logs.front());
+            g_logs.pop_front();
+        }
+    }
+
+    return alloc_out_string(payload.dump(), out_json, out_len);
+}
+
+wallet_status_t wallet_clear_logs(void)
+{
+    ensure_log_bridge();
+    std::lock_guard<std::mutex> lock(g_log_mutex);
+    g_logs.clear();
+    return static_cast<wallet_status_t>(SUCCESS);
 }
 

@@ -122,3 +122,11 @@ export interface IntegratedAddressResult {
   integratedAddress: string;
   error?: string;
 }
+
+export interface BackendLogEntry {
+  pretty?: string;
+  message?: string;
+  level?: string;
+  categories?: string[];
+  ts?: number;
+}

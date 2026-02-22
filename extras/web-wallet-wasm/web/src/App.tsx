@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_NODES, DEFAULT_RPC_PORT, DEFAULT_RPC_SSL } from "./config/nodes";
 import { COIN_ADDRESS_PREFIX, COIN_DECIMALS, COIN_TICKER, formatAtomicAmount } from "./config/coin";
 import { RESCAN_HEIGHT_WARN_THRESHOLD } from "./config/sync";
@@ -406,13 +406,14 @@ export function App(): JSX.Element {
     lastDeltaSeconds: 0
   });
   const lastSyncRef = useRef<{ syncedHeight: number; updatedAt: number; walletId: string } | null>(null);
+  const lastTraceSignatureRef = useRef<string>("");
   const bootstrapDoneRef = useRef<boolean>(false);
 
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
   const [customNodeSsl, setCustomNodeSsl] = useState<boolean>(DEFAULT_RPC_SSL);
 
-  const appendDebugLog = (level: DebugLevel, message: string, category = "WEB"): void => {
+  const appendDebugLog = useCallback((level: DebugLevel, message: string, category = "WEB"): void => {
     if (!debugEnabled) {
       return;
     }
@@ -423,7 +424,7 @@ export function App(): JSX.Element {
       }
       return next;
     });
-  };
+  }, [debugEnabled]);
 
   const visibleDebugLogs = useMemo(
     () => debugLogs.filter((entry) => debugLevelRank(entry.level) >= debugLevelRank(debugLevel)),
@@ -538,9 +539,41 @@ export function App(): JSX.Element {
   }, [debugLevel]);
 
   useEffect(() => {
+    const backendLevel = debugLevel === "error" ? "fatal" : debugLevel;
+    directRpcEngine.setBackendLogLevel(backendLevel).catch(() => undefined);
+  }, [debugLevel, directRpcEngine]);
+
+  useEffect(() => {
     appendDebugLog("info", `status: ${output}`, "UI");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [output]);
+
+  useEffect(() => {
+    const stats = directSyncStats;
+    const cursorHeight = directCursor?.height ?? -1;
+    const snapshotHeight = directSnapshotState?.snapshotHeight ?? -1;
+    const signature = [
+      directStatus.running ? "running" : "stopped",
+      directStatus.nodeId ?? "n/a",
+      String(stats?.syncedHeight ?? -1),
+      String(stats?.targetHeight ?? -1),
+      stats?.fetchMode ?? "none",
+      String(cursorHeight),
+      String(snapshotHeight)
+    ].join("|");
+
+    if (signature === lastTraceSignatureRef.current) {
+      return;
+    }
+    lastTraceSignatureRef.current = signature;
+
+    appendDebugLog(
+      "trace",
+      `engine=${directStatus.running ? "running" : "stopped"} node=${directStatus.nodeId ?? "n/a"} synced=${stats?.syncedHeight ?? "n/a"} target=${stats?.targetHeight ?? "n/a"} mode=${stats?.fetchMode ?? "none"} cursor=${cursorHeight >= 0 ? cursorHeight : "n/a"} snapshot=${snapshotHeight >= 0 ? snapshotHeight : "n/a"} failovers=${directStatus.failoverCount ?? 0}`,
+      "SYNC"
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directStatus.running, directStatus.nodeId, directStatus.failoverCount, directSyncStats, directCursor?.height, directSnapshotState?.snapshotHeight]);
 
   useEffect(() => {
     const onError = (event: ErrorEvent): void => {
@@ -824,9 +857,25 @@ export function App(): JSX.Element {
         .getTransactionHistory(40)
         .then((history) => setTxHistory(history))
         .catch(() => undefined);
+      directRpcEngine
+        .takeBackendLogs()
+        .then((entries) => {
+          for (const entry of entries) {
+            const mappedLevel: DebugLevel =
+              entry.level === "fatal"
+                ? "error"
+                : (entry.level as "trace" | "debug" | "info" | "warning");
+            const category =
+              entry.categories.length > 0
+                ? `BACKEND:${entry.categories.map((x) => x.toUpperCase()).join(",")}`
+                : "BACKEND";
+            appendDebugLog(mappedLevel, entry.pretty || entry.message, category);
+          }
+        })
+        .catch(() => undefined);
     }, 3000);
     return () => clearInterval(timer);
-  }, [directRpcEngine]);
+  }, [directRpcEngine, appendDebugLog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2567,7 +2616,14 @@ export function App(): JSX.Element {
               </select>
               <div className="actions settings-actions">
                 <button onClick={onCopyDebugLogs}>Copy Logs</button>
-                <button onClick={() => setDebugLogs([])}>Clear Logs</button>
+                <button
+                  onClick={() => {
+                    setDebugLogs([]);
+                    directRpcEngine.clearBackendLogs().catch(() => undefined);
+                  }}
+                >
+                  Clear Logs
+                </button>
               </div>
               <textarea
                 className="input-area"

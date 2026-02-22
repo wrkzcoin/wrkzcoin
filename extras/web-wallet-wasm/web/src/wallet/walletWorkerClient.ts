@@ -6,6 +6,7 @@ import type {
   AddressValidationResult,
   IntegratedAddressResult,
   DerivedWalletKeys,
+  BackendLogEntry,
   ScanSyncDataBalanceRequest,
   ScanSyncDataBalanceResult,
   WalletBackupSecrets,
@@ -60,6 +61,18 @@ export class WalletWorkerClient {
 
   public async apiVersion(): Promise<unknown> {
     return this.sendWasm({ id: createRequestId(), command: "apiVersion" });
+  }
+
+  public async setBackendLogLevel(level: string): Promise<unknown> {
+    return this.sendWasm({ id: createRequestId(), command: "setBackendLogLevel", payload: { level } });
+  }
+
+  public async takeBackendLogs(): Promise<{ entries: BackendLogEntry[] }> {
+    return this.sendWasm<{ entries: BackendLogEntry[] }>({ id: createRequestId(), command: "takeBackendLogs" });
+  }
+
+  public async clearBackendLogs(): Promise<unknown> {
+    return this.sendWasm({ id: createRequestId(), command: "clearBackendLogs" });
   }
 
   public async create(payload: OpenWalletRequest): Promise<WalletCreateResult> {

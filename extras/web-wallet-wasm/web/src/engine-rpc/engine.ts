@@ -11,6 +11,7 @@ import {
 import type {
   DirectRpcEngine,
   DirectRpcSessionProfile,
+  BackendRuntimeLogEntry,
   NodeCapabilities,
   NodeScore,
   RpcEngineStatus,
@@ -230,6 +231,35 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async getSyncStats(): Promise<SyncRuntimeStats | null> {
     return this.storage.loadSyncStats();
+  }
+
+  public async setBackendLogLevel(level: "trace" | "debug" | "info" | "warning" | "fatal"): Promise<void> {
+    await this.worker.setBackendLogLevel(level);
+  }
+
+  public async takeBackendLogs(): Promise<BackendRuntimeLogEntry[]> {
+    const raw = await this.worker.takeBackendLogs();
+    const entries = Array.isArray(raw.entries) ? raw.entries : [];
+    return entries
+      .map((entry) => {
+        const levelRaw = String(entry.level ?? "info").toLowerCase();
+        const level: "trace" | "debug" | "info" | "warning" | "fatal" =
+          levelRaw === "trace" || levelRaw === "debug" || levelRaw === "warning" || levelRaw === "fatal"
+            ? levelRaw
+            : "info";
+        return {
+          pretty: String(entry.pretty ?? ""),
+          message: String(entry.message ?? ""),
+          level,
+          categories: Array.isArray(entry.categories) ? entry.categories.map((x) => String(x)) : [],
+          ts: Number(entry.ts ?? Date.now())
+        } as BackendRuntimeLogEntry;
+      })
+      .filter((entry) => entry.pretty.length > 0 || entry.message.length > 0);
+  }
+
+  public async clearBackendLogs(): Promise<void> {
+    await this.worker.clearBackendLogs();
   }
 
   public async getNodeCapabilities(node: RpcNode): Promise<NodeCapabilities | null> {

@@ -126,6 +126,14 @@ export interface ScannerSnapshotState {
   updatedAt: number;
 }
 
+export interface BackendRuntimeLogEntry {
+  pretty: string;
+  message: string;
+  level: "trace" | "debug" | "info" | "warning" | "fatal";
+  categories: string[];
+  ts: number;
+}
+
 export interface ScannedHeaderEntry {
   walletId: string;
   height: number;
@@ -163,6 +171,9 @@ export interface DirectRpcEngine {
   getCursor(): Promise<SyncCursor | null>;
   getScannerSnapshotState(): Promise<ScannerSnapshotState | null>;
   getSyncStats(): Promise<SyncRuntimeStats | null>;
+  setBackendLogLevel(level: "trace" | "debug" | "info" | "warning" | "fatal"): Promise<void>;
+  takeBackendLogs(): Promise<BackendRuntimeLogEntry[]>;
+  clearBackendLogs(): Promise<void>;
   getNodeCapabilities(node: RpcNode): Promise<NodeCapabilities | null>;
   refreshNodeCapabilities(node: RpcNode): Promise<NodeCapabilities>;
   getNodeScores(): Promise<NodeScore[]>;
