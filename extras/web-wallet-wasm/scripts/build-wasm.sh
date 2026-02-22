@@ -14,6 +14,7 @@ emcmake cmake -S "$REPO_ROOT" -B "$BUILD_DIR" \
   -DWRKZ_BUILD_EXECUTABLES=OFF \
   -DWRKZ_BUILD_WALLET_CAPI=ON \
   -DWRKZ_BUILD_WALLET_WASM=ON \
+  -DWRKZ_WASM_PTHREADS=ON \
   -DENABLE_ZMQ=OFF
 
 echo "Building wallet_wasm ..."
