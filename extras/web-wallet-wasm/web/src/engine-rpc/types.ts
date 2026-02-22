@@ -119,6 +119,13 @@ export interface SyncRuntimeStats {
   updatedAt: number;
 }
 
+export interface ScannerSnapshotState {
+  walletId: string;
+  snapshotHeight: number;
+  cursorHeight: number;
+  updatedAt: number;
+}
+
 export interface ScannedHeaderEntry {
   walletId: string;
   height: number;
@@ -154,6 +161,7 @@ export interface DirectRpcEngine {
   getHistory(limit?: number): Promise<ScannedHeaderEntry[]>;
   getTransactionHistory(limit?: number): Promise<WalletTxHistoryEntry[]>;
   getCursor(): Promise<SyncCursor | null>;
+  getScannerSnapshotState(): Promise<ScannerSnapshotState | null>;
   getSyncStats(): Promise<SyncRuntimeStats | null>;
   getNodeCapabilities(node: RpcNode): Promise<NodeCapabilities | null>;
   refreshNodeCapabilities(node: RpcNode): Promise<NodeCapabilities>;

@@ -11,6 +11,7 @@ import {
   type NodeScore,
   type RpcEngineStatus,
   type RpcNode,
+  type ScannerSnapshotState,
   type ScannedHeaderEntry,
   type SyncCursor,
   type SyncRuntimeStats,
@@ -295,6 +296,7 @@ export function App(): JSX.Element {
   const [directSummary, setDirectSummary] = useState<DirectRpcWalletSummary | null>(null);
   const [directProfile, setDirectProfile] = useState<DirectRpcSessionProfile | null>(null);
   const [directCursor, setDirectCursor] = useState<SyncCursor | null>(null);
+  const [directSnapshotState, setDirectSnapshotState] = useState<ScannerSnapshotState | null>(null);
   const [directSyncStats, setDirectSyncStats] = useState<SyncRuntimeStats | null>(null);
   const [selectedNodeCapabilities, setSelectedNodeCapabilities] = useState<NodeCapabilities | null>(null);
   const [nodeScores, setNodeScores] = useState<NodeScore[]>([]);
@@ -622,11 +624,12 @@ export function App(): JSX.Element {
         }
       }
 
-      const [status, summary, profile, cursor, stats, scores, history, txs] = await Promise.all([
+      const [status, summary, profile, cursor, snapshotState, stats, scores, history, txs] = await Promise.all([
         directRpcEngine.getStatus().catch(() => ({ running: false } as RpcEngineStatus)),
         directRpcEngine.getSummary().catch(() => null),
         directRpcEngine.getProfile().catch(() => null),
         directRpcEngine.getCursor().catch(() => null),
+        directRpcEngine.getScannerSnapshotState().catch(() => null),
         directRpcEngine.getSyncStats().catch(() => null),
         directRpcEngine.getNodeScores().catch(() => [] as NodeScore[]),
         directRpcEngine.getHistory(30).catch(() => [] as ScannedHeaderEntry[]),
@@ -641,6 +644,7 @@ export function App(): JSX.Element {
       setDirectSummary(summary);
       setDirectProfile(profile);
       setDirectCursor(cursor);
+      setDirectSnapshotState(snapshotState);
       setDirectSyncStats(stats);
       setNodeScores(scores);
       setScanHistory(history);
@@ -683,6 +687,10 @@ export function App(): JSX.Element {
       directRpcEngine
         .getCursor()
         .then((cursor) => setDirectCursor(cursor))
+        .catch(() => undefined);
+      directRpcEngine
+        .getScannerSnapshotState()
+        .then((snapshotState) => setDirectSnapshotState(snapshotState))
         .catch(() => undefined);
       directRpcEngine
         .getSyncStats()
@@ -1021,6 +1029,7 @@ export function App(): JSX.Element {
     setDirectSummary(await directRpcEngine.getSummary());
     setDirectProfile(await directRpcEngine.getProfile());
     setDirectCursor(await directRpcEngine.getCursor());
+    setDirectSnapshotState(await directRpcEngine.getScannerSnapshotState());
     setDirectSyncStats(await directRpcEngine.getSyncStats());
     setTxHistory(await directRpcEngine.getTransactionHistory(40));
     if (!suppressOutput) {
@@ -1621,6 +1630,7 @@ export function App(): JSX.Element {
     setDirectSummary(null);
     setDirectProfile(null);
     setDirectCursor(null);
+    setDirectSnapshotState(null);
     setDirectSyncStats(null);
     setNodeScores([]);
     setScanHistory([]);
@@ -2047,6 +2057,14 @@ export function App(): JSX.Element {
                       </p>
                     ) : null}
                     {directCursor ? <p>Cursor height: {directCursor.height}</p> : null}
+                    {directSnapshotState ? (
+                      <p>
+                        Snapshot height: {directSnapshotState.snapshotHeight} | Cursor (snapshot wallet):{" "}
+                        {directSnapshotState.cursorHeight} | Last snapshot: {formatAgeFromTs(directSnapshotState.updatedAt)}
+                      </p>
+                    ) : (
+                      <p>Snapshot height: n/a</p>
+                    )}
                     {directSyncStats ? (
                       <>
                         <div className="sync-health">

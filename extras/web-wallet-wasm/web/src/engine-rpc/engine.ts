@@ -15,6 +15,7 @@ import type {
   NodeScore,
   RpcEngineStatus,
   RpcNode,
+  ScannerSnapshotState,
   ScannedHeaderEntry,
   SyncCursor,
   SyncRuntimeStats,
@@ -210,6 +211,20 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async getCursor(): Promise<SyncCursor | null> {
     return this.storage.loadCursor();
+  }
+
+  public async getScannerSnapshotState(): Promise<ScannerSnapshotState | null> {
+    const snapshot = await this.storage.loadScannerSnapshot();
+    if (!snapshot) {
+      return null;
+    }
+    const cursor = await this.storage.loadCursor();
+    return {
+      walletId: snapshot.walletId,
+      snapshotHeight: snapshot.cursorHeight,
+      cursorHeight: cursor?.walletId === snapshot.walletId ? cursor.height : 0,
+      updatedAt: snapshot.updatedAt
+    };
   }
 
   public async getSyncStats(): Promise<SyncRuntimeStats | null> {
