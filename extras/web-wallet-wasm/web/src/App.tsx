@@ -1399,7 +1399,7 @@ export function App(): JSX.Element {
     }
   };
 
-  const runTransferPreflight = async (): Promise<{
+  const runTransferPreflight = async (walletPasswordForPreflight?: string): Promise<{
     recipient: string;
     paymentId: string;
     amountAtomic: bigint;
@@ -1431,6 +1431,7 @@ export function App(): JSX.Element {
         destination: transferAddress.trim(),
         amountAtomic: amountAtomic.toString(),
         paymentId,
+        password: walletPasswordForPreflight,
         filenameHint: walletFilename
       });
       networkFeeAtomic = BigInt(estimated.feeAtomic);
@@ -1458,7 +1459,12 @@ export function App(): JSX.Element {
   };
 
   const onSubmitTransfer = async (): Promise<void> => {
-    const preflight = await runTransferPreflight();
+    const password = walletPassword.trim() || window.prompt("Enter wallet password to prepare and submit transaction:")?.trim() || "";
+    if (!password) {
+      setOutput("Wallet password is required to submit transfer.");
+      return;
+    }
+    const preflight = await runTransferPreflight(password);
     if (!preflight) {
       return;
     }
@@ -1473,12 +1479,6 @@ export function App(): JSX.Element {
     );
     if (!confirmed) {
       setOutput("Transfer submission cancelled by user.");
-      return;
-    }
-
-    const password = walletPassword.trim() || window.prompt("Enter wallet password to submit transaction:")?.trim() || "";
-    if (!password) {
-      setOutput("Wallet password is required to submit transfer.");
       return;
     }
 

@@ -175,6 +175,7 @@ export interface DirectRpcEngine {
     destination: string;
     amountAtomic: string;
     paymentId?: string;
+    password?: string;
     filenameHint?: string;
   }): Promise<{ feeAtomic: string }>;
   clearScanKeys(): Promise<void>;

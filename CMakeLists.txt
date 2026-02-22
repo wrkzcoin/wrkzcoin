@@ -24,6 +24,7 @@ set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build 
 option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
 option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
+option(WRKZ_WASM_PTHREADS "Build wallet WASM with pthread/atomics support" OFF)
 option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
 option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
 set(LIBUCONTEXT_ROOT "" CACHE PATH "Root of prebuilt libucontext for Android (expects include/ and lib/libucontext.a)")
@@ -119,6 +120,7 @@ endif ()
 message(STATUS "WRKZ_BUILD_EXECUTABLES: ${WRKZ_BUILD_EXECUTABLES}")
 message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
 message(STATUS "WRKZ_BUILD_WALLET_WASM: ${WRKZ_BUILD_WALLET_WASM}")
+message(STATUS "WRKZ_WASM_PTHREADS: ${WRKZ_WASM_PTHREADS}")
 message(STATUS "WRKZ_ANDROID_PROFILE: ${WRKZ_ANDROID_PROFILE}")
 message(STATUS "WRKZ_FORCE_STATIC_INTERNALS: ${WRKZ_FORCE_STATIC_INTERNALS}")
 
@@ -613,9 +615,9 @@ endif ()
 
 add_subdirectory(external)
 
-# Emscripten pthread builds require every linked object to be compiled with
-# atomics/bulk-memory support, including external static libraries.
-if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
+# Optional Emscripten pthread builds require every linked object to be compiled
+# with atomics/bulk-memory support, including external static libraries.
+if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM AND WRKZ_WASM_PTHREADS)
     foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
         if (TARGET ${_wrkz_pthread_target})
             target_compile_options(${_wrkz_pthread_target} PRIVATE

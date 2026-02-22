@@ -352,7 +352,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         daemonHost: this.currentNode.host,
         daemonPort: this.currentNode.port,
         daemonSsl: this.currentNode.ssl,
-        syncThreads: detectSyncThreads()
+        syncThreads: 1
       });
       walletId = restored.walletId;
       await this.waitForTransferWalletSync(walletId);
@@ -374,6 +374,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     destination: string;
     amountAtomic: string;
     paymentId?: string;
+    password?: string;
     filenameHint?: string;
   }): Promise<{ feeAtomic: string }> {
     if (!this.currentNode) {
@@ -392,14 +393,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     try {
       const restored = await this.worker.restoreFromKeys({
         filename: ephemeralFilename,
-        password: "__preflight__",
+        password: request.password?.trim() || "__preflight__",
         privateSpendKey: this.scanKeys.privateSpendKey,
         privateViewKey: this.scanKeys.privateViewKey,
         scanHeight: Math.max(0, profile.scanHeight || 0),
         daemonHost: this.currentNode.host,
         daemonPort: this.currentNode.port,
         daemonSsl: this.currentNode.ssl,
-        syncThreads: detectSyncThreads()
+        syncThreads: 1
       });
       walletId = restored.walletId;
       await this.waitForTransferWalletSync(walletId);
