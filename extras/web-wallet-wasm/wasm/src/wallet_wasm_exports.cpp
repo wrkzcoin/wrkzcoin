@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cstring>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
@@ -65,7 +66,13 @@ namespace
     json err(const int32_t code)
     {
         const char *msg = wallet_error_code_to_string(code);
-        return json{{"ok", false}, {"code", code}, {"error", (msg != nullptr) ? msg : "unknown"}};
+        json out{{"ok", false}, {"code", code}, {"error", (msg != nullptr) ? msg : "unknown"}};
+        const char *detail = wallet_last_error_message();
+        if (detail != nullptr && std::strlen(detail) > 0)
+        {
+            out["reason"] = detail;
+        }
+        return out;
     }
 
     bool has(const json &j, const char *key)
@@ -921,6 +928,16 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
         }
 
         g_response = err(-1).dump();
+        return g_response.c_str();
+    }
+    catch (const std::exception &e)
+    {
+        g_response = json{
+            {"ok", false},
+            {"code", -1},
+            {"error", "wasm_bridge_exception"},
+            {"reason", e.what()}}
+                         .dump();
         return g_response.c_str();
     }
     catch (...)

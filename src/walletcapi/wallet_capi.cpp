@@ -38,6 +38,17 @@ struct wallet_handle
 namespace
 {
     const std::string kVersion = "wallet-capi/0.1";
+    thread_local std::string g_last_error_message;
+
+    void set_last_error_message(const std::string &message)
+    {
+        g_last_error_message = message;
+    }
+
+    void clear_last_error_message()
+    {
+        g_last_error_message.clear();
+    }
 
     bool json_has(const nlohmann::json &obj, const char *key)
     {
@@ -150,20 +161,33 @@ wallet_status_t wallet_open(
     uint32_t sync_threads,
     wallet_handle_t **out_wallet)
 {
+    clear_last_error_message();
     if (out_wallet == nullptr || filename == nullptr || password == nullptr || daemon_host == nullptr)
     {
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
 
-    const auto [error, wallet] = WalletBackend::openWallet(
-        std::string(filename),
-        std::string(password),
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
-
-    return set_out_wallet(error, wallet, out_wallet);
+    try
+    {
+        const auto [error, wallet] = WalletBackend::openWallet(
+            std::string(filename),
+            std::string(password),
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
+        return set_out_wallet(error, wallet, out_wallet);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_open_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_open_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 }
 
 wallet_status_t wallet_create(
@@ -175,20 +199,33 @@ wallet_status_t wallet_create(
     uint32_t sync_threads,
     wallet_handle_t **out_wallet)
 {
+    clear_last_error_message();
     if (out_wallet == nullptr || filename == nullptr || password == nullptr || daemon_host == nullptr)
     {
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
 
-    const auto [error, wallet] = WalletBackend::createWallet(
-        std::string(filename),
-        std::string(password),
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
-
-    return set_out_wallet(error, wallet, out_wallet);
+    try
+    {
+        const auto [error, wallet] = WalletBackend::createWallet(
+            std::string(filename),
+            std::string(password),
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
+        return set_out_wallet(error, wallet, out_wallet);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_create_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_create_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 }
 
 wallet_status_t wallet_restore_from_seed(
@@ -202,6 +239,7 @@ wallet_status_t wallet_restore_from_seed(
     uint32_t sync_threads,
     wallet_handle_t **out_wallet)
 {
+    clear_last_error_message();
     if (
         out_wallet == nullptr
         || mnemonic_seed == nullptr
@@ -212,17 +250,29 @@ wallet_status_t wallet_restore_from_seed(
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
 
-    const auto [error, wallet] = WalletBackend::importWalletFromSeed(
-        std::string(mnemonic_seed),
-        std::string(filename),
-        std::string(password),
-        scan_height,
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
-
-    return set_out_wallet(error, wallet, out_wallet);
+    try
+    {
+        const auto [error, wallet] = WalletBackend::importWalletFromSeed(
+            std::string(mnemonic_seed),
+            std::string(filename),
+            std::string(password),
+            scan_height,
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
+        return set_out_wallet(error, wallet, out_wallet);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_restore_from_seed_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_restore_from_seed_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 }
 
 wallet_status_t wallet_restore_from_keys(
@@ -237,6 +287,7 @@ wallet_status_t wallet_restore_from_keys(
     uint32_t sync_threads,
     wallet_handle_t **out_wallet)
 {
+    clear_last_error_message();
     if (
         out_wallet == nullptr
         || private_spend_key_hex == nullptr
@@ -263,26 +314,52 @@ wallet_status_t wallet_restore_from_keys(
 
     std::tuple<Error, std::shared_ptr<WalletBackend>> importResult;
 #if defined(__EMSCRIPTEN__)
-    importResult = WalletBackend::importWalletFromKeysTransient(
-        privateSpendKey,
-        privateViewKey,
-        std::string(password),
-        scan_height,
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
+    try
+    {
+        importResult = WalletBackend::importWalletFromKeysTransient(
+            privateSpendKey,
+            privateViewKey,
+            std::string(password),
+            scan_height,
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_restore_from_keys_transient_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_restore_from_keys_transient_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 #else
-    importResult = WalletBackend::importWalletFromKeys(
-        privateSpendKey,
-        privateViewKey,
-        std::string(filename),
-        std::string(password),
-        scan_height,
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
+    try
+    {
+        importResult = WalletBackend::importWalletFromKeys(
+            privateSpendKey,
+            privateViewKey,
+            std::string(filename),
+            std::string(password),
+            scan_height,
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_restore_from_keys_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_restore_from_keys_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 #endif
 
     const auto &[error, wallet] = importResult;
@@ -302,6 +379,7 @@ wallet_status_t wallet_restore_view(
     uint32_t sync_threads,
     wallet_handle_t **out_wallet)
 {
+    clear_last_error_message();
     if (
         out_wallet == nullptr
         || private_view_key_hex == nullptr
@@ -319,18 +397,31 @@ wallet_status_t wallet_restore_view(
         return static_cast<wallet_status_t>(INVALID_KEY_FORMAT);
     }
 
-    const auto [error, wallet] = WalletBackend::importViewWallet(
-        privateViewKey,
-        std::string(address),
-        std::string(filename),
-        std::string(password),
-        scan_height,
-        std::string(daemon_host),
-        daemon_port,
-        daemon_ssl,
-        sync_threads);
+    try
+    {
+        const auto [error, wallet] = WalletBackend::importViewWallet(
+            privateViewKey,
+            std::string(address),
+            std::string(filename),
+            std::string(password),
+            scan_height,
+            std::string(daemon_host),
+            daemon_port,
+            daemon_ssl,
+            sync_threads);
 
-    return set_out_wallet(error, wallet, out_wallet);
+        return set_out_wallet(error, wallet, out_wallet);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_restore_view_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_restore_view_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
 }
 
 wallet_status_t wallet_delete_file(const char *filename)
@@ -1365,5 +1456,15 @@ const char *wallet_error_code_to_string(wallet_status_t code)
         last = "Unknown wallet error code: " + std::to_string(code);
     }
     return last.c_str();
+}
+
+const char *wallet_last_error_message(void)
+{
+    return g_last_error_message.c_str();
+}
+
+void wallet_clear_last_error_message(void)
+{
+    clear_last_error_message();
 }
 

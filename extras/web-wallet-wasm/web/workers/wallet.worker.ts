@@ -10,6 +10,23 @@ const WASM_LOAD_TIMEOUT_MS = 45000;
 let modulePromise: Promise<WasmModuleLike> | null = null;
 let moduleLoadStage = "idle";
 
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (typeof error === "number" || typeof error === "bigint") {
+    return `wasm_numeric_exception:${String(error)}`;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -63,12 +80,15 @@ async function invoke(command: string, payload: Record<string, unknown> = {}): P
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const mod = await loadWasmModule();
+      moduleLoadStage = `invoke_${command}_attempt_${attempt + 1}`;
       const raw = mod.ccall("wallet_wasm_request", "string", ["string"], [request]);
+      moduleLoadStage = `parse_${command}_attempt_${attempt + 1}`;
       return JSON.parse(String(raw));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = describeError(error);
       const fatalRuntimeTrap =
         /memory access out of bounds|unaligned accesses|unwind|RuntimeError/i.test(message)
+        || /^wasm_numeric_exception:\d+$/.test(message.trim())
         || /^\d+$/.test(message.trim());
       if (!fatalRuntimeTrap || attempt > 0) {
         throw error;
@@ -113,18 +133,7 @@ self.onmessage = async (event: MessageEvent<WorkerCommand>): Promise<void> => {
 
     reply = { id: msg.id, ok: true, result };
   } catch (error) {
-    let message = "Unknown worker error";
-    if (error instanceof Error) {
-      message = error.message;
-    } else if (typeof error === "string") {
-      message = error;
-    } else {
-      try {
-        message = JSON.stringify(error);
-      } catch {
-        message = String(error);
-      }
-    }
+    const message = describeError(error);
     reply = {
       id: msg.id,
       ok: false,

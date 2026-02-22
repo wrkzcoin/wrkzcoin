@@ -50,6 +50,7 @@ type DebugLevel = "trace" | "debug" | "info" | "warning" | "error";
 type DebugLogEntry = {
   ts: number;
   level: DebugLevel;
+  category: string;
   message: string;
 };
 type ImportReview = {
@@ -209,6 +210,33 @@ function debugLevelRank(level: DebugLevel): number {
   if (level === "info") return 2;
   if (level === "warning") return 3;
   return 4;
+}
+
+function formatCliLikeTs(ts: number): string {
+  const d = new Date(ts);
+  const pad2 = (n: number): string => String(n).padStart(2, "0");
+  const pad3 = (n: number): string => String(n).padStart(3, "0");
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}.${pad3(d.getMilliseconds())}`;
+}
+
+function formatCliLikeLevel(level: DebugLevel): string {
+  if (level === "warning") {
+    return "WARN ";
+  }
+  if (level === "trace") {
+    return "TRACE";
+  }
+  if (level === "debug") {
+    return "DEBUG";
+  }
+  if (level === "info") {
+    return "INFO ";
+  }
+  return "ERROR";
+}
+
+function formatCliLikeLogLine(entry: DebugLogEntry): string {
+  return `${formatCliLikeTs(entry.ts)} [${formatCliLikeLevel(entry.level)}] [${entry.category}] ${entry.message}`;
 }
 
 function getSystemTheme(): ResolvedTheme {
@@ -384,7 +412,7 @@ export function App(): JSX.Element {
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
   const [customNodeSsl, setCustomNodeSsl] = useState<boolean>(DEFAULT_RPC_SSL);
 
-  const appendDebugLog = (level: DebugLevel, message: string): void => {
+  const appendDebugLog = (level: DebugLevel, message: string, category = "WEB"): void => {
     if (!debugEnabled) {
       return;
     }
@@ -392,7 +420,7 @@ export function App(): JSX.Element {
       return;
     }
     setDebugLogs((prev) => {
-      const next = [...prev, { ts: Date.now(), level, message }];
+      const next = [...prev, { ts: Date.now(), level, category, message }];
       if (next.length > DEBUG_LOG_LIMIT) {
         return next.slice(next.length - DEBUG_LOG_LIMIT);
       }
@@ -508,17 +536,17 @@ export function App(): JSX.Element {
   }, [debugLevel]);
 
   useEffect(() => {
-    appendDebugLog("info", `status: ${output}`);
+    appendDebugLog("info", `status: ${output}`, "UI");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [output]);
 
   useEffect(() => {
     const onError = (event: ErrorEvent): void => {
-      appendDebugLog("error", `window_error: ${event.message}`);
+      appendDebugLog("error", `window_error: ${event.message}`, "RUNTIME");
     };
     const onUnhandled = (event: PromiseRejectionEvent): void => {
       const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
-      appendDebugLog("error", `unhandled_rejection: ${reason}`);
+      appendDebugLog("error", `unhandled_rejection: ${reason}`, "RUNTIME");
     };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandled);
@@ -1523,6 +1551,11 @@ export function App(): JSX.Element {
 
     let networkFeeAtomic = 0n;
     let preparedTxHash = "";
+    appendDebugLog(
+      "trace",
+      `prepare_transfer_fee start amountAtomic=${amountAtomic.toString()} paymentIdLen=${paymentId.length} node=${selectedNode ? buildNodeHttpUrl(selectedNode) : "n/a"}`,
+      "TRANSFER"
+    );
     try {
       const prepared = await directRpcEngine.prepareBasicTransfer({
         destination: transferAddress.trim(),
@@ -1533,9 +1566,14 @@ export function App(): JSX.Element {
       });
       preparedTxHash = prepared.preparedTxHash;
       networkFeeAtomic = BigInt(prepared.feeAtomic);
+      appendDebugLog(
+        "debug",
+        `prepare_transfer_fee ok feeAtomic=${prepared.feeAtomic} preparedTxHash=${prepared.preparedTxHash}`,
+        "TRANSFER"
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      appendDebugLog("error", `transfer_preflight_prepare_failed: ${reason}`);
+      appendDebugLog("error", `prepare_transfer_fee failed reason=${reason}`, "TRANSFER");
       setOutput(`Unable to prepare transfer fee: ${reason}`);
       return null;
     }
@@ -1586,21 +1624,19 @@ export function App(): JSX.Element {
 
     try {
       const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
-      appendDebugLog("info", `transfer_submitted: ${sent.txHash}`);
+      appendDebugLog("info", `submit_transfer ok txHash=${sent.txHash}`, "TRANSFER");
       setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
       setTransferAmount("");
       setTransferPaymentId("");
     } catch (error) {
       await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-      appendDebugLog("error", `transfer_submit_failed: ${error instanceof Error ? error.message : String(error)}`);
+      appendDebugLog("error", `submit_transfer failed reason=${error instanceof Error ? error.message : String(error)}`, "TRANSFER");
       setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
     }
   };
 
   const onCopyDebugLogs = async (): Promise<void> => {
-    const text = debugLogs
-      .map((entry) => `${new Date(entry.ts).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`)
-      .join("\n");
+    const text = debugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n");
     try {
       await navigator.clipboard.writeText(text);
       setOutput(`Copied ${debugLogs.length} debug log entries.`);
@@ -2527,9 +2563,7 @@ export function App(): JSX.Element {
               <textarea
                 className="input-area"
                 readOnly
-                value={debugLogs
-                  .map((entry) => `${new Date(entry.ts).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`)
-                  .join("\n")}
+                value={debugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n")}
                 rows={12}
               />
             </section>
