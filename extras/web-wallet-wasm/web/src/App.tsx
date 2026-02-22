@@ -1625,14 +1625,29 @@ export function App(): JSX.Element {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       appendDebugLog("error", `prepare_transfer_fee failed reason=${reason}`, "TRANSFER");
-      if (/restoreFromKeys|wasm_numeric_exception|memory access out of bounds|unaligned accesses|unwind/i.test(reason)) {
+
+      let userMessage = `Unable to prepare transfer fee: ${reason}`;
+
+      if (/restoreFromKeys_failed/.test(reason)) {
+        appendDebugLog(
+          "warning",
+          "prepare_transfer_fee hit transfer wallet restore failure; checking daemon connectivity and retrying",
+          "TRANSFER"
+        );
+        if (/status code 0|connection|network|timeout|unreachable/i.test(reason)) {
+          userMessage = "Unable to prepare transfer: daemon connection failed. Please check your internet connection and node availability, then retry.";
+        } else {
+          userMessage = `Unable to prepare transfer: wallet restore failed. Reason: ${reason}`;
+        }
+      } else if (/wasm_numeric_exception|memory access out of bounds|unaligned accesses|unwind/i.test(reason)) {
         appendDebugLog(
           "warning",
           "prepare_transfer_fee hit wasm/backend restore path failure; verify wasm rebuild + node websocket/cors + walletbackend transient restore",
           "TRANSFER"
         );
       }
-      setOutput(`Unable to prepare transfer fee: ${reason}`);
+
+      setOutput(userMessage);
       return null;
     }
 
