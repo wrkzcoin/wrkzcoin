@@ -248,6 +248,10 @@ wallet_status_t wallet_restore_from_keys(
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
 
+#if defined(__EMSCRIPTEN__)
+    (void)filename;
+#endif
+
     Crypto::SecretKey privateSpendKey;
     Crypto::SecretKey privateViewKey;
     if (
@@ -257,7 +261,19 @@ wallet_status_t wallet_restore_from_keys(
         return static_cast<wallet_status_t>(INVALID_KEY_FORMAT);
     }
 
-    const auto [error, wallet] = WalletBackend::importWalletFromKeys(
+    std::tuple<Error, std::shared_ptr<WalletBackend>> importResult;
+#if defined(__EMSCRIPTEN__)
+    importResult = WalletBackend::importWalletFromKeysTransient(
+        privateSpendKey,
+        privateViewKey,
+        std::string(password),
+        scan_height,
+        std::string(daemon_host),
+        daemon_port,
+        daemon_ssl,
+        sync_threads);
+#else
+    importResult = WalletBackend::importWalletFromKeys(
         privateSpendKey,
         privateViewKey,
         std::string(filename),
@@ -267,6 +283,9 @@ wallet_status_t wallet_restore_from_keys(
         daemon_port,
         daemon_ssl,
         sync_threads);
+#endif
+
+    const auto &[error, wallet] = importResult;
 
     return set_out_wallet(error, wallet, out_wallet);
 }

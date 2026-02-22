@@ -74,6 +74,18 @@ class WalletBackend
         const bool daemonSSL,
         const unsigned int syncThreadCount = std::thread::hardware_concurrency());
 
+    /* Imports a wallet from keys without touching wallet files.
+       Intended for transient/in-memory flows (e.g. browser wasm transfer workers). */
+    static std::tuple<Error, std::shared_ptr<WalletBackend>> importWalletFromKeysTransient(
+        const Crypto::SecretKey privateSpendKey,
+        const Crypto::SecretKey privateViewKey,
+        const std::string password,
+        const uint64_t scanHeight,
+        const std::string daemonHost,
+        const uint16_t daemonPort,
+        const bool daemonSSL,
+        const unsigned int syncThreadCount = std::thread::hardware_concurrency());
+
     /* Imports a view wallet from a private view key and an address.
        Returns the wallet class, or an error. */
     static std::tuple<Error, std::shared_ptr<WalletBackend>> importViewWallet(

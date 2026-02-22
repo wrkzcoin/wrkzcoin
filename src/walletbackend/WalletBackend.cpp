@@ -113,7 +113,7 @@ WalletBackend::~WalletBackend()
 {
     /* Save, but only if the non default constructor was used - else things
        will be uninitialized, and crash */
-    if (m_daemon != nullptr)
+    if (m_daemon != nullptr && !m_filename.empty())
     {
         save();
     }
@@ -284,6 +284,45 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importWalletFro
     Error error = wallet->save();
 
     return {error, wallet};
+}
+
+std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::importWalletFromKeysTransient(
+    const Crypto::SecretKey privateSpendKey,
+    const Crypto::SecretKey privateViewKey,
+    const std::string password,
+    const uint64_t scanHeight,
+    const std::string daemonHost,
+    const uint16_t daemonPort,
+    const bool daemonSSL,
+    const unsigned int syncThreadCount)
+{
+    if (Error error = validatePrivateKey(privateViewKey); error != SUCCESS)
+    {
+        return {error, nullptr};
+    }
+
+    if (Error error = validatePrivateKey(privateSpendKey); error != SUCCESS)
+    {
+        return {error, nullptr};
+    }
+
+    bool newWallet = false;
+
+    const std::shared_ptr<WalletBackend> wallet(new WalletBackend(
+        "" /* transient wallet: no file persistence */,
+        password,
+        privateSpendKey,
+        privateViewKey,
+        scanHeight,
+        newWallet,
+        daemonHost,
+        daemonPort,
+        daemonSSL,
+        syncThreadCount));
+
+    wallet->init();
+
+    return {SUCCESS, wallet};
 }
 
 /* Imports a view wallet from a private view key and an address.
