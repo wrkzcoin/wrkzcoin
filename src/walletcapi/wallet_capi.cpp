@@ -250,12 +250,9 @@ wallet_status_t wallet_restore_from_keys(
 
     Crypto::SecretKey privateSpendKey;
     Crypto::SecretKey privateViewKey;
-    try
-    {
-        privateSpendKey.fromString(std::string(private_spend_key_hex));
-        privateViewKey.fromString(std::string(private_view_key_hex));
-    }
-    catch (...)
+    if (
+        !Common::podFromHex(std::string(private_spend_key_hex), privateSpendKey)
+        || !Common::podFromHex(std::string(private_view_key_hex), privateViewKey))
     {
         return static_cast<wallet_status_t>(INVALID_KEY_FORMAT);
     }
@@ -298,11 +295,7 @@ wallet_status_t wallet_restore_view(
     }
 
     Crypto::SecretKey privateViewKey;
-    try
-    {
-        privateViewKey.fromString(std::string(private_view_key_hex));
-    }
-    catch (...)
+    if (!Common::podFromHex(std::string(private_view_key_hex), privateViewKey))
     {
         return static_cast<wallet_status_t>(INVALID_KEY_FORMAT);
     }
