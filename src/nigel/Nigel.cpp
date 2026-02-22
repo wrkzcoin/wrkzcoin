@@ -49,7 +49,9 @@ inline std::shared_ptr<httplib::Client> getClient(
 #if defined(__EMSCRIPTEN__)
 inline std::string daemonUrl(const std::string &host, const uint16_t port, const bool ssl, const std::string &path)
 {
-    return std::string(ssl ? "https://" : "http://") + host + ":" + std::to_string(port) + path;
+    const uint16_t defaultPort = ssl ? 443 : 80;
+    const std::string portStr = (port == defaultPort) ? "" : (":" + std::to_string(port));
+    return std::string(ssl ? "https://" : "http://") + host + portStr + path;
 }
 
 inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
