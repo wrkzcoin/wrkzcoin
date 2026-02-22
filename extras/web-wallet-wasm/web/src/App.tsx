@@ -1405,6 +1405,7 @@ export function App(): JSX.Element {
     amountAtomic: bigint;
     networkFeeAtomic: bigint;
     totalAtomic: bigint;
+    preparedTxHash: string;
   } | null> => {
     if (!selectedNode) {
       setOutput("No default node selected.");
@@ -1426,15 +1427,17 @@ export function App(): JSX.Element {
     }
 
     let networkFeeAtomic = 0n;
+    let preparedTxHash = "";
     try {
-      const estimated = await directRpcEngine.estimateBasicTransferFee({
+      const prepared = await directRpcEngine.prepareBasicTransfer({
         destination: transferAddress.trim(),
         amountAtomic: amountAtomic.toString(),
         paymentId,
-        password: walletPasswordForPreflight,
+        password: walletPasswordForPreflight ?? "",
         filenameHint: walletFilename
       });
-      networkFeeAtomic = BigInt(estimated.feeAtomic);
+      preparedTxHash = prepared.preparedTxHash;
+      networkFeeAtomic = BigInt(prepared.feeAtomic);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       setOutput(`Unable to prepare transfer fee: ${reason}`);
@@ -1442,12 +1445,14 @@ export function App(): JSX.Element {
     }
 
     if (networkFeeAtomic <= 0n) {
+      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
       setOutput("Unable to prepare transfer fee: wallet returned zero estimated fee.");
       return null;
     }
 
     const totalAtomic = amountAtomic + networkFeeAtomic;
     if (totalAtomic > unlockedAtomic) {
+      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
       setOutput(
         `Amount + fees exceed available balance (${maxTransferAmount} ${COIN_TICKER}). ` +
         `Required: ${formatAtomicAmount(totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}.`
@@ -1455,7 +1460,7 @@ export function App(): JSX.Element {
       return null;
     }
     const recipient = transferAddress.trim();
-    return { recipient, paymentId, amountAtomic, networkFeeAtomic, totalAtomic };
+    return { recipient, paymentId, amountAtomic, networkFeeAtomic, totalAtomic, preparedTxHash };
   };
 
   const onSubmitTransfer = async (): Promise<void> => {
@@ -1478,22 +1483,18 @@ export function App(): JSX.Element {
       ].join("\n")
     );
     if (!confirmed) {
+      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
       setOutput("Transfer submission cancelled by user.");
       return;
     }
 
     try {
-      const sent = await directRpcEngine.sendBasicTransfer({
-        destination: preflight.recipient,
-        amountAtomic: preflight.amountAtomic.toString(),
-        paymentId: preflight.paymentId,
-        password,
-        filenameHint: walletFilename
-      });
+      const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
       setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
       setTransferAmount("");
       setTransferPaymentId("");
     } catch (error) {
+      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
       setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
     }
   };

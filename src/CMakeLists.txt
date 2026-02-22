@@ -289,6 +289,13 @@ if (WRKZ_BUILD_WALLET_WASM)
     target_compile_options(wallet_wasm PRIVATE
         -fexceptions
     )
+    if (WRKZ_WASM_PTHREADS)
+        target_compile_options(wallet_wasm PRIVATE
+            -pthread
+            -matomics
+            -mbulk-memory
+        )
+    endif ()
     target_link_options(wallet_wasm PRIVATE
         -fexceptions
         -sWASM=1
@@ -303,6 +310,13 @@ if (WRKZ_BUILD_WALLET_WASM)
         -sERROR_ON_UNDEFINED_SYMBOLS=0
         --no-entry
     )
+    if (WRKZ_WASM_PTHREADS)
+        target_link_options(wallet_wasm PRIVATE
+            -pthread
+            -sUSE_PTHREADS=1
+            -sPTHREAD_POOL_SIZE=4
+        )
+    endif ()
 endif ()
 
 if (OPENSSL_FOUND)

@@ -383,6 +383,56 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                 scanner->ownedOutputsSeen = 0;
                 scanner->spentOwnedOutputs = 0;
                 scanner->initialized = true;
+
+                const std::string snapshot = req.value("scannerSnapshot", "");
+                if (!snapshot.empty())
+                {
+                    try
+                    {
+                        const auto snap = json::parse(snapshot);
+                        if (snap.value("version", 0u) == 1u)
+                        {
+                            scanner->unspent.clear();
+                            scanner->ownedAmounts.clear();
+                            scanner->scannedBlocks = snap.value("scannedBlocks", 0ULL);
+                            scanner->scannedTransactions = snap.value("scannedTransactions", 0ULL);
+                            scanner->scannedOutputs = snap.value("scannedOutputs", 0ULL);
+                            scanner->ownedOutputsSeen = snap.value("ownedOutputsSeen", 0ULL);
+                            scanner->spentOwnedOutputs = snap.value("spentOwnedOutputs", 0ULL);
+
+                            if (snap.contains("ownedAmounts") && snap["ownedAmounts"].is_array())
+                            {
+                                for (const auto &entry : snap["ownedAmounts"])
+                                {
+                                    const std::string keyImage = entry.value("keyImage", "");
+                                    const uint64_t amount = entry.value("amount", 0ULL);
+                                    if (!keyImage.empty())
+                                    {
+                                        scanner->ownedAmounts[keyImage] = amount;
+                                    }
+                                }
+                            }
+
+                            if (snap.contains("unspent") && snap["unspent"].is_array())
+                            {
+                                for (const auto &entry : snap["unspent"])
+                                {
+                                    const std::string keyImage = entry.value("keyImage", "");
+                                    const uint64_t amount = entry.value("amount", 0ULL);
+                                    const uint64_t unlockTime = entry.value("unlockTime", 0ULL);
+                                    if (!keyImage.empty())
+                                    {
+                                        scanner->unspent[keyImage] = ScannerInput{amount, unlockTime};
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (...)
+                    {
+                        // Ignore corrupt snapshot and continue from clean reset.
+                    }
+                }
             }
 
             json txEntries = json::array();
@@ -517,6 +567,27 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                 }
             }
 
+            json snapshot = json{
+                {"version", 1},
+                {"scannedBlocks", scanner->scannedBlocks},
+                {"scannedTransactions", scanner->scannedTransactions},
+                {"scannedOutputs", scanner->scannedOutputs},
+                {"ownedOutputsSeen", scanner->ownedOutputsSeen},
+                {"spentOwnedOutputs", scanner->spentOwnedOutputs},
+                {"ownedAmounts", json::array()},
+                {"unspent", json::array()}};
+
+            for (const auto &[keyImage, amount] : scanner->ownedAmounts)
+            {
+                snapshot["ownedAmounts"].push_back(json{{"keyImage", keyImage}, {"amount", amount}});
+            }
+
+            for (const auto &[keyImage, input] : scanner->unspent)
+            {
+                snapshot["unspent"].push_back(
+                    json{{"keyImage", keyImage}, {"amount", input.amount}, {"unlockTime", input.unlockTime}});
+            }
+
             g_response = ok(json{
                                 {"unlocked", std::to_string(unlocked)},
                                 {"locked", std::to_string(locked)},
@@ -525,6 +596,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                                 {"scannedBlocks", scanner->scannedBlocks},
                                 {"scannedTransactions", scanner->scannedTransactions},
                                 {"scannedOutputs", scanner->scannedOutputs},
+                                {"scannerSnapshot", snapshot.dump()},
                                 {"transactions", txEntries}})
                              .dump();
             return g_response.c_str();
@@ -608,6 +680,95 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                 true,
                 &txHashOut,
                 &txHashLen);
+
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            const std::string txHash = txHashOut != nullptr ? std::string(txHashOut, txHashLen) : "";
+            if (txHashOut != nullptr)
+            {
+                wallet_string_free(txHashOut);
+            }
+            g_response = ok(json{{"txHash", txHash}}).dump();
+            return g_response.c_str();
+        }
+
+        if (command == "prepareBasicTransfer")
+        {
+            const std::string destination = req.value("destination", "");
+            const std::string paymentId = req.value("paymentId", "");
+            const std::string amountAtomicStr = req.value("amountAtomic", "0");
+            if (destination.empty())
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            uint64_t amountAtomic = 0;
+            try
+            {
+                amountAtomic = static_cast<uint64_t>(std::stoull(amountAtomicStr));
+            }
+            catch (...)
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            const json requestBody = json{
+                {"destinations", json::array({json{{"address", destination}, {"amount", amountAtomic}}})},
+                {"paymentID", paymentId}};
+
+            char *resultOut = nullptr;
+            size_t resultLen = 0;
+            const wallet_status_t status = wallet_send_advanced_json(
+                wallet,
+                requestBody.dump().c_str(),
+                false,
+                &resultOut,
+                &resultLen);
+
+            if (status != 0)
+            {
+                g_response = err(status).dump();
+                return g_response.c_str();
+            }
+
+            try
+            {
+                const std::string payload(resultOut != nullptr ? std::string(resultOut, resultLen) : "{}");
+                if (resultOut != nullptr)
+                {
+                    wallet_string_free(resultOut);
+                }
+                const auto parsed = json::parse(payload);
+                const std::string preparedTxHash = parsed.value("transactionHash", "");
+                const uint64_t fee = parsed.value("fee", 0ull);
+                g_response = ok(json{{"preparedTxHash", preparedTxHash}, {"feeAtomic", std::to_string(fee)}}).dump();
+            }
+            catch (...)
+            {
+                g_response = err(-1).dump();
+            }
+            return g_response.c_str();
+        }
+
+        if (command == "sendPreparedTransfer")
+        {
+            const std::string preparedTxHash = req.value("preparedTxHash", "");
+            if (preparedTxHash.empty())
+            {
+                g_response = err(-1).dump();
+                return g_response.c_str();
+            }
+
+            char *txHashOut = nullptr;
+            size_t txHashLen = 0;
+            const wallet_status_t status =
+                wallet_send_prepared(wallet, preparedTxHash.c_str(), &txHashOut, &txHashLen);
 
             if (status != 0)
             {

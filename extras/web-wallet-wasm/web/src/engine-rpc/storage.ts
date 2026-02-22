@@ -20,8 +20,33 @@ const CAPABILITIES_KEY = `${STORAGE_PREFIX}:capabilities`;
 const NODE_SCORES_KEY = `${STORAGE_PREFIX}:node_scores`;
 const HISTORY_KEY = `${STORAGE_PREFIX}:history`;
 const TX_HISTORY_KEY = `${STORAGE_PREFIX}:tx_history`;
+const SCANNER_SNAPSHOT_KEY = `${STORAGE_PREFIX}:scanner_snapshot`;
 
 export class RpcEngineStorage {
+  public async saveScannerSnapshot(walletId: string, snapshot: string, cursorHeight: number): Promise<void> {
+    localStorage.setItem(
+      SCANNER_SNAPSHOT_KEY,
+      JSON.stringify({
+        walletId,
+        snapshot,
+        cursorHeight,
+        updatedAt: Date.now()
+      })
+    );
+  }
+
+  public async loadScannerSnapshot(): Promise<{ walletId: string; snapshot: string; cursorHeight: number; updatedAt: number } | null> {
+    const raw = localStorage.getItem(SCANNER_SNAPSHOT_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw) as { walletId: string; snapshot: string; cursorHeight: number; updatedAt: number };
+  }
+
+  public async clearScannerSnapshot(): Promise<void> {
+    localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
+  }
+
   public async saveCursor(cursor: SyncCursor): Promise<void> {
     localStorage.setItem(CURSOR_KEY, JSON.stringify(cursor));
   }
@@ -177,6 +202,7 @@ export class RpcEngineStorage {
     localStorage.removeItem(NODE_SCORES_KEY);
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TX_HISTORY_KEY);
+    localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
   }
 
   public async clearSyncArtifacts(): Promise<void> {
@@ -185,5 +211,6 @@ export class RpcEngineStorage {
     localStorage.removeItem(STATS_KEY);
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TX_HISTORY_KEY);
+    localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
   }
 }

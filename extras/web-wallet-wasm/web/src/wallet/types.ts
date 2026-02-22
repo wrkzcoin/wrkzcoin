@@ -81,6 +81,7 @@ export interface ScanSyncDataBalanceRequest {
   privateViewKey: string;
   daemonHeight: number;
   reset?: boolean;
+  scannerSnapshot?: string;
   items: unknown[];
 }
 
@@ -92,6 +93,7 @@ export interface ScanSyncDataBalanceResult {
   scannedBlocks: number;
   scannedTransactions: number;
   scannedOutputs: number;
+  scannerSnapshot?: string;
   transactions?: Array<{
     txHash: string;
     blockHeight: number;

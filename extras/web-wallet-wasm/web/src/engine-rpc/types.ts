@@ -164,6 +164,15 @@ export interface DirectRpcEngine {
   deriveAddressFromKeys(privateSpendKey: string, privateViewKey: string): Promise<string>;
   validateAddress(address: string, allowIntegrated?: boolean): Promise<{ valid: boolean; reason?: string }>;
   createIntegratedAddress(address: string, paymentId: string): Promise<{ integratedAddress: string; error?: string }>;
+  prepareBasicTransfer(request: {
+    destination: string;
+    amountAtomic: string;
+    paymentId?: string;
+    password: string;
+    filenameHint?: string;
+  }): Promise<{ preparedTxHash: string; feeAtomic: string }>;
+  submitPreparedTransfer(preparedTxHash: string): Promise<{ txHash: string }>;
+  discardPreparedTransfer(): Promise<void>;
   sendBasicTransfer(request: {
     destination: string;
     amountAtomic: string;

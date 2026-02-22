@@ -142,6 +142,41 @@ export class WalletWorkerClient {
     });
   }
 
+  public async prepareBasicTransfer(
+    walletId: number,
+    destination: string,
+    amountAtomic: string,
+    paymentId = ""
+  ): Promise<{
+    preparedTxHash: string;
+    feeAtomic: string;
+    networkHeight?: number;
+    txPowRequired?: boolean;
+    txPowPassFeeAtomic?: string;
+    txPowPassHeight?: number;
+  }> {
+    return this.sendWasm<{
+      preparedTxHash: string;
+      feeAtomic: string;
+      networkHeight?: number;
+      txPowRequired?: boolean;
+      txPowPassFeeAtomic?: string;
+      txPowPassHeight?: number;
+    }>({
+      id: createRequestId(),
+      command: "prepareBasicTransfer",
+      payload: { walletId, destination, amountAtomic, paymentId }
+    });
+  }
+
+  public async sendPreparedTransfer(walletId: number, preparedTxHash: string): Promise<{ txHash: string }> {
+    return this.sendWasm<{ txHash: string }>({
+      id: createRequestId(),
+      command: "sendPreparedTransfer",
+      payload: { walletId, preparedTxHash }
+    });
+  }
+
   public async estimateBasicFee(
     walletId: number,
     destination: string,

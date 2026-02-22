@@ -16,6 +16,12 @@ export type WorkerCommand =
   | { id: string; command: "deriveAddressFromKeys"; payload: { privateSpendKey: string; privateViewKey: string } }
   | { id: string; command: "validateAddress"; payload: { address: string; allowIntegrated?: boolean } }
   | { id: string; command: "createIntegratedAddress"; payload: { address: string; paymentId: string } }
+  | {
+      id: string;
+      command: "prepareBasicTransfer";
+      payload: { walletId: number; destination: string; amountAtomic: string; paymentId?: string };
+    }
+  | { id: string; command: "sendPreparedTransfer"; payload: { walletId: number; preparedTxHash: string } }
   | { id: string; command: "estimateBasicFee"; payload: { walletId: number; destination: string; amountAtomic: string; paymentId?: string } }
   | { id: string; command: "sendBasic"; payload: { walletId: number; destination: string; amountAtomic: string; paymentId?: string } }
   | { id: string; command: "swapNode"; payload: { walletId: number; daemonHost: string; daemonPort: number; daemonSsl: boolean } }
