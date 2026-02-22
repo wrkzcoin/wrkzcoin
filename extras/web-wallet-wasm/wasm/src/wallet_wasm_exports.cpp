@@ -400,7 +400,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                             scanner->ownedOutputsSeen = snap.value("ownedOutputsSeen", 0ULL);
                             scanner->spentOwnedOutputs = snap.value("spentOwnedOutputs", 0ULL);
 
-                            if (snap.contains("ownedAmounts") && snap["ownedAmounts"].is_array())
+                            if (snap.find("ownedAmounts") != snap.end() && snap["ownedAmounts"].is_array())
                             {
                                 for (const auto &entry : snap["ownedAmounts"])
                                 {
@@ -413,7 +413,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                                 }
                             }
 
-                            if (snap.contains("unspent") && snap["unspent"].is_array())
+                            if (snap.find("unspent") != snap.end() && snap["unspent"].is_array())
                             {
                                 for (const auto &entry : snap["unspent"])
                                 {
