@@ -400,19 +400,6 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                             scanner->ownedOutputsSeen = snap.value("ownedOutputsSeen", 0ULL);
                             scanner->spentOwnedOutputs = snap.value("spentOwnedOutputs", 0ULL);
 
-                            if (snap.find("ownedAmounts") != snap.end() && snap["ownedAmounts"].is_array())
-                            {
-                                for (const auto &entry : snap["ownedAmounts"])
-                                {
-                                    const std::string keyImage = entry.value("keyImage", "");
-                                    const uint64_t amount = entry.value("amount", 0ULL);
-                                    if (!keyImage.empty())
-                                    {
-                                        scanner->ownedAmounts[keyImage] = amount;
-                                    }
-                                }
-                            }
-
                             if (snap.find("unspent") != snap.end() && snap["unspent"].is_array())
                             {
                                 for (const auto &entry : snap["unspent"])
@@ -574,13 +561,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *wallet_wasm_request(const char *requ
                 {"scannedOutputs", scanner->scannedOutputs},
                 {"ownedOutputsSeen", scanner->ownedOutputsSeen},
                 {"spentOwnedOutputs", scanner->spentOwnedOutputs},
-                {"ownedAmounts", json::array()},
                 {"unspent", json::array()}};
-
-            for (const auto &[keyImage, amount] : scanner->ownedAmounts)
-            {
-                snapshot["ownedAmounts"].push_back(json{{"keyImage", keyImage}, {"amount", amount}});
-            }
 
             for (const auto &[keyImage, input] : scanner->unspent)
             {

@@ -703,7 +703,6 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     const baseline = Math.max(0, profile?.scanHeight ?? 0);
     const cursor = currentCursor && currentCursor.walletId === this.currentWalletId ? currentCursor.height : baseline;
     const clampedCursor = Math.min(cursor, daemonHeight);
-    const remaining = Math.max(0, daemonHeight - clampedCursor);
 
     const previousSummary = await this.storage.loadSummary();
     const previousOwnedSummary =
@@ -732,9 +731,28 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       unspentOwnedOutputs = previousOwnedSummary.unspentOwnedOutputs ?? unspentOwnedOutputs;
       spentOwnedOutputs = previousOwnedSummary.spentOwnedOutputs ?? spentOwnedOutputs;
     }
+    const persistedSnapshot = this.scanKeys ? await this.storage.loadScannerSnapshot().catch(() => null) : null;
+    const scannerSnapshot =
+      persistedSnapshot && persistedSnapshot.walletId === this.currentWalletId
+        ? persistedSnapshot.snapshot
+        : undefined;
+    let alignedCursor = clampedCursor;
+    if (
+      persistedSnapshot
+      && persistedSnapshot.walletId === this.currentWalletId
+      && previousOwnedSummary
+      && persistedSnapshot.cursorHeight >= baseline
+      && persistedSnapshot.cursorHeight < clampedCursor
+    ) {
+      alignedCursor = persistedSnapshot.cursorHeight;
+    }
+    const remaining = Math.max(0, daemonHeight - alignedCursor);
+    const hasScannerSnapshot = typeof scannerSnapshot === "string" && scannerSnapshot.length > 0;
+    const canRunResetScan = !this.scannerResetPending || hasScannerSnapshot || previousOwnedSummary === null;
 
+    nextSyncedHeight = alignedCursor;
     if (remaining > 0) {
-      lastBatchStart = clampedCursor + 1;
+      lastBatchStart = alignedCursor + 1;
       lastBatchEnd = Math.min(lastBatchStart + this.walletSyncBatchSize - 1, daemonHeight);
       lastBatchSize = lastBatchEnd - lastBatchStart + 1;
       const walletSync = await this.tryFetchWalletSyncBatch(node, lastBatchStart, lastBatchSize);
@@ -757,21 +775,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
             }))
           );
 
-          const highest = walletSync.items.reduce((max, item) => Math.max(max, Number(item.blockHeight ?? max)), clampedCursor);
+          const highest = walletSync.items.reduce((max, item) => Math.max(max, Number(item.blockHeight ?? max)), alignedCursor);
           nextSyncedHeight = Math.min(highest, daemonHeight);
         } else {
           nextSyncedHeight = Math.min(lastBatchEnd, daemonHeight);
         }
 
-        if (this.scanKeys) {
+        if (this.scanKeys && canRunResetScan) {
           try {
-            const persistedSnapshot = this.scannerResetPending
-              ? await this.storage.loadScannerSnapshot().catch(() => null)
-              : null;
-            const scannerSnapshot =
-              persistedSnapshot && persistedSnapshot.walletId === this.currentWalletId
-                ? persistedSnapshot.snapshot
-                : undefined;
             const scanResult = await this.worker.scanSyncDataBalance({
               scannerId: this.currentWalletId,
               privateSpendKey: this.scanKeys.privateSpendKey,
@@ -811,6 +822,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
           } catch (error) {
             lastError = error instanceof Error ? error.message : String(error);
           }
+        } else if (this.scanKeys && !canRunResetScan) {
+          // Keep prior computed balances and avoid resetting scanner with partial history only.
+          lastError = lastError ?? "scanner_snapshot_missing_preserving_balance";
         } else if (previousOwnedSummary) {
           // Preserve prior computed wallet-owned balances until scan keys are reloaded.
           lastError = lastError ?? "scan_keys_not_loaded";
@@ -834,6 +848,36 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
           );
         }
         nextSyncedHeight = lastBatchEnd;
+      }
+    }
+    else if (
+      this.scanKeys
+      && previousOwnedSummary !== null
+      && canRunResetScan
+    ) {
+      try {
+        const scanResult = await this.worker.scanSyncDataBalance({
+          scannerId: this.currentWalletId,
+          privateSpendKey: this.scanKeys.privateSpendKey,
+          privateViewKey: this.scanKeys.privateViewKey,
+          daemonHeight,
+          reset: this.scannerResetPending,
+          scannerSnapshot,
+          items: []
+        });
+        this.scannerResetPending = false;
+        unlockedBalanceAtomic = scanResult.unlocked;
+        lockedBalanceAtomic = scanResult.locked;
+        unspentOwnedOutputs = scanResult.unspentOwnedOutputs;
+        spentOwnedOutputs = scanResult.spentOwnedOutputs;
+        scannedTransactions = scanResult.scannedTransactions;
+        scannedOutputs = scanResult.scannedOutputs;
+        scanMode = "wallet_owned_outputs";
+        if (typeof scanResult.scannerSnapshot === "string" && scanResult.scannerSnapshot.length > 0) {
+          await this.storage.saveScannerSnapshot(this.currentWalletId as string, scanResult.scannerSnapshot, nextSyncedHeight);
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
       }
     }
 
@@ -922,13 +966,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       return;
     }
 
-    // Worker scanner state is in-memory. After reload, rebuild from configured scan start.
-    await this.storage.clearSyncArtifacts();
-    await this.storage.saveCursor({
-      walletId,
-      height: startHeight,
-      updatedAt: Date.now()
-    });
+    // No persisted scanner snapshot available. Keep cached summary/cursor to avoid
+    // balance dropping to zero on reload/offline, and rebuild scanner state lazily.
+    return;
   }
 
   private async tryFetchWalletSyncBatch(

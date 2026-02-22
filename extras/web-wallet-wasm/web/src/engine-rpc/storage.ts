@@ -21,21 +21,89 @@ const NODE_SCORES_KEY = `${STORAGE_PREFIX}:node_scores`;
 const HISTORY_KEY = `${STORAGE_PREFIX}:history`;
 const TX_HISTORY_KEY = `${STORAGE_PREFIX}:tx_history`;
 const SCANNER_SNAPSHOT_KEY = `${STORAGE_PREFIX}:scanner_snapshot`;
+const SNAPSHOT_DB_NAME = "wrkz_direct_rpc_state";
+const SNAPSHOT_DB_VERSION = 1;
+const SNAPSHOT_STORE = "scanner_snapshots";
+const SNAPSHOT_ID = "active";
+
+type ScannerSnapshotRecord = { walletId: string; snapshot: string; cursorHeight: number; updatedAt: number };
+
+let snapshotDbPromise: Promise<IDBDatabase> | null = null;
+
+function openSnapshotDb(): Promise<IDBDatabase> {
+  if (snapshotDbPromise) {
+    return snapshotDbPromise;
+  }
+  snapshotDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(SNAPSHOT_DB_NAME, SNAPSHOT_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
+        db.createObjectStore(SNAPSHOT_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("snapshot_db_open_failed"));
+  });
+  return snapshotDbPromise;
+}
+
+async function idbPutSnapshot(record: ScannerSnapshotRecord): Promise<void> {
+  const db = await openSnapshotDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(SNAPSHOT_STORE, "readwrite");
+    tx.objectStore(SNAPSHOT_STORE).put(record, SNAPSHOT_ID);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("snapshot_db_put_failed"));
+  });
+}
+
+async function idbGetSnapshot(): Promise<ScannerSnapshotRecord | null> {
+  const db = await openSnapshotDb();
+  return await new Promise<ScannerSnapshotRecord | null>((resolve, reject) => {
+    const tx = db.transaction(SNAPSHOT_STORE, "readonly");
+    const request = tx.objectStore(SNAPSHOT_STORE).get(SNAPSHOT_ID);
+    request.onsuccess = () => {
+      resolve((request.result as ScannerSnapshotRecord | undefined) ?? null);
+    };
+    request.onerror = () => reject(request.error ?? new Error("snapshot_db_get_failed"));
+  });
+}
+
+async function idbDeleteSnapshot(): Promise<void> {
+  const db = await openSnapshotDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(SNAPSHOT_STORE, "readwrite");
+    tx.objectStore(SNAPSHOT_STORE).delete(SNAPSHOT_ID);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("snapshot_db_delete_failed"));
+  });
+}
 
 export class RpcEngineStorage {
   public async saveScannerSnapshot(walletId: string, snapshot: string, cursorHeight: number): Promise<void> {
-    localStorage.setItem(
-      SCANNER_SNAPSHOT_KEY,
-      JSON.stringify({
-        walletId,
-        snapshot,
-        cursorHeight,
-        updatedAt: Date.now()
-      })
-    );
+    const record = {
+      walletId,
+      snapshot,
+      cursorHeight,
+      updatedAt: Date.now()
+    };
+    try {
+      await idbPutSnapshot(record);
+    } catch {
+      localStorage.setItem(SCANNER_SNAPSHOT_KEY, JSON.stringify(record));
+    }
   }
 
   public async loadScannerSnapshot(): Promise<{ walletId: string; snapshot: string; cursorHeight: number; updatedAt: number } | null> {
+    try {
+      const idbRecord = await idbGetSnapshot();
+      if (idbRecord) {
+        return idbRecord;
+      }
+    } catch {
+      // Fallback to legacy localStorage snapshot.
+    }
     const raw = localStorage.getItem(SCANNER_SNAPSHOT_KEY);
     if (!raw) {
       return null;
@@ -44,6 +112,11 @@ export class RpcEngineStorage {
   }
 
   public async clearScannerSnapshot(): Promise<void> {
+    try {
+      await idbDeleteSnapshot();
+    } catch {
+      // Keep localStorage clear path regardless of indexedDB state.
+    }
     localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
   }
 
@@ -202,7 +275,7 @@ export class RpcEngineStorage {
     localStorage.removeItem(NODE_SCORES_KEY);
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TX_HISTORY_KEY);
-    localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
+    await this.clearScannerSnapshot();
   }
 
   public async clearSyncArtifacts(): Promise<void> {
@@ -211,6 +284,6 @@ export class RpcEngineStorage {
     localStorage.removeItem(STATS_KEY);
     localStorage.removeItem(HISTORY_KEY);
     localStorage.removeItem(TX_HISTORY_KEY);
-    localStorage.removeItem(SCANNER_SNAPSHOT_KEY);
+    await this.clearScannerSnapshot();
   }
 }
