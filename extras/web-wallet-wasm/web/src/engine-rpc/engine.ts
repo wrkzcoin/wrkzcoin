@@ -2,6 +2,7 @@ import { probeNode } from "./nodeProbe";
 import { HttpRpcClient } from "./rpcClient";
 import { RpcEngineStorage } from "./storage";
 import { WalletWorkerClient } from "../wallet/walletWorkerClient";
+import { COIN_ADDRESS_PREFIX } from "../config/coin";
 import {
   SYNC_NEAR_TIP_BLOCKS,
   SYNC_NEAR_TIP_INTERVAL_MS,
@@ -55,6 +56,21 @@ function detectSyncThreads(): number {
     }
   }
   return 2;
+}
+
+function looksLikeAddressFallback(address: string, allowIntegrated: boolean): boolean {
+  const value = address.trim();
+  if (!value.startsWith(COIN_ADDRESS_PREFIX)) {
+    return false;
+  }
+  if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(value)) {
+    return false;
+  }
+  const length = value.length;
+  if (allowIntegrated) {
+    return length >= 95 && length <= 220;
+  }
+  return length >= 95 && length <= 120;
 }
 
 export class BrowserDirectRpcEngine implements DirectRpcEngine {
@@ -312,7 +328,18 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   }
 
   public async validateAddress(address: string, allowIntegrated = true): Promise<{ valid: boolean; reason?: string }> {
-    return this.worker.validateAddress(address, allowIntegrated);
+    try {
+      return await this.worker.validateAddress(address, allowIntegrated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/memory access out of bounds|unaligned accesses|unwind|RuntimeError/i.test(message)) {
+        const fallbackValid = looksLikeAddressFallback(address, allowIntegrated);
+        return fallbackValid
+          ? { valid: true, reason: "wasm_validate_trap_fallback" }
+          : { valid: false, reason: "Address format invalid." };
+      }
+      throw error;
+    }
   }
 
   public async createIntegratedAddress(

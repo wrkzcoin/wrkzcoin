@@ -59,10 +59,25 @@ async function loadWasmModule(): Promise<WasmModuleLike> {
 }
 
 async function invoke(command: string, payload: Record<string, unknown> = {}): Promise<unknown> {
-  const mod = await loadWasmModule();
   const request = JSON.stringify({ command, ...payload });
-  const raw = mod.ccall("wallet_wasm_request", "string", ["string"], [request]);
-  return JSON.parse(String(raw));
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const mod = await loadWasmModule();
+      const raw = mod.ccall("wallet_wasm_request", "string", ["string"], [request]);
+      return JSON.parse(String(raw));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const fatalRuntimeTrap =
+        /memory access out of bounds|unaligned accesses|unwind|RuntimeError/i.test(message);
+      if (!fatalRuntimeTrap || attempt > 0) {
+        throw error;
+      }
+      // Reinitialize module once after a fatal wasm runtime trap.
+      modulePromise = null;
+      moduleLoadStage = "reloading_after_runtime_trap";
+    }
+  }
+  throw new Error("wallet_wasm_invoke_failed");
 }
 
 self.onmessage = async (event: MessageEvent<WorkerCommand>): Promise<void> => {
