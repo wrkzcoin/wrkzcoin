@@ -40,13 +40,6 @@ function mainScriptUrl() {
   return new URL("./generated/wallet_wasm.js", import.meta.url).toString();
 }
 
-function websocketUrlPrefix() {
-  if (typeof globalThis !== "undefined" && globalThis.location && globalThis.location.protocol === "https:") {
-    return "wss://";
-  }
-  return "ws://";
-}
-
 export default async function createWalletModule() {
   try {
     const factory = await resolveFactory();
@@ -58,10 +51,7 @@ export default async function createWalletModule() {
       noInitialRun: true,
       noExitRuntime: true,
       locateFile,
-      mainScriptUrlOrBlob: mainScriptUrl(),
-      websocket: {
-        url: websocketUrlPrefix()
-      }
+      mainScriptUrlOrBlob: mainScriptUrl()
     });
 
     if (!module || typeof module.ccall !== "function") {

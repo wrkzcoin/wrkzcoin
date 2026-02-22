@@ -74,7 +74,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private scanTimestampPrimed = false;
   private vaultUnlocked = false;
   private walletSyncBatchSize = SYNC_BATCH_SIZE;
-  private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 30000;
+  private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 180000;
   private static readonly TRANSFER_SYNC_POLL_MS = 400;
 
   public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
@@ -356,7 +356,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       });
       walletId = restored.walletId;
       await this.waitForTransferWalletSync(walletId);
-      const sent = await this.worker.sendBasic(
+      const sent = await this.sendBasicWithRetry(
         walletId,
         request.destination,
         request.amountAtomic,
@@ -403,7 +403,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       });
       walletId = restored.walletId;
       await this.waitForTransferWalletSync(walletId);
-      return await this.worker.estimateBasicFee(
+      return await this.estimateBasicFeeWithRetry(
         walletId,
         request.destination,
         request.amountAtomic,
@@ -431,6 +431,55 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       }
       await new Promise<void>((resolve) => setTimeout(resolve, BrowserDirectRpcEngine.TRANSFER_SYNC_POLL_MS));
     }
+  }
+
+  private isTransferUnlockedFundsError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /not enough unlocked funds/i.test(message);
+  }
+
+  private async estimateBasicFeeWithRetry(
+    walletId: number,
+    destination: string,
+    amountAtomic: string,
+    paymentId: string
+  ): Promise<{ feeAtomic: string }> {
+    const startedAt = Date.now();
+    let lastError: unknown;
+    while (Date.now() - startedAt < BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS) {
+      try {
+        return await this.worker.estimateBasicFee(walletId, destination, amountAtomic, paymentId);
+      } catch (error) {
+        lastError = error;
+        if (!this.isTransferUnlockedFundsError(error)) {
+          throw error;
+        }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, BrowserDirectRpcEngine.TRANSFER_SYNC_POLL_MS));
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "transfer_fee_timeout"));
+  }
+
+  private async sendBasicWithRetry(
+    walletId: number,
+    destination: string,
+    amountAtomic: string,
+    paymentId: string
+  ): Promise<{ txHash: string }> {
+    const startedAt = Date.now();
+    let lastError: unknown;
+    while (Date.now() - startedAt < BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS) {
+      try {
+        return await this.worker.sendBasic(walletId, destination, amountAtomic, paymentId);
+      } catch (error) {
+        lastError = error;
+        if (!this.isTransferUnlockedFundsError(error)) {
+          throw error;
+        }
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, BrowserDirectRpcEngine.TRANSFER_SYNC_POLL_MS));
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "transfer_send_timeout"));
   }
 
   public async clearScanKeys(): Promise<void> {
