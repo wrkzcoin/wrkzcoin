@@ -68,7 +68,8 @@ async function invoke(command: string, payload: Record<string, unknown> = {}): P
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const fatalRuntimeTrap =
-        /memory access out of bounds|unaligned accesses|unwind|RuntimeError/i.test(message);
+        /memory access out of bounds|unaligned accesses|unwind|RuntimeError/i.test(message)
+        || /^\d+$/.test(message.trim());
       if (!fatalRuntimeTrap || attempt > 0) {
         throw error;
       }
