@@ -12,7 +12,11 @@ let moduleLoadStage = "idle";
 
 function describeError(error: unknown): string {
   if (error instanceof Error) {
-    return error.message;
+    const msg = error.message || "error";
+    if (/^\d+$/.test(msg.trim())) {
+      return `wasm_numeric_exception:${msg.trim()}`;
+    }
+    return msg;
   }
   if (typeof error === "string") {
     return error;
@@ -77,6 +81,7 @@ async function loadWasmModule(): Promise<WasmModuleLike> {
 
 async function invoke(command: string, payload: Record<string, unknown> = {}): Promise<unknown> {
   const request = JSON.stringify({ command, ...payload });
+  const payloadKeys = Object.keys(payload).sort().join(",");
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const mod = await loadWasmModule();
@@ -91,7 +96,9 @@ async function invoke(command: string, payload: Record<string, unknown> = {}): P
         || /^wasm_numeric_exception:\d+$/.test(message.trim())
         || /^\d+$/.test(message.trim());
       if (!fatalRuntimeTrap || attempt > 0) {
-        throw error;
+        throw new Error(
+          `invoke_failed command=${command} attempt=${attempt + 1} stage=${moduleLoadStage} payloadKeys=${payloadKeys} reason=${message}`
+        );
       }
       // Reinitialize module once after a fatal wasm runtime trap.
       modulePromise = null;

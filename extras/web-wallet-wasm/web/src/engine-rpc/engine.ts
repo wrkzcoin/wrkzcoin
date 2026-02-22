@@ -528,17 +528,26 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       throw new Error("transfer_wallet_prerequisites_missing");
     }
 
-    const restored = await this.worker.restoreFromKeys({
-      filename: "transfer-runtime.wallet",
-      password: "__transfer_runtime__",
-      privateSpendKey: this.scanKeys.privateSpendKey,
-      privateViewKey: this.scanKeys.privateViewKey,
-      scanHeight: Math.max(0, profile.scanHeight || 0),
-      daemonHost: this.currentNode.host,
-      daemonPort: this.currentNode.port,
-      daemonSsl: this.currentNode.ssl,
-      syncThreads: 1
-    });
+    const restoreScanHeight = Math.max(0, profile.scanHeight || 0);
+    let restored;
+    try {
+      restored = await this.worker.restoreFromKeys({
+        filename: "transfer-runtime.wallet",
+        password: "__transfer_runtime__",
+        privateSpendKey: this.scanKeys.privateSpendKey,
+        privateViewKey: this.scanKeys.privateViewKey,
+        scanHeight: restoreScanHeight,
+        daemonHost: this.currentNode.host,
+        daemonPort: this.currentNode.port,
+        daemonSsl: this.currentNode.ssl,
+        syncThreads: 1
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `restoreFromKeys_failed node=${this.currentNode.host}:${this.currentNode.port} ssl=${this.currentNode.ssl} scanHeight=${restoreScanHeight} reason=${reason}`
+      );
+    }
 
     this.transferWalletId = restored.walletId;
     return restored.walletId;

@@ -416,9 +416,6 @@ export function App(): JSX.Element {
     if (!debugEnabled) {
       return;
     }
-    if (debugLevelRank(level) < debugLevelRank(debugLevel)) {
-      return;
-    }
     setDebugLogs((prev) => {
       const next = [...prev, { ts: Date.now(), level, category, message }];
       if (next.length > DEBUG_LOG_LIMIT) {
@@ -427,6 +424,11 @@ export function App(): JSX.Element {
       return next;
     });
   };
+
+  const visibleDebugLogs = useMemo(
+    () => debugLogs.filter((entry) => debugLevelRank(entry.level) >= debugLevelRank(debugLevel)),
+    [debugLogs, debugLevel]
+  );
 
   const selectedNode = nodes.find((node) => node.id === defaultNodeId) ?? nodes[0];
   const isSecurePage = typeof window !== "undefined" && window.location.protocol === "https:";
@@ -1553,7 +1555,7 @@ export function App(): JSX.Element {
     let preparedTxHash = "";
     appendDebugLog(
       "trace",
-      `prepare_transfer_fee start amountAtomic=${amountAtomic.toString()} paymentIdLen=${paymentId.length} node=${selectedNode ? buildNodeHttpUrl(selectedNode) : "n/a"}`,
+      `prepare_transfer_fee start amountAtomic=${amountAtomic.toString()} paymentIdLen=${paymentId.length} node=${selectedNode ? buildNodeHttpUrl(selectedNode) : "n/a"} profileScanHeight=${directProfile?.scanHeight ?? "n/a"} cursor=${directCursor?.height ?? "n/a"} snapshot=${directSnapshotState?.snapshotHeight ?? "n/a"}`,
       "TRANSFER"
     );
     try {
@@ -1574,6 +1576,13 @@ export function App(): JSX.Element {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       appendDebugLog("error", `prepare_transfer_fee failed reason=${reason}`, "TRANSFER");
+      if (/restoreFromKeys|wasm_numeric_exception|memory access out of bounds|unaligned accesses|unwind/i.test(reason)) {
+        appendDebugLog(
+          "warning",
+          "prepare_transfer_fee hit wasm/backend restore path failure; verify wasm rebuild + node websocket/cors + walletbackend transient restore",
+          "TRANSFER"
+        );
+      }
       setOutput(`Unable to prepare transfer fee: ${reason}`);
       return null;
     }
@@ -1636,10 +1645,10 @@ export function App(): JSX.Element {
   };
 
   const onCopyDebugLogs = async (): Promise<void> => {
-    const text = debugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n");
+    const text = visibleDebugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      setOutput(`Copied ${debugLogs.length} debug log entries.`);
+      setOutput(`Copied ${visibleDebugLogs.length} debug log entries.`);
     } catch {
       setOutput("Unable to copy debug logs.");
     }
@@ -2563,7 +2572,7 @@ export function App(): JSX.Element {
               <textarea
                 className="input-area"
                 readOnly
-                value={debugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n")}
+                value={visibleDebugLogs.map((entry) => formatCliLikeLogLine(entry)).join("\n")}
                 rows={12}
               />
             </section>
