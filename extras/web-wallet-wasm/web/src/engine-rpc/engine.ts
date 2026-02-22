@@ -42,7 +42,6 @@ type WalletSyncDataResponse = {
 };
 
 type PreparedTransferContext = {
-  walletId: number;
   preparedTxHash: string;
   destination: string;
   amountAtomic: string;
@@ -102,6 +101,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private vaultUnlocked = false;
   private walletSyncBatchSize = SYNC_BATCH_SIZE;
   private preparedTransfer: PreparedTransferContext | null = null;
+  private transferWalletId: number | null = null;
   private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 180000;
   private static readonly TRANSFER_SYNC_POLL_MS = 400;
   private static readonly PREPARED_TRANSFER_TTL_MS = 2 * 60 * 1000;
@@ -164,6 +164,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async stop(): Promise<void> {
     await this.discardPreparedTransfer();
+    await this.closeTransferWallet();
     if (this.pollTimer) {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
@@ -317,10 +318,12 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async clearProfile(): Promise<void> {
     await this.discardPreparedTransfer();
+    await this.closeTransferWallet();
     await this.storage.clearProfile();
   }
 
   public async setScanKeys(privateSpendKey: string, privateViewKey: string): Promise<void> {
+    await this.closeTransferWallet();
     this.scanKeys = {
       privateSpendKey: privateSpendKey.trim().toLowerCase(),
       privateViewKey: privateViewKey.trim().toLowerCase()
@@ -396,21 +399,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       throw new Error("no_wallet_profile");
     }
     await this.discardPreparedTransfer();
-
-    const filenameBase = request.filenameHint?.trim() || profile.filename || "wallet";
-    const ephemeralFilename = `${filenameBase}.prepare-${Date.now()}.wallet`;
-    const restored = await this.worker.restoreFromKeys({
-      filename: ephemeralFilename,
-      password: request.password,
-      privateSpendKey: this.scanKeys.privateSpendKey,
-      privateViewKey: this.scanKeys.privateViewKey,
-      scanHeight: Math.max(0, profile.scanHeight || 0),
-      daemonHost: this.currentNode.host,
-      daemonPort: this.currentNode.port,
-      daemonSsl: this.currentNode.ssl,
-      syncThreads: 1
-    });
-    const walletId = restored.walletId;
+    const walletId = await this.ensureTransferWallet(profile);
     try {
       await this.waitForTransferWalletSync(walletId);
       const prepared = await this.prepareBasicWithRetry(
@@ -420,7 +409,6 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         request.paymentId?.trim() ?? ""
       );
       this.preparedTransfer = {
-        walletId,
         preparedTxHash: prepared.preparedTxHash,
         destination: request.destination,
         amountAtomic: request.amountAtomic,
@@ -430,7 +418,6 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       };
       return prepared;
     } catch (error) {
-      await this.worker.close(walletId).catch(() => undefined);
       throw error;
     }
   }
@@ -448,17 +435,16 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     if (preparedTxHash !== active.preparedTxHash) {
       throw new Error("prepared_transfer_mismatch");
     }
-    const sent = await this.worker.sendPreparedTransfer(active.walletId, preparedTxHash);
+    if (this.transferWalletId === null) {
+      throw new Error("transfer_wallet_not_ready");
+    }
+    const sent = await this.worker.sendPreparedTransfer(this.transferWalletId, preparedTxHash);
     await this.discardPreparedTransfer();
     return sent;
   }
 
   public async discardPreparedTransfer(): Promise<void> {
-    const active = this.preparedTransfer;
     this.preparedTransfer = null;
-    if (active) {
-      await this.worker.close(active.walletId).catch(() => undefined);
-    }
   }
 
   public async sendBasicTransfer(request: {
@@ -534,8 +520,41 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "transfer_prepare_timeout"));
   }
 
+  private async ensureTransferWallet(profile: DirectRpcSessionProfile): Promise<number> {
+    if (this.transferWalletId !== null) {
+      return this.transferWalletId;
+    }
+    if (!this.currentNode || !this.scanKeys) {
+      throw new Error("transfer_wallet_prerequisites_missing");
+    }
+
+    const restored = await this.worker.restoreFromKeys({
+      filename: "transfer-runtime.wallet",
+      password: "__transfer_runtime__",
+      privateSpendKey: this.scanKeys.privateSpendKey,
+      privateViewKey: this.scanKeys.privateViewKey,
+      scanHeight: Math.max(0, profile.scanHeight || 0),
+      daemonHost: this.currentNode.host,
+      daemonPort: this.currentNode.port,
+      daemonSsl: this.currentNode.ssl,
+      syncThreads: 1
+    });
+
+    this.transferWalletId = restored.walletId;
+    return restored.walletId;
+  }
+
+  private async closeTransferWallet(): Promise<void> {
+    const walletId = this.transferWalletId;
+    this.transferWalletId = null;
+    if (walletId !== null) {
+      await this.worker.close(walletId).catch(() => undefined);
+    }
+  }
+
   public async clearScanKeys(): Promise<void> {
     await this.discardPreparedTransfer();
+    await this.closeTransferWallet();
     this.scanKeys = null;
     this.scannerResetPending = true;
     await this.storage.clearScannerSnapshot().catch(() => undefined);
@@ -581,6 +600,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   public async lockVault(): Promise<void> {
     await this.discardPreparedTransfer();
+    await this.closeTransferWallet();
     if (this.vaultUnlocked) {
       await this.worker.vaultLock();
       this.vaultUnlocked = false;
