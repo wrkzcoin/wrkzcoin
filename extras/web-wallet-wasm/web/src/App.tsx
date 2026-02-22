@@ -30,8 +30,11 @@ const SETTINGS_TX_POW_KEY = "wrkz_web_wallet_tx_pow_v1";
 const SETTINGS_FUSION_ENABLED_KEY = "wrkz_web_wallet_fusion_enabled_v1";
 const SETTINGS_FUSION_TARGET_KEY = "wrkz_web_wallet_fusion_target_v1";
 const SETTINGS_WELCOME_MODAL_DISMISSED_KEY = "wrkz_web_wallet_welcome_modal_dismissed_v1";
+const SETTINGS_DEBUG_ENABLED_KEY = "wrkz_web_wallet_debug_enabled_v1";
+const SETTINGS_DEBUG_LEVEL_KEY = "wrkz_web_wallet_debug_level_v1";
 const DEFAULT_AUTO_LOGOUT_MIN = 15;
 const TX_PAGE_SIZE = 10;
+const DEBUG_LOG_LIMIT = 500;
 
 type ViewTab = "wallet" | "settings";
 type WalletTab =
@@ -43,6 +46,12 @@ type WalletTab =
 type ThemeMode = "light" | "dark" | "auto";
 type ResolvedTheme = "light" | "dark";
 type WelcomeMode = "create" | "importSeed" | "importKeys";
+type DebugLevel = "trace" | "debug" | "info" | "warning" | "error";
+type DebugLogEntry = {
+  ts: number;
+  level: DebugLevel;
+  message: string;
+};
 type ImportReview = {
   kind: "import_seed" | "import_keys";
   sessionId: string;
@@ -171,6 +180,35 @@ function loadWelcomeModalDismissed(): boolean {
   } catch {
     return false;
   }
+}
+
+function loadDebugEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem(SETTINGS_DEBUG_ENABLED_KEY);
+    return raw === null ? true : raw === "true";
+  } catch {
+    return true;
+  }
+}
+
+function loadDebugLevel(): DebugLevel {
+  try {
+    const raw = (localStorage.getItem(SETTINGS_DEBUG_LEVEL_KEY) ?? "trace").toLowerCase();
+    if (raw === "trace" || raw === "debug" || raw === "info" || raw === "warning" || raw === "error") {
+      return raw;
+    }
+  } catch {
+    // ignore
+  }
+  return "trace";
+}
+
+function debugLevelRank(level: DebugLevel): number {
+  if (level === "trace") return 0;
+  if (level === "debug") return 1;
+  if (level === "info") return 2;
+  if (level === "warning") return 3;
+  return 4;
 }
 
 function getSystemTheme(): ResolvedTheme {
@@ -309,6 +347,9 @@ export function App(): JSX.Element {
   const [welcomeModalOpen, setWelcomeModalOpen] = useState<boolean>(() => !loadWelcomeModalDismissed());
   const [hideWelcomeModalNextTime, setHideWelcomeModalNextTime] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const [debugEnabled, setDebugEnabled] = useState<boolean>(loadDebugEnabled);
+  const [debugLevel, setDebugLevel] = useState<DebugLevel>(loadDebugLevel);
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
 
   const [walletFilename, setWalletFilename] = useState<string>("my.wallet");
   const [walletPassword, setWalletPassword] = useState<string>("");
@@ -342,6 +383,22 @@ export function App(): JSX.Element {
   const [customNodeHost, setCustomNodeHost] = useState<string>("");
   const [customNodePort, setCustomNodePort] = useState<string>(String(DEFAULT_RPC_PORT));
   const [customNodeSsl, setCustomNodeSsl] = useState<boolean>(DEFAULT_RPC_SSL);
+
+  const appendDebugLog = (level: DebugLevel, message: string): void => {
+    if (!debugEnabled) {
+      return;
+    }
+    if (debugLevelRank(level) < debugLevelRank(debugLevel)) {
+      return;
+    }
+    setDebugLogs((prev) => {
+      const next = [...prev, { ts: Date.now(), level, message }];
+      if (next.length > DEBUG_LOG_LIMIT) {
+        return next.slice(next.length - DEBUG_LOG_LIMIT);
+      }
+      return next;
+    });
+  };
 
   const selectedNode = nodes.find((node) => node.id === defaultNodeId) ?? nodes[0];
   const isSecurePage = typeof window !== "undefined" && window.location.protocol === "https:";
@@ -441,6 +498,35 @@ export function App(): JSX.Element {
   useEffect(() => {
     localStorage.setItem(SETTINGS_FUSION_TARGET_KEY, String(fusionTargetAtomic));
   }, [fusionTargetAtomic]);
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_DEBUG_ENABLED_KEY, debugEnabled ? "true" : "false");
+  }, [debugEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_DEBUG_LEVEL_KEY, debugLevel);
+  }, [debugLevel]);
+
+  useEffect(() => {
+    appendDebugLog("info", `status: ${output}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [output]);
+
+  useEffect(() => {
+    const onError = (event: ErrorEvent): void => {
+      appendDebugLog("error", `window_error: ${event.message}`);
+    };
+    const onUnhandled = (event: PromiseRejectionEvent): void => {
+      const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      appendDebugLog("error", `unhandled_rejection: ${reason}`);
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandled);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandled);
+    };
+  }, []);
 
   useEffect(() => {
     setTxPage(1);
@@ -1449,6 +1535,7 @@ export function App(): JSX.Element {
       networkFeeAtomic = BigInt(prepared.feeAtomic);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
+      appendDebugLog("error", `transfer_preflight_prepare_failed: ${reason}`);
       setOutput(`Unable to prepare transfer fee: ${reason}`);
       return null;
     }
@@ -1499,12 +1586,26 @@ export function App(): JSX.Element {
 
     try {
       const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
+      appendDebugLog("info", `transfer_submitted: ${sent.txHash}`);
       setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
       setTransferAmount("");
       setTransferPaymentId("");
     } catch (error) {
       await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
+      appendDebugLog("error", `transfer_submit_failed: ${error instanceof Error ? error.message : String(error)}`);
       setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
+    }
+  };
+
+  const onCopyDebugLogs = async (): Promise<void> => {
+    const text = debugLogs
+      .map((entry) => `${new Date(entry.ts).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setOutput(`Copied ${debugLogs.length} debug log entries.`);
+    } catch {
+      setOutput("Unable to copy debug logs.");
     }
   };
 
@@ -2402,6 +2503,35 @@ export function App(): JSX.Element {
                   Stop Direct RPC Session
                 </button>
               </div>
+            </section>
+            <section className="settings-block">
+              <h3>Debug Logs</h3>
+              <label className="checkbox">
+                <input type="checkbox" checked={debugEnabled} onChange={(e) => setDebugEnabled(e.target.checked)} />
+                Enable debug logging
+              </label>
+              <label className="field-label" htmlFor="debug-level-select">
+                Log level
+              </label>
+              <select id="debug-level-select" value={debugLevel} onChange={(e) => setDebugLevel(e.target.value as DebugLevel)}>
+                <option value="trace">Trace</option>
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warning">Warning</option>
+                <option value="error">Error</option>
+              </select>
+              <div className="actions settings-actions">
+                <button onClick={onCopyDebugLogs}>Copy Logs</button>
+                <button onClick={() => setDebugLogs([])}>Clear Logs</button>
+              </div>
+              <textarea
+                className="input-area"
+                readOnly
+                value={debugLogs
+                  .map((entry) => `${new Date(entry.ts).toISOString()} [${entry.level.toUpperCase()}] ${entry.message}`)
+                  .join("\n")}
+                rows={12}
+              />
             </section>
             {selectedNodeCapabilities ? (
               <p>
