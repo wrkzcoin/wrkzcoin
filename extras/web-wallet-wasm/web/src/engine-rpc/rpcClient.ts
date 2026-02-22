@@ -4,11 +4,17 @@ const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_RETRIES = 1;
 
 function buildNodeHttpEndpoint(node: RpcNode): string {
-  return `${node.ssl ? "https" : "http"}://${node.host}:${node.port}/json_rpc`;
+  const protocol = node.ssl ? "https" : "http";
+  const defaultPort = node.ssl ? 443 : 80;
+  const portSuffix = node.port === defaultPort ? "" : `:${node.port}`;
+  return `${protocol}://${node.host}${portSuffix}/json_rpc`;
 }
 
 function buildNodeBaseEndpoint(node: RpcNode): string {
-  return `${node.ssl ? "https" : "http"}://${node.host}:${node.port}`;
+  const protocol = node.ssl ? "https" : "http";
+  const defaultPort = node.ssl ? 443 : 80;
+  const portSuffix = node.port === defaultPort ? "" : `:${node.port}`;
+  return `${protocol}://${node.host}${portSuffix}`;
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

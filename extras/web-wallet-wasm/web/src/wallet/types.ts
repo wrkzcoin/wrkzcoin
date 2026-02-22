@@ -30,11 +30,17 @@ export function normalizeNodeHost(input: string): string {
 }
 
 export function buildNodeRpcUrl(node: Pick<NodeEndpoint, "host" | "port" | "ssl">): string {
-  return `${node.ssl ? "wss" : "ws"}://${node.host}:${node.port}`;
+  const protocol = node.ssl ? "wss" : "ws";
+  const defaultPort = node.ssl ? 443 : 80;
+  const portSuffix = node.port === defaultPort ? "" : `:${node.port}`;
+  return `${protocol}://${node.host}${portSuffix}`;
 }
 
 export function buildNodeHttpUrl(node: Pick<NodeEndpoint, "host" | "port" | "ssl">): string {
-  return `${node.ssl ? "https" : "http"}://${node.host}:${node.port}`;
+  const protocol = node.ssl ? "https" : "http";
+  const defaultPort = node.ssl ? 443 : 80;
+  const portSuffix = node.port === defaultPort ? "" : `:${node.port}`;
+  return `${protocol}://${node.host}${portSuffix}`;
 }
 
 export interface WasmResponse<T = unknown> {
