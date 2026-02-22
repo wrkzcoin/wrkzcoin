@@ -65,11 +65,13 @@ inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
     attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
 
     const char *headers[] = {"Content-Type", "application/json", nullptr};
+    std::string bodyBuffer;
     if (jsonBody != nullptr)
     {
         attr.requestHeaders = headers;
-        attr.requestData = jsonBody->data();
-        attr.requestDataSize = static_cast<size_t>(jsonBody->size());
+        bodyBuffer = *jsonBody;
+        attr.requestData = bodyBuffer.data();
+        attr.requestDataSize = static_cast<size_t>(bodyBuffer.size());
     }
 
     emscripten_fetch_t *fetch = emscripten_fetch(&attr, url.c_str());
