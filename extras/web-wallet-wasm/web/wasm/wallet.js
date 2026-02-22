@@ -47,11 +47,27 @@ export default async function createWalletModule() {
       return notBuiltModule("generated_module_not_found");
     }
 
+    const wasmUrl = locateFile("wallet_wasm.wasm");
     const module = await factory({
       noInitialRun: true,
       noExitRuntime: true,
       locateFile,
-      mainScriptUrlOrBlob: mainScriptUrl()
+      mainScriptUrlOrBlob: mainScriptUrl(),
+      wasmBinaryFile: wasmUrl,
+      instantiateWasm(imports, successCallback) {
+        (async () => {
+          const response = await fetch(wasmUrl, { credentials: "same-origin" });
+          if (!response.ok) {
+            throw new Error(`wasm_fetch_failed:${response.status}`);
+          }
+          const bytes = await response.arrayBuffer();
+          const instantiated = await WebAssembly.instantiate(bytes, imports);
+          successCallback(instantiated.instance, instantiated.module);
+        })().catch((error) => {
+          throw error;
+        });
+        return {};
+      }
     });
 
     if (!module || typeof module.ccall !== "function") {
