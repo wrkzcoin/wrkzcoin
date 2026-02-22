@@ -515,7 +515,13 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         const localDaemonHeight = Number(status.localDaemonBlockCount ?? 0);
         const networkHeight = Number(status.networkBlockCount ?? 0);
         const targetHeight = localDaemonHeight > 0 ? localDaemonHeight : networkHeight;
-        if (!Number.isFinite(targetHeight) || targetHeight <= 0 || walletHeight >= Math.max(0, targetHeight - 1)) {
+        // Wait until daemon height is known (>0) AND wallet has caught up.
+        // Do not exit early when targetHeight=0: the WASM Nigel's initial
+        // getDaemonInfo() call may fail if made from the WASM main-thread
+        // context; the background pthread retries it after ~10 s and succeeds.
+        // Exiting when targetHeight=0 causes prepareBasicTransfer to run while
+        // isOnline()=false, producing a spurious DAEMON_OFFLINE error.
+        if (Number.isFinite(targetHeight) && targetHeight > 0 && walletHeight >= Math.max(0, targetHeight - 1)) {
           return;
         }
       }
@@ -526,6 +532,13 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private isTransferUnlockedFundsError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return /not enough unlocked funds/i.test(message);
+  }
+
+  private isTransferDaemonOfflineError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    // Matches the DAEMON_OFFLINE error string from Errors.cpp:
+    // "We were not able to submit our request to the daemon. Ensure it is online and not frozen."
+    return /not able to submit.*daemon|daemon.*online.*frozen/i.test(message);
   }
 
   private async prepareBasicWithRetry(
@@ -541,7 +554,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         return await this.worker.prepareBasicTransfer(walletId, destination, amountAtomic, paymentId);
       } catch (error) {
         lastError = error;
-        if (!this.isTransferUnlockedFundsError(error)) {
+        if (!this.isTransferUnlockedFundsError(error) && !this.isTransferDaemonOfflineError(error)) {
           throw error;
         }
       }

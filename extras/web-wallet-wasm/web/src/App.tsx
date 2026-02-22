@@ -392,6 +392,7 @@ export function App(): JSX.Element {
   const [transferPaymentId, setTransferPaymentId] = useState<string>("");
   const [transferAddressValid, setTransferAddressValid] = useState<boolean | null>(null);
   const [transferAddressReason, setTransferAddressReason] = useState<string>("");
+  const [transferLoading, setTransferLoading] = useState<boolean>(false);
   const [receivePaymentId, setReceivePaymentId] = useState<string>("");
   const [receiveIntegratedAddress, setReceiveIntegratedAddress] = useState<string>("");
   const [backupSeedConfirmInput, setBackupSeedConfirmInput] = useState<string>("");
@@ -1671,40 +1672,45 @@ export function App(): JSX.Element {
   };
 
   const onSubmitTransfer = async (): Promise<void> => {
-    const password = walletPassword.trim() || window.prompt("Enter wallet password to prepare and submit transaction:")?.trim() || "";
-    if (!password) {
-      setOutput("Wallet password is required to submit transfer.");
-      return;
-    }
-    const preflight = await runTransferPreflight(password);
-    if (!preflight) {
-      return;
-    }
-    const confirmed = window.confirm(
-      [
-        "Submit transfer now?",
-        `Recipient: ${preflight.recipient}`,
-        `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-        `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`
-      ].join("\n")
-    );
-    if (!confirmed) {
-      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-      setOutput("Transfer submission cancelled by user.");
-      return;
-    }
-
+    setTransferLoading(true);
     try {
-      const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
-      appendDebugLog("info", `submit_transfer ok txHash=${sent.txHash}`, "TRANSFER");
-      setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
-      setTransferAmount("");
-      setTransferPaymentId("");
-    } catch (error) {
-      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-      appendDebugLog("error", `submit_transfer failed reason=${error instanceof Error ? error.message : String(error)}`, "TRANSFER");
-      setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
+      const password = walletPassword.trim() || window.prompt("Enter wallet password to prepare and submit transaction:")?.trim() || "";
+      if (!password) {
+        setOutput("Wallet password is required to submit transfer.");
+        return;
+      }
+      const preflight = await runTransferPreflight(password);
+      if (!preflight) {
+        return;
+      }
+      const confirmed = window.confirm(
+        [
+          "Submit transfer now?",
+          `Recipient: ${preflight.recipient}`,
+          `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+          `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
+          `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`
+        ].join("\n")
+      );
+      if (!confirmed) {
+        await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
+        setOutput("Transfer submission cancelled by user.");
+        return;
+      }
+
+      try {
+        const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
+        appendDebugLog("info", `submit_transfer ok txHash=${sent.txHash}`, "TRANSFER");
+        setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
+        setTransferAmount("");
+        setTransferPaymentId("");
+      } catch (error) {
+        await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
+        appendDebugLog("error", `submit_transfer failed reason=${error instanceof Error ? error.message : String(error)}`, "TRANSFER");
+        setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
+      }
+    } finally {
+      setTransferLoading(false);
     }
   };
 
@@ -2415,7 +2421,9 @@ export function App(): JSX.Element {
                     Transfer will run automatic preflight, then ask for confirmation before sending.
                   </p>
                   <div className="actions">
-                    <button onClick={onSubmitTransfer}>Review & Submit Transfer</button>
+                    <button onClick={onSubmitTransfer} disabled={transferLoading}>
+                      {transferLoading ? "Transferring ..." : "Review & Submit Transfer"}
+                    </button>
                   </div>
                 </section>
               ) : null}

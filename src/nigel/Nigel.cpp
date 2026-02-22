@@ -64,14 +64,16 @@ inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
     std::snprintf(attr.requestMethod, sizeof(attr.requestMethod), "%s", method);
     attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
 
-    const char *headers[] = {"Content-Type", "application/json", nullptr};
     std::string bodyBuffer;
     if (jsonBody != nullptr)
     {
-        attr.requestHeaders = headers;
         bodyBuffer = *jsonBody;
         attr.requestData = bodyBuffer.data();
         attr.requestDataSize = static_cast<size_t>(bodyBuffer.size());
+
+        // Set Content-Type header for requests with body
+        static const char *headers[] = {"Content-Type", "application/json", nullptr};
+        attr.requestHeaders = headers;
     }
 
     emscripten_fetch_t *fetch = emscripten_fetch(&attr, url.c_str());
