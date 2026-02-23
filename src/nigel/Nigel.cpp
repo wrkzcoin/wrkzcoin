@@ -16,7 +16,8 @@
 #include <version.h>
 
 #if defined(__EMSCRIPTEN__)
-#include <emscripten/fetch.h>
+#include <emscripten.h>
+#include <cstdlib>
 #endif
 #include <cstdio>
 
@@ -54,41 +55,88 @@ inline std::string daemonUrl(const std::string &host, const uint16_t port, const
     return std::string(ssl ? "https://" : "http://") + host + portStr + path;
 }
 
+// Synchronous HTTP helper using JavaScript's synchronous XMLHttpRequest API.
+//
+// emscripten_fetch(EMSCRIPTEN_FETCH_SYNCHRONOUS) deadlocks on the WASM main
+// thread because ccall() blocks the JS event loop: the XHR onload callback
+// can never fire while WASM is executing synchronously.  pthreads avoid this
+// because each thread has its own event loop, but wallet_wasm_request runs on
+// the WASM main thread and needs to make HTTP calls (e.g. getRandomOutsByAmounts
+// during prepareBasicTransfer).
+//
+// Synchronous XMLHttpRequest (xhr.open(..., false)) blocks the calling thread
+// at the network level without the event loop, so it works correctly from any
+// Web Worker context — including both the WASM main thread and pthreads.
+// It is deprecated only on the browser's UI thread (freeze risk), not in workers.
+//
+// Returns a malloc'd body buffer that the caller must free(), or nullptr on
+// network failure.  *out_status and *out_body_len are always set.
+EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
+                            const char* body, int body_len,
+                            int* out_status, int* out_body_len), {
+    var urlStr = UTF8ToString(url);
+    var methodStr = UTF8ToString(method);
+    var status = 0;
+    var responseText = '';
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open(methodStr, urlStr, false /* synchronous */);
+        if (body_len > 0) {
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.send(new TextDecoder('utf-8').decode(
+                HEAPU8.subarray(body, body + body_len)));
+        } else {
+            xhr.send(null);
+        }
+        status = xhr.status || 0;
+        responseText = xhr.responseText || '';
+    } catch (e) {
+        status = 0;
+        responseText = '';
+    }
+    HEAP32[out_status >> 2] = status;
+    var encoded = (new TextEncoder()).encode(responseText);
+    var len = encoded.length;
+    HEAP32[out_body_len >> 2] = len;
+    if (len === 0) { return 0; }
+    var ptr = _malloc(len + 1);
+    if (!ptr) { return 0; }
+    HEAPU8.set(encoded, ptr);
+    HEAPU8[ptr + len] = 0;
+    return ptr;
+});
+
 inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
     const std::string &url,
     const char *method,
     const std::string *jsonBody)
 {
-    emscripten_fetch_attr_t attr;
-    emscripten_fetch_attr_init(&attr);
-    std::snprintf(attr.requestMethod, sizeof(attr.requestMethod), "%s", method);
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
+    const char *bodyPtr = jsonBody ? jsonBody->c_str() : nullptr;
+    const int bodyLen = jsonBody ? static_cast<int>(jsonBody->size()) : 0;
+    int status = 0;
+    int respLen = 0;
 
-    std::string bodyBuffer;
-    if (jsonBody != nullptr)
+    char *respBuf = wrkzSyncXhr(url.c_str(), method, bodyPtr, bodyLen, &status, &respLen);
+
+    if (status == 0)
     {
-        bodyBuffer = *jsonBody;
-        attr.requestData = bodyBuffer.data();
-        attr.requestDataSize = static_cast<size_t>(bodyBuffer.size());
-
-        // Set Content-Type header for requests with body
-        static const char *headers[] = {"Content-Type", "application/json", nullptr};
-        attr.requestHeaders = headers;
-    }
-
-    emscripten_fetch_t *fetch = emscripten_fetch(&attr, url.c_str());
-    if (fetch == nullptr)
-    {
+        if (respBuf)
+        {
+            free(respBuf);
+        }
         return nullptr;
     }
 
     auto response = std::make_shared<httplib::Response>();
-    response->status = static_cast<int>(fetch->status);
-    if (fetch->numBytes > 0 && fetch->data != nullptr)
+    response->status = status;
+    if (respBuf && respLen > 0)
     {
-        response->body.assign(fetch->data, static_cast<size_t>(fetch->numBytes));
+        response->body.assign(respBuf, static_cast<size_t>(respLen));
     }
-    emscripten_fetch_close(fetch);
+    if (respBuf)
+    {
+        free(respBuf);
+    }
     return response;
 }
 #endif
