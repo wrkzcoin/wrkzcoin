@@ -471,7 +471,8 @@ else ()
         set(_WRKZ_BOOST_SHIM_ROOT "${CMAKE_BINARY_DIR}/boost-headers")
         file(MAKE_DIRECTORY "${_WRKZ_BOOST_SHIM_ROOT}")
         if (NOT EXISTS "${_WRKZ_BOOST_SHIM_ROOT}/boost")
-            file(CREATE_LINK "${Boost_INCLUDE_DIRS}/boost" "${_WRKZ_BOOST_SHIM_ROOT}/boost" SYMBOLIC)
+            # Use file(COPY) for portability; symlinks require elevated privileges on Windows
+            file(COPY "${Boost_INCLUDE_DIRS}/boost" DESTINATION "${_WRKZ_BOOST_SHIM_ROOT}")
         endif ()
         set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_SHIM_ROOT}")
 
@@ -652,6 +653,18 @@ if (NOT MSVC)
     endif ()
     if (CMAKE_SYSROOT)
         list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_SYSROOT=${CMAKE_SYSROOT}")
+    endif ()
+    # Pass generator so sub-cmake doesn't fall back to VS on Windows
+    list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-G${CMAKE_GENERATOR}")
+    if (CMAKE_MAKE_PROGRAM)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}")
+    endif ()
+    # Emscripten pthreads: provide thread primitives so RocksDB configure succeeds
+    if (EMSCRIPTEN AND WRKZ_WASM_PTHREADS)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS
+            "-DCMAKE_HAVE_LIBC_PTHREAD=ON"
+            "-DCMAKE_THREAD_LIBS_INIT=-pthread"
+        )
     endif ()
 
     execute_process(

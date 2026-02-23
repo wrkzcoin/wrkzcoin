@@ -148,6 +148,7 @@ if (NOT MSVC)
     if (
         EXISTS "${SLOW_HASH_X86_SRC}"
         AND WRKZ_SLOWHASH_X86_TARGET
+        AND NOT EMSCRIPTEN
     )
         set_source_files_properties("${SLOW_HASH_X86_SRC}" PROPERTIES COMPILE_OPTIONS "-maes")
     endif ()
