@@ -468,9 +468,19 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     if (this.transferWalletId === null) {
       throw new Error("transfer_wallet_not_ready");
     }
-    const sent = await this.worker.sendPreparedTransfer(this.transferWalletId, preparedTxHash);
-    await this.discardPreparedTransfer();
-    return sent;
+    try {
+      const sent = await this.worker.sendPreparedTransfer(this.transferWalletId, preparedTxHash);
+      return sent;
+    } catch (error) {
+      // If the backend reports the prepared tx inputs are no longer spendable,
+      // close the transfer wallet so the next prepare starts with a clean UTXO state.
+      if (this.isPreparedTxExpiredError(error)) {
+        await this.closeTransferWallet();
+      }
+      throw error;
+    } finally {
+      await this.discardPreparedTransfer();
+    }
   }
 
   public async discardPreparedTransfer(): Promise<void> {
@@ -508,6 +518,8 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   private async waitForTransferWalletSync(walletId: number): Promise<void> {
     const startedAt = Date.now();
+    let lastWalletHeight = 0;
+    let lastTargetHeight = 0;
     while (Date.now() - startedAt < BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS) {
       const status = await this.worker.status(walletId).catch(() => null);
       if (status) {
@@ -515,6 +527,8 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         const localDaemonHeight = Number(status.localDaemonBlockCount ?? 0);
         const networkHeight = Number(status.networkBlockCount ?? 0);
         const targetHeight = localDaemonHeight > 0 ? localDaemonHeight : networkHeight;
+        lastWalletHeight = walletHeight;
+        lastTargetHeight = targetHeight;
         // Wait until daemon height is known (>0) AND wallet has caught up.
         // Do not exit early when targetHeight=0: the WASM Nigel's initial
         // getDaemonInfo() call may fail if made from the WASM main-thread
@@ -527,18 +541,38 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       }
       await new Promise<void>((resolve) => setTimeout(resolve, BrowserDirectRpcEngine.TRANSFER_SYNC_POLL_MS));
     }
+    const remaining = lastTargetHeight > lastWalletHeight ? lastTargetHeight - lastWalletHeight : 0;
+    throw new Error(
+      `transfer_sync_timeout walletHeight=${lastWalletHeight} targetHeight=${lastTargetHeight} remaining=${remaining}`
+    );
   }
 
   private isTransferUnlockedFundsError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
+    // Matches NOT_ENOUGH_BALANCE from Errors.cpp:
+    // "Not enough unlocked funds were found to cover this transaction..."
     return /not enough unlocked funds/i.test(message);
   }
 
   private isTransferDaemonOfflineError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
-    // Matches the DAEMON_OFFLINE error string from Errors.cpp:
+    // Matches DAEMON_OFFLINE from Errors.cpp:
     // "We were not able to submit our request to the daemon. Ensure it is online and not frozen."
     return /not able to submit.*daemon|daemon.*online.*frozen/i.test(message);
+  }
+
+  private isTransferTooManyInputsError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    // Matches TOO_MANY_INPUTS_TO_FIT_IN_BLOCK from Errors.cpp:
+    // "The transaction is too large (in BYTES, not AMOUNT) to fit in a block..."
+    return /too many inputs|transaction is too large.*block/i.test(message);
+  }
+
+  private isPreparedTxExpiredError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    // Matches PREPARED_TRANSACTION_EXPIRED from Errors.cpp:
+    // "The prepared transaction contains inputs that have since been spent or are no longer available..."
+    return /prepared transaction.*expired|inputs.*spent|no longer available/i.test(message);
   }
 
   private async prepareBasicWithRetry(
@@ -554,7 +588,12 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         return await this.worker.prepareBasicTransfer(walletId, destination, amountAtomic, paymentId);
       } catch (error) {
         lastError = error;
-        if (!this.isTransferUnlockedFundsError(error) && !this.isTransferDaemonOfflineError(error)) {
+        // TOO_MANY_INPUTS: retrying will not help; throw immediately with the backend message.
+        // Any other non-retryable error: also throw immediately.
+        if (
+          this.isTransferTooManyInputsError(error) ||
+          (!this.isTransferUnlockedFundsError(error) && !this.isTransferDaemonOfflineError(error))
+        ) {
           throw error;
         }
       }
@@ -572,6 +611,23 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     }
   }
 
+  private async computeTransferScanHeight(profile: DirectRpcSessionProfile): Promise<number> {
+    const SAFETY_MARGIN = 10;
+    try {
+      const history = await this.storage.loadTransactionHistory();
+      const relevant = history.filter(
+        (e) => (!this.currentWalletId || e.walletId === this.currentWalletId) && e.blockHeight > 0
+      );
+      if (relevant.length === 0) {
+        return Math.max(0, profile.scanHeight || 0);
+      }
+      const minHeight = relevant.reduce((min, e) => Math.min(min, e.blockHeight), Infinity);
+      return Math.max(0, minHeight - SAFETY_MARGIN);
+    } catch {
+      return Math.max(0, profile.scanHeight || 0);
+    }
+  }
+
   private async ensureTransferWallet(profile: DirectRpcSessionProfile): Promise<number> {
     if (this.transferWalletId !== null) {
       return this.transferWalletId;
@@ -580,7 +636,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       throw new Error("transfer_wallet_prerequisites_missing");
     }
 
-    const restoreScanHeight = Math.max(0, profile.scanHeight || 0);
+    const restoreScanHeight = await this.computeTransferScanHeight(profile);
     const maxRetries = 3;
     const initialDelayMs = 500;
     let lastError: Error | null = null;

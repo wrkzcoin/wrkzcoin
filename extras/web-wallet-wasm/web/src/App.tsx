@@ -1629,7 +1629,27 @@ export function App(): JSX.Element {
 
       let userMessage = `Unable to prepare transfer fee: ${reason}`;
 
-      if (/restoreFromKeys_failed/.test(reason)) {
+      if (/too many inputs|transaction is too large.*block/i.test(reason)) {
+        // TOO_MANY_INPUTS_TO_FIT_IN_BLOCK: wallet has many small UTXOs; sending a single large
+        // transaction would exceed the block size limit. User must send a smaller amount.
+        appendDebugLog("warning", "prepare_transfer_fee: too many inputs to fit in block", "TRANSFER");
+        userMessage =
+          "Transfer failed: the wallet has too many small inputs — the transaction would exceed the block size limit. " +
+          "Try sending a smaller amount, or consolidate your inputs by sending small amounts to yourself first.";
+      } else if (/transfer_sync_timeout/.test(reason)) {
+        // The transfer wallet could not sync to chain tip within the timeout.
+        appendDebugLog("warning", `prepare_transfer_fee: transfer wallet sync timed out (${reason})`, "TRANSFER");
+        userMessage =
+          "Transfer failed: the wallet could not sync to the blockchain within the time limit. " +
+          "Please check your node connection and try again.";
+      } else if (/not enough unlocked funds|not_enough_balance/i.test(reason)) {
+        userMessage =
+          "Transfer failed: insufficient unlocked balance to cover the amount and fee. " +
+          "Please wait for any pending transactions to confirm, then retry.";
+      } else if (/not able to submit.*daemon|daemon.*online.*frozen/i.test(reason)) {
+        userMessage =
+          "Transfer failed: cannot reach the daemon. Please check your node settings and internet connection, then retry.";
+      } else if (/restoreFromKeys_failed/.test(reason)) {
         appendDebugLog(
           "warning",
           "prepare_transfer_fee hit transfer wallet restore failure; checking daemon connectivity and retrying",
@@ -1706,8 +1726,18 @@ export function App(): JSX.Element {
         setTransferPaymentId("");
       } catch (error) {
         await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-        appendDebugLog("error", `submit_transfer failed reason=${error instanceof Error ? error.message : String(error)}`, "TRANSFER");
-        setOutput(error instanceof Error ? `Transfer failed: ${error.message}` : `Transfer failed: ${String(error)}`);
+        const submitReason = error instanceof Error ? error.message : String(error);
+        appendDebugLog("error", `submit_transfer failed reason=${submitReason}`, "TRANSFER");
+        if (/prepared.*expired|prepared_transfer_expired|inputs.*spent|no longer available/i.test(submitReason)) {
+          setOutput(
+            "Transfer failed: the prepared transaction expired (inputs were spent or are no longer valid). " +
+            "Please prepare a new transfer."
+          );
+        } else if (/not able to submit.*daemon|daemon.*online.*frozen/i.test(submitReason)) {
+          setOutput("Transfer failed: cannot reach the daemon while relaying the transaction. Please check your node and retry.");
+        } else {
+          setOutput(`Transfer failed: ${submitReason}`);
+        }
       }
     } finally {
       setTransferLoading(false);
