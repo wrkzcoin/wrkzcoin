@@ -1,0 +1,92 @@
+name: Build WASM
+
+on:
+  push:
+    branches:
+      - dev-android
+      - development
+    paths:
+      - 'src/nigel/Nigel.cpp'
+      - 'extras/web-wallet-wasm/wasm/**'
+      - 'src/walletcapi/**'
+      - 'src/WalletBackend/**'
+      - 'src/CMakeLists.txt'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-wasm.yml'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'CMake build type'
+        required: false
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+          - RelWithDebInfo
+
+jobs:
+  build-wasm:
+    name: Build wallet_wasm (Emscripten)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '3.1.50'
+          actions-cache-folder: '.emsdk-cache'
+
+      - name: Verify emcmake
+        run: emcmake cmake --version
+
+      - name: Cache WASM build
+        uses: actions/cache@v4
+        with:
+          path: build-wasm
+          key: wasm-${{ runner.os }}-${{ hashFiles('src/**/*.cpp', 'src/**/*.h', 'extras/web-wallet-wasm/wasm/**', 'CMakeLists.txt', 'src/CMakeLists.txt') }}
+          restore-keys: |
+            wasm-${{ runner.os }}-
+
+      - name: Configure WASM build
+        env:
+          BUILD_TYPE: ${{ inputs.build_type || 'Release' }}
+        run: |
+          emcmake cmake -S . -B build-wasm \
+            -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+            -DWRKZ_BUILD_EXECUTABLES=OFF \
+            -DWRKZ_BUILD_WALLET_CAPI=ON \
+            -DWRKZ_BUILD_WALLET_WASM=ON \
+            -DWRKZ_WASM_PTHREADS=ON \
+            -DENABLE_ZMQ=OFF
+
+      - name: Build wallet_wasm
+        run: cmake --build build-wasm --target wallet_wasm --parallel $(nproc)
+
+      - name: Copy artifacts to generated/
+        run: |
+          mkdir -p extras/web-wallet-wasm/web/wasm/generated
+          cp -f build-wasm/wasm/wallet_wasm.js  extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.js
+          cp -f build-wasm/wasm/wallet_wasm.wasm extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.wasm
+          if [ -f build-wasm/wasm/wallet_wasm.worker.js ]; then
+            cp -f build-wasm/wasm/wallet_wasm.worker.js extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.worker.js
+          fi
+          ls -lh extras/web-wallet-wasm/web/wasm/generated/
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wallet-wasm-${{ github.sha }}
+          path: |
+            extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.js
+            extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.wasm
+            extras/web-wallet-wasm/web/wasm/generated/wallet_wasm.worker.js
+          retention-days: 30
+          if-no-files-found: error
