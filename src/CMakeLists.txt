@@ -222,6 +222,15 @@ if (ANDROID)
     endif ()
 endif ()
 
+if (EMSCRIPTEN)
+    # Provide stub platform headers (e.g. sys/epoll.h) that are absent from
+    # the Emscripten sysroot. The System library compiles but is never called
+    # at runtime in WASM; networking goes through wrkzSyncXhr in Nigel.
+    target_include_directories(System BEFORE PRIVATE
+        "${CMAKE_SOURCE_DIR}/src/platform/emscripten"
+    )
+endif ()
+
 # A bit of hackery so we don't have to do the if/else/ for every target that
 # wants to use filesystem
 add_library(__filesystem INTERFACE)
