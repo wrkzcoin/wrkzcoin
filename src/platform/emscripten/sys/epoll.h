@@ -19,10 +19,14 @@ struct epoll_event {
 };
 
 #define EPOLLIN      0x001
+#define EPOLLPRI     0x002
 #define EPOLLOUT     0x004
 #define EPOLLERR     0x008
 #define EPOLLHUP     0x010
+#define EPOLLNVAL    0x020
 #define EPOLLRDHUP   0x2000
+#define EPOLLWAKEUP  (1u << 29)
+#define EPOLLONESHOT (1u << 30)
 #define EPOLLET      (1u << 31)
 #define EPOLL_CTL_ADD 1
 #define EPOLL_CTL_DEL 2
