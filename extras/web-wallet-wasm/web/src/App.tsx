@@ -82,6 +82,15 @@ type SyncHealthState = {
   lastDeltaSeconds: number;
 };
 
+type TransferConfirmModal = {
+  recipient: string;
+  paymentId: string;
+  amountAtomic: bigint;
+  networkFeeAtomic: bigint;
+  totalAtomic: bigint;
+  preparedTxHash: string;
+};
+
 function loadNodesFromStorage(): NodeEndpoint[] {
   try {
     const raw = localStorage.getItem(SETTINGS_NODES_KEY);
@@ -393,6 +402,7 @@ export function App(): JSX.Element {
   const [transferAddressValid, setTransferAddressValid] = useState<boolean | null>(null);
   const [transferAddressReason, setTransferAddressReason] = useState<string>("");
   const [transferLoading, setTransferLoading] = useState<boolean>(false);
+  const [transferConfirmModal, setTransferConfirmModal] = useState<TransferConfirmModal | null>(null);
   const [receivePaymentId, setReceivePaymentId] = useState<string>("");
   const [receiveIntegratedAddress, setReceiveIntegratedAddress] = useState<string>("");
   const [backupSeedConfirmInput, setBackupSeedConfirmInput] = useState<string>("");
@@ -1703,45 +1713,49 @@ export function App(): JSX.Element {
       if (!preflight) {
         return;
       }
-      const confirmed = window.confirm(
-        [
-          "Submit transfer now?",
-          `Recipient: ${preflight.recipient}`,
-          `Amount: ${formatAtomicAmount(preflight.amountAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-          `Network fee: ${formatAtomicAmount(preflight.networkFeeAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`,
-          `Total debit: ${formatAtomicAmount(preflight.totalAtomic.toString(), COIN_DECIMALS)} ${COIN_TICKER}`
-        ].join("\n")
-      );
-      if (!confirmed) {
-        await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-        setOutput("Transfer submission cancelled by user.");
-        return;
-      }
+      // Show React confirmation modal instead of blocking window.confirm.
+      setTransferConfirmModal(preflight);
+    } finally {
+      setTransferLoading(false);
+    }
+  };
 
-      try {
-        const sent = await directRpcEngine.submitPreparedTransfer(preflight.preparedTxHash);
-        appendDebugLog("info", `submit_transfer ok txHash=${sent.txHash}`, "TRANSFER");
-        setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
-        setTransferAmount("");
-        setTransferPaymentId("");
-      } catch (error) {
-        await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
-        const submitReason = error instanceof Error ? error.message : String(error);
-        appendDebugLog("error", `submit_transfer failed reason=${submitReason}`, "TRANSFER");
-        if (/prepared.*expired|prepared_transfer_expired|inputs.*spent|no longer available/i.test(submitReason)) {
-          setOutput(
-            "Transfer failed: the prepared transaction expired (inputs were spent or are no longer valid). " +
-            "Please prepare a new transfer."
-          );
-        } else if (/not able to submit.*daemon|daemon.*online.*frozen/i.test(submitReason)) {
-          setOutput("Transfer failed: cannot reach the daemon while relaying the transaction. Please check your node and retry.");
-        } else {
-          setOutput(`Transfer failed: ${submitReason}`);
-        }
+  const onConfirmTransfer = async (): Promise<void> => {
+    const modal = transferConfirmModal;
+    if (!modal) {
+      return;
+    }
+    setTransferConfirmModal(null);
+    setTransferLoading(true);
+    try {
+      const sent = await directRpcEngine.submitPreparedTransfer(modal.preparedTxHash);
+      appendDebugLog("info", `submit_transfer ok txHash=${sent.txHash}`, "TRANSFER");
+      setOutput(`Transfer submitted. Tx hash: ${sent.txHash}`);
+      setTransferAmount("");
+      setTransferPaymentId("");
+    } catch (error) {
+      await directRpcEngine.discardPreparedTransfer().catch(() => undefined);
+      const submitReason = error instanceof Error ? error.message : String(error);
+      appendDebugLog("error", `submit_transfer failed reason=${submitReason}`, "TRANSFER");
+      if (/prepared.*expired|prepared_transfer_expired|inputs.*spent|no longer available/i.test(submitReason)) {
+        setOutput(
+          "Transfer failed: the prepared transaction expired (inputs were spent or are no longer valid). " +
+          "Please prepare a new transfer."
+        );
+      } else if (/not able to submit.*daemon|daemon.*online.*frozen/i.test(submitReason)) {
+        setOutput("Transfer failed: cannot reach the daemon while relaying the transaction. Please check your node and retry.");
+      } else {
+        setOutput(`Transfer failed: ${submitReason}`);
       }
     } finally {
       setTransferLoading(false);
     }
+  };
+
+  const onCancelTransfer = (): void => {
+    directRpcEngine.discardPreparedTransfer().catch(() => undefined);
+    setTransferConfirmModal(null);
+    setOutput("Transfer cancelled.");
   };
 
   const onCopyDebugLogs = async (): Promise<void> => {
@@ -1917,6 +1931,59 @@ export function App(): JSX.Element {
 
   return (
     <main className="container">
+      {transferConfirmModal ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="transfer-confirm-title">
+          <section className="modal-card">
+            <h2 id="transfer-confirm-title">Confirm Transfer</h2>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+              <tbody>
+                <tr>
+                  <td style={{ padding: "0.25rem 0.5rem 0.25rem 0", fontWeight: 600 }}>Recipient</td>
+                  <td style={{ padding: "0.25rem 0", wordBreak: "break-all" }}>
+                    <code style={{ fontSize: "0.8em" }}>{transferConfirmModal.recipient}</code>
+                  </td>
+                </tr>
+                {transferConfirmModal.paymentId ? (
+                  <tr>
+                    <td style={{ padding: "0.25rem 0.5rem 0.25rem 0", fontWeight: 600 }}>Payment ID</td>
+                    <td style={{ padding: "0.25rem 0" }}>
+                      <code>{transferConfirmModal.paymentId}</code>
+                    </td>
+                  </tr>
+                ) : null}
+                <tr>
+                  <td style={{ padding: "0.25rem 0.5rem 0.25rem 0", fontWeight: 600 }}>Amount</td>
+                  <td style={{ padding: "0.25rem 0" }}>
+                    {formatAtomicAmount(transferConfirmModal.amountAtomic.toString(), COIN_DECIMALS)} {COIN_TICKER}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: "0.25rem 0.5rem 0.25rem 0", fontWeight: 600 }}>Network fee</td>
+                  <td style={{ padding: "0.25rem 0" }}>
+                    {formatAtomicAmount(transferConfirmModal.networkFeeAtomic.toString(), COIN_DECIMALS)} {COIN_TICKER}
+                  </td>
+                </tr>
+                <tr>
+                  <td style={{ padding: "0.5rem 0.5rem 0 0", fontWeight: 700, borderTop: "1px solid currentColor" }}>Total debit</td>
+                  <td style={{ padding: "0.5rem 0 0 0", fontWeight: 700, borderTop: "1px solid currentColor" }}>
+                    {formatAtomicAmount(transferConfirmModal.totalAtomic.toString(), COIN_DECIMALS)} {COIN_TICKER}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="muted">Once submitted, this transaction cannot be reversed.</p>
+            <div className="actions">
+              <button onClick={onConfirmTransfer} disabled={transferLoading}>
+                {transferLoading ? "Sending ..." : "Confirm & Send"}
+              </button>
+              <button onClick={onCancelTransfer} disabled={transferLoading}>
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {!hasActiveWalletSession && welcomeModalOpen ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="welcome-modal-title">
           <section className="modal-card">
