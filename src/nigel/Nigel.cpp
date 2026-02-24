@@ -78,26 +78,43 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
     var methodStr = UTF8ToString(method);
     var status = 0;
     var responseText = '';
-    try {
+
+    function doRequest(withJsonContentType) {
         var xhr = new XMLHttpRequest();
         xhr.open(methodStr, urlStr, false /* synchronous */);
+        if (withJsonContentType && body_len > 0) {
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Accept', 'application/json');
+        }
         if (body_len > 0) {
-            // Do NOT set Content-Type: application/json.  Setting it makes
-            // this a non-simple CORS request, requiring the browser to send
-            // an OPTIONS preflight first.  Many daemon configurations do not
-            // handle the OPTIONS preflight, which causes the browser to abort
-            // with status 0.  Omitting Content-Type causes the browser to
-            // default to text/plain — a simple CORS content-type — so the
-            // POST is sent directly without any preflight.  The daemon parses
-            // the request body as JSON regardless of the Content-Type header.
-            xhr.send(new TextDecoder('utf-8').decode(
-                HEAPU8.subarray(body, body + body_len)));
+            xhr.send(new TextDecoder('utf-8').decode(HEAPU8.subarray(body, body + body_len)));
         } else {
             xhr.send(null);
         }
-        status = xhr.status || 0;
-        responseText = xhr.responseText || '';
-    } catch (e) {
+        return {
+            status: xhr.status || 0,
+            body: xhr.responseText || ''
+        };
+    }
+
+    try {
+        var methodUpper = methodStr.toUpperCase();
+        if (methodUpper === 'POST' && body_len > 0) {
+            var first = doRequest(true);
+            status = first.status;
+            responseText = first.body;
+
+            if (status === 0 || status === 400 || status === 415) {
+                var second = doRequest(false);
+                status = second.status;
+                responseText = second.body;
+            }
+        } else {
+            var single = doRequest(false);
+            status = single.status;
+            responseText = single.body;
+        }
+    } catch (err) {
         status = 0;
         responseText = '';
     }
@@ -674,3 +691,4 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
 
     return {parsedResponse.has_value(), result};
 }
+

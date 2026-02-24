@@ -103,8 +103,11 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private walletSyncBatchSize = SYNC_BATCH_SIZE;
   private preparedTransfer: PreparedTransferContext | null = null;
   private transferWalletId: number | null = null;
+  private transferWalletNodeKey: string | null = null;
+  private transferWarmupPromise: Promise<void> | null = null;
   private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 180000;
   private static readonly TRANSFER_SYNC_POLL_MS = 400;
+  private static readonly TRANSFER_WARMUP_WAIT_TIMEOUT_MS = 12000;
   private static readonly PREPARED_TRANSFER_TTL_MS = 2 * 60 * 1000;
 
   public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
@@ -158,12 +161,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     await this.reinitializeScannerStateIfNeeded(walletId);
     await this.storage.saveStatus(status);
     await this.pollOnce();
+    void this.warmTransferWalletInBackground();
     const stats = await this.storage.loadSyncStats();
     this.scheduleNextPoll(this.selectPollIntervalMs(stats?.remainingBlocks));
     return status;
   }
 
   public async stop(): Promise<void> {
+    this.transferWarmupPromise = null;
     await this.discardPreparedTransfer();
     await this.closeTransferWallet();
     if (this.pollTimer) {
@@ -368,6 +373,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         })
       );
     }
+    if (this.running) {
+      void this.warmTransferWalletInBackground();
+    }
   }
 
   public async deriveScanKeysFromSeed(
@@ -516,11 +524,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     }
   }
 
-  private async waitForTransferWalletSync(walletId: number): Promise<void> {
+  private async waitForTransferWalletSync(
+    walletId: number,
+    timeoutMs = BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS
+  ): Promise<void> {
     const startedAt = Date.now();
     let lastWalletHeight = 0;
     let lastTargetHeight = 0;
-    while (Date.now() - startedAt < BrowserDirectRpcEngine.TRANSFER_SYNC_WAIT_TIMEOUT_MS) {
+    while (Date.now() - startedAt < timeoutMs) {
       const status = await this.worker.status(walletId).catch(() => null);
       if (status) {
         const walletHeight = Number(status.walletBlockCount ?? 0);
@@ -630,6 +641,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   private async ensureTransferWallet(profile: DirectRpcSessionProfile): Promise<number> {
     if (this.transferWalletId !== null) {
+      await this.swapTransferWalletNodeIfNeeded();
       return this.transferWalletId;
     }
     if (!this.currentNode || !this.scanKeys) {
@@ -661,6 +673,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         });
 
         this.transferWalletId = restored.walletId;
+        this.transferWalletNodeKey = nodeKey(this.currentNode);
         return restored.walletId;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -682,9 +695,47 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private async closeTransferWallet(): Promise<void> {
     const walletId = this.transferWalletId;
     this.transferWalletId = null;
+    this.transferWalletNodeKey = null;
+    this.transferWarmupPromise = null;
     if (walletId !== null) {
       await this.worker.close(walletId).catch(() => undefined);
     }
+  }
+
+  private async swapTransferWalletNodeIfNeeded(): Promise<void> {
+    if (this.transferWalletId === null || !this.currentNode) {
+      return;
+    }
+    const activeKey = nodeKey(this.currentNode);
+    if (this.transferWalletNodeKey === activeKey) {
+      return;
+    }
+    await this.worker.swapNode(this.transferWalletId, this.currentNode.host, this.currentNode.port, this.currentNode.ssl);
+    this.transferWalletNodeKey = activeKey;
+  }
+
+  private async warmTransferWalletInBackground(): Promise<void> {
+    if (this.transferWarmupPromise) {
+      return;
+    }
+    if (!this.running || !this.currentNode || !this.scanKeys) {
+      return;
+    }
+    this.transferWarmupPromise = (async () => {
+      try {
+        const profile = await this.storage.loadProfile();
+        if (!profile) {
+          return;
+        }
+        const walletId = await this.ensureTransferWallet(profile);
+        await this.swapTransferWalletNodeIfNeeded();
+        await this.waitForTransferWalletSync(walletId, BrowserDirectRpcEngine.TRANSFER_WARMUP_WAIT_TIMEOUT_MS);
+      } catch {
+        // Best-effort warmup only.
+      } finally {
+        this.transferWarmupPromise = null;
+      }
+    })();
   }
 
   public async clearScanKeys(): Promise<void> {
@@ -729,6 +780,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       }
       if (this.running) {
         await this.pollOnce();
+        void this.warmTransferWalletInBackground();
       }
     }
   }
@@ -859,6 +911,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
       return;
     }
     await this.pollOnce().catch(() => undefined);
+    void this.warmTransferWalletInBackground();
     const stats = await this.storage.loadSyncStats().catch(() => null);
     this.scheduleNextPoll(this.selectPollIntervalMs(stats?.remainingBlocks));
   }
