@@ -105,9 +105,11 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
   private transferWalletId: number | null = null;
   private transferWalletNodeKey: string | null = null;
   private transferWarmupPromise: Promise<void> | null = null;
+  private transferOperationDepth = 0;
   private static readonly TRANSFER_SYNC_WAIT_TIMEOUT_MS = 180000;
   private static readonly TRANSFER_SYNC_POLL_MS = 400;
   private static readonly TRANSFER_WARMUP_WAIT_TIMEOUT_MS = 12000;
+  private static readonly TRANSFER_PREPARE_SYNC_WAIT_TIMEOUT_MS = 10000;
   private static readonly PREPARED_TRANSFER_TTL_MS = 2 * 60 * 1000;
 
   public async configureNodePool(nodes: RpcNode[], preferredNodeId?: string): Promise<void> {
@@ -436,10 +438,14 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     if (!profile) {
       throw new Error("no_wallet_profile");
     }
-    await this.discardPreparedTransfer();
-    const walletId = await this.ensureTransferWallet(profile);
-    try {
-      await this.waitForTransferWalletSync(walletId);
+    return this.withTransferOperationPausedSync(async () => {
+      await this.discardPreparedTransfer();
+      const walletId = await this.ensureTransferWallet(profile);
+      // Mobile wallet flow does not hard-block on full sync completion for
+      // preflight; treat sync-wait as best-effort and let prepare retry path decide.
+      await this.waitForTransferWalletSync(walletId, BrowserDirectRpcEngine.TRANSFER_PREPARE_SYNC_WAIT_TIMEOUT_MS).catch(
+        () => undefined
+      );
       const prepared = await this.prepareBasicWithRetry(
         walletId,
         request.destination,
@@ -455,9 +461,7 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
         createdAt: Date.now()
       };
       return prepared;
-    } catch (error) {
-      throw error;
-    }
+    });
   }
 
   public async submitPreparedTransfer(preparedTxHash: string): Promise<{ txHash: string }> {
@@ -476,19 +480,21 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     if (this.transferWalletId === null) {
       throw new Error("transfer_wallet_not_ready");
     }
-    try {
-      const sent = await this.worker.sendPreparedTransfer(this.transferWalletId, preparedTxHash);
-      return sent;
-    } catch (error) {
-      // If the backend reports the prepared tx inputs are no longer spendable,
-      // close the transfer wallet so the next prepare starts with a clean UTXO state.
-      if (this.isPreparedTxExpiredError(error)) {
-        await this.closeTransferWallet();
+    return this.withTransferOperationPausedSync(async () => {
+      try {
+        const sent = await this.worker.sendPreparedTransfer(this.transferWalletId as number, preparedTxHash);
+        return sent;
+      } catch (error) {
+        // If the backend reports the prepared tx inputs are no longer spendable,
+        // close the transfer wallet so the next prepare starts with a clean UTXO state.
+        if (this.isPreparedTxExpiredError(error)) {
+          await this.closeTransferWallet();
+        }
+        throw error;
+      } finally {
+        await this.discardPreparedTransfer();
       }
-      throw error;
-    } finally {
-      await this.discardPreparedTransfer();
-    }
+    });
   }
 
   public async discardPreparedTransfer(): Promise<void> {
@@ -702,6 +708,15 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
     }
   }
 
+  private async withTransferOperationPausedSync<T>(fn: () => Promise<T>): Promise<T> {
+    this.transferOperationDepth += 1;
+    try {
+      return await fn();
+    } finally {
+      this.transferOperationDepth = Math.max(0, this.transferOperationDepth - 1);
+    }
+  }
+
   private async swapTransferWalletNodeIfNeeded(): Promise<void> {
     if (this.transferWalletId === null || !this.currentNode) {
       return;
@@ -851,6 +866,9 @@ export class BrowserDirectRpcEngine implements DirectRpcEngine {
 
   private async pollOnce(): Promise<void> {
     if (!this.running || !this.currentWalletId || !this.currentNode) {
+      return;
+    }
+    if (this.transferOperationDepth > 0) {
       return;
     }
     try {

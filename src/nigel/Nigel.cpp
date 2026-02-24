@@ -80,21 +80,28 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
     var responseText = '';
 
     function doRequest(withJsonContentType) {
-        var xhr = new XMLHttpRequest();
-        xhr.open(methodStr, urlStr, false /* synchronous */);
-        if (withJsonContentType && body_len > 0) {
-            xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.setRequestHeader('Accept', 'application/json');
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open(methodStr, urlStr, false /* synchronous */);
+            if (withJsonContentType && body_len > 0) {
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('Accept', 'application/json');
+            }
+            if (body_len > 0) {
+                xhr.send(new TextDecoder('utf-8').decode(HEAPU8.subarray(body, body + body_len)));
+            } else {
+                xhr.send(null);
+            }
+            return {
+                status: xhr.status || 0,
+                body: xhr.responseText || ''
+            };
+        } catch (requestErr) {
+            return {
+                status: 0,
+                body: ''
+            };
         }
-        if (body_len > 0) {
-            xhr.send(new TextDecoder('utf-8').decode(HEAPU8.subarray(body, body + body_len)));
-        } else {
-            xhr.send(null);
-        }
-        return {
-            status: xhr.status || 0,
-            body: xhr.responseText || ''
-        };
     }
 
     try {
