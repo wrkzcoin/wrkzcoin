@@ -345,6 +345,14 @@ if (ENABLE_ZMQ AND WRKZ_BUILD_EXECUTABLES)
     if (WIN32 AND WRKZ_ZMQ_TARGET STREQUAL "libzmq-static")
         target_compile_definitions(Wrkzd PRIVATE ZMQ_STATIC=1)
     endif ()
+    if (WIN32 AND WRKZ_ZMQ_TARGET STREQUAL "libzmq" AND TARGET libzmq)
+        # Ensure runtime DLL is staged next to Wrkzd.exe.
+        add_custom_command(TARGET Wrkzd POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:libzmq>
+                $<TARGET_FILE_DIR:Wrkzd>
+        )
+    endif ()
 endif ()
 
 if (WIN32 AND NOT MSVC AND WRKZ_BUILD_EXECUTABLES)
