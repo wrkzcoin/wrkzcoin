@@ -346,11 +346,14 @@ if (ENABLE_ZMQ AND WRKZ_BUILD_EXECUTABLES)
         target_compile_definitions(Wrkzd PRIVATE ZMQ_STATIC=1)
     endif ()
     if (WIN32 AND WRKZ_ZMQ_TARGET STREQUAL "libzmq" AND TARGET libzmq)
-        # Ensure runtime DLL is staged next to Wrkzd.exe.
-        add_custom_command(TARGET Wrkzd POST_BUILD
+        # Stage runtime DLL next to Wrkzd.exe on every build, even if Wrkzd
+        # itself was not relinked in this invocation.
+        add_custom_target(wrkzd_stage_libzmq ALL
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:libzmq>
                 $<TARGET_FILE_DIR:Wrkzd>
+            DEPENDS Wrkzd libzmq
+            COMMENT "Copying libzmq runtime DLL next to Wrkzd.exe"
         )
     endif ()
 endif ()
