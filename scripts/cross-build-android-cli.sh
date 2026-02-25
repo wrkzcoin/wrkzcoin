@@ -65,9 +65,12 @@ build_one_abi() {
   local libucontext_root="$3"
 
   if [ ! -f "$libucontext_root/lib/libucontext.a" ]; then
-    echo "Warning: libucontext not found at:"
+    echo "Error: libucontext not found at:"
     echo "  $libucontext_root/lib/libucontext.a"
-    echo "Continuing without libucontext for ABI '$abi'. Link may fail on getcontext/swapcontext/makecontext."
+    echo "Android CLI builds require libucontext for getcontext/swapcontext/makecontext."
+    echo "Build it first:"
+    echo "  ABI=$abi scripts/build-libucontext-android.sh"
+    exit 1
   fi
 
   echo "Configuring Android CLI build for ABI '$abi' in $build_dir ..."
