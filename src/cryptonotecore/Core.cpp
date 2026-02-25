@@ -1412,6 +1412,7 @@ namespace CryptoNote
         switch (payload.type)
         {
             case MasternodeTxType::Register:
+            {
                 if (!payload.hasPayoutKey || !check_key(payload.payoutKey))
                 {
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
@@ -1535,6 +1536,7 @@ namespace CryptoNote
                     return error::TransactionValidationError::WRONG_FEE;
                 }
                 break;
+            }
             case MasternodeTxType::Activate:
                 if (!exists)
                 {
