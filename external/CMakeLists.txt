@@ -70,10 +70,9 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     set(WITH_DOC OFF CACHE BOOL "Disable libzmq docs" FORCE)
     set(WITH_DOCS OFF CACHE BOOL "Disable libzmq html docs" FORCE)
     set(ENABLE_CURVE OFF CACHE BOOL "Disable libzmq CURVE for bundled build" FORCE)
-    if (WIN32)
-        # libbsd is a Unix dependency; disable it for MinGW/Windows targets.
-        set(WITH_LIBBSD OFF CACHE BOOL "Disable libzmq libbsd on Windows targets" FORCE)
-    endif ()
+    # Avoid host/target mismatch in cross builds (e.g. pkg-config finding host libbsd).
+    # libzmq has a builtin strlcpy fallback when libbsd is disabled.
+    set(WITH_LIBBSD OFF CACHE BOOL "Disable libzmq libbsd for bundled builds" FORCE)
     add_subdirectory(libzmq EXCLUDE_FROM_ALL)
 
     if (_WRKZ_HAD_BUILD_SHARED)
