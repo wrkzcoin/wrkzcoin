@@ -63,7 +63,7 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
         set(_WRKZ_HAD_WITH_LIBBSD FALSE)
     endif ()
 
-    set(BUILD_SHARED ON CACHE BOOL "Build shared libzmq" FORCE)
+    set(BUILD_SHARED OFF CACHE BOOL "Disable shared libzmq" FORCE)
     set(BUILD_STATIC ON CACHE BOOL "Build static libzmq" FORCE)
     set(BUILD_TESTS OFF CACHE BOOL "Disable libzmq tests" FORCE)
     set(WITH_PERF_TOOL OFF CACHE BOOL "Disable libzmq perf tools" FORCE)
