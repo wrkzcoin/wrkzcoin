@@ -2548,14 +2548,18 @@ namespace CryptoNote
 
     bool DatabaseBlockchainCache::writeMasternodeStateBlob(const std::string &blob)
     {
-        RawWriteBatch batch(
-            {{DB::serializeKey(DB::MASTERNODE_STATE_PREFIX, DB::MASTERNODE_STATE_KEY), blob}});
+        std::vector<std::pair<std::string, std::string>> values;
+        values.emplace_back(
+            CryptoNote::DB::serializeKey(CryptoNote::DB::MASTERNODE_STATE_PREFIX, CryptoNote::DB::MASTERNODE_STATE_KEY),
+            blob);
+        RawWriteBatch batch(std::move(values));
         return !database.write(batch);
     }
 
     bool DatabaseBlockchainCache::readMasternodeStateBlob(std::string &blob) const
     {
-        RawReadBatch batch(DB::serializeKey(DB::MASTERNODE_STATE_PREFIX, DB::MASTERNODE_STATE_KEY));
+        RawReadBatch batch(
+            CryptoNote::DB::serializeKey(CryptoNote::DB::MASTERNODE_STATE_PREFIX, CryptoNote::DB::MASTERNODE_STATE_KEY));
         if (database.read(batch))
         {
             return false;
