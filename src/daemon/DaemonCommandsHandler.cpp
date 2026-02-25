@@ -827,7 +827,7 @@ bool DaemonCommandsHandler::masternodes(const std::vector<std::string> &args)
     }
 
     const auto &mnArray = getArrayFromJSON(listDoc, "masternodes");
-    if (mnArray.empty())
+    if (mnArray.Empty())
     {
         std::cout << InformationMsg("No masternodes in requested page.") << std::endl;
         return true;
