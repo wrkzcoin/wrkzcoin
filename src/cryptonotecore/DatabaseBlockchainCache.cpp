@@ -17,6 +17,7 @@
 #include <cryptonotecore/BlockchainStorage.h>
 #include <cryptonotecore/CryptoNoteBasicImpl.h>
 #include <cryptonotecore/DatabaseBlockchainCache.h>
+#include <cryptonotecore/DBUtils.h>
 #include <cstdlib>
 #include <ctime>
 
