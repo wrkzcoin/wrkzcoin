@@ -26,6 +26,8 @@ option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
 option(WRKZ_WASM_PTHREADS "Build wallet WASM with pthread/atomics support" OFF)
 option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
+option(WRKZ_ANDROID_HEADER_ONLY_BOOST "Use Boost headers only on Android builds" ON)
+option(WRKZ_ANDROID_DISABLE_OPENSSL "Disable OpenSSL probing/linking on Android builds" ON)
 option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
 set(LIBUCONTEXT_ROOT "" CACHE PATH "Root of prebuilt libucontext for Android (expects include/ and lib/libucontext.a)")
 
@@ -122,6 +124,8 @@ message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
 message(STATUS "WRKZ_BUILD_WALLET_WASM: ${WRKZ_BUILD_WALLET_WASM}")
 message(STATUS "WRKZ_WASM_PTHREADS: ${WRKZ_WASM_PTHREADS}")
 message(STATUS "WRKZ_ANDROID_PROFILE: ${WRKZ_ANDROID_PROFILE}")
+message(STATUS "WRKZ_ANDROID_HEADER_ONLY_BOOST: ${WRKZ_ANDROID_HEADER_ONLY_BOOST}")
+message(STATUS "WRKZ_ANDROID_DISABLE_OPENSSL: ${WRKZ_ANDROID_DISABLE_OPENSSL}")
 message(STATUS "WRKZ_FORCE_STATIC_INTERNALS: ${WRKZ_FORCE_STATIC_INTERNALS}")
 
 if (FORCE_USE_HEAP)
@@ -392,8 +396,9 @@ else ()
     set(Boost_USE_STATIC_LIBS ON)
     set(Boost_USE_STATIC_RUNTIME ON)
 endif ()
-if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABLES)
-    # Wallet C API Android builds only require Boost headers.
+if ((WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABLES)
+    OR (ANDROID AND WRKZ_ANDROID_HEADER_ONLY_BOOST))
+    # Android builds can run with Boost headers only.
     if (NOT DEFINED BOOST_ROOT AND DEFINED ENV{BOOST_ROOT})
         set(BOOST_ROOT "$ENV{BOOST_ROOT}")
     endif ()
@@ -413,7 +418,7 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
 
     if (Boost_INCLUDE_DIRS STREQUAL "")
         message(FATAL_ERROR
-            "Android wallet_capi build requires Boost headers but none were found.\n"
+            "Android build requires Boost headers but none were found.\n"
             "Set BOOST_ROOT to an isolated Boost headers prefix containing include/boost/version.hpp.\n"
             "Do not pass /usr/include directly in cross builds.")
     endif ()
@@ -429,14 +434,14 @@ if (WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABL
         OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/variant.hpp"
     )
         message(FATAL_ERROR
-            "Boost include root is invalid for Android wallet_capi: ${Boost_INCLUDE_DIRS}\n"
+            "Boost include root is invalid for Android build: ${Boost_INCLUDE_DIRS}\n"
             "Expected headers:\n"
             "  ${Boost_INCLUDE_DIRS}/boost/version.hpp\n"
             "  ${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp\n"
             "  ${Boost_INCLUDE_DIRS}/boost/variant.hpp\n"
             "Set BOOST_ROOT to a valid isolated Boost prefix.")
     endif ()
-    message(STATUS "Boost headers for Android wallet_capi: ${Boost_INCLUDE_DIRS}")
+    message(STATUS "Boost headers for Android build: ${Boost_INCLUDE_DIRS}")
 
     set(WRKZ_BOOST_LINK_LIBS "")
 else ()
@@ -520,7 +525,7 @@ if (APPLE)
     endif ()
 endif ()
 
-if (EMSCRIPTEN)
+if (EMSCRIPTEN OR (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
     set(OPENSSL_FOUND FALSE)
 else ()
     find_package(OpenSSL)

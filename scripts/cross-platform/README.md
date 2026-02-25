@@ -164,6 +164,93 @@ Android notes:
 
 ## Full Node/CLI Builds
 
+### Android (CLI Binaries)
+
+Android CLI flow builds daemon and CLI executables for Android ABIs.
+
+Prerequisites:
+
+1. Android NDK installed (r26+ recommended).
+2. `ANDROID_NDK` exported to your local NDK path.
+3. Boost headers available on host (`libboost-dev`) or a custom `BOOST_ROOT`.
+4. Android `libucontext` built for the target ABI (recommended).
+5. `cmake` and `ninja`/build tools available on host.
+
+Build default Android ABI (`arm64-v8a`):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+sudo apt-get install -y libboost-dev
+bash scripts/cross-build-android-cli.sh
+```
+
+Output directory:
+
+```text
+build-android-cli-arm64-v8a/src
+```
+
+Build another ABI (example `x86_64`):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ANDROID_ABI=x86_64 BUILD_DIR=build-android-cli-x86_64 \
+  bash scripts/cross-build-android-cli.sh
+```
+
+Build multiple ABIs in one command:
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ANDROID_ABIS=arm64-v8a,x86_64 LIBUCONTEXT_ROOT_BASE="$PWD/.android-libucontext" \
+  bash scripts/cross-build-android-cli.sh
+```
+
+Build `libucontext` per ABI (recommended before Android CLI build):
+
+```bash
+export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
+ABI=arm64-v8a scripts/build-libucontext-android.sh
+ABI=x86_64 scripts/build-libucontext-android.sh
+```
+
+Expected Android CLI artifacts (per ABI build dir under `src/`):
+
+- `Wrkzd`
+- `wrkz-wallet`
+- `wrkz-service`
+- `wrkz-wallet-api`
+- `wallet-upgrader`
+- `miner`
+- `cryptotest`
+
+Common Android CLI env knobs:
+
+- `ANDROID_ABI` (default: `arm64-v8a`)
+- `ANDROID_ABIS` (optional list; supports space/comma/newline separators)
+- `ANDROID_PLATFORM` (default: `android-24`)
+- `BUILD_TYPE` (default: `Release`)
+- `BUILD_DIR` (default: `build-android-cli-arm64-v8a`)
+- `JOBS` (default: `nproc`)
+- `BOOST_ROOT` (optional custom isolated Boost headers prefix)
+- `LIBUCONTEXT_ROOT` (default: `.android-libucontext/<ABI>`, optional but recommended)
+- `LIBUCONTEXT_ROOT_BASE` (default: `.android-libucontext`, used when `ANDROID_ABIS` is set)
+
+Android CLI notes:
+
+- Script configures with:
+  - `WRKZ_BUILD_EXECUTABLES=ON`
+  - `WRKZ_BUILD_WALLET_CAPI=OFF`
+  - `WRKZ_ANDROID_PROFILE=OFF`
+  - `WRKZ_ANDROID_HEADER_ONLY_BOOST=ON`
+  - `WRKZ_ANDROID_DISABLE_OPENSSL=ON`
+  - `ENABLE_ZMQ=OFF`
+- If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
+  `.android-boost/include/boost` and uses that isolated path for cross build.
+- If `libucontext` is missing for an ABI, the script warns and continues.
+  Final link may still fail on `getcontext/swapcontext/makecontext`.
+- Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
+
 ### Windows x86_64 from Ubuntu
 
 From repo root:
