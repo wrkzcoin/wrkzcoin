@@ -313,10 +313,12 @@ namespace CryptoNote
 
         MasternodeStateTracker::RewardDistribution getMasternodeRewardDistribution(
             uint64_t totalReward,
+            uint64_t totalFee,
             uint32_t height) const;
 
         MasternodeStateTracker::RewardDistribution getMasternodeRewardDistributionForTracker(
             uint64_t totalReward,
+            uint64_t totalFee,
             uint32_t height,
             const MasternodeStateTracker &tracker) const;
 

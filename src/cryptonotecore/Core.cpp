@@ -1222,6 +1222,7 @@ namespace CryptoNote
 
     MasternodeStateTracker::RewardDistribution Core::getMasternodeRewardDistribution(
         uint64_t totalReward,
+        uint64_t totalFee,
         uint32_t height) const
     {
         MasternodeStateTracker::RewardDistribution distribution;
@@ -1232,13 +1233,18 @@ namespace CryptoNote
             return distribution;
         }
 
+        const uint64_t feeToPow = std::min(totalReward, totalFee);
+        const uint64_t distributableReward = totalReward - feeToPow;
         const auto candidates = getMasternodeRewardCandidates(height);
-        return masternodeStateTracker.calculateRewardDistribution(
-            totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+        distribution = masternodeStateTracker.calculateRewardDistribution(
+            distributableReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+        distribution.powReward += feeToPow;
+        return distribution;
     }
 
     MasternodeStateTracker::RewardDistribution Core::getMasternodeRewardDistributionForTracker(
         uint64_t totalReward,
+        uint64_t totalFee,
         uint32_t height,
         const MasternodeStateTracker &tracker) const
     {
@@ -1250,8 +1256,13 @@ namespace CryptoNote
             return distribution;
         }
 
+        const uint64_t feeToPow = std::min(totalReward, totalFee);
+        const uint64_t distributableReward = totalReward - feeToPow;
         const auto candidates = getMasternodeRewardCandidatesForTracker(height, tracker);
-        return tracker.calculateRewardDistribution(totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+        distribution = tracker.calculateRewardDistribution(
+            distributableReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+        distribution.powReward += feeToPow;
+        return distribution;
     }
 
     void Core::applyMasternodeEventFromTransaction(const Transaction &transaction, uint64_t txFee, uint32_t height)
@@ -1785,8 +1796,14 @@ namespace CryptoNote
             {
                 blockReward += output.amount;
             }
+            uint64_t cumulativeFee = 0;
+            for (const auto &transaction : transactions)
+            {
+                cumulativeFee += transaction.getTransactionFee();
+            }
 
-            const auto rewardDistribution = getMasternodeRewardDistributionForTracker(blockReward, height, tracker);
+            const auto rewardDistribution =
+                getMasternodeRewardDistributionForTracker(blockReward, cumulativeFee, height, tracker);
             if (
                 rewardDistribution.hasMasternodeWinner && rewardDistribution.masternodeWinner.has_value()
                 && rewardDistribution.masternodeReward > 0)
@@ -2115,8 +2132,9 @@ namespace CryptoNote
 
         const auto rewardDistribution = useValidationMasternodeTracker
                                             ? getMasternodeRewardDistributionForTracker(
-                                                  reward, cachedBlock.getBlockIndex(), rewardMasternodeTracker)
-                                            : getMasternodeRewardDistribution(reward, cachedBlock.getBlockIndex());
+                                                  reward, cumulativeFee, cachedBlock.getBlockIndex(), rewardMasternodeTracker)
+                                            : getMasternodeRewardDistribution(
+                                                  reward, cumulativeFee, cachedBlock.getBlockIndex());
         if (rewardDistribution.masternodeReward + rewardDistribution.powReward != reward)
         {
             logger(Logging::DEBUGGING) << "Masternode reward distribution mismatch for block " << blockStr;
@@ -3076,7 +3094,7 @@ namespace CryptoNote
                     totalReward += output.amount;
                 }
 
-                const auto rewardDistribution = getMasternodeRewardDistribution(totalReward, height);
+                const auto rewardDistribution = getMasternodeRewardDistribution(totalReward, fee, height);
                 if (rewardDistribution.hasMasternodeWinner)
                 {
                     if (b.baseTransaction.outputs.size() < 2)

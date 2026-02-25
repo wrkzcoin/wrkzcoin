@@ -272,14 +272,14 @@ namespace CryptoNote
         const uint64_t MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS = 21 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
 
         /* Masternode rollout fork heights. Set to 0 to keep feature disabled until configured. */
-        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 0;
-        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = 0;
+        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 4600000;
+        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = MASTERNODE_FEATURE_FORK_HEIGHT + 30 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
 
         /* Reward split percent for masternode winner after reward fork activates. */
         const uint64_t MASTERNODE_REWARD_PERCENT = 70;
 
         /* Registration bond amount (atomic units). Set > 0 to enforce economic commitment for MN registration. */
-        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 100000;
+        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 50'000'000'000;
 
         /* Minimum collateral output amount (atomic units) required for masternode registration. */
         const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT = MASTERNODE_REGISTRATION_BOND_AMOUNT;
@@ -303,6 +303,12 @@ namespace CryptoNote
 
         static_assert(MASTERNODE_MIN_HEALTH_PERCENT <= 100, "Invalid MASTERNODE_MIN_HEALTH_PERCENT");
         static_assert(MASTERNODE_REWARD_PERCENT <= 100, "Invalid MASTERNODE_REWARD_PERCENT");
+        static_assert(
+            MASTERNODE_FEATURE_FORK_HEIGHT == 0 || MASTERNODE_REWARD_FORK_HEIGHT >= MASTERNODE_FEATURE_FORK_HEIGHT,
+            "MASTERNODE_REWARD_FORK_HEIGHT must be >= MASTERNODE_FEATURE_FORK_HEIGHT");
+        static_assert(
+            MASTERNODE_FEATURE_FORK_HEIGHT == 0 || MASTERNODE_REWARD_FORK_HEIGHT > 0,
+            "MASTERNODE_REWARD_FORK_HEIGHT must be > 0 when masternode feature fork is enabled");
         static_assert(
             MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT <= 100,
             "Invalid MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT");
@@ -443,7 +449,7 @@ namespace CryptoNote
         const char MINER_CONFIG_FILE_NAME[] = "miner_conf.wrkz.json";
         
         /* Maximum allowable blocks to rewind from existing chain */
-        const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
+        const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 21;
 
         /* Feature fork where prune capability signaling and sync policy enforcement activate. */
         const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
