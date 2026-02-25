@@ -41,6 +41,32 @@
 #include "util/coding.h"
 #include "util/string_util.h"
 
+#ifndef POSIX_MADV_NORMAL
+#ifdef MADV_NORMAL
+#define POSIX_MADV_NORMAL MADV_NORMAL
+#endif
+#endif
+#ifndef POSIX_MADV_RANDOM
+#ifdef MADV_RANDOM
+#define POSIX_MADV_RANDOM MADV_RANDOM
+#endif
+#endif
+#ifndef POSIX_MADV_SEQUENTIAL
+#ifdef MADV_SEQUENTIAL
+#define POSIX_MADV_SEQUENTIAL MADV_SEQUENTIAL
+#endif
+#endif
+#ifndef POSIX_MADV_WILLNEED
+#ifdef MADV_WILLNEED
+#define POSIX_MADV_WILLNEED MADV_WILLNEED
+#endif
+#endif
+#ifndef POSIX_MADV_DONTNEED
+#ifdef MADV_DONTNEED
+#define POSIX_MADV_DONTNEED MADV_DONTNEED
+#endif
+#endif
+
 #if defined(OS_LINUX) && !defined(F_SET_RW_HINT)
 #define F_LINUX_SPECIFIC_BASE 1024
 #define F_SET_RW_HINT (F_LINUX_SPECIFIC_BASE + 12)
@@ -80,7 +106,7 @@ IOStatus IOError(const std::string& context, const std::string& file_name,
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return 0.
 int Fadvise(int fd, off_t offset, size_t len, int advice) {
-#ifdef OS_LINUX
+#if defined(OS_LINUX) || defined(OS_ANDROID)
   return posix_fadvise(fd, offset, len, advice);
 #else
   (void)fd;
@@ -94,7 +120,7 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return 0.
 int Madvise(void* addr, size_t len, int advice) {
-#ifdef OS_LINUX
+#if defined(OS_LINUX) || defined(OS_ANDROID)
   return posix_madvise(addr, len, advice);
 #else
   (void)addr;
