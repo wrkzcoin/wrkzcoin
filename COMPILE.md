@@ -13,6 +13,21 @@ cmake --build build -j
 
 Binaries are produced in `build/src`.
 
+### Build Parallelism (Top-level + RocksDB sub-build)
+
+RocksDB is built as a nested CMake sub-build. To keep parallel job count aligned across both top-level build and RocksDB, set:
+
+```bash
+export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)
+cmake --build build -j
+```
+
+You can also override only RocksDB jobs at configure time:
+
+```bash
+cmake -S . -B build -DROCKSDB_BUILD_PARALLEL=4
+```
+
 ## Build Modes
 
 ### Default (recommended for nodes / reproducible)
@@ -59,6 +74,10 @@ Minimum tooling:
 - C++ compiler:
   - GCC >= 7, or
   - Clang >= 6
+- C++20 `<chrono>` compatibility note (Linux):
+  - Confirmed: `clang-15` compiles successfully.
+  - `clang-14` with GCC 13 `libstdc++` headers is known to fail in `<chrono>`.
+  - Use GCC, `clang >= 15`, clang with `libc++`, or point clang at an older GCC toolchain (for example GCC 11 headers/libs).
 - OpenSSL development package
 - Git
 - Make or Ninja
@@ -67,6 +86,22 @@ Database/compression libs used by build:
 
 - RocksDB
 - Zstd
+
+### Optional: ZeroMQ (daemon publisher)
+
+ZMQ support is enabled by default at configure time (`ENABLE_ZMQ=ON`), but it is auto-disabled with a CMake warning if `libzmq` is not found.
+
+- Runtime feature: daemon `--zmq-pub` and `--no-zmq`
+- Default endpoint: `tcp://127.0.0.1:17857`
+
+For Linux builds:
+
+- Install headers/libs: `libzmq3-dev` and `libsodium-dev`
+- For portable/static builds, make sure static archives exist:
+  - `/usr/lib/x86_64-linux-gnu/libzmq.a`
+  - `/usr/lib/x86_64-linux-gnu/libsodium.a`
+
+If you changed dependencies, use a fresh build dir (or clear cache) so CMake does not reuse stale `ZMQ_LIBRARY` values.
 
 ### Boost status (updated)
 
@@ -83,7 +118,7 @@ sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
   libssl-dev libboost-date-time-dev \
-  libzstd-dev
+  libzstd-dev libzmq3-dev libsodium-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)

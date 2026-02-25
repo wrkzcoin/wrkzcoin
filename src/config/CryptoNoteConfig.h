@@ -435,6 +435,8 @@ namespace CryptoNote
 
     const int RPC_DEFAULT_PORT = 17856;
 
+    const int ZMQ_PUB_DEFAULT_PORT = 17857;
+
     const int SERVICE_DEFAULT_PORT = 7856;
 
     const size_t P2P_LOCAL_WHITE_PEERLIST_LIMIT = 1000;

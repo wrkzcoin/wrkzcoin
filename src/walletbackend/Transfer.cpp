@@ -313,14 +313,6 @@ namespace SendTransaction
         const bool sendAll,
         const bool sendTransaction)
     {
-        /* Append the fee transaction, if a fee is being used */
-        const auto [feeAmount, feeAddress] = daemon->nodeFee();
-
-        if (feeAmount != 0)
-        {
-            addressesAndAmounts.push_back({feeAddress, feeAmount});
-        }
-
         if (changeAddress == "")
         {
             changeAddress = subWallets->getPrimaryAddress();

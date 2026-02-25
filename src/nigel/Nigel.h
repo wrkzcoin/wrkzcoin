@@ -93,8 +93,6 @@ class Nigel
 
     bool getDaemonInfo();
 
-    bool getFeeInfo();
-
     template<typename F>
     auto tryParseJSONResponse(
         const std::shared_ptr<httplib::Response> &res,

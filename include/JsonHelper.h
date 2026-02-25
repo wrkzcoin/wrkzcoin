@@ -7,6 +7,10 @@
 
 #include "rapidjson/document.h"
 
+#include <cstdint>
+#include <stdexcept>
+#include <string>
+
 /* Yikes! */
 typedef rapidjson::GenericObject<
     true,

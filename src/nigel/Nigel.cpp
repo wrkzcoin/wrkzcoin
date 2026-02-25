@@ -12,9 +12,14 @@
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
-#include <errors/ValidateParameters.h>
 #include <utilities/Utilities.h>
 #include <version.h>
+
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#include <cstdlib>
+#endif
+#include <cstdio>
 
 using json = nlohmann::json;
 
@@ -41,6 +46,131 @@ inline std::shared_ptr<httplib::Client> getClient(
     }
 #endif
 }
+
+#if defined(__EMSCRIPTEN__)
+inline std::string daemonUrl(const std::string &host, const uint16_t port, const bool ssl, const std::string &path)
+{
+    const uint16_t defaultPort = ssl ? 443 : 80;
+    const std::string portStr = (port == defaultPort) ? "" : (":" + std::to_string(port));
+    return std::string(ssl ? "https://" : "http://") + host + portStr + path;
+}
+
+// Synchronous HTTP helper using JavaScript's synchronous XMLHttpRequest API.
+//
+// emscripten_fetch(EMSCRIPTEN_FETCH_SYNCHRONOUS) deadlocks on the WASM main
+// thread because ccall() blocks the JS event loop: the XHR onload callback
+// can never fire while WASM is executing synchronously.  pthreads avoid this
+// because each thread has its own event loop, but wallet_wasm_request runs on
+// the WASM main thread and needs to make HTTP calls (e.g. getRandomOutsByAmounts
+// during prepareBasicTransfer).
+//
+// Synchronous XMLHttpRequest (xhr.open(..., false)) blocks the calling thread
+// at the network level without the event loop, so it works correctly from any
+// Web Worker context — including both the WASM main thread and pthreads.
+// It is deprecated only on the browser's UI thread (freeze risk), not in workers.
+//
+// Returns a malloc'd body buffer that the caller must free(), or nullptr on
+// network failure.  *out_status and *out_body_len are always set.
+EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
+                            const char* body, int body_len,
+                            int* out_status, int* out_body_len), {
+    var urlStr = UTF8ToString(url);
+    var methodStr = UTF8ToString(method);
+    var status = 0;
+    var responseText = '';
+
+    function doRequest(withJsonContentType) {
+        try {
+            var xhr = new XMLHttpRequest();
+            xhr.open(methodStr, urlStr, false /* synchronous */);
+            if (withJsonContentType && body_len > 0) {
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.setRequestHeader('Accept', 'application/json');
+            }
+            if (body_len > 0) {
+                xhr.send(new TextDecoder('utf-8').decode(HEAPU8.subarray(body, body + body_len)));
+            } else {
+                xhr.send(null);
+            }
+            return {
+                status: xhr.status || 0,
+                body: xhr.responseText || ''
+            };
+        } catch (requestErr) {
+            return {
+                status: 0,
+                body: ''
+            };
+        }
+    }
+
+    try {
+        var methodUpper = methodStr.toUpperCase();
+        if (methodUpper === 'POST' && body_len > 0) {
+            var first = doRequest(true);
+            status = first.status;
+            responseText = first.body;
+
+            if (status === 0 || status === 400 || status === 415) {
+                var second = doRequest(false);
+                status = second.status;
+                responseText = second.body;
+            }
+        } else {
+            var single = doRequest(false);
+            status = single.status;
+            responseText = single.body;
+        }
+    } catch (err) {
+        status = 0;
+        responseText = '';
+    }
+    HEAP32[out_status >> 2] = status;
+    var encoded = (new TextEncoder()).encode(responseText);
+    var len = encoded.length;
+    HEAP32[out_body_len >> 2] = len;
+    if (len === 0) { return 0; }
+    var ptr = _malloc(len + 1);
+    if (!ptr) { return 0; }
+    HEAPU8.set(encoded, ptr);
+    HEAPU8[ptr + len] = 0;
+    return ptr;
+});
+
+inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
+    const std::string &url,
+    const char *method,
+    const std::string *jsonBody)
+{
+    const char *bodyPtr = jsonBody ? jsonBody->c_str() : nullptr;
+    const int bodyLen = jsonBody ? static_cast<int>(jsonBody->size()) : 0;
+    int status = 0;
+    int respLen = 0;
+
+    char *respBuf = wrkzSyncXhr(url.c_str(), method, bodyPtr, bodyLen, &status, &respLen);
+
+    if (status == 0)
+    {
+        if (respBuf)
+        {
+            free(respBuf);
+        }
+        return nullptr;
+    }
+
+    auto response = std::make_shared<httplib::Response>();
+    response->status = status;
+    if (respBuf && respLen > 0)
+    {
+        response->body.assign(respBuf, static_cast<size_t>(respLen));
+    }
+    if (respBuf)
+    {
+        free(respBuf);
+    }
+    return response;
+}
+#endif
 
 ////////////////////////////////
 /* Constructors / Destructors */
@@ -141,7 +271,15 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
         { Logger::SYNC, Logger::DAEMON }
     );
 
-    const auto res = m_nodeClient->Post(endpoint, m_requestHeaders, j.dump(), "application/json");
+    const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+    const auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, endpoint),
+        "POST",
+        &requestBody);
+#else
+    const auto res = m_nodeClient->Post(endpoint, m_requestHeaders, requestBody, "application/json");
+#endif
 
     /* Daemon doesn't support /getrawblocks, or pruned/raw-block path failed:
        fall back to /getwalletsyncdata reconstruction path. */
@@ -261,12 +399,8 @@ void Nigel::init()
 {
     m_shouldStop = false;
 
-    /* Get the initial daemon info, and the initial fee info before returning.
-       This way the info is always valid, and there's no race on accessing
-       the fee info or something */
+    /* Get initial daemon info before returning so the status is valid. */
     getDaemonInfo();
-
-    getFeeInfo();
 
     /* Now launch the background thread to constantly update the heights etc */
     m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
@@ -282,7 +416,14 @@ bool Nigel::getDaemonInfo()
         { Logger::SYNC, Logger::DAEMON }
     );
 
+#if defined(__EMSCRIPTEN__)
+    auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/info"),
+        "GET",
+        nullptr);
+#else
     auto res = m_nodeClient->Get("/info", m_requestHeaders);
+#endif
 
     const auto parsedResponse = tryParseJSONResponse(res, "Failed to update daemon info", [this](const nlohmann::json j) {
         m_localDaemonBlockCount = j.at("height").get<uint64_t>();
@@ -313,39 +454,6 @@ bool Nigel::getDaemonInfo()
         if (j.find("isCacheApi") != j.end())
         {
             m_isBlockchainCache = j.at("isCacheApi").get<bool>();
-        }
-
-        return true;
-    });
-
-    return parsedResponse.has_value();
-}
-
-bool Nigel::getFeeInfo()
-{
-    Logger::logger.log("Fetching fee info", Logger::DEBUG, {Logger::DAEMON});
-
-    Logger::logger.log(
-        "Sending /fee request to daemon",
-        Logger::TRACE,
-        { Logger::SYNC, Logger::DAEMON }
-    );
-
-    auto res = m_nodeClient->Get("/fee", m_requestHeaders);
-
-    const auto parsedResponse = tryParseJSONResponse(res, "Failed to update fee info", [this](const nlohmann::json j) {
-        std::string tmpAddress = j.at("address").get<std::string>();
-
-        uint32_t tmpFee = j.at("amount").get<uint32_t>();
-
-        const bool integratedAddressesAllowed = false;
-
-        Error error = validateAddresses({tmpAddress}, integratedAddressesAllowed);
-
-        if (!error)
-        {
-            m_nodeFeeAddress = tmpAddress;
-            m_nodeFeeAmount = tmpFee;
         }
 
         return true;
@@ -413,7 +521,15 @@ bool Nigel::getTransactionsStatus(
         { Logger::SYNC, Logger::DAEMON }
     );
 
-    auto res = m_nodeClient->Post("/get_transactions_status", m_requestHeaders, j.dump(), "application/json");
+    const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+    auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/get_transactions_status"),
+        "POST",
+        &requestBody);
+#else
+    auto res = m_nodeClient->Post("/get_transactions_status", m_requestHeaders, requestBody, "application/json");
+#endif
 
     const auto parsedResponse = tryParseJSONResponse(res, "Failed to get transactions status", [&](const nlohmann::json j) {
         transactionsInPool = j.at("transactionsInPool").get<std::unordered_set<Crypto::Hash>>();
@@ -446,7 +562,15 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
 
         /* We also need to handle the request and response a bit
            differently so we'll do this here */
-        auto res = m_nodeClient->Post("/randomOutputs", m_requestHeaders, j.dump(), "application/json");
+        const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+        auto res = emscriptenRequestJson(
+            daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/randomOutputs"),
+            "POST",
+            &requestBody);
+#else
+        auto res = m_nodeClient->Post("/randomOutputs", m_requestHeaders, requestBody, "application/json");
+#endif
 
         const auto parsedResponse = tryParseJSONResponse(res, "Failed to get random outs", [](const nlohmann::json j) {
             return j.get<std::vector<CryptoNote::RandomOuts>>();
@@ -465,7 +589,15 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
             { Logger::SYNC, Logger::DAEMON }
         );
 
-        auto res = m_nodeClient->Post("/getrandom_outs", m_requestHeaders, j.dump(), "application/json");
+        const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+        auto res = emscriptenRequestJson(
+            daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/getrandom_outs"),
+            "POST",
+            &requestBody);
+#else
+        auto res = m_nodeClient->Post("/getrandom_outs", m_requestHeaders, requestBody, "application/json");
+#endif
 
         const auto parsedResponse = tryParseJSONResponse(res, "Failed to get random outs", [](const nlohmann::json j) {
             return j.at("outs").get<std::vector<CryptoNote::RandomOuts>>();
@@ -490,7 +622,15 @@ std::tuple<bool, bool, std::string> Nigel::sendTransaction(const CryptoNote::Tra
         { Logger::SYNC, Logger::DAEMON }
     );
 
-    auto res = m_nodeClient->Post("/sendrawtransaction", m_requestHeaders, j.dump(), "application/json");
+    const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+    auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/sendrawtransaction"),
+        "POST",
+        &requestBody);
+#else
+    auto res = m_nodeClient->Post("/sendrawtransaction", m_requestHeaders, requestBody, "application/json");
+#endif
 
     bool success = false;
     bool connectionError = true;
@@ -531,7 +671,15 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
         { Logger::SYNC, Logger::DAEMON }
     );
 
-    auto res = m_nodeClient->Post("/get_global_indexes_for_range", m_requestHeaders, j.dump(), "application/json");
+    const std::string requestBody = j.dump();
+#if defined(__EMSCRIPTEN__)
+    auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/get_global_indexes_for_range"),
+        "POST",
+        &requestBody);
+#else
+    auto res = m_nodeClient->Post("/get_global_indexes_for_range", m_requestHeaders, requestBody, "application/json");
+#endif
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>> result;
 
@@ -550,3 +698,4 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
 
     return {parsedResponse.has_value(), result};
 }
+

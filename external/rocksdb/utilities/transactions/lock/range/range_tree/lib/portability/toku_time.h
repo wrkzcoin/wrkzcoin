@@ -159,7 +159,12 @@ static inline tokutime_t toku_time_now(void) {
   asm volatile("rdtime.d\t%0,$r0" : "=r"(result));
   return result;
 #else
-#error No timer implementation for this platform
+  // Fallback for architectures where a cycle counter helper is not wired:
+  // use wall-clock microseconds as a monotonic-enough timer source.
+  struct timeval t;
+  gettimeofday(&t, nullptr);
+  return static_cast<tokutime_t>(t.tv_sec) * 1000000ULL +
+         static_cast<tokutime_t>(t.tv_usec);
 #endif
 }
 

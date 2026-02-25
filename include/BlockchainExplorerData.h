@@ -11,6 +11,7 @@
 
 #include <array>
 #include <boost/variant.hpp>
+#include <cstdint>
 #include <string>
 #include <vector>
 

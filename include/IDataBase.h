@@ -9,6 +9,7 @@
 #include "IReadBatch.h"
 #include "IWriteBatch.h"
 
+#include <cstdint>
 #include <string>
 #include <system_error>
 

@@ -3,6 +3,7 @@
 /build/
 /build64/
 /build32/
+/build-wasm/
 /tags
 .idea
 .ycm_extra_conf.py
@@ -17,3 +18,8 @@ src/cmake_install.cmake
 *.swp
 .vscode
 .howto/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+extras/web-wallet-wasm/web/wasm/generated/*

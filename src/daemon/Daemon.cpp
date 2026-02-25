@@ -8,6 +8,7 @@
 
 #include "DaemonCommandsHandler.h"
 #include "DaemonConfiguration.h"
+#include "ZmqPublisher.h"
 #include "common/CryptoNoteTools.h"
 #include "common/FileSystemShim.h"
 #include "common/PathTools.h"
@@ -35,6 +36,7 @@
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
 #include <atomic>
+#include <memory>
 #include <optional>
 
 #if defined(WIN32)
@@ -594,8 +596,6 @@ int main(int argc, char *argv[])
             config.rpcMaxGlobalIndexesRange,
             config.rpcMaxBlockCount,
             config.rpcTrustProxy,
-            config.feeAddress,
-            config.feeAmount,
             rpcMode,
             ccore,
             p2psrv,
@@ -616,6 +616,26 @@ int main(int argc, char *argv[])
         logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
 
         rpcServer.start();
+
+        std::unique_ptr<Daemon::ZmqPublisher> zmqPublisher;
+#ifdef WRKZ_ENABLE_ZMQ
+        if (config.noZmq)
+        {
+            if (!config.zmqPub.empty())
+            {
+                logger(INFO) << "ZMQ publisher disabled by --no-zmq.";
+            }
+        }
+        else if (!config.zmqPub.empty())
+        {
+            zmqPublisher = std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub);
+            if (!zmqPublisher->start())
+            {
+                logger(WARNING) << "Failed to start ZMQ publisher on " << config.zmqPub << ". Continuing without ZMQ.";
+                zmqPublisher.reset();
+            }
+        }
+#endif
 
         /* Get the RPC IP address and port we are bound to */
         auto [ip, port] = rpcServer.getConnectionInfo();
@@ -663,6 +683,12 @@ int main(int argc, char *argv[])
         dch.wait_for_background_compaction();
 
         // stop components
+        if (zmqPublisher)
+        {
+            logger(INFO) << "Stopping ZMQ publisher...";
+            zmqPublisher->stop();
+        }
+
         logger(INFO) << "Stopping core rpc server...";
         rpcServer.stop();
 
