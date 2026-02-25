@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/config/nodes.ts","./src/wallet/types.ts","./src/wallet/walletworkerclient.ts","./src/wallet/workermessages.ts","./workers/encryptedvault.ts","./workers/wallet.worker.ts","./wasm/wallet.d.ts"],"version":"5.9.3"}

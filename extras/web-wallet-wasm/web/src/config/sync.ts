@@ -1,4 +1,0 @@
-export const RESCAN_HEIGHT_WARN_THRESHOLD = 1_000_000;
-export const SYNC_POLL_INTERVAL_MS = 500;
-export const SYNC_NEAR_TIP_INTERVAL_MS = 5000;
-export const SYNC_NEAR_TIP_BLOCKS = 10;
