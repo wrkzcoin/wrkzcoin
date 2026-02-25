@@ -73,6 +73,10 @@ build_one_abi() {
     exit 1
   fi
 
+  # RocksDB is configured/built in a nested sub-build directory. Remove it to
+  # avoid stale host-architecture archives in Android cross builds.
+  rm -rf "$build_dir/rocksdb"
+
   echo "Configuring Android CLI build for ABI '$abi' in $build_dir ..."
   cmake -S "$REPO_ROOT" -B "$build_dir" \
     -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
