@@ -120,8 +120,10 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 // A wrapper for fadvise, if the platform doesn't support fadvise,
 // it will simply return 0.
 int Madvise(void* addr, size_t len, int advice) {
-#if defined(OS_LINUX) || defined(OS_ANDROID)
+#if defined(OS_LINUX)
   return posix_madvise(addr, len, advice);
+#elif defined(OS_ANDROID)
+  return madvise(addr, len, advice);
 #else
   (void)addr;
   (void)len;
