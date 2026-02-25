@@ -22,7 +22,7 @@ template<typename T> T getJsonValue(const nlohmann::json &body, const std::strin
 {
     if (body.find(key) == body.end())
     {
-        auto exception = json::type_error::create(304, "\nExpected json parameter '" + key + "' does not exist.");
+        auto exception = json::type_error::create(304, "\nExpected json parameter '" + key + "' does not exist.", nullptr);
         throw exception;
     }
 
@@ -38,7 +38,7 @@ template<typename T> T getJsonValue(const nlohmann::json &body, const std::strin
                             "Possibly wrong type? ("
                           + e.what() + ")";
 
-        auto exception = json::type_error::create(e.id, msg);
+        auto exception = json::type_error::create(e.id, msg, nullptr);
 
         throw exception;
     }
