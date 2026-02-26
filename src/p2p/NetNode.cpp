@@ -387,8 +387,11 @@ namespace CryptoNote
         const BinaryArray &data_buff,
         const boost::uuids::uuid *excludeConnection)
     {
-        m_dispatcher.remoteSpawn([this, command, data_buff, excludeConnection] {
-            relay_notify_to_all(command, data_buff, excludeConnection);
+        const boost::uuids::uuid excludeId =
+            excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+
+        m_dispatcher.remoteSpawn([this, command, data_buff, excludeId] {
+            relay_notify_to_all(command, data_buff, &excludeId);
         });
     }
 
