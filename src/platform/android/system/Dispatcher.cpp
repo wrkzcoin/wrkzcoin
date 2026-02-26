@@ -489,7 +489,7 @@ namespace System
                 newlyCreatedContext,
                 (void (*)())contextProcedureStatic,
                 1,
-                reinterpret_cast<int *>(&makingContextData));
+                reinterpret_cast<intptr_t>(&makingContextData));
 
             ucontext_t *oldContext = static_cast<ucontext_t *>(currentContext->ucontext);
             if (swapcontext(oldContext, newlyCreatedContext) == -1)
@@ -623,7 +623,7 @@ namespace System
         }
     };
 
-    void Dispatcher::contextProcedureStatic(void *context)
+    void Dispatcher::contextProcedureStatic(intptr_t context)
     {
         ContextMakingData *makingContextData = reinterpret_cast<ContextMakingData *>(context);
         makingContextData->dispatcher->contextProcedure(makingContextData->ucontext);

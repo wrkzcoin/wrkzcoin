@@ -145,7 +145,7 @@ namespace System
 
         void contextProcedure(void *ucontext);
 
-        static void contextProcedureStatic(void *context);
+        static void contextProcedureStatic(intptr_t context);
     };
 
 } // namespace System
