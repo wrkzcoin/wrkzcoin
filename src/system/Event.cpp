@@ -146,7 +146,41 @@ namespace System
             }
 
             last = &waiter;
-            dispatcher->dispatch();
+            try
+            {
+                dispatcher->dispatch();
+            }
+            catch (...)
+            {
+                // dispatch() threw (e.g. swapcontext failed). The waiter is still
+                // linked in the event list but its stack frame is about to be
+                // destroyed. Unlink it now and clear interruptProcedure to prevent
+                // dangling-pointer access from a later Event::set() call.
+                if (!waiter.interrupted)
+                {
+                    if (waiter.next != nullptr)
+                    {
+                        waiter.next->prev = waiter.prev;
+                    }
+                    else
+                    {
+                        last = waiter.prev;
+                    }
+
+                    if (waiter.prev != nullptr)
+                    {
+                        waiter.prev->next = waiter.next;
+                    }
+                    else
+                    {
+                        first = waiter.next;
+                    }
+                }
+
+                waiter.context->interruptProcedure = nullptr;
+                throw;
+            }
+
             assert(waiter.context == dispatcher->getCurrentContext());
             assert(waiter.context->interruptProcedure == nullptr);
             assert(dispatcher != nullptr);

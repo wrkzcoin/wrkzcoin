@@ -265,10 +265,12 @@ namespace System
 
         if (context != currentContext)
         {
+            NativeContext *savedContext = currentContext;
             ucontext_t *oldContext = static_cast<ucontext_t *>(currentContext->ucontext);
             currentContext = context;
             if (swapcontext(oldContext, static_cast<ucontext_t *>(context->ucontext)) == -1)
             {
+                currentContext = savedContext;
                 throw std::runtime_error("Dispatcher::dispatch, swapcontext failed, " + lastErrorMessage());
             }
         }
