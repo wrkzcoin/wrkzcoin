@@ -630,6 +630,9 @@ namespace System
                     }
                 }
 
+                context.groupNext = nullptr;
+                context.groupPrev = nullptr;
+                context.group = nullptr;
                 pushReusableContext(context);
             }
 

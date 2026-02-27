@@ -621,6 +621,14 @@ namespace System
                     }
                 }
 
+                // Clear stale group pointers before returning this context to
+                // the pool.  A recycled context's groupNext/groupPrev must be
+                // nil so that future ContextGroup::spawn() invariant checks
+                // (lastContext->groupNext == nullptr) cannot be confused by
+                // leftover values from a previous group membership.
+                context.groupNext = nullptr;
+                context.groupPrev = nullptr;
+                context.group = nullptr;
                 pushReusableContext(context);
             }
 

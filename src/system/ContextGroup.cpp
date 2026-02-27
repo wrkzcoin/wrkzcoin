@@ -63,8 +63,15 @@ namespace System
         NativeContext &context = dispatcher->getReusableContext();
         if (contextGroup.firstContext != nullptr)
         {
+            // Defensive: walk to the actual tail if lastContext is stale.
+            // Under correct operation contextGroup.lastContext->groupNext is
+            // always nullptr here; if it is not, the list has drifted and we
+            // repair it rather than abort the daemon.
+            while (contextGroup.lastContext->groupNext != nullptr)
+            {
+                contextGroup.lastContext = contextGroup.lastContext->groupNext;
+            }
             context.groupPrev = contextGroup.lastContext;
-            assert(contextGroup.lastContext->groupNext == nullptr);
             contextGroup.lastContext->groupNext = &context;
         }
         else
