@@ -633,7 +633,21 @@ namespace System
                 pushReusableContext(context);
             }
 
-            dispatch();
+            // Keep retrying if swapcontext to the next target fails. Letting
+            // the exception escape contextProcedure would leave
+            // firstReusableContext pointing to this fiber's destroyed stack-
+            // local NativeContext, causing a dangling pointer and later SIGSEGV.
+            for (;;)
+            {
+                try
+                {
+                    dispatch();
+                    break;
+                }
+                catch (...)
+                {
+                }
+            }
         }
     };
 
