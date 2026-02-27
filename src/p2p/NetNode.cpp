@@ -1774,7 +1774,9 @@ namespace CryptoNote
                     if (ctx.writeDuration(now) > P2P_DEFAULT_INVOKE_TIMEOUT)
                     {
                         logger(DEBUGGING) << ctx << "write operation timed out, stopping connection";
-                        safeInterrupt(ctx);
+                        // Avoid interrupting the connection context directly from timeoutLoop.
+                        // We only request shutdown and wake the writer loop.
+                        ctx.stopWithoutContextInterrupt();
                     }
                 }
             }

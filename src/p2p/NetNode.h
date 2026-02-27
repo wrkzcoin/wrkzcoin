@@ -129,6 +129,13 @@ namespace CryptoNote
             return !stopped && context != nullptr;
         }
 
+        void stopWithoutContextInterrupt()
+        {
+            stopped = true;
+            m_state = CryptoNoteConnectionContext::state_shutdown;
+            queueEvent.set();
+        }
+
       private:
         Logging::LoggerRef logger;
 
