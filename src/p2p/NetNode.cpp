@@ -199,10 +199,12 @@ namespace CryptoNote
     void P2pConnectionContext::interrupt()
     {
         logger(DEBUGGING) << *this << "Interrupt connection";
-        assert(context != nullptr);
         stopped = true;
         queueEvent.set();
-        context->interrupt();
+        if (context != nullptr)
+        {
+            context->interrupt();
+        }
     }
 
     template<typename Command, typename Handler>
@@ -1764,6 +1766,11 @@ namespace CryptoNote
                 for (auto &kv : m_connections)
                 {
                     auto &ctx = kv.second;
+                    if (!ctx.canBeInterrupted())
+                    {
+                        continue;
+                    }
+
                     if (ctx.writeDuration(now) > P2P_DEFAULT_INVOKE_TIMEOUT)
                     {
                         logger(DEBUGGING) << ctx << "write operation timed out, stopping connection";
@@ -1870,13 +1877,37 @@ namespace CryptoNote
                 logger(DEBUGGING) << ctx << "Exception in connectionHandler: " << e.what();
             }
 
-            safeInterrupt(ctx);
-            safeInterrupt(writeContext);
-            writeContext.wait();
+            try
+            {
+                safeInterrupt(ctx);
+                safeInterrupt(writeContext);
+                writeContext.wait();
+            }
+            catch (const std::exception &e)
+            {
+                logger(DEBUGGING) << ctx << "Exception while stopping connection contexts: " << e.what();
+            }
+            catch (...)
+            {
+                logger(DEBUGGING) << ctx << "Unknown exception while stopping connection contexts";
+            }
 
-            on_connection_close(ctx);
+            try
+            {
+                on_connection_close(ctx);
+            }
+            catch (const std::exception &e)
+            {
+                logger(DEBUGGING) << ctx << "Exception in on_connection_close: " << e.what();
+            }
+            catch (...)
+            {
+                logger(DEBUGGING) << ctx << "Unknown exception in on_connection_close";
+            }
+
             {
                 std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                ctx.context = nullptr;
                 m_connections.erase(connectionId);
             }
         });
@@ -1899,6 +1930,8 @@ namespace CryptoNote
         {
             logger(WARNING) << "connectionHandler() throws unknown exception";
         }
+
+        ctx.context = nullptr;
     }
 
     void NodeServer::writeHandler(P2pConnectionContext &ctx)

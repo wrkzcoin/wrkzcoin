@@ -124,6 +124,11 @@ namespace CryptoNote
 
         uint64_t writeDuration(TimePoint now) const;
 
+        bool canBeInterrupted() const
+        {
+            return !stopped && context != nullptr;
+        }
+
       private:
         Logging::LoggerRef logger;
 
