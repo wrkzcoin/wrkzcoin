@@ -22,6 +22,7 @@ namespace System
             bindingContext(dispatcher.getReusableContext())
         {
             bindingContext.interrupted = false;
+            bindingContext.interruptProcedure = nullptr;
             bindingContext.groupNext = nullptr;
             bindingContext.groupPrev = nullptr;
             bindingContext.group = nullptr;
@@ -108,6 +109,7 @@ namespace System
             bindingContext(dispatcher.getReusableContext())
         {
             bindingContext.interrupted = false;
+            bindingContext.interruptProcedure = nullptr;
             bindingContext.groupNext = nullptr;
             bindingContext.groupPrev = nullptr;
             bindingContext.group = nullptr;

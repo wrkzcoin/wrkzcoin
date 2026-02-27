@@ -92,6 +92,8 @@ namespace System
                         remoteSpawned = false;
 
                         mainContext.interrupted = false;
+                        mainContext.interruptProcedure = nullptr;
+                        mainContext.procedure = nullptr;
                         mainContext.group = &contextGroup;
                         mainContext.groupPrev = nullptr;
                         mainContext.groupNext = nullptr;
@@ -328,6 +330,7 @@ namespace System
     void Dispatcher::spawn(std::function<void()> &&procedure)
     {
         NativeContext *context = &getReusableContext();
+        context->interruptProcedure = nullptr;
         if (contextGroup.firstContext != nullptr)
         {
             context->groupPrev = contextGroup.lastContext;
@@ -452,11 +455,15 @@ namespace System
 
         NativeContext *context = firstReusableContext;
         firstReusableContext = firstReusableContext->next;
+        context->interruptProcedure = nullptr;
+        context->procedure = nullptr;
         return *context;
     }
 
     void Dispatcher::pushReusableContext(NativeContext &context)
     {
+        context.interruptProcedure = nullptr;
+        context.procedure = nullptr;
         context.next = firstReusableContext;
         firstReusableContext = &context;
         --runningContextCount;
@@ -489,6 +496,11 @@ namespace System
         NativeContext context;
         context.uctx = ucontext;
         context.interrupted = false;
+        context.interruptProcedure = nullptr;
+        context.procedure = nullptr;
+        context.group = nullptr;
+        context.groupPrev = nullptr;
+        context.groupNext = nullptr;
         context.next = nullptr;
         context.inExecutionQueue = false;
         firstReusableContext = &context;
