@@ -24,6 +24,7 @@
 #include <common/FileSystemShim.h>
 #include <map>
 #include <chrono>
+#include <thread>
 #include <fstream>
 #include <limits>
 #include <system/Ipv4Address.h>
@@ -615,9 +616,29 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    auto res = rpc_get("/info");
+    std::shared_ptr<httplib::Response> res;
 
-    if (!res || res->status != 200)
+    /* Retry briefly if the RPC server is still binding its socket at startup */
+    constexpr int RPC_READY_RETRIES = 6;
+    for (int attempt = 0; attempt < RPC_READY_RETRIES; ++attempt)
+    {
+        res = rpc_get("/info");
+        if (res)
+            break;
+
+        if (attempt == 0)
+            std::cout << InformationMsg("Daemon is still starting up, waiting for RPC...") << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    if (!res)
+    {
+        std::cout << WarningMsg("Daemon RPC server is not yet ready. Please try again in a moment.") << std::endl;
+        return false;
+    }
+
+    if (res->status != 200)
     {
         std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
         return false;
