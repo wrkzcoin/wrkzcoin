@@ -63,13 +63,21 @@ namespace System
         NativeContext &context = dispatcher->getReusableContext();
         if (contextGroup.firstContext != nullptr)
         {
-            // Defensive: walk to the actual tail if lastContext is stale.
-            // Under correct operation contextGroup.lastContext->groupNext is
-            // always nullptr here; if it is not, the list has drifted and we
-            // repair it rather than abort the daemon.
-            while (contextGroup.lastContext->groupNext != nullptr)
+            // Fast path: lastContext is a live member of this group and is the tail.
+            // Slow path: lastContext has been recycled back to the pool (group == nullptr
+            // after contextProcedure clears it) or its groupNext is unexpectedly non-null.
+            // In the slow path we scan from firstContext — which only traverses confirmed
+            // group members — so we never write groupNext on a recycled context and cannot
+            // create a ghost link that later breaks the unlink assertions in contextProcedure.
+            if (contextGroup.lastContext->group != &contextGroup
+                || contextGroup.lastContext->groupNext != nullptr)
             {
-                contextGroup.lastContext = contextGroup.lastContext->groupNext;
+                NativeContext *tail = contextGroup.firstContext;
+                while (tail->groupNext != nullptr)
+                {
+                    tail = tail->groupNext;
+                }
+                contextGroup.lastContext = tail;
             }
             context.groupPrev = contextGroup.lastContext;
             contextGroup.lastContext->groupNext = &context;
