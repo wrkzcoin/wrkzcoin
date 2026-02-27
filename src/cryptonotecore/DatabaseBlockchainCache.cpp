@@ -825,8 +825,6 @@ namespace CryptoNote
             return;
         }
 
-        auto cache = blockchainCacheFactory.createBlockchainCache(currency, this, height);
-
         using DeleteBlockInfo = std::tuple<uint32_t, Crypto::Hash, TransactionValidatorState, uint64_t>;
         std::vector<DeleteBlockInfo> deletingBlocks;
 
@@ -843,9 +841,21 @@ namespace CryptoNote
             ExtendedPushedBlockInfo extendedInfo = getExtendedPushedBlockInfo(blockIndex);
 
             auto validatorState = extendedInfo.pushedBlockInfo.validatorState;
-            logger(Logging::DEBUGGING) << "pushing block " << blockIndex << " to child segment";
-            auto blockHash = pushBlockToAnotherCache(*cache, std::move(extendedInfo.pushedBlockInfo));
 
+            // Compute the block hash directly from the raw bytes.  We only need the
+            // hash to schedule the DB deletion; we do NOT need to push the block into
+            // a full BlockchainCache (which would re-validate transactions and trip on
+            // duplicate-tx or zero-difficulty anomalies in historical data).
+            BlockTemplate blockTemplate;
+            if (!fromBinaryArray(blockTemplate, extendedInfo.pushedBlockInfo.rawBlock.block))
+            {
+                throw std::runtime_error(
+                    "DatabaseBlockchainCache::rewind: failed to deserialize block at index "
+                    + std::to_string(blockIndex));
+            }
+            Crypto::Hash blockHash = CachedBlock(blockTemplate).getBlockHash();
+
+            logger(Logging::DEBUGGING) << "scheduling block " << blockIndex << " for deletion";
             deletingBlocks.emplace_back(blockIndex, blockHash, validatorState, extendedInfo.timestamp);
         }
 
