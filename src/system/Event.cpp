@@ -24,21 +24,20 @@ namespace System
 
     } // namespace
 
-    Event::Event(): dispatcher(nullptr) {}
+    Event::Event(): dispatcher(nullptr), state(false), first(nullptr), last(nullptr) {}
 
-    Event::Event(Dispatcher &dispatcher): dispatcher(&dispatcher), state(false), first(nullptr) {}
+    Event::Event(Dispatcher &dispatcher): dispatcher(&dispatcher), state(false), first(nullptr), last(nullptr) {}
 
     Event::Event(Event &&other): dispatcher(other.dispatcher)
     {
         if (dispatcher != nullptr)
         {
             state = other.state;
-            if (!state)
-            {
-                assert(other.first == nullptr);
-                first = nullptr;
-            }
+            first = other.first;
+            last = other.last;
 
+            other.first = nullptr;
+            other.last = nullptr;
             other.dispatcher = nullptr;
         }
     }
@@ -55,12 +54,11 @@ namespace System
         if (dispatcher != nullptr)
         {
             state = other.state;
-            if (!state)
-            {
-                assert(other.first == nullptr);
-                first = nullptr;
-            }
+            first = other.first;
+            last = other.last;
 
+            other.first = nullptr;
+            other.last = nullptr;
             other.dispatcher = nullptr;
         }
 
@@ -80,6 +78,7 @@ namespace System
         {
             state = false;
             first = nullptr;
+            last = nullptr;
         }
     }
 
@@ -151,6 +150,34 @@ namespace System
             assert(waiter.context == dispatcher->getCurrentContext());
             assert(waiter.context->interruptProcedure == nullptr);
             assert(dispatcher != nullptr);
+
+            // Unlink stack-allocated waiter on normal wakeup. Interrupted wakeup
+            // already unlinks via interruptProcedure.
+            if (!waiter.interrupted)
+            {
+                if (waiter.next != nullptr)
+                {
+                    assert(waiter.next->prev == &waiter);
+                    waiter.next->prev = waiter.prev;
+                }
+                else
+                {
+                    assert(last == &waiter);
+                    last = waiter.prev;
+                }
+
+                if (waiter.prev != nullptr)
+                {
+                    assert(waiter.prev->next == &waiter);
+                    waiter.prev->next = waiter.next;
+                }
+                else
+                {
+                    assert(first == &waiter);
+                    first = waiter.next;
+                }
+            }
+
             if (waiter.interrupted)
             {
                 throw InterruptedException();
