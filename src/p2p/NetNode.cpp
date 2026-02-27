@@ -41,6 +41,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <crypto/random.h>
 #include <fstream>
+#include <future>
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
 #include <system/Context.h>
@@ -232,6 +233,7 @@ namespace CryptoNote
         CryptoNote::CryptoNoteProtocolHandler &payload_handler,
         std::shared_ptr<Logging::ILogger> log):
         m_dispatcher(dispatcher),
+        m_dispatcherThreadId(std::this_thread::get_id()),
         m_workingContextGroup(dispatcher),
         m_payload_handler(payload_handler),
         m_allow_local_ip(false),
@@ -562,6 +564,7 @@ namespace CryptoNote
 
     bool NodeServer::run()
     {
+        m_dispatcherThreadId = std::this_thread::get_id();
         logger(INFO) << "Starting node_server";
 
         m_workingContextGroup.spawn(std::bind(&NodeServer::acceptLoop, this));
@@ -790,6 +793,11 @@ namespace CryptoNote
                 action(it->second);
             }
         }
+    }
+
+    bool NodeServer::isDispatcherThread() const
+    {
+        return std::this_thread::get_id() == m_dispatcherThreadId;
     }
 
     //-----------------------------------------------------------------------------------
@@ -1311,6 +1319,23 @@ namespace CryptoNote
         const BinaryArray &data_buff,
         const boost::uuids::uuid *excludeConnection)
     {
+        if (!isDispatcherThread())
+        {
+            const boost::uuids::uuid excludeId =
+                excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+            m_dispatcher.remoteSpawn(
+                [this, command, data_buff, excludeId] { relay_notify_to_all_impl(command, data_buff, &excludeId); });
+            return;
+        }
+
+        relay_notify_to_all_impl(command, data_buff, excludeConnection);
+    }
+
+    void NodeServer::relay_notify_to_all_impl(
+        int command,
+        const BinaryArray &data_buff,
+        const boost::uuids::uuid *excludeConnection)
+    {
         boost::uuids::uuid excludeId =
             excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
 
@@ -1330,8 +1355,36 @@ namespace CryptoNote
         const BinaryArray &buffer,
         const CryptoNoteConnectionContext &context)
     {
+        if (!isDispatcherThread())
+        {
+            auto result = std::make_shared<std::promise<bool>>();
+            auto future = result->get_future();
+            const auto connectionId = context.m_connection_id;
+
+            m_dispatcher.remoteSpawn([this, command, buffer, connectionId, result] {
+                try
+                {
+                    result->set_value(invoke_notify_to_peer_impl(command, buffer, connectionId));
+                }
+                catch (...)
+                {
+                    result->set_exception(std::current_exception());
+                }
+            });
+
+            return future.get();
+        }
+
+        return invoke_notify_to_peer_impl(command, buffer, context.m_connection_id);
+    }
+
+    bool NodeServer::invoke_notify_to_peer_impl(
+        int command,
+        const BinaryArray &buffer,
+        const boost::uuids::uuid &connectionId)
+    {
         std::lock_guard<std::mutex> lock(m_connectionsMutex);
-        auto it = m_connections.find(context.m_connection_id);
+        auto it = m_connections.find(connectionId);
         if (it == m_connections.end())
         {
             return false;
@@ -1551,13 +1604,24 @@ namespace CryptoNote
 
         logger(INFO) << "Banned host " << Common::ipAddressToString(ip) << " for " << seconds << " seconds";
 
-        forEachConnection([&](P2pConnectionContext &conn) {
-            if (conn.m_remote_ip == ip)
-            {
-                conn.m_state = CryptoNoteConnectionContext::state_shutdown;
-                safeInterrupt(conn);
-            }
-        });
+        auto disconnectBannedConnections = [this, ip]() {
+            forEachConnection([&](P2pConnectionContext &conn) {
+                if (conn.m_remote_ip == ip)
+                {
+                    conn.m_state = CryptoNoteConnectionContext::state_shutdown;
+                    safeInterrupt(conn);
+                }
+            });
+        };
+
+        if (isDispatcherThread())
+        {
+            disconnectBannedConnections();
+        }
+        else
+        {
+            m_dispatcher.remoteSpawn(disconnectBannedConnections);
+        }
 
         return true;
     }

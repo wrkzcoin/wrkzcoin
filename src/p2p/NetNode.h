@@ -28,6 +28,7 @@
 #include <system/TcpConnection.h>
 #include <system/TcpListener.h>
 #include <system/Timer.h>
+#include <thread>
 #include <unordered_map>
 
 namespace System
@@ -258,6 +259,15 @@ namespace CryptoNote
         bool handleTimedSyncResponse(const BinaryArray &in, P2pConnectionContext &context);
 
         void forEachConnection(std::function<void(P2pConnectionContext &)> action);
+        void relay_notify_to_all_impl(
+            int command,
+            const BinaryArray &data_buff,
+            const boost::uuids::uuid *excludeConnection);
+        bool invoke_notify_to_peer_impl(
+            int command,
+            const BinaryArray &buffer,
+            const boost::uuids::uuid &connectionId);
+        bool isDispatcherThread() const;
 
         void on_connection_new(P2pConnectionContext &context);
 
@@ -390,6 +400,7 @@ namespace CryptoNote
         bool m_p2p_state_reset;
 
         System::Dispatcher &m_dispatcher;
+        std::thread::id m_dispatcherThreadId;
 
         System::ContextGroup m_workingContextGroup;
 
