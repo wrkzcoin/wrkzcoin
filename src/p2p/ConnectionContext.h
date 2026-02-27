@@ -11,7 +11,8 @@
 #include "p2p/PendingLiteBlock.h"
 
 #include <boost/uuid/uuid.hpp>
-#include <list>
+#include <chrono>
+#include <deque>
 #include <optional>
 #include <ostream>
 #include <unordered_set>
@@ -40,7 +41,7 @@ namespace CryptoNote
 
         state m_state = state_befor_handshake;
         std::optional<PendingLiteBlock> m_pending_lite_block;
-        std::list<Crypto::Hash> m_needed_objects;
+        std::deque<Crypto::Hash> m_needed_objects;
         std::unordered_set<Crypto::Hash> m_requested_objects;
         uint32_t m_remote_blockchain_height = 0;
         uint32_t m_last_response_height = 0;
@@ -54,6 +55,8 @@ namespace CryptoNote
         uint32_t m_sync_failures = 0;
         uint32_t m_sync_orphan_retries = 0;
         uint64_t m_last_sync_progress_ts = 0;
+        std::chrono::steady_clock::time_point m_sync_chunk_start_time {};
+        float m_sync_blocks_per_second = 0.0f;
     };
 
     inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s)
