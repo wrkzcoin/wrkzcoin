@@ -943,7 +943,6 @@ namespace CryptoNote
 
         /* Remove cached blocks */
         cutTail(unitsCache, currentTop + 1 - height);
-        children.push_back(cache.get());
         logger(Logging::TRACE) << "Delete successful";
 
         // invalidate top block index and hash
