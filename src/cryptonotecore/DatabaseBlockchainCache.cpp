@@ -2530,8 +2530,28 @@ namespace CryptoNote
 
         extendedInfo.pushedBlockInfo.rawBlock = dbResult.getRawBlocks().at(blockIndex);
         extendedInfo.pushedBlockInfo.blockSize = blockInfo.blockSize;
-        extendedInfo.pushedBlockInfo.blockDifficulty =
-            blockInfo.cumulativeDifficulty - previousBlockInfo.cumulativeDifficulty;
+        {
+            uint64_t diffDelta =
+                blockInfo.cumulativeDifficulty - previousBlockInfo.cumulativeDifficulty;
+            if (diffDelta == 0)
+            {
+                // The DB stores cumulative difficulty as uint64_t.  A block that was
+                // originally accepted under an older version of the code (before the
+                // difficulty-overflow guard in Currency::nextDifficulty was paired with
+                // an addBlock zero-check) may have been recorded with difficulty 0,
+                // leaving consecutive blocks with identical cumulative difficulties.
+                // Substitute 1 so that the temporary BlockchainCache created by
+                // split() / rewind() does not assert-fail.  The substitute value only
+                // affects the transient in-memory cache used to enumerate the blocks
+                // being removed; it is never written back to the database.
+                logger(Logging::WARNING) << "Block at index " << blockIndex
+                                         << " has zero block difficulty in DB "
+                                            "(cumulativeDifficulty unchanged from previous block); "
+                                            "substituting 1 to allow split/rewind to proceed";
+                diffDelta = 1;
+            }
+            extendedInfo.pushedBlockInfo.blockDifficulty = diffDelta;
+        }
         extendedInfo.pushedBlockInfo.generatedCoins =
             blockInfo.alreadyGeneratedCoins - previousBlockInfo.alreadyGeneratedCoins;
 
