@@ -17,6 +17,7 @@
 #include <sys/eventfd.h>
 #include <sys/timerfd.h>
 #include <ucontext.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 namespace System
@@ -52,7 +53,15 @@ namespace System
 
         static_assert(Dispatcher::SIZEOF_PTHREAD_MUTEX_T == sizeof(pthread_mutex_t), "invalid pthread mutex size");
 
-        const size_t STACK_SIZE = 64 * 1024;
+        // 512 KB gives ample headroom for deep P2P protocol parsing
+        // (KVBinaryInputStreamSerializer, JsonValue map copies, etc.).
+        // 64 KB was too small and caused silent heap corruption on overflow.
+        const size_t STACK_SIZE = 512 * 1024;
+
+        // One memory-protection page placed at the low end of each stack.
+        // Any overflow now faults immediately with a clear SIGSEGV/stack-trace
+        // rather than silently corrupting adjacent heap allocations.
+        const size_t GUARD_SIZE = static_cast<size_t>(getpagesize());
 
     }; // namespace
 
@@ -148,7 +157,7 @@ namespace System
             auto ucontext = static_cast<ucontext_t *>(firstReusableContext->ucontext);
             auto stackPtr = static_cast<uint8_t *>(firstReusableContext->stackPtr);
             firstReusableContext = firstReusableContext->next;
-            delete[] stackPtr;
+            munmap(stackPtr - GUARD_SIZE, STACK_SIZE + GUARD_SIZE);
             delete ucontext;
         }
 
@@ -180,7 +189,7 @@ namespace System
             auto ucontext = static_cast<ucontext_t *>(firstReusableContext->ucontext);
             auto stackPtr = static_cast<uint8_t *>(firstReusableContext->stackPtr);
             firstReusableContext = firstReusableContext->next;
-            delete[] stackPtr;
+            munmap(stackPtr - GUARD_SIZE, STACK_SIZE + GUARD_SIZE);
             delete ucontext;
         }
 
@@ -476,7 +485,24 @@ namespace System
                 throw std::runtime_error("Dispatcher::getReusableContext, getcontext failed, " + lastErrorMessage());
             }
 
-            auto stackPointer = new uint8_t[STACK_SIZE];
+            // Allocate stack via mmap so the guard page can be write-protected.
+            void *stackBase = mmap(
+                nullptr, STACK_SIZE + GUARD_SIZE,
+                PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (stackBase == MAP_FAILED)
+            {
+                throw std::runtime_error(
+                    "Dispatcher::getReusableContext, mmap failed, " + lastErrorMessage());
+            }
+            // Protect the bottom page so any stack overflow faults immediately.
+            if (mprotect(stackBase, GUARD_SIZE, PROT_NONE) == -1)
+            {
+                munmap(stackBase, STACK_SIZE + GUARD_SIZE);
+                throw std::runtime_error(
+                    "Dispatcher::getReusableContext, mprotect failed, " + lastErrorMessage());
+            }
+            auto stackPointer = static_cast<uint8_t *>(stackBase) + GUARD_SIZE;
             newlyCreatedContext->uc_stack.ss_sp = stackPointer;
             newlyCreatedContext->uc_stack.ss_size = STACK_SIZE;
 
