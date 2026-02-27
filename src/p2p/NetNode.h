@@ -322,6 +322,7 @@ namespace CryptoNote
         typedef ConnectionContainer::iterator ConnectionIterator;
 
         ConnectionContainer m_connections;
+        mutable std::mutex m_connectionsMutex;
 
         void acceptLoop();
 

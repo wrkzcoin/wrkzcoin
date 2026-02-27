@@ -375,6 +375,7 @@ namespace CryptoNote
     //-----------------------------------------------------------------------------------
     void NodeServer::for_each_connection(std::function<void(CryptoNoteConnectionContext &, uint64_t)> f)
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (auto &ctx : m_connections)
         {
             f(ctx.second, ctx.second.peerId);
@@ -568,7 +569,12 @@ namespace CryptoNote
 
         m_stopEvent.wait();
 
-        logger(INFO) << "Stopping NodeServer and its " << m_connections.size() << " connections...";
+        size_t connectionCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
+            connectionCount = m_connections.size();
+        }
+        logger(INFO) << "Stopping NodeServer and its " << connectionCount << " connections...";
         safeInterrupt(m_workingContextGroup);
         m_workingContextGroup.wait();
 
@@ -580,6 +586,7 @@ namespace CryptoNote
 
     uint64_t NodeServer::get_connections_count()
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         return m_connections.size();
     }
     //-----------------------------------------------------------------------------------
@@ -763,14 +770,18 @@ namespace CryptoNote
     {
         // create copy of connection ids because the list can be changed during action
         std::vector<boost::uuids::uuid> connectionIds;
-        connectionIds.reserve(m_connections.size());
-        for (const auto &c : m_connections)
         {
-            connectionIds.push_back(c.first);
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
+            connectionIds.reserve(m_connections.size());
+            for (const auto &c : m_connections)
+            {
+                connectionIds.push_back(c.first);
+            }
         }
 
         for (const auto &connId : connectionIds)
         {
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
             auto it = m_connections.find(connId);
             if (it != m_connections.end())
             {
@@ -787,6 +798,7 @@ namespace CryptoNote
             return true;
         } // dont make connections to ourself
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &kv : m_connections)
         {
             const auto &cntxt = kv.second;
@@ -802,6 +814,7 @@ namespace CryptoNote
 
     bool NodeServer::is_addr_connected(const NetworkAddress &peer)
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &conn : m_connections)
         {
             if (!conn.second.m_is_income && peer.ip == conn.second.m_remote_ip
@@ -908,12 +921,17 @@ namespace CryptoNote
                 throw System::InterruptedException();
             }
 
-            auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
-            const boost::uuids::uuid &connectionId = iter->first;
-            P2pConnectionContext &connectionContext = iter->second;
+            boost::uuids::uuid connectionId;
+            P2pConnectionContext *connectionContext = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                connectionId = iter->first;
+                connectionContext = &iter->second;
+            }
 
             m_workingContextGroup.spawn(
-                std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connectionContext)));
+                std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(*connectionContext)));
 
             return true;
         }
@@ -1096,6 +1114,7 @@ namespace CryptoNote
     size_t NodeServer::get_outgoing_connections_count()
     {
         size_t count = 0;
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             if (!cntxt.second.m_is_income)
@@ -1254,6 +1273,7 @@ namespace CryptoNote
             return 1;
         }
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             connection_entry ce;
@@ -1308,6 +1328,7 @@ namespace CryptoNote
         const BinaryArray &buffer,
         const CryptoNoteConnectionContext &context)
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         auto it = m_connections.find(context.m_connection_id);
         if (it == m_connections.end())
         {
@@ -1599,6 +1620,7 @@ namespace CryptoNote
     {
         std::stringstream ss;
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             ss << Common::ipAddressToString(cntxt.second.m_remote_ip) << ":" << cntxt.second.m_remote_port
@@ -1659,11 +1681,14 @@ namespace CryptoNote
                 }
 
                 size_t incomingConnections = 0;
-                for (const auto &kv : m_connections)
                 {
-                    if (kv.second.m_is_income)
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    for (const auto &kv : m_connections)
                     {
-                        ++incomingConnections;
+                        if (kv.second.m_is_income)
+                        {
+                            ++incomingConnections;
+                        }
                     }
                 }
 
@@ -1675,12 +1700,17 @@ namespace CryptoNote
                     continue;
                 }
 
-                auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
-                const boost::uuids::uuid &connectionId = iter->first;
-                P2pConnectionContext &connection = iter->second;
+                boost::uuids::uuid connectionId;
+                P2pConnectionContext *connection = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                    connectionId = iter->first;
+                    connection = &iter->second;
+                }
 
                 m_workingContextGroup.spawn(
-                    std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connection)));
+                    std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(*connection)));
             }
             catch (System::InterruptedException &)
             {
@@ -1730,6 +1760,7 @@ namespace CryptoNote
                 m_timeoutTimer.sleep(std::chrono::seconds(10));
                 auto now = P2pConnectionContext::Clock::now();
 
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
                 for (auto &kv : m_connections)
                 {
                     auto &ctx = kv.second;
@@ -1844,7 +1875,10 @@ namespace CryptoNote
             writeContext.wait();
 
             on_connection_close(ctx);
-            m_connections.erase(connectionId);
+            {
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                m_connections.erase(connectionId);
+            }
         });
 
         ctx.context = &context;
