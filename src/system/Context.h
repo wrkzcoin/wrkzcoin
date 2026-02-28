@@ -82,6 +82,16 @@ namespace System
                 {
                     interrupt();
                 }
+                catch (...)
+                {
+                    // dispatch() threw a non-InterruptedException (e.g. swapcontext
+                    // failure under memory pressure).  Re-interrupt the wrapped context
+                    // so it eventually unwinds and sets ready, then keep looping until
+                    // ready is actually set.  Without this the caller returns prematurely
+                    // while the context fiber still holds a waiter on ready, causing an
+                    // Event::~Event() assertion failure.
+                    interrupt();
+                }
             }
         }
 
@@ -165,6 +175,16 @@ namespace System
                 }
                 catch (InterruptedException &)
                 {
+                    interrupt();
+                }
+                catch (...)
+                {
+                    // dispatch() threw a non-InterruptedException (e.g. swapcontext
+                    // failure under memory pressure).  Re-interrupt the wrapped context
+                    // so it eventually unwinds and sets ready, then keep looping until
+                    // ready is actually set.  Without this the caller returns prematurely
+                    // while the context fiber still holds a waiter on ready, causing an
+                    // Event::~Event() assertion failure.
                     interrupt();
                 }
             }
