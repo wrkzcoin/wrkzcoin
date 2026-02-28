@@ -7,8 +7,6 @@
 
 <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
 <ul>
-    <li><a href="#master-build-status">Master Build Status</a></li>
-    <li><a href="#development-build-status">Development Build Status</a></li>
     <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
     <li><a href="#node-system-requirements">Node System Requirements</a></li>
     <li><a href="#build-from-source">Build from Source</a></li>
@@ -18,14 +16,6 @@
     <li><a href="#contributing-projects">Contributing Projects</a></li>
     <li><a href="#our-discord">Our Discord</a></li>
 </ul>
-
-### Master Build Status
-
-![Master Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=master)
-
-### Development Build Status
-
-![Development Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=development)
 
 ### Installing WrkzCoin
 
