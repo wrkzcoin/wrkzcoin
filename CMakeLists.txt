@@ -21,6 +21,7 @@ set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
 set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
+set(ROCKSDB_BUILD_PARALLEL_CAP "4" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided")
 option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
 option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
