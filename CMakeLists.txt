@@ -499,6 +499,27 @@ endif ()
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
+## Detect ZLIB before OpenSSL.
+## Static OpenSSL on Linux/macOS commonly has a transitive zlib dependency.
+## CMake's FindOpenSSL appends ZLIB_LIBRARY to OPENSSL_LIBRARIES; if zlib-dev
+## is absent that becomes ZLIB_LIBRARY-NOTFOUND which causes a CMake generate
+## failure for every target that links OpenSSL.  Pre-finding ZLIB here allows
+## FindOpenSSL to resolve it correctly, and our cleanup block below removes
+## stray NOTFOUND entries for systems where zlib-dev is not installed.
+##
+## Debian/Ubuntu: sudo apt install zlib1g-dev
+## Fedora/RHEL:   sudo dnf install zlib-devel
+## macOS:         zlib ships with Xcode CLT (no extra step needed)
+if (NOT EMSCRIPTEN AND NOT (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
+    find_package(ZLIB QUIET)
+    if (ZLIB_FOUND)
+        message(STATUS "Found ZLIB: ${ZLIB_LIBRARIES}")
+    else ()
+        message(STATUS "ZLIB not found (zlib1g-dev / zlib-devel not installed).")
+        message(STATUS "  If the build fails with ZLIB_LIBRARY-NOTFOUND, install the zlib development package.")
+    endif ()
+endif ()
+
 ## Let's see if we have any OpenSSL static libraries available
 if (WRKZ_ANDROID_PROFILE)
     set(OPENSSL_USE_STATIC_LIBS OFF)
@@ -564,6 +585,16 @@ if (OPENSSL_FOUND)
         if (WIN32)
             # Static OpenSSL for MinGW needs these system libs after libcrypto/libssl.
             set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};crypt32;ws2_32;bcrypt;iphlpapi")
+        endif ()
+
+        ## CMake's FindOpenSSL may inject ZLIB_LIBRARY-NOTFOUND into
+        ## OPENSSL_LIBRARIES when zlib-dev is absent.  Strip NOTFOUND entries
+        ## and explicitly add zlib when available so static OpenSSL links.
+        if (NOT WIN32 AND NOT EMSCRIPTEN)
+            list(FILTER OPENSSL_LIBRARIES EXCLUDE REGEX "NOTFOUND")
+            if (ZLIB_FOUND)
+                list(APPEND OPENSSL_LIBRARIES ${ZLIB_LIBRARIES})
+            endif ()
         endif ()
 
         include_directories(SYSTEM ${WRKZ_OPENSSL_INCLUDE_DIRS})
