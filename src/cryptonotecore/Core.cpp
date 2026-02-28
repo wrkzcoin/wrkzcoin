@@ -1568,7 +1568,7 @@ namespace CryptoNote
                 break;
             }
             default:
-                logger(WARNING) << "addBlockInternal: unhandled AddBlockErrorCode " << static_cast<int>(addResult);
+                logger(Logging::WARNING) << "addBlockInternal: unhandled AddBlockErrorCode " << static_cast<int>(opResult);
                 break;
         }
     }
