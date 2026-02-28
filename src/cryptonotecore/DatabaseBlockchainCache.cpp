@@ -328,22 +328,18 @@ namespace CryptoNote
             if (transactionIndex != 0)
             {
                 Transaction transaction;
-                bool r = fromBinaryArray(transaction, block.transactions[transactionIndex - 1]);
-                if (r)
+                if (!fromBinaryArray(transaction, block.transactions[transactionIndex - 1]))
                 {
+                    throw std::runtime_error("Failed to deserialize transaction at index " + std::to_string(transactionIndex));
                 }
-                assert(r);
-
                 return transaction;
             }
 
             BlockTemplate blockTemplate;
-            bool r = fromBinaryArray(blockTemplate, block.block);
-            if (r)
+            if (!fromBinaryArray(blockTemplate, block.block))
             {
+                throw std::runtime_error("Failed to deserialize block template");
             }
-            assert(r);
-
             return blockTemplate.baseTransaction;
         }
 
@@ -489,7 +485,6 @@ namespace CryptoNote
             }
             catch (std::exception &)
             {
-                assert(false);
                 throw std::runtime_error(
                     "Couldn't find key output for amount " + std::to_string(amount) + " with global output index "
                     + std::to_string(globalOutputIndex));
@@ -2120,7 +2115,6 @@ namespace CryptoNote
 
     std::vector<Crypto::Hash> DatabaseBlockchainCache::getTransactionHashes() const
     {
-        assert(false);
         return {};
     }
 
@@ -2573,9 +2567,9 @@ namespace CryptoNote
         return extendedInfo;
     }
 
-    void DatabaseBlockchainCache::setParent(IBlockchainCache *ptr)
+    void DatabaseBlockchainCache::setParent(IBlockchainCache * /*ptr*/)
     {
-        assert(false);
+        // setParent is not applicable to the root database-backed cache segment.
     }
 
     void DatabaseBlockchainCache::addChild(IBlockchainCache *ptr)

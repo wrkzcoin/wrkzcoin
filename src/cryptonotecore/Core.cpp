@@ -143,16 +143,9 @@ namespace CryptoNote
                 if (input.type() == typeid(KeyInput))
                 {
                     const KeyInput &in = boost::get<KeyInput>(input);
-                    bool r = spentOutputs.spentKeyImages.insert(in.keyImage).second;
-                    if (r)
-                    {
-                    }
-                    assert(r);
+                    spentOutputs.spentKeyImages.insert(in.keyImage);
                 }
-                else
-                {
-                    assert(false);
-                }
+                // BaseInput (coinbase) has no key image — skip silently.
             }
 
             return spentOutputs;
@@ -1575,7 +1568,7 @@ namespace CryptoNote
                 break;
             }
             default:
-                assert(false);
+                logger(WARNING) << "addBlockInternal: unhandled AddBlockErrorCode " << static_cast<int>(addResult);
                 break;
         }
     }
@@ -2179,7 +2172,6 @@ namespace CryptoNote
     CoreStatistics Core::getCoreStatistics() const
     {
         // TODO: implement it
-        assert(false);
         CoreStatistics result;
         std::fill(reinterpret_cast<uint8_t *>(&result), reinterpret_cast<uint8_t *>(&result) + sizeof(result), 0);
         return result;

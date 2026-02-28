@@ -2031,7 +2031,8 @@ namespace CryptoNote
                             proto.sendReply(msg.command, msg.buffer, msg.returnCode);
                             break;
                         default:
-                            assert(false);
+                            logger(WARNING) << ctx << "writeHandler: unknown P2pMessage type " << msg.type << ", skipping";
+                            break;
                     }
                 }
             }
