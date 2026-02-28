@@ -2913,15 +2913,20 @@ namespace CryptoNote
 
     std::error_code Core::compactDatabase()
     {
+        return compactDatabaseDetailed().first;
+    }
+
+    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed()
+    {
         IBlockchainCache *mainChain = chainsLeaves[0];
         auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
 
         if (dbCache == nullptr)
         {
-            return make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR);
+            return {make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR), "No database-backed blockchain cache"};
         }
 
-        return dbCache->compactDatabase();
+        return dbCache->compactDatabaseDetailed();
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

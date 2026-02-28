@@ -2485,6 +2485,11 @@ namespace CryptoNote
         return database.compact();
     }
 
+    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed()
+    {
+        return database.compactDetailed();
+    }
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {

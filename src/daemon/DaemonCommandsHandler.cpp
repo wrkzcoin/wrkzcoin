@@ -295,12 +295,13 @@ void DaemonCommandsHandler::start_boot_compaction_if_needed()
 
             m_compactionHasResult = false;
             m_compactionLastError = std::error_code();
+            m_compactionLastErrorDetails.clear();
             m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
             m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
             m_compactionRunning = true;
             create_compaction_marker_locked();
             logger(Logging::INFO) << "Starting DB compaction (boot background task).";
-            m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+            m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
 
             if (markerExists)
             {
@@ -960,7 +961,12 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
         {
             if (m_compactionLastError)
             {
-                std::cout << WarningMsg("Last result: failed - " + m_compactionLastError.message()) << std::endl;
+                std::string message = "Last result: failed - " + m_compactionLastError.message();
+                if (!m_compactionLastErrorDetails.empty())
+                {
+                    message += " (" + m_compactionLastErrorDetails + ")";
+                }
+                std::cout << WarningMsg(message) << std::endl;
             }
             else
             {
@@ -985,7 +991,12 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
 
         if (m_compactionLastError)
         {
-            std::cout << WarningMsg("DB compaction failed: " + m_compactionLastError.message()) << std::endl;
+            std::string message = "DB compaction failed: " + m_compactionLastError.message();
+            if (!m_compactionLastErrorDetails.empty())
+            {
+                message += " (" + m_compactionLastErrorDetails + ")";
+            }
+            std::cout << WarningMsg(message) << std::endl;
             return false;
         }
 
@@ -1002,12 +1013,13 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
 
     m_compactionHasResult = false;
     m_compactionLastError = std::error_code();
+    m_compactionLastErrorDetails.clear();
     m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
     m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
     m_compactionRunning = true;
     create_compaction_marker_locked();
     logger(Logging::INFO) << "Starting DB compaction (manual console request).";
-    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
 
     std::cout << InformationMsg("DB compaction started in background. Use `compact_db status` or `compact_db wait`.")
               << std::endl;
@@ -1026,7 +1038,9 @@ void DaemonCommandsHandler::refresh_compaction_state_locked()
         return;
     }
 
-    m_compactionLastError = m_compactionTask.get();
+    const auto compactionResult = m_compactionTask.get();
+    m_compactionLastError = compactionResult.first;
+    m_compactionLastErrorDetails = compactionResult.second;
     m_compactionRunning = false;
     m_compactionHasResult = true;
     m_compactionFinishedAt = static_cast<uint64_t>(time(nullptr));
@@ -1195,12 +1209,13 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
 
         m_compactionHasResult = false;
         m_compactionLastError = std::error_code();
+        m_compactionLastErrorDetails.clear();
         m_compactionStartedAt = now;
         m_compactionStartedAtHeight = currentHeight;
         m_compactionRunning = true;
         create_compaction_marker_locked();
         logger(Logging::INFO) << "Starting DB compaction (automatic periodic background task).";
-        m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabase(); });
+        m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
         std::cout << InformationMsg("Automatic periodic DB compaction started in background.") << std::endl;
     }
 }

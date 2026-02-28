@@ -46,7 +46,9 @@ namespace CryptoNote
         std::error_code readThreadSafe(IReadBatch &batch) override;
 
         std::error_code compact() override;
-        
+
+        std::pair<std::error_code, std::string> compactDetailed() override;
+
         void recreate() override;
 
       private:
@@ -67,7 +69,7 @@ namespace CryptoNote
         std::unique_ptr<rocksdb::DB> db;
 
         std::atomic<State> state;
-        
+
         const DataBaseConfig m_config;
     };
 } // namespace CryptoNote

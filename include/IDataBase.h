@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace CryptoNote
 {
@@ -64,6 +65,8 @@ namespace CryptoNote
         virtual std::error_code readThreadSafe(IReadBatch &batch) = 0;
 
         virtual std::error_code compact() = 0;
+
+        virtual std::pair<std::error_code, std::string> compactDetailed() = 0;
 
         virtual void recreate() = 0;
     };

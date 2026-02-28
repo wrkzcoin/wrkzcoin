@@ -28,6 +28,7 @@
 #include <cryptonotecore/BlockchainWriteBatch.h>
 #include <cryptonotecore/DatabaseCacheData.h>
 #include <cryptonotecore/IBlockchainCacheFactory.h>
+#include <utility>
 
 namespace CryptoNote
 {
@@ -246,6 +247,8 @@ namespace CryptoNote
         size_t pruneStoredRawBlocks(uint32_t pruneDepth);
 
         std::error_code compactDatabase();
+
+        std::pair<std::error_code, std::string> compactDatabaseDetailed();
 
       private:
         const Currency &currency;
