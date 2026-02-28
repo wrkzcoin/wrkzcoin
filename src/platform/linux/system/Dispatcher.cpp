@@ -56,7 +56,9 @@ namespace System
         // 512 KB gives ample headroom for deep P2P protocol parsing
         // (KVBinaryInputStreamSerializer, JsonValue map copies, etc.).
         // 64 KB was too small and caused silent heap corruption on overflow.
-        const size_t STACK_SIZE = 512 * 1024;
+        // 512 KB was too small for the connectionHandler fiber during sync
+        // (LevinProtocol + handleCommand + m_payload_handler + logging stack).
+        const size_t STACK_SIZE = 1024 * 1024;
 
         // One memory-protection page placed at the low end of each stack.
         // Any overflow now faults immediately with a clear SIGSEGV/stack-trace

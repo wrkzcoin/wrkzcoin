@@ -62,7 +62,8 @@ namespace System
 
         static_assert(Dispatcher::SIZEOF_PTHREAD_MUTEX_T == sizeof(pthread_mutex_t), "invalid pthread mutex size");
 
-        const size_t STACK_SIZE = 512 * 1024;
+        // 512 KB was too small for the connectionHandler fiber during sync.
+        const size_t STACK_SIZE = 1024 * 1024;
         const size_t GUARD_SIZE = static_cast<size_t>(getpagesize());
 
     }; // namespace
