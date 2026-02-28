@@ -511,7 +511,17 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 ## Fedora/RHEL:   sudo dnf install zlib-devel
 ## macOS:         zlib ships with Xcode CLT (no extra step needed)
 if (NOT EMSCRIPTEN AND NOT (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
-    find_package(ZLIB QUIET)
+    if (FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        ## Force static zlib when building a fully-static binary; otherwise
+        ## find_package(ZLIB) returns libz.so which the static linker rejects.
+        set(_wrkz_saved_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+        find_package(ZLIB QUIET)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ${_wrkz_saved_suffixes})
+        unset(_wrkz_saved_suffixes)
+    else ()
+        find_package(ZLIB QUIET)
+    endif ()
     if (ZLIB_FOUND)
         message(STATUS "Found ZLIB: ${ZLIB_LIBRARIES}")
     else ()
