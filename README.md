@@ -10,6 +10,7 @@
     <li><a href="#master-build-status">Master Build Status</a></li>
     <li><a href="#development-build-status">Development Build Status</a></li>
     <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
+    <li><a href="#node-system-requirements">Node System Requirements</a></li>
     <li><a href="#build-from-source">Build from Source</a></li>
     <li><a href="#getting-started-fast">Getting Started Fast</a></li>
     <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
@@ -31,6 +32,25 @@
 To use WrkzCoin, you'll need a way to connect to the network, and a wallet to hold your funds. This software includes those things for you, you can compile it yourself, or you can download the ones that we have compiled for you.
 
 **Click here to download: https://latest.wrkz.work**
+
+### Node System Requirements
+
+Minimum requirements to run a **Wrkzd** daemon node:
+
+| Requirement | Pruned Node | Full Node |
+|---|---|---|
+| **Internet** | Stable broadband | Stable broadband |
+| **CPU** | 1 core, 1.0 GHz | 1 core, 1.5 GHz |
+| **RAM** | 2 GB | 2 GB |
+| **Free Disk Space** | 30 GB SSD/NVMe | 50 GB SSD/NVMe |
+
+- A **pruned node** (`--prune-blockchain`) stores only recent blocks and the UTXO set, greatly reducing disk usage.
+- A **full node** retains the complete blockchain history.
+- **SSD or NVMe storage is required.** HDDs are too slow for RocksDB random I/O and will cause severe sync delays or daemon instability.
+- Disk usage grows over time as the chain advances — provision extra headroom.
+- RAM shown covers the daemon alone; allow more if also running `wrkz-service` or a miner on the same machine.
+
+> **Building from source** requires at least **4 GB RAM** for the compiler (RocksDB and C++20 templates are memory-intensive at compile time).
 
 ### Build from Source
 
