@@ -941,7 +941,7 @@ namespace CryptoNote
             }
 
             m_workingContextGroup.spawn(
-                std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(*connectionContext)));
+                std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connectionContext)));
 
             return true;
         }
@@ -1776,7 +1776,7 @@ namespace CryptoNote
                 }
 
                 m_workingContextGroup.spawn(
-                    std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(*connection)));
+                    std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connection)));
             }
             catch (System::InterruptedException &)
             {
