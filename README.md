@@ -44,11 +44,25 @@ Minimum requirements to run a **Wrkzd** daemon node:
 | **RAM** | 2 GB | 2 GB |
 | **Free Disk Space** | 30 GB SSD/NVMe | 50 GB SSD/NVMe |
 
-- A **pruned node** (`--prune-blockchain`) stores only recent blocks and the UTXO set, greatly reducing disk usage.
-- A **full node** retains the complete blockchain history.
+- A **pruned node** (`--prune`) discards raw block and transaction binary data for blocks older than the configured depth (default: 7 days ≈ 10,080 blocks). Block metadata, key images, and transaction indexes are retained for the full chain, so consensus and wallet sync remain functional.
+- A **full node** retains raw block and transaction data for the entire blockchain history.
 - **SSD or NVMe storage is required.** HDDs are too slow for RocksDB random I/O and will cause severe sync delays or daemon instability.
 - Disk usage grows over time as the chain advances — provision extra headroom.
 - RAM shown covers the daemon alone; allow more if also running `wrkz-service` or a miner on the same machine.
+
+#### What a Pruned Node Removes vs. Retains
+
+| Data | Pruned Node | Full Node |
+|---|---|---|
+| Raw block binary data (old blocks) | Removed | Kept |
+| Raw transaction binary data (old blocks) | Removed | Kept |
+| Raw block/transaction data (recent blocks, within prune depth) | Kept | Kept |
+| Block metadata (hash, height, difficulty, timestamp) | Kept for all | Kept for all |
+| Transaction indexes (global output indexes) | Kept for all | Kept for all |
+| Key images (spent output tracking) | Kept for all | Kept for all |
+| Payment ID indexes | Kept for all | Kept for all |
+
+The prune depth controls how many recent blocks keep their raw data. The default is 7 days worth of blocks (`--prune-depth` can increase this). Use `--prune-depth N` to retain more history.
 
 > **Building from source** requires at least **4 GB RAM** for the compiler (RocksDB and C++20 templates are memory-intensive at compile time).
 
