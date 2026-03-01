@@ -10,6 +10,7 @@
 #include "TcpConnection.h"
 
 #include <cassert>
+#include <cstring>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <stdexcept>

@@ -7,6 +7,7 @@
 #include "TcpListener.h"
 
 #include <cassert>
+#include <cstring>
 #include <stdexcept>
 
 // clang-format off

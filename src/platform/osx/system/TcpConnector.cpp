@@ -11,6 +11,7 @@
 #include "TcpConnection.h"
 
 #include <cassert>
+#include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/errno.h>
