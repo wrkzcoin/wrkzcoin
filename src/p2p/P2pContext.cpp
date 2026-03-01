@@ -86,6 +86,11 @@ namespace CryptoNote
         return incoming;
     }
 
+    uint8_t P2pContext::getPeerVersion() const
+    {
+        return version;
+    }
+
     void P2pContext::setPeerInfo(uint8_t protocolVersion, uint64_t id, uint16_t port)
     {
         version = protocolVersion;

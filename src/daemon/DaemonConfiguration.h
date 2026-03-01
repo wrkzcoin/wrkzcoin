@@ -51,6 +51,10 @@ namespace DaemonConfig
             localIp = false;
             hideMyPort = false;
             p2pResetPeerstate = false;
+            p2pBindIpv6Address = "";
+            p2pBindPortIpv6 = 0;
+            rpcBindIpv6Address = "";
+            rpcUseIpv6 = false;
             help = false;
             version = false;
             osVersion = false;
@@ -141,6 +145,14 @@ namespace DaemonConfig
         bool resync;
 
         bool p2pResetPeerstate;
+
+        std::string p2pBindIpv6Address;
+
+        int p2pBindPortIpv6;
+
+        std::string rpcBindIpv6Address;
+
+        bool rpcUseIpv6;
 
         bool importChain;
 

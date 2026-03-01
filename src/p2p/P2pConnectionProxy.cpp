@@ -118,6 +118,10 @@ namespace CryptoNote
             res.node_data = m_node.getNodeData();
             res.payload_data = coreSync;
             res.local_peerlist = m_node.getLocalPeerList();
+            if (m_context.getPeerVersion() >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION)
+            {
+                res.local_peerlist6 = m_node.getLocalPeerList6();
+            }
             m_context.writeMessage(
                 makeReply(COMMAND_HANDSHAKE::ID, LevinProtocol::encode(res), LEVIN_PROTOCOL_RETCODE_SUCCESS));
             m_node.tryPing(m_context);
@@ -161,6 +165,11 @@ namespace CryptoNote
         m_node.handleNodeData(res.node_data, m_context);
         m_node.handleRemotePeerList(res.local_peerlist, res.node_data.local_time);
 
+        if (res.node_data.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION && !res.local_peerlist6.empty())
+        {
+            m_node.handleRemotePeerList6(res.local_peerlist6);
+        }
+
         message.data = LevinProtocol::encode(res.payload_data);
     }
 
@@ -171,6 +180,11 @@ namespace CryptoNote
             COMMAND_TIMED_SYNC::response res;
             LevinProtocol::decode(cmd.buf, res);
             m_node.handleRemotePeerList(res.local_peerlist, res.local_time);
+            if (m_context.getPeerVersion() >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION
+                && !res.local_peerlist6.empty())
+            {
+                m_node.handleRemotePeerList6(res.local_peerlist6);
+            }
         }
         else
         {
@@ -181,6 +195,10 @@ namespace CryptoNote
 
             res.local_time = time(nullptr);
             res.local_peerlist = m_node.getLocalPeerList();
+            if (m_context.getPeerVersion() >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION)
+            {
+                res.local_peerlist6 = m_node.getLocalPeerList6();
+            }
             res.payload_data = m_node.getGenesisPayload();
 
             m_context.writeMessage(

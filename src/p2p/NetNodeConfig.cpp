@@ -68,6 +68,8 @@ namespace CryptoNote
         hideMyPort = false;
         configFolder = Tools::getDefaultDataDirectory();
         p2pStateReset = false;
+        m_bindIpv6Address = "";
+        m_bindPortIpv6 = 0;
     }
 
     bool NetNodeConfig::init(
@@ -83,7 +85,9 @@ namespace CryptoNote
         const std::vector<std::string> addExclusiveNodes,
         const std::vector<std::string> addPriorityNodes,
         const std::vector<std::string> addSeedNodes,
-        const bool p2pResetPeerState)
+        const bool p2pResetPeerState,
+        const std::string p2pBindIpv6Address,
+        const int p2pBindPortIpv6)
     {
         bindIp = interface;
         bindPort = port;
@@ -95,6 +99,9 @@ namespace CryptoNote
         configFolder = dataDir;
         p2pStateFilename = CryptoNote::parameters::P2P_NET_DATA_FILENAME;
         p2pStateReset = p2pResetPeerState;
+        m_bindIpv6Address = p2pBindIpv6Address;
+        // If port is 0 or not specified, use the same port as IPv4
+        m_bindPortIpv6 = (p2pBindPortIpv6 > 0) ? static_cast<uint16_t>(p2pBindPortIpv6) : static_cast<uint16_t>(port);
 
         if (!addPeers.empty())
         {
@@ -199,6 +206,16 @@ namespace CryptoNote
     std::string NetNodeConfig::getConfigFolder() const
     {
         return configFolder;
+    }
+
+    std::string NetNodeConfig::getBindIpv6Address() const
+    {
+        return m_bindIpv6Address;
+    }
+
+    uint16_t NetNodeConfig::getBindPortIpv6() const
+    {
+        return m_bindPortIpv6;
     }
 
 } // namespace CryptoNote

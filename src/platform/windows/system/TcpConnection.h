@@ -13,6 +13,8 @@ namespace System
 {
     class Dispatcher;
 
+    class IpAddress;
+
     class Ipv4Address;
 
     class TcpConnection
@@ -35,6 +37,8 @@ namespace System
         size_t write(const uint8_t *data, size_t size);
 
         std::pair<Ipv4Address, uint16_t> getPeerAddressAndPort() const;
+
+        IpAddress getPeerIpAddress() const;
 
       private:
         friend class TcpConnector;

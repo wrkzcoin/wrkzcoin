@@ -56,6 +56,25 @@ class PeerlistManager
 
     void trim_gray_peerlist();
 
+    // IPv6 peer management
+    bool merge_peerlist6(const std::list<PeerlistEntry6> &outer_bs);
+
+    bool get_peerlist6_head(
+        std::list<PeerlistEntry6> &bs_head,
+        uint32_t depth = CryptoNote::P2P_DEFAULT_PEERS_IN_HANDSHAKE);
+
+    bool append_with_peer_white6(const PeerlistEntry6 &pr);
+
+    bool append_with_peer_gray6(const PeerlistEntry6 &pr);
+
+    size_t get_white6_peers_count() const { return m_peers_white6.size(); }
+
+    size_t get_gray6_peers_count() const { return m_peers_gray6.size(); }
+
+    bool get_white6_peer_by_index(PeerlistEntry6 &p, size_t i) const;
+
+    bool get_gray6_peer_by_index(PeerlistEntry6 &p, size_t i) const;
+
     void serialize(CryptoNote::ISerializer &s);
 
     Peerlist &getWhite();
@@ -70,6 +89,10 @@ class PeerlistManager
     std::vector<PeerlistEntry> m_peers_gray;
 
     std::vector<PeerlistEntry> m_peers_white;
+
+    std::vector<PeerlistEntry6> m_peers_white6;
+
+    std::vector<PeerlistEntry6> m_peers_gray6;
 
     Peerlist m_whitePeerlist;
 

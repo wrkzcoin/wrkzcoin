@@ -133,6 +133,10 @@ namespace Common
 
     bool parseIpAddressAndPort(uint32_t &ip, uint32_t &port, const std::string &addr);
 
+    // Parses "host:port" or "[ipv6addr]:port" into host string and port number.
+    // host will be the bare address (no brackets). Returns false on failure.
+    bool parseHostAndPort(const std::string &addr, std::string &host, uint32_t &port);
+
     std::string timeIntervalToString(uint64_t intervalInSeconds);
 
 } // namespace Common

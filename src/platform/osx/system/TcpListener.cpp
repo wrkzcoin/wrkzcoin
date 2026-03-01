@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <system/ErrorMessage.h>
 #include <system/InterruptedException.h>
+#include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 #include <unistd.h>
 
@@ -55,6 +56,86 @@ namespace System
                     address.sin_port = htons(port);
                     address.sin_addr.s_addr = htonl(addr.getValue());
                     if (bind(listener, reinterpret_cast<sockaddr *>(&address), sizeof address) != 0)
+                    {
+                        message = "bind failed, " + lastErrorMessage();
+                    }
+                    else if (listen(listener, SOMAXCONN) != 0)
+                    {
+                        message = "listen failed, " + lastErrorMessage();
+                    }
+                    else
+                    {
+                        struct kevent event;
+                        EV_SET(&event, listener, EVFILT_READ, EV_ADD | EV_DISABLE | EV_CLEAR, 0, SOMAXCONN, NULL);
+
+                        if (kevent(dispatcher.getKqueue(), &event, 1, NULL, 0, NULL) == -1)
+                        {
+                            message = "kevent failed, " + lastErrorMessage();
+                        }
+                        else
+                        {
+                            context = nullptr;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (close(listener) == -1)
+            {
+                message = "close failed, " + lastErrorMessage();
+            }
+        }
+
+        throw std::runtime_error("TcpListener::TcpListener, " + message);
+    }
+
+    TcpListener::TcpListener(Dispatcher &dispatcher, const IpAddress &addr, uint16_t port): dispatcher(&dispatcher)
+    {
+        std::string message;
+        int af = addr.isV6() ? AF_INET6 : AF_INET;
+        listener = socket(af, SOCK_STREAM, IPPROTO_TCP);
+        if (listener == -1)
+        {
+            message = "socket failed, " + lastErrorMessage();
+        }
+        else
+        {
+            int flags = fcntl(listener, F_GETFL, 0);
+            if (flags == -1 || (fcntl(listener, F_SETFL, flags | O_NONBLOCK) == -1))
+            {
+                message = "fcntl failed, " + lastErrorMessage();
+            }
+            else
+            {
+                int on = 1;
+                if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == -1)
+                {
+                    message = "setsockopt failed, " + lastErrorMessage();
+                }
+                else
+                {
+                    bool bound = false;
+                    if (addr.isV6())
+                    {
+                        int off = 0;
+                        setsockopt(listener, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof off);
+                        sockaddr_in6 address6 = {};
+                        address6.sin6_family = AF_INET6;
+                        address6.sin6_port   = htons(port);
+                        std::memcpy(&address6.sin6_addr, addr.getBytes(), 16);
+                        bound = (bind(listener, reinterpret_cast<sockaddr *>(&address6), sizeof address6) == 0);
+                    }
+                    else
+                    {
+                        sockaddr_in address4 = {};
+                        address4.sin_family      = AF_INET;
+                        address4.sin_port        = htons(port);
+                        address4.sin_addr.s_addr = htonl(addr.toV4());
+                        bound = (bind(listener, reinterpret_cast<sockaddr *>(&address4), sizeof address4) == 0);
+                    }
+
+                    if (!bound)
                     {
                         message = "bind failed, " + lastErrorMessage();
                     }

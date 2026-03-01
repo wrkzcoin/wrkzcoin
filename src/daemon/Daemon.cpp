@@ -428,7 +428,9 @@ int main(int argc, char *argv[])
             config.exclusiveNodes,
             config.priorityNodes,
             config.seedNodes,
-            config.p2pResetPeerstate);
+            config.p2pResetPeerstate,
+            config.p2pBindIpv6Address,
+            config.p2pBindPortIpv6);
 
         if (!Tools::create_directories_if_necessary(dbConfig.dataDir))
         {

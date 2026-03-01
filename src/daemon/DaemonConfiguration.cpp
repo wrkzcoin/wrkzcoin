@@ -238,6 +238,21 @@ namespace DaemonConfig
             "p2p-reset-peerstate",
             "Generate a new peer ID and remove known peers saved previously",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "p2p-bind-ipv6-address",
+            "IPv6 bind address for the P2P service (e.g. :: for all interfaces). Empty disables IPv6 P2P listener.",
+            cxxopts::value<std::string>()->default_value(""),
+            "<ipv6>")(
+            "p2p-bind-port-ipv6",
+            "TCP port for the IPv6 P2P listener (0 = same as --p2p-bind-port)",
+            cxxopts::value<int>()->default_value("0"),
+            "#")(
+            "rpc-bind-ipv6-address",
+            "IPv6 bind address for the RPC service (e.g. ::1). Empty disables IPv6 RPC.",
+            cxxopts::value<std::string>()->default_value(""),
+            "<ipv6>")(
+            "rpc-use-ipv6",
+            "Enable IPv6 support for the RPC service",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
             "rpc-bind-ip",
             "Interface IP address for the RPC service",
             cxxopts::value<std::string>()->default_value(config.rpcInterface),
@@ -521,6 +536,26 @@ namespace DaemonConfig
             if (cli.count("p2p-reset-peerstate") > 0)
             {
                 config.p2pResetPeerstate = cli["p2p-reset-peerstate"].as<bool>();
+            }
+
+            if (cli.count("p2p-bind-ipv6-address") > 0)
+            {
+                config.p2pBindIpv6Address = cli["p2p-bind-ipv6-address"].as<std::string>();
+            }
+
+            if (cli.count("p2p-bind-port-ipv6") > 0)
+            {
+                config.p2pBindPortIpv6 = cli["p2p-bind-port-ipv6"].as<int>();
+            }
+
+            if (cli.count("rpc-bind-ipv6-address") > 0)
+            {
+                config.rpcBindIpv6Address = cli["rpc-bind-ipv6-address"].as<std::string>();
+            }
+
+            if (cli.count("rpc-use-ipv6") > 0)
+            {
+                config.rpcUseIpv6 = cli["rpc-use-ipv6"].as<bool>();
             }
 
             if (cli.count("rpc-bind-ip") > 0)
@@ -909,6 +944,33 @@ namespace DaemonConfig
                 else if (cfgKey.compare("p2p-reset-peerstate") == 0)
                 {
                     config.p2pResetPeerstate = cfgValue.at(0) == '1' ? true : false;
+                    updated = true;
+                }
+                else if (cfgKey.compare("p2p-bind-ipv6-address") == 0)
+                {
+                    config.p2pBindIpv6Address = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("p2p-bind-port-ipv6") == 0)
+                {
+                    try
+                    {
+                        config.p2pBindPortIpv6 = std::stoi(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("rpc-bind-ipv6-address") == 0)
+                {
+                    config.rpcBindIpv6Address = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("rpc-use-ipv6") == 0)
+                {
+                    config.rpcUseIpv6 = cfgValue.at(0) == '1';
                     updated = true;
                 }
                 else if (cfgKey.compare("add-exclusive-node") == 0)
@@ -1329,6 +1391,26 @@ namespace DaemonConfig
             config.p2pResetPeerstate = j["p2p-reset-peerstate"].GetBool();
         }
 
+        if (j.HasMember("p2p-bind-ipv6-address"))
+        {
+            config.p2pBindIpv6Address = j["p2p-bind-ipv6-address"].GetString();
+        }
+
+        if (j.HasMember("p2p-bind-port-ipv6"))
+        {
+            config.p2pBindPortIpv6 = j["p2p-bind-port-ipv6"].GetInt();
+        }
+
+        if (j.HasMember("rpc-bind-ipv6-address"))
+        {
+            config.rpcBindIpv6Address = j["rpc-bind-ipv6-address"].GetString();
+        }
+
+        if (j.HasMember("rpc-use-ipv6"))
+        {
+            config.rpcUseIpv6 = j["rpc-use-ipv6"].GetBool();
+        }
+
         if (j.HasMember("rpc-bind-ip"))
         {
             config.rpcInterface = j["rpc-bind-ip"].GetString();
@@ -1538,6 +1620,10 @@ namespace DaemonConfig
         j.AddMember("out-peers", config.p2pOutPeers, alloc);
         j.AddMember("in-peers", config.p2pInPeers, alloc);
         j.AddMember("p2p-reset-peerstate", config.p2pResetPeerstate, alloc);
+        j.AddMember("p2p-bind-ipv6-address", config.p2pBindIpv6Address, alloc);
+        j.AddMember("p2p-bind-port-ipv6", config.p2pBindPortIpv6, alloc);
+        j.AddMember("rpc-bind-ipv6-address", config.rpcBindIpv6Address, alloc);
+        j.AddMember("rpc-use-ipv6", config.rpcUseIpv6, alloc);
         j.AddMember("rpc-bind-ip", config.rpcInterface, alloc);
         j.AddMember("rpc-bind-port", config.rpcPort, alloc);
 

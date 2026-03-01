@@ -33,7 +33,9 @@ namespace CryptoNote
             const std::vector<std::string> addExclusiveNodes,
             const std::vector<std::string> addPriorityNodes,
             const std::vector<std::string> addSeedNodes,
-            const bool p2pResetPeerState);
+            const bool p2pResetPeerState,
+            const std::string p2pBindIpv6Address = "",
+            const int p2pBindPortIpv6 = 0);
 
         std::string getP2pStateFilename() const;
 
@@ -63,6 +65,10 @@ namespace CryptoNote
 
         std::string getConfigFolder() const;
 
+        std::string getBindIpv6Address() const;
+
+        uint16_t getBindPortIpv6() const;
+
       private:
         std::string bindIp;
 
@@ -91,6 +97,10 @@ namespace CryptoNote
         std::string p2pStateFilename;
 
         bool p2pStateReset;
+
+        std::string m_bindIpv6Address;
+
+        uint16_t m_bindPortIpv6;
     };
 
 } // namespace CryptoNote

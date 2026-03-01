@@ -12,18 +12,24 @@
 
 void PeerlistManager::serialize(CryptoNote::ISerializer &s)
 {
-    const uint8_t currentVersion = 1;
+    const uint8_t currentVersion = 2;
     uint8_t version = currentVersion;
 
     s(version, "version");
 
-    if (version != currentVersion)
+    if (version < 1)
     {
         return;
     }
 
     s(m_peers_white, "whitelist");
     s(m_peers_gray, "graylist");
+
+    if (version >= 2)
+    {
+        s(m_peers_white6, "whitelist6");
+        s(m_peers_gray6, "graylist6");
+    }
 }
 
 void serialize(NetworkAddress &na, CryptoNote::ISerializer &s)
@@ -33,6 +39,19 @@ void serialize(NetworkAddress &na, CryptoNote::ISerializer &s)
 }
 
 void serialize(PeerlistEntry &pe, CryptoNote::ISerializer &s)
+{
+    s(pe.adr, "adr");
+    s(pe.id, "id");
+    s(pe.last_seen, "last_seen");
+}
+
+void serialize(NetworkAddress6 &na, CryptoNote::ISerializer &s)
+{
+    s.binary(na.ip, sizeof(na.ip), "ip");
+    s(na.port, "port");
+}
+
+void serialize(PeerlistEntry6 &pe, CryptoNote::ISerializer &s)
 {
     s(pe.adr, "adr");
     s(pe.id, "id");
@@ -81,6 +100,26 @@ bool PeerlistManager::get_white_peer_by_index(PeerlistEntry &p, size_t i) const
 bool PeerlistManager::get_gray_peer_by_index(PeerlistEntry &p, size_t i) const
 {
     return m_grayPeerlist.get(p, i);
+}
+
+bool PeerlistManager::get_white6_peer_by_index(PeerlistEntry6 &p, size_t i) const
+{
+    if (i >= m_peers_white6.size())
+    {
+        return false;
+    }
+    p = m_peers_white6[i];
+    return true;
+}
+
+bool PeerlistManager::get_gray6_peer_by_index(PeerlistEntry6 &p, size_t i) const
+{
+    if (i >= m_peers_gray6.size())
+    {
+        return false;
+    }
+    p = m_peers_gray6[i];
+    return true;
 }
 
 bool PeerlistManager::is_ip_allowed(uint32_t ip) const
@@ -264,4 +303,155 @@ Peerlist &PeerlistManager::getWhite()
 Peerlist &PeerlistManager::getGray()
 {
     return m_grayPeerlist;
+}
+
+// ---------------------------------------------------------------------------
+// IPv6 peer management
+// ---------------------------------------------------------------------------
+
+static bool is_ipv6_loopback(const uint8_t ip[16])
+{
+    // ::1
+    for (int i = 0; i < 15; i++)
+    {
+        if (ip[i] != 0) return false;
+    }
+    return ip[15] == 1;
+}
+
+static bool is_ipv6_private(const uint8_t ip[16])
+{
+    // fc00::/7  (ULA — unique local addresses)
+    return (ip[0] & 0xfe) == 0xfc;
+}
+
+bool PeerlistManager::merge_peerlist6(const std::list<PeerlistEntry6> &outer_bs)
+{
+    for (const PeerlistEntry6 &be : outer_bs)
+    {
+        append_with_peer_gray6(be);
+    }
+
+    // trim to limit
+    while (m_peers_gray6.size() > CryptoNote::P2P_LOCAL_GRAY_PEERLIST_LIMIT)
+    {
+        m_peers_gray6.erase(m_peers_gray6.begin());
+    }
+
+    return true;
+}
+
+bool PeerlistManager::get_peerlist6_head(std::list<PeerlistEntry6> &bs_head, uint32_t depth)
+{
+    std::sort(m_peers_white6.begin(), m_peers_white6.end(), [](const auto &lhs, const auto &rhs) {
+        return lhs.last_seen > rhs.last_seen;
+    });
+
+    uint32_t i = 0;
+    for (const auto &peer : m_peers_white6)
+    {
+        if (!peer.last_seen)
+        {
+            continue;
+        }
+        bs_head.push_back(peer);
+        if (i > depth)
+        {
+            break;
+        }
+        i++;
+    }
+
+    return true;
+}
+
+bool PeerlistManager::append_with_peer_white6(const PeerlistEntry6 &newPeer)
+{
+    try
+    {
+        if (is_ipv6_loopback(newPeer.adr.ip))
+        {
+            return true;
+        }
+        if (!m_allow_local_ip && is_ipv6_private(newPeer.adr.ip))
+        {
+            return true;
+        }
+
+        auto whiteIt = std::find_if(m_peers_white6.begin(), m_peers_white6.end(), [&newPeer](const auto &peer) {
+            return peer.adr == newPeer.adr;
+        });
+
+        if (whiteIt == m_peers_white6.end())
+        {
+            m_peers_white6.push_back(newPeer);
+            while (m_peers_white6.size() > CryptoNote::P2P_LOCAL_WHITE_PEERLIST_LIMIT)
+            {
+                m_peers_white6.erase(m_peers_white6.begin());
+            }
+        }
+        else
+        {
+            *whiteIt = newPeer;
+        }
+
+        auto grayIt = std::find_if(m_peers_gray6.begin(), m_peers_gray6.end(), [&newPeer](const auto &peer) {
+            return peer.adr == newPeer.adr;
+        });
+        if (grayIt != m_peers_gray6.end())
+        {
+            m_peers_gray6.erase(grayIt);
+        }
+
+        return true;
+    }
+    catch (std::exception &)
+    {
+        return false;
+    }
+}
+
+bool PeerlistManager::append_with_peer_gray6(const PeerlistEntry6 &newPeer)
+{
+    try
+    {
+        if (is_ipv6_loopback(newPeer.adr.ip))
+        {
+            return true;
+        }
+        if (!m_allow_local_ip && is_ipv6_private(newPeer.adr.ip))
+        {
+            return true;
+        }
+
+        auto whiteIt = std::find_if(m_peers_white6.begin(), m_peers_white6.end(), [&newPeer](const auto &peer) {
+            return peer.adr == newPeer.adr;
+        });
+        if (whiteIt != m_peers_white6.end())
+        {
+            return true;
+        }
+
+        auto grayIt = std::find_if(m_peers_gray6.begin(), m_peers_gray6.end(), [&newPeer](const auto &peer) {
+            return peer.adr == newPeer.adr;
+        });
+        if (grayIt == m_peers_gray6.end())
+        {
+            m_peers_gray6.push_back(newPeer);
+            while (m_peers_gray6.size() > CryptoNote::P2P_LOCAL_GRAY_PEERLIST_LIMIT)
+            {
+                m_peers_gray6.erase(m_peers_gray6.begin());
+            }
+        }
+        else
+        {
+            *grayIt = newPeer;
+        }
+
+        return true;
+    }
+    catch (std::exception &)
+    {
+        return false;
+    }
 }

@@ -16,6 +16,7 @@
 #endif
 
 #include <winsock2.h>
+#include <ws2tcpip.h>
 #include <mswsock.h>
 // clang-format on
 
@@ -24,6 +25,7 @@
 #include "TcpConnection.h"
 
 #include <system/InterruptedException.h>
+#include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 
 namespace System
@@ -42,7 +44,8 @@ namespace System
 
     TcpListener::TcpListener(): dispatcher(nullptr) {}
 
-    TcpListener::TcpListener(Dispatcher &dispatcher, const Ipv4Address &address, uint16_t port): dispatcher(&dispatcher)
+    TcpListener::TcpListener(Dispatcher &dispatcher, const Ipv4Address &address, uint16_t port):
+        dispatcher(&dispatcher), m_af(AF_INET)
     {
         std::string message;
         listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -106,7 +109,89 @@ namespace System
         throw std::runtime_error("TcpListener::TcpListener, " + message);
     }
 
-    TcpListener::TcpListener(TcpListener &&other): dispatcher(other.dispatcher)
+    TcpListener::TcpListener(Dispatcher &dispatcher, const IpAddress &addr, uint16_t port):
+        dispatcher(&dispatcher), m_af(addr.isV6() ? AF_INET6 : AF_INET)
+    {
+        std::string message;
+        listener = socket(m_af, SOCK_STREAM, IPPROTO_TCP);
+        if (listener == INVALID_SOCKET)
+        {
+            message = "socket failed, " + errorMessage(WSAGetLastError());
+        }
+        else
+        {
+            bool bound = false;
+            if (addr.isV6())
+            {
+                DWORD off = 0;
+                setsockopt(listener, IPPROTO_IPV6, IPV6_V6ONLY,
+                           reinterpret_cast<const char *>(&off), sizeof off);
+                sockaddr_in6 addr6 = {};
+                addr6.sin6_family = AF_INET6;
+                addr6.sin6_port   = htons(port);
+                std::memcpy(&addr6.sin6_addr, addr.getBytes(), 16);
+                bound = (bind(listener, reinterpret_cast<sockaddr *>(&addr6), sizeof addr6) == 0);
+            }
+            else
+            {
+                sockaddr_in addr4 = {};
+                addr4.sin_family      = AF_INET;
+                addr4.sin_port        = htons(port);
+                addr4.sin_addr.S_un.S_addr = htonl(addr.toV4());
+                bound = (bind(listener, reinterpret_cast<sockaddr *>(&addr4), sizeof addr4) == 0);
+            }
+
+            if (!bound)
+            {
+                message = "bind failed, " + errorMessage(WSAGetLastError());
+            }
+            else if (listen(listener, SOMAXCONN) != 0)
+            {
+                message = "listen failed, " + errorMessage(WSAGetLastError());
+            }
+            else
+            {
+                GUID guidAcceptEx = WSAID_ACCEPTEX;
+                DWORD read = sizeof acceptEx;
+                if (acceptEx == nullptr
+                    && WSAIoctl(
+                           listener,
+                           SIO_GET_EXTENSION_FUNCTION_POINTER,
+                           &guidAcceptEx,
+                           sizeof guidAcceptEx,
+                           &acceptEx,
+                           sizeof acceptEx,
+                           &read,
+                           NULL,
+                           NULL)
+                           != 0)
+                {
+                    message = "WSAIoctl failed, " + errorMessage(WSAGetLastError());
+                }
+                else
+                {
+                    assert(read == sizeof acceptEx);
+                    if (CreateIoCompletionPort(reinterpret_cast<HANDLE>(listener), dispatcher.getCompletionPort(), 0, 0)
+                        != dispatcher.getCompletionPort())
+                    {
+                        message = "CreateIoCompletionPort failed, " + lastErrorMessage();
+                    }
+                    else
+                    {
+                        context = nullptr;
+                        return;
+                    }
+                }
+            }
+
+            int result = closesocket(listener);
+            assert(result == 0);
+        }
+
+        throw std::runtime_error("TcpListener::TcpListener, " + message);
+    }
+
+    TcpListener::TcpListener(TcpListener &&other): dispatcher(other.dispatcher), m_af(other.m_af)
     {
         if (dispatcher != nullptr)
         {
@@ -140,6 +225,7 @@ namespace System
         }
 
         dispatcher = other.dispatcher;
+        m_af       = other.m_af;
         if (dispatcher != nullptr)
         {
             assert(other.context == nullptr);
@@ -161,14 +247,16 @@ namespace System
         }
 
         std::string message;
-        SOCKET connection = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        SOCKET connection = socket(m_af, SOCK_STREAM, IPPROTO_TCP);
         if (connection == INVALID_SOCKET)
         {
             message = "socket failed, " + errorMessage(WSAGetLastError());
         }
         else
         {
-            uint8_t addresses[sizeof(sockaddr_in) * 2 + 32];
+            // Buffer must accommodate (localAddr + remoterAddr) each padded to sizeof(sockaddr_storage)+16
+            static const DWORD addrBufLen = sizeof(sockaddr_storage) + 16;
+            uint8_t addresses[addrBufLen * 2];
             DWORD received;
             TcpListenerContext context2;
             context2.hEvent = NULL;
@@ -177,8 +265,8 @@ namespace System
                     connection,
                     addresses,
                     0,
-                    sizeof(sockaddr_in) + 16,
-                    sizeof(sockaddr_in) + 16,
+                    addrBufLen,
+                    addrBufLen,
                     &received,
                     &context2)
                 == TRUE)

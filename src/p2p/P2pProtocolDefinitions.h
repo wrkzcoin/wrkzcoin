@@ -130,11 +130,14 @@ namespace CryptoNote
 
             std::list<PeerlistEntry> local_peerlist;
 
+            std::list<PeerlistEntry6> local_peerlist6;
+
             void serialize(ISerializer &s)
             {
                 KV_MEMBER(node_data)
                 KV_MEMBER(payload_data)
                 serializeAsBinary(local_peerlist, "local_peerlist", s);
+                serializeAsBinary(local_peerlist6, "local_peerlist6", s);
             }
         };
     };
@@ -168,11 +171,14 @@ namespace CryptoNote
 
             std::list<PeerlistEntry> local_peerlist;
 
+            std::list<PeerlistEntry6> local_peerlist6;
+
             void serialize(ISerializer &s)
             {
                 KV_MEMBER(local_time)
                 KV_MEMBER(payload_data)
                 serializeAsBinary(local_peerlist, "local_peerlist", s);
+                serializeAsBinary(local_peerlist6, "local_peerlist6", s);
             }
         };
     };
