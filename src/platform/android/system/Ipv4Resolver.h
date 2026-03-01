@@ -7,6 +7,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace System
 {
@@ -32,6 +33,8 @@ namespace System
         Ipv4Resolver &operator=(Ipv4Resolver &&other);
 
         Ipv4Address resolve(const std::string &host);
+
+        std::vector<Ipv4Address> resolveAll(const std::string &host);
 
       private:
         Dispatcher *dispatcher;

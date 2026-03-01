@@ -489,12 +489,43 @@ namespace CryptoNote
 
     //-----------------------------------------------------------------------------------
 
+    void NodeServer::append_dns_seed_nodes()
+    {
+        for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
+        {
+            try
+            {
+                System::Ipv4Resolver resolver(m_dispatcher);
+                auto addresses = resolver.resolveAll(dnsHost);
+                if (addresses.empty())
+                {
+                    logger(WARNING) << "DNS seed '" << dnsHost << "' returned no addresses";
+                    continue;
+                }
+                for (const auto &addr : addresses)
+                {
+                    NetworkAddress na {hostToNetwork(addr.getValue()), CryptoNote::P2P_DEFAULT_PORT};
+                    m_seed_nodes.push_back(na);
+                    logger(TRACE) << "Added DNS seed node: " << na << " (from " << dnsHost << ")";
+                }
+            }
+            catch (const std::exception &e)
+            {
+                logger(WARNING) << "Failed to resolve DNS seed '" << dnsHost << "': " << e.what();
+            }
+        }
+    }
+
+    //-----------------------------------------------------------------------------------
+
     bool NodeServer::init(const NetNodeConfig &config)
     {
         for (const auto &seed : CryptoNote::SEED_NODES)
         {
             append_net_address(m_seed_nodes, seed);
         }
+
+        append_dns_seed_nodes();
 
         if (!handleConfig(config))
         {

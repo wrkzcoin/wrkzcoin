@@ -302,6 +302,8 @@ namespace CryptoNote
 
         bool append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr);
 
+        void append_dns_seed_nodes();
+
         bool idle_worker();
 
         bool handle_remote_peerlist(
