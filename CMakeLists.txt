@@ -386,6 +386,14 @@ if (NOT MSVC)
             message(STATUS "FULLY_STATIC enabled: linking with -static")
         endif ()
     endif ()
+
+    ## Strip symbols from Release binaries on Linux to reduce binary size.
+    ## A fully-static Release build without stripping can exceed 200 MB due to
+    ## debug sections from bundled static libs; stripping brings it down to ~30-50 MB.
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} -Wl,-s")
+        message(STATUS "Release build: stripping symbols from executables (-Wl,-s)")
+    endif ()
 endif ()
 
 ## Go get us some static BOOST libraries
