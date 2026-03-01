@@ -198,6 +198,12 @@ namespace CryptoNote
 
         std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
+        bool ban_host6(const std::string &addr, uint64_t seconds);
+
+        bool unban_host6(const std::string &addr);
+
+        std::vector<std::pair<std::string, uint64_t>> get_banned_hosts6();
+
       private:
         int handleCommand(
             const LevinProtocol::Command &cmd,
@@ -481,11 +487,5 @@ namespace CryptoNote
         bool isHostBanned(uint32_t ip);
 
         bool isHostBanned6(const std::string &addr);
-
-        bool ban_host6(const std::string &addr, uint64_t seconds);
-
-        bool unban_host6(const std::string &addr);
-
-        std::vector<std::pair<std::string, uint64_t>> get_banned_hosts6();
     };
 } // namespace CryptoNote
