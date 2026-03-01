@@ -19,6 +19,7 @@
 #include <mutex>
 #include <system_error>
 #include <thread>
+#include <utility>
 
 namespace CryptoNote
 {
@@ -130,13 +131,15 @@ class DaemonCommandsHandler
 
     std::mutex m_compactionMutex;
 
-    std::future<std::error_code> m_compactionTask;
+    std::future<std::pair<std::error_code, std::string>> m_compactionTask;
 
     bool m_compactionRunning = false;
 
     bool m_compactionHasResult = false;
 
     std::error_code m_compactionLastError;
+
+    std::string m_compactionLastErrorDetails;
 
     uint64_t m_compactionStartedAt = 0;
 

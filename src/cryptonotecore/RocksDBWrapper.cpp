@@ -256,6 +256,11 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
 
 std::error_code RocksDBWrapper::compact()
 {
+    return compactDetailed().first;
+}
+
+std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
+{
     if (state.load() != INITIALIZED)
     {
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
@@ -270,12 +275,13 @@ std::error_code RocksDBWrapper::compact()
     const rocksdb::Status status = db->CompactRange(options, nullptr, nullptr);
     if (!status.ok())
     {
-        logger(ERROR) << "RocksDB compaction failed: " << status.ToString();
-        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        const std::string details = status.ToString();
+        logger(ERROR) << "RocksDB compaction failed: " << details;
+        return {make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR), details};
     }
 
     logger(INFO) << "RocksDB full compaction completed.";
-    return std::error_code();
+    return {std::error_code(), std::string()};
 }
 
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)

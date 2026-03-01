@@ -9,6 +9,7 @@
 #include <cassert>
 #include <random>
 #include <stdexcept>
+#include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -80,6 +81,33 @@ namespace System
         Ipv4Address address(ntohl(reinterpret_cast<sockaddr_in *>(addressInfo->ai_addr)->sin_addr.S_un.S_addr));
         freeaddrinfo(addressInfo);
         return address;
+    }
+
+    std::vector<Ipv4Address> Ipv4Resolver::resolveAll(const std::string &host)
+    {
+        assert(dispatcher != nullptr);
+        if (dispatcher->interrupted())
+        {
+            throw InterruptedException();
+        }
+
+        addrinfo hints = {0, AF_INET, SOCK_STREAM, IPPROTO_TCP, 0, NULL, NULL, NULL};
+        addrinfo *addressInfos;
+        int result = getaddrinfo(host.c_str(), NULL, &hints, &addressInfos);
+        if (result != 0)
+        {
+            throw std::runtime_error("Ipv4Resolver::resolveAll, getaddrinfo failed, " + errorMessage(result));
+        }
+
+        std::vector<Ipv4Address> addresses;
+        for (addrinfo *addressInfo = addressInfos; addressInfo != nullptr; addressInfo = addressInfo->ai_next)
+        {
+            addresses.emplace_back(
+                ntohl(reinterpret_cast<sockaddr_in *>(addressInfo->ai_addr)->sin_addr.S_un.S_addr));
+        }
+
+        freeaddrinfo(addressInfos);
+        return addresses;
     }
 
 } // namespace System

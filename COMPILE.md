@@ -78,7 +78,8 @@ Minimum tooling:
   - Confirmed: `clang-15` compiles successfully.
   - `clang-14` with GCC 13 `libstdc++` headers is known to fail in `<chrono>`.
   - Use GCC, `clang >= 15`, clang with `libc++`, or point clang at an older GCC toolchain (for example GCC 11 headers/libs).
-- OpenSSL development package
+- OpenSSL development package (`libssl-dev`)
+- zlib development package (`zlib1g-dev`) — required for static OpenSSL linking
 - Git
 - Make or Ninja
 
@@ -117,7 +118,7 @@ Current CMake uses Boost `date_time` only.
 sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
-  libssl-dev libboost-date-time-dev \
+  libssl-dev zlib1g-dev libboost-date-time-dev \
   libzstd-dev libzmq3-dev libsodium-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

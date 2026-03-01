@@ -382,6 +382,8 @@ namespace CryptoNote
         context.m_sync_batch_size = m_syncBatchMin;
         context.m_sync_failures = 0;
         context.m_sync_orphan_retries = 0;
+        context.m_sync_blocks_per_second = 0.0f;
+        context.m_sync_chunk_start_time = {};
 
         if (context.m_state == CryptoNoteConnectionContext::state_befor_handshake && !is_initial)
         {
@@ -613,7 +615,19 @@ namespace CryptoNote
             }
             else if (result == error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE)
             {
-                logger(Logging::TRACE) << context << "Block added as alternative";
+                logger(Logging::INFO) << context << "Block added as alternative (peer height="
+                                      << arg.current_blockchain_height << ", our height="
+                                      << get_current_blockchain_height() << ")";
+                if (arg.current_blockchain_height > get_current_blockchain_height())
+                {
+                    logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
+                    context.m_state = CryptoNoteConnectionContext::state_synchronizing;
+                    NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                    r.block_ids = m_core.buildSparseChain();
+                    logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
+                                          << r.block_ids.size();
+                    post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+                }
             }
             else
             {
@@ -992,7 +1006,19 @@ namespace CryptoNote
                 }
                 else if (result == error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE)
                 {
-                    logger(Logging::TRACE) << context << "Block added as alternative";
+                    logger(Logging::INFO) << context << "Lite block added as alternative (peer height="
+                                         << arg.current_blockchain_height << ", our height="
+                                         << get_current_blockchain_height() << ")";
+                    if (arg.current_blockchain_height > get_current_blockchain_height())
+                    {
+                        logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
+                        context.m_state = CryptoNoteConnectionContext::state_synchronizing;
+                        NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                        r.block_ids = m_core.buildSparseChain();
+                        logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
+                                              << r.block_ids.size();
+                        post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+                    }
                 }
                 else
                 {
@@ -1118,6 +1144,7 @@ namespace CryptoNote
             }
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()=" << req.blocks.size()
                                    << ", txs.size()=" << req.txs.size();
+            context.m_sync_chunk_start_time = std::chrono::steady_clock::now();
             post_notify<NOTIFY_REQUEST_GET_OBJECTS>(*m_p2p, req, context);
         }
         else if (context.m_last_response_height < context.m_remote_blockchain_height - 1)
@@ -1583,10 +1610,35 @@ namespace CryptoNote
             {
                 context.m_sync_avg_block_bytes = ((context.m_sync_avg_block_bytes * 8) + (sampleAvgBlockBytes * 2)) / 10;
             }
+
+            // Track blocks-per-second using elapsed time since the chunk request was sent
+            const auto now = std::chrono::steady_clock::now();
+            const float elapsed_sec = std::chrono::duration<float>(now - context.m_sync_chunk_start_time).count();
+            if (elapsed_sec > 0.05f && elapsed_sec < 300.0f)
+            {
+                const float sample_bps = static_cast<float>(blocks) / elapsed_sec;
+                if (context.m_sync_blocks_per_second == 0.0f)
+                {
+                    context.m_sync_blocks_per_second = sample_bps;
+                }
+                else
+                {
+                    // Rolling average: 80% prior weight, 20% new sample
+                    context.m_sync_blocks_per_second =
+                        (context.m_sync_blocks_per_second * 0.8f) + (sample_bps * 0.2f);
+                }
+            }
         }
 
-        if (context.m_sync_batch_size < m_syncBatchMax)
+        // Update batch size dynamically based on observed throughput (target: 30 seconds of blocks)
+        if (context.m_sync_blocks_per_second > 0.0f)
         {
+            const uint32_t dynamicBatch = static_cast<uint32_t>(context.m_sync_blocks_per_second * 30.0f);
+            context.m_sync_batch_size = std::max(m_syncBatchMin, std::min(dynamicBatch, m_syncBatchMax));
+        }
+        else if (context.m_sync_batch_size < m_syncBatchMax)
+        {
+            // Fallback: grow 25% per success until BPS data is available
             const uint32_t next = context.m_sync_batch_size + std::max<uint32_t>(1, context.m_sync_batch_size / 4);
             context.m_sync_batch_size = std::min(next, m_syncBatchMax);
         }

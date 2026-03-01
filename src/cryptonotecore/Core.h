@@ -27,6 +27,7 @@
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
 #include <unordered_map>
+#include <utility>
 #include <utilities/ThreadPool.h>
 #include <utilities/ThreadSafeQueue.h>
 #include <vector>
@@ -241,6 +242,8 @@ namespace CryptoNote
         size_t pruneRawBlocks(uint32_t pruneDepth);
 
         std::error_code compactDatabase();
+
+        std::pair<std::error_code, std::string> compactDatabaseDetailed();
 
       private:
         const Currency &currency;

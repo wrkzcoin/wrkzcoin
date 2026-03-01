@@ -148,33 +148,52 @@ if (MSVC)
     set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
 elseif (NOT MSVC)
     set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
-    if (NOT DEFINED ROCKSDB_BUILD_PARALLEL OR ROCKSDB_BUILD_PARALLEL STREQUAL "")
-        if (DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
-            set(ROCKSDB_BUILD_PARALLEL "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" CACHE STRING "Parallel jobs for RocksDB sub-build")
-        else ()
-            include(ProcessorCount)
-            ProcessorCount(_WRKZ_CPU_COUNT)
-            if (_WRKZ_CPU_COUNT GREATER 0)
-                set(ROCKSDB_BUILD_PARALLEL "${_WRKZ_CPU_COUNT}" CACHE STRING "Parallel jobs for RocksDB sub-build")
-            else ()
-                set(ROCKSDB_BUILD_PARALLEL "1" CACHE STRING "Parallel jobs for RocksDB sub-build")
-            endif ()
-            unset(_WRKZ_CPU_COUNT)
+    if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
+        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
+        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
+    elseif (DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
+        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "CMAKE_BUILD_PARALLEL_LEVEL")
+    else ()
+        include(ProcessorCount)
+        ProcessorCount(_WRKZ_CPU_COUNT)
+        if (NOT _WRKZ_CPU_COUNT GREATER 0)
+            set(_WRKZ_CPU_COUNT 1)
         endif ()
+
+        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${_WRKZ_CPU_COUNT}")
+        if (DEFINED ROCKSDB_BUILD_PARALLEL_CAP AND NOT ROCKSDB_BUILD_PARALLEL_CAP STREQUAL ""
+            AND ROCKSDB_BUILD_PARALLEL_CAP GREATER 0
+            AND _WRKZ_ROCKSDB_FALLBACK_JOBS GREATER ROCKSDB_BUILD_PARALLEL_CAP)
+            set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL_CAP}")
+        endif ()
+        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "cpu_count_capped")
+        unset(_WRKZ_CPU_COUNT)
     endif ()
-    message(STATUS "RocksDB sub-build parallel jobs: ${ROCKSDB_BUILD_PARALLEL}")
+    message(STATUS
+        "RocksDB sub-build parallel jobs fallback: ${_WRKZ_ROCKSDB_FALLBACK_JOBS} "
+        "(source=${_WRKZ_ROCKSDB_PARALLEL_SOURCE}, cap=${ROCKSDB_BUILD_PARALLEL_CAP})")
 
     add_custom_target(
             rocksdb
             BYPRODUCTS
                 ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a
-            COMMAND ${CMAKE_COMMAND} --build ${PROJECT_BINARY_DIR}/rocksdb --target rocksdb --parallel ${ROCKSDB_BUILD_PARALLEL}
+            COMMAND ${CMAKE_COMMAND}
+                -DROCKSDB_BUILD_DIR=${PROJECT_BINARY_DIR}/rocksdb
+                -DROCKSDB_TARGET=rocksdb
+                -DROCKSDB_BUILD_PARALLEL=${ROCKSDB_BUILD_PARALLEL}
+                -DROCKSDB_FALLBACK_PARALLEL=${_WRKZ_ROCKSDB_FALLBACK_JOBS}
+                -DROCKSDB_BUILD_PARALLEL_CAP=${ROCKSDB_BUILD_PARALLEL_CAP}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/BuildRocksDB.cmake
             WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/rocksdb
     )
     add_dependencies(rocksdb libzstd_static)
     add_library(rocksdblib STATIC IMPORTED GLOBAL)
     set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
     add_dependencies(rocksdblib rocksdb)
+
+    unset(_WRKZ_ROCKSDB_FALLBACK_JOBS)
+    unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)
 endif ()
 
 if (MSVC)

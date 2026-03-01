@@ -7,9 +7,8 @@
 
 <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
 <ul>
-    <li><a href="#master-build-status">Master Build Status</a></li>
-    <li><a href="#development-build-status">Development Build Status</a></li>
     <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
+    <li><a href="#node-system-requirements">Node System Requirements</a></li>
     <li><a href="#build-from-source">Build from Source</a></li>
     <li><a href="#getting-started-fast">Getting Started Fast</a></li>
     <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
@@ -18,19 +17,44 @@
     <li><a href="#our-discord">Our Discord</a></li>
 </ul>
 
-### Master Build Status
-
-![Master Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=master)
-
-### Development Build Status
-
-![Development Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=development)
-
 ### Installing WrkzCoin
 
 To use WrkzCoin, you'll need a way to connect to the network, and a wallet to hold your funds. This software includes those things for you, you can compile it yourself, or you can download the ones that we have compiled for you.
 
 **Click here to download: https://latest.wrkz.work**
+
+### Node System Requirements
+
+Minimum requirements to run a **Wrkzd** daemon node:
+
+| Requirement | Pruned Node | Full Node |
+|---|---|---|
+| **Internet** | Stable broadband | Stable broadband |
+| **CPU** | 1 core, 1.0 GHz | 1 core, 1.5 GHz |
+| **RAM** | 2 GB | 2 GB |
+| **Free Disk Space** | 30 GB SSD/NVMe | 50 GB SSD/NVMe |
+
+- A **pruned node** (`--prune`) discards raw block and transaction binary data for blocks older than the configured depth (default: 7 days ≈ 10,080 blocks). Block metadata, key images, and transaction indexes are retained for the full chain, so consensus and wallet sync remain functional.
+- A **full node** retains raw block and transaction data for the entire blockchain history.
+- **SSD or NVMe storage is required.** HDDs are too slow for RocksDB random I/O and will cause severe sync delays or daemon instability.
+- Disk usage grows over time as the chain advances — provision extra headroom.
+- RAM shown covers the daemon alone; allow more if also running `wrkz-service` or a miner on the same machine.
+
+#### What a Pruned Node Removes vs. Retains
+
+| Data | Pruned Node | Full Node |
+|---|---|---|
+| Raw block binary data (old blocks) | Removed | Kept |
+| Raw transaction binary data (old blocks) | Removed | Kept |
+| Raw block/transaction data (recent blocks, within prune depth) | Kept | Kept |
+| Block metadata (hash, height, difficulty, timestamp) | Kept for all | Kept for all |
+| Transaction indexes (global output indexes) | Kept for all | Kept for all |
+| Key images (spent output tracking) | Kept for all | Kept for all |
+| Payment ID indexes | Kept for all | Kept for all |
+
+The prune depth controls how many recent blocks keep their raw data. The default is 7 days worth of blocks (`--prune-depth` can increase this). Use `--prune-depth N` to retain more history.
+
+> **Building from source** requires at least **4 GB RAM** for the compiler (RocksDB and C++20 templates are memory-intensive at compile time).
 
 ### Build from Source
 

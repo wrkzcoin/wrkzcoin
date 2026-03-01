@@ -328,22 +328,18 @@ namespace CryptoNote
             if (transactionIndex != 0)
             {
                 Transaction transaction;
-                bool r = fromBinaryArray(transaction, block.transactions[transactionIndex - 1]);
-                if (r)
+                if (!fromBinaryArray(transaction, block.transactions[transactionIndex - 1]))
                 {
+                    throw std::runtime_error("Failed to deserialize transaction at index " + std::to_string(transactionIndex));
                 }
-                assert(r);
-
                 return transaction;
             }
 
             BlockTemplate blockTemplate;
-            bool r = fromBinaryArray(blockTemplate, block.block);
-            if (r)
+            if (!fromBinaryArray(blockTemplate, block.block))
             {
+                throw std::runtime_error("Failed to deserialize block template");
             }
-            assert(r);
-
             return blockTemplate.baseTransaction;
         }
 
@@ -489,7 +485,6 @@ namespace CryptoNote
             }
             catch (std::exception &)
             {
-                assert(false);
                 throw std::runtime_error(
                     "Couldn't find key output for amount " + std::to_string(amount) + " with global output index "
                     + std::to_string(globalOutputIndex));
@@ -825,8 +820,6 @@ namespace CryptoNote
             return;
         }
 
-        auto cache = blockchainCacheFactory.createBlockchainCache(currency, this, height);
-
         using DeleteBlockInfo = std::tuple<uint32_t, Crypto::Hash, TransactionValidatorState, uint64_t>;
         std::vector<DeleteBlockInfo> deletingBlocks;
 
@@ -843,9 +836,21 @@ namespace CryptoNote
             ExtendedPushedBlockInfo extendedInfo = getExtendedPushedBlockInfo(blockIndex);
 
             auto validatorState = extendedInfo.pushedBlockInfo.validatorState;
-            logger(Logging::DEBUGGING) << "pushing block " << blockIndex << " to child segment";
-            auto blockHash = pushBlockToAnotherCache(*cache, std::move(extendedInfo.pushedBlockInfo));
 
+            // Compute the block hash directly from the raw bytes.  We only need the
+            // hash to schedule the DB deletion; we do NOT need to push the block into
+            // a full BlockchainCache (which would re-validate transactions and trip on
+            // duplicate-tx or zero-difficulty anomalies in historical data).
+            BlockTemplate blockTemplate;
+            if (!fromBinaryArray(blockTemplate, extendedInfo.pushedBlockInfo.rawBlock.block))
+            {
+                throw std::runtime_error(
+                    "DatabaseBlockchainCache::rewind: failed to deserialize block at index "
+                    + std::to_string(blockIndex));
+            }
+            Crypto::Hash blockHash = CachedBlock(blockTemplate).getBlockHash();
+
+            logger(Logging::DEBUGGING) << "scheduling block " << blockIndex << " for deletion";
             deletingBlocks.emplace_back(blockIndex, blockHash, validatorState, extendedInfo.timestamp);
         }
 
@@ -933,7 +938,6 @@ namespace CryptoNote
 
         /* Remove cached blocks */
         cutTail(unitsCache, currentTop + 1 - height);
-        children.push_back(cache.get());
         logger(Logging::TRACE) << "Delete successful";
 
         // invalidate top block index and hash
@@ -2111,7 +2115,6 @@ namespace CryptoNote
 
     std::vector<Crypto::Hash> DatabaseBlockchainCache::getTransactionHashes() const
     {
-        assert(false);
         return {};
     }
 
@@ -2482,6 +2485,11 @@ namespace CryptoNote
         return database.compact();
     }
 
+    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed()
+    {
+        return database.compactDetailed();
+    }
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {
@@ -2530,8 +2538,28 @@ namespace CryptoNote
 
         extendedInfo.pushedBlockInfo.rawBlock = dbResult.getRawBlocks().at(blockIndex);
         extendedInfo.pushedBlockInfo.blockSize = blockInfo.blockSize;
-        extendedInfo.pushedBlockInfo.blockDifficulty =
-            blockInfo.cumulativeDifficulty - previousBlockInfo.cumulativeDifficulty;
+        {
+            uint64_t diffDelta =
+                blockInfo.cumulativeDifficulty - previousBlockInfo.cumulativeDifficulty;
+            if (diffDelta == 0)
+            {
+                // The DB stores cumulative difficulty as uint64_t.  A block that was
+                // originally accepted under an older version of the code (before the
+                // difficulty-overflow guard in Currency::nextDifficulty was paired with
+                // an addBlock zero-check) may have been recorded with difficulty 0,
+                // leaving consecutive blocks with identical cumulative difficulties.
+                // Substitute 1 so that the temporary BlockchainCache created by
+                // split() / rewind() does not assert-fail.  The substitute value only
+                // affects the transient in-memory cache used to enumerate the blocks
+                // being removed; it is never written back to the database.
+                logger(Logging::WARNING) << "Block at index " << blockIndex
+                                         << " has zero block difficulty in DB "
+                                            "(cumulativeDifficulty unchanged from previous block); "
+                                            "substituting 1 to allow split/rewind to proceed";
+                diffDelta = 1;
+            }
+            extendedInfo.pushedBlockInfo.blockDifficulty = diffDelta;
+        }
         extendedInfo.pushedBlockInfo.generatedCoins =
             blockInfo.alreadyGeneratedCoins - previousBlockInfo.alreadyGeneratedCoins;
 
@@ -2544,9 +2572,9 @@ namespace CryptoNote
         return extendedInfo;
     }
 
-    void DatabaseBlockchainCache::setParent(IBlockchainCache *ptr)
+    void DatabaseBlockchainCache::setParent(IBlockchainCache * /*ptr*/)
     {
-        assert(false);
+        // setParent is not applicable to the root database-backed cache segment.
     }
 
     void DatabaseBlockchainCache::addChild(IBlockchainCache *ptr)

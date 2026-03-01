@@ -28,6 +28,7 @@
 #include <system/TcpConnection.h>
 #include <system/TcpListener.h>
 #include <system/Timer.h>
+#include <thread>
 #include <unordered_map>
 
 namespace System
@@ -123,6 +124,18 @@ namespace CryptoNote
         void interrupt();
 
         uint64_t writeDuration(TimePoint now) const;
+
+        bool canBeInterrupted() const
+        {
+            return !stopped && context != nullptr;
+        }
+
+        void stopWithoutContextInterrupt()
+        {
+            stopped = true;
+            m_state = CryptoNoteConnectionContext::state_shutdown;
+            queueEvent.set();
+        }
 
       private:
         Logging::LoggerRef logger;
@@ -246,6 +259,15 @@ namespace CryptoNote
         bool handleTimedSyncResponse(const BinaryArray &in, P2pConnectionContext &context);
 
         void forEachConnection(std::function<void(P2pConnectionContext &)> action);
+        void relay_notify_to_all_impl(
+            int command,
+            const BinaryArray &data_buff,
+            const boost::uuids::uuid *excludeConnection);
+        bool invoke_notify_to_peer_impl(
+            int command,
+            const BinaryArray &buffer,
+            const boost::uuids::uuid &connectionId);
+        bool isDispatcherThread() const;
 
         void on_connection_new(P2pConnectionContext &context);
 
@@ -279,6 +301,8 @@ namespace CryptoNote
         bool handleConfig(const NetNodeConfig &config);
 
         bool append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr);
+
+        void append_dns_seed_nodes();
 
         bool idle_worker();
 
@@ -322,6 +346,7 @@ namespace CryptoNote
         typedef ConnectionContainer::iterator ConnectionIterator;
 
         ConnectionContainer m_connections;
+        mutable std::mutex m_connectionsMutex;
 
         void acceptLoop();
 
@@ -377,6 +402,7 @@ namespace CryptoNote
         bool m_p2p_state_reset;
 
         System::Dispatcher &m_dispatcher;
+        std::thread::id m_dispatcherThreadId;
 
         System::ContextGroup m_workingContextGroup;
 

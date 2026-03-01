@@ -484,7 +484,14 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "23.88.42.100:17855",      // node-fin.wrkz.work
-        "195.7.5.101:17855"        // node-wrkz.btipz.com
+        "node-fin.wrkz.work:17855",
+        "node-wrkz.btipz.com:17855"
+    };
+
+    /* DNS seed hostnames — each may return multiple A records via DNS.
+     * All resolved IPs are added as seed nodes using P2P_DEFAULT_PORT.
+     * Only add hosts here that are guaranteed to run on the default port. */
+    const char *const DNS_SEED_NODES[] = {
+        "seeds.wrkz.work"
     };
 } // namespace CryptoNote
