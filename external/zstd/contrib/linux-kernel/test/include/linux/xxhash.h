@@ -2,7 +2,7 @@
  * xxHash - Extremely Fast Hash algorithm
  * Copyright (C) 2012-2016, Yann Collet.
  *
- * BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
+ * BSD 2-Clause License (https://opensource.org/licenses/bsd-license.php)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -124,11 +124,10 @@ XXH_API uint64_t xxh64(const void *input, size_t length, uint64_t seed);
 static inline unsigned long xxhash(const void *input, size_t length,
 				   uint64_t seed)
 {
-#if BITS_PER_LONG == 64
-       return xxh64(input, length, seed);
-#else
-       return xxh32(input, length, seed);
-#endif
+	if (sizeof(size_t) == 8)
+		return xxh64(input, length, seed);
+	else
+		return xxh32(input, length, seed);
 }
 
 /*-****************************
@@ -261,7 +260,7 @@ XXH_API void xxh64_copy_state(struct xxh64_state *dst, const struct xxh64_state 
  * xxHash - Extremely Fast Hash algorithm
  * Copyright (C) 2012-2016, Yann Collet.
  *
- * BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
+ * BSD 2-Clause License (https://opensource.org/licenses/bsd-license.php)
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -297,7 +296,7 @@ XXH_API void xxh64_copy_state(struct xxh64_state *dst, const struct xxh64_state 
  * - xxHash source repository: https://github.com/Cyan4973/xxHash
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
 #include <linux/module.h>

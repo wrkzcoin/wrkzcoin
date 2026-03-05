@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -276,15 +277,36 @@ namespace CryptoNote
 
     bool createTxExtraWithPaymentId(const std::string &paymentIdString, std::vector<uint8_t> &extra)
     {
-        Hash paymentIdBin;
-
-        if (!parsePaymentId(paymentIdString, paymentIdBin))
+        if (paymentIdString.size() != 16 && paymentIdString.size() != 64)
         {
             return false;
         }
 
         std::vector<uint8_t> extraNonce;
-        CryptoNote::setPaymentIdToTransactionExtraNonce(extraNonce, paymentIdBin);
+
+        if (paymentIdString.size() == 16)
+        {
+            std::vector<uint8_t> shortPaymentIdBin;
+
+            if (!Common::fromHex(paymentIdString, shortPaymentIdBin) || shortPaymentIdBin.size() != 8)
+            {
+                return false;
+            }
+
+            extraNonce.push_back(TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID);
+            std::copy(shortPaymentIdBin.begin(), shortPaymentIdBin.end(), std::back_inserter(extraNonce));
+        }
+        else
+        {
+            Hash paymentIdBin;
+
+            if (!parsePaymentId(paymentIdString, paymentIdBin))
+            {
+                return false;
+            }
+
+            CryptoNote::setPaymentIdToTransactionExtraNonce(extraNonce, paymentIdBin);
+        }
 
         if (!CryptoNote::addExtraNonceToTransactionExtra(extra, extraNonce))
         {

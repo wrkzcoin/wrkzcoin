@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -21,9 +21,24 @@
 #include <utilities/FormatTools.h>
 #include <utilities/Utilities.h>
 #include <common/CheckDifficulty.h>
+#include <common/FileSystemShim.h>
+#include <map>
+#include <chrono>
+#include <thread>
+#include <fstream>
+#include <limits>
+#include <system/Ipv4Address.h>
+#include <p2p/P2pProtocolTypes.h>
 
 namespace
 {
+    const char *COMPACTION_MARKER_FILE = ".compact_db_in_progress";
+    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_FAST_SECONDS = 60;
+    constexpr uint64_t AUTO_COMPACTION_CHECK_INTERVAL_SLOW_SECONDS = 30 * 60;
+    constexpr uint64_t AUTO_COMPACTION_NEAR_SYNC_LAG_BLOCKS = 2;
+    constexpr uint64_t AUTO_COMPACTION_RESYNC_LAG_BLOCKS = 20;
+    constexpr uint32_t AUTO_COMPACTION_NEAR_SYNC_STREAK_REQUIRED = 3;
+
     template<typename T> static bool print_as_json(const T &obj)
     {
         std::cout << CryptoNote::storeToJson(obj) << ENDL;
@@ -50,7 +65,92 @@ namespace
         return ss.str();
     }
 
+    struct DbDirStats
+    {
+        uint64_t bytes = 0;
+        uint64_t files = 0;
+        uint64_t directories = 0;
+        std::map<std::string, uint64_t> extensionCounts;
+    };
+
+    DbDirStats collectDbDirStats(const fs::path &path)
+    {
+        DbDirStats stats;
+        std::error_code ec;
+
+        if (!fs::exists(path, ec) || ec)
+        {
+            return stats;
+        }
+
+        fs::recursive_directory_iterator it(path, ec), end;
+
+        if (ec)
+        {
+            return stats;
+        }
+
+        for (; it != end; it.increment(ec))
+        {
+            if (ec)
+            {
+                break;
+            }
+
+            const auto &entry = *it;
+
+            if (entry.is_directory(ec))
+            {
+                ++stats.directories;
+                continue;
+            }
+
+            if (entry.is_regular_file(ec))
+            {
+                ++stats.files;
+
+                const auto fileSize = entry.file_size(ec);
+                if (!ec)
+                {
+                    stats.bytes += fileSize;
+                }
+
+                std::string ext = entry.path().extension().string();
+                if (ext.empty())
+                {
+                    ext = "<none>";
+                }
+
+                ++stats.extensionCounts[ext];
+            }
+        }
+
+        return stats;
+    }
+
+    uint64_t getAvailableBytes(const fs::path &path)
+    {
+        std::error_code ec;
+        const auto spaceInfo = fs::space(path, ec);
+        if (ec)
+        {
+            return std::numeric_limits<uint64_t>::max();
+        }
+        return spaceInfo.available;
+    }
+
 } // namespace
+
+std::shared_ptr<httplib::Response> DaemonCommandsHandler::rpc_get(const std::string &path)
+{
+    if (m_config.rpcAccessToken.empty())
+    {
+        return m_rpcServer.Get(path.c_str());
+    }
+
+    httplib::Headers headers = {{"X-API-Key", m_config.rpcAccessToken}};
+    return m_rpcServer.Get(path.c_str(), headers);
+}
 
 DaemonCommandsHandler::DaemonCommandsHandler(
     CryptoNote::Core &core,
@@ -110,6 +210,43 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "status",
         std::bind(&DaemonCommandsHandler::status, this, std::placeholders::_1),
         "Show daemon status");
+    m_consoleHandler.setHandler(
+        "prune_status",
+        std::bind(&DaemonCommandsHandler::prune_status, this, std::placeholders::_1),
+        "Show prune mode and capability status");
+    m_consoleHandler.setHandler(
+        "sync_info",
+        std::bind(&DaemonCommandsHandler::sync_info, this, std::placeholders::_1),
+        "Show compact synchronization information");
+    m_consoleHandler.setHandler(
+        "save",
+        std::bind(&DaemonCommandsHandler::save, this, std::placeholders::_1),
+        "Force-save blockchain state to disk");
+    m_consoleHandler.setHandler(
+        "sync_tune",
+        std::bind(&DaemonCommandsHandler::sync_tune, this, std::placeholders::_1),
+        "Show current sync tuning and adaptive sync stats");
+    m_consoleHandler.setHandler(
+        "sync_peers",
+        std::bind(&DaemonCommandsHandler::sync_peers, this, std::placeholders::_1),
+        "Show current sync peer diagnostics");
+    m_consoleHandler.setHandler(
+        "db_status",
+        std::bind(&DaemonCommandsHandler::db_status, this, std::placeholders::_1),
+        "Show on-disk DB status for the active DB engine");
+    m_consoleHandler.setHandler(
+        "compact_db",
+        std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
+        "Manage DB compaction: compact_db [start|status|wait]");
+    m_consoleHandler.setHandler(
+        "ban",
+        std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1),
+        "Manage in-memory host bans: ban list | ban add <ip> [seconds] | ban delete <ip>");
+}
+
+DaemonCommandsHandler::~DaemonCommandsHandler()
+{
+    stop_compaction_scheduler();
 }
 
 //--------------------------------------------------------------------------------
@@ -138,6 +275,79 @@ bool DaemonCommandsHandler::exit(const std::vector<std::string> &args)
     m_consoleHandler.requestStop();
     m_srv.sendStopSignal();
     return true;
+}
+
+void DaemonCommandsHandler::start_boot_compaction_if_needed()
+{
+    if (m_config.skipBootCompaction)
+    {
+        std::cout << InformationMsg("Boot DB compaction: skipped by configuration (--skip-boot-compaction).")
+                  << std::endl;
+    }
+    else
+    {
+        std::lock_guard<std::mutex> lock(m_compactionMutex);
+        refresh_compaction_state_locked();
+
+        if (!m_compactionRunning)
+        {
+            const bool markerExists = compaction_marker_exists_locked();
+
+            m_compactionHasResult = false;
+            m_compactionLastError = std::error_code();
+            m_compactionLastErrorDetails.clear();
+            m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+            m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
+            m_compactionRunning = true;
+            create_compaction_marker_locked();
+            logger(Logging::INFO) << "Starting DB compaction (boot background task).";
+            m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
+
+            if (markerExists)
+            {
+                std::cout << WarningMsg(
+                                 "Detected unfinished DB compaction marker from previous run. Restarting DB compaction in "
+                                 "background.")
+                          << std::endl;
+            }
+            else
+            {
+                std::cout << InformationMsg("Boot DB compaction started in background.") << std::endl;
+            }
+        }
+    }
+
+    m_stopCompactionScheduler = false;
+    if (!m_compactionSchedulerThread.joinable())
+    {
+        m_compactionSchedulerThread = std::thread(std::bind(&DaemonCommandsHandler::compaction_scheduler_loop, this));
+        std::cout << InformationMsg("Automatic periodic DB compaction monitoring is enabled.") << std::endl;
+    }
+}
+
+void DaemonCommandsHandler::stop_compaction_scheduler()
+{
+    m_stopCompactionScheduler = true;
+
+    if (m_compactionSchedulerThread.joinable())
+    {
+        m_compactionSchedulerThread.join();
+    }
+}
+
+void DaemonCommandsHandler::wait_for_background_compaction()
+{
+    std::lock_guard<std::mutex> lock(m_compactionMutex);
+    refresh_compaction_state_locked();
+
+    if (!m_compactionRunning)
+    {
+        return;
+    }
+
+    std::cout << InformationMsg("Waiting for background DB compaction to finish before shutdown...") << std::endl;
+    m_compactionTask.wait();
+    refresh_compaction_state_locked();
 }
 
 //--------------------------------------------------------------------------------
@@ -407,9 +617,29 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    auto res = m_rpcServer.Get("/info");
+    std::shared_ptr<httplib::Response> res;
 
-    if (!res || res->status != 200)
+    /* Retry briefly if the RPC server is still binding its socket at startup */
+    constexpr int RPC_READY_RETRIES = 6;
+    for (int attempt = 0; attempt < RPC_READY_RETRIES; ++attempt)
+    {
+        res = rpc_get("/info");
+        if (res)
+            break;
+
+        if (attempt == 0)
+            std::cout << InformationMsg("Daemon is still starting up, waiting for RPC...") << std::endl;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    if (!res)
+    {
+        std::cout << WarningMsg("Daemon RPC server is not yet ready. Please try again in a moment.") << std::endl;
+        return false;
+    }
+
+    if (res->status != 200)
     {
         std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
         return false;
@@ -461,7 +691,13 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Next Fork",             Utilities::get_fork_time(networkHeight, upgradeHeights)});
     statusTable.push_back({"Transaction Pool Size", std::to_string(m_core.getPoolTransactionHashes().size())});
     statusTable.push_back({"Alternative Block Count", std::to_string(m_core.getAlternativeBlockCount())});
-    statusTable.push_back({"DB Engine",             m_config.enableLevelDB ? "LevelDB" : "RocksDB"});
+    statusTable.push_back({"DB Engine",             "RocksDB"});
+    statusTable.push_back({"Pruned Node",          getBoolFromJSON(resp, "pruned") ? "Yes" : "No"});
+    statusTable.push_back({"Prune Depth",          std::to_string(getUint64FromJSON(resp, "prune_depth"))});
+    statusTable.push_back({"Prune Capability Fork Active", getBoolFromJSON(resp, "prune_capability_active") ? "Yes" : "No"});
+    statusTable.push_back({"Active Sync Peers",    std::to_string(getUint64FromJSON(resp, "sync_active_peers"))});
+    statusTable.push_back({"Avg Sync Batch Size",  std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))});
+    statusTable.push_back({"Demoted Sync Peers",   std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))});
     statusTable.push_back({"WrkzCoin Version", PROJECT_VERSION});
 
     size_t longestValue = 0;
@@ -503,5 +739,590 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
         std::cout << WarningMsg(Utilities::get_upgrade_info(supportedHeight, upgradeHeights)) << std::endl;
     }
 
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::prune_status(const std::vector<std::string> &args)
+{
+    auto res = rpc_get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving prune status from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing prune status response.") << std::endl;
+        return false;
+    }
+
+    const bool pruned = getBoolFromJSON(resp, "pruned");
+    const uint64_t pruneDepth = getUint64FromJSON(resp, "prune_depth");
+    const bool pruneCapabilityActive = getBoolFromJSON(resp, "prune_capability_active");
+    const uint64_t height = getUint64FromJSON(resp, "height");
+    const uint64_t pruneFloor = height > pruneDepth ? height - pruneDepth : 0;
+
+    std::cout << InformationMsg("Pruned Node: ") << SuccessMsg(pruned ? "Yes" : "No") << std::endl;
+    std::cout << InformationMsg("Prune Depth: ") << SuccessMsg(pruneDepth) << std::endl;
+    std::cout << InformationMsg("Approx Prune Floor Height: ") << SuccessMsg(pruneFloor) << std::endl;
+    std::cout << InformationMsg("Prune Capability Fork Active: ") << SuccessMsg(pruneCapabilityActive ? "Yes" : "No")
+              << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_info(const std::vector<std::string> &args)
+{
+    auto res = rpc_get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync information from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync information response.") << std::endl;
+        return false;
+    }
+
+    const uint64_t height = getUint64FromJSON(resp, "height");
+    const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");
+    const std::string percentage = Utilities::get_sync_percentage(height, networkHeight) + "%";
+
+    std::cout << InformationMsg("Height: ") << SuccessMsg(height) << InformationMsg(" / ")
+              << SuccessMsg(networkHeight) << InformationMsg(" (") << SuccessMsg(percentage) << InformationMsg(")")
+              << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::save(const std::vector<std::string> &args)
+{
+    m_core.save();
+    std::cout << SuccessMsg("Core state saved.") << std::endl;
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
+{
+    auto res = rpc_get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync tuning from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync tuning response.") << std::endl;
+        return false;
+    }
+
+    std::cout << InformationMsg("Active Sync Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_active_peers"))) << std::endl;
+    std::cout << InformationMsg("Average Sync Batch Size: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
+    std::cout << InformationMsg("Demoted Sync Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+    std::cout << InformationMsg("Configured Sync Max Peers: ")
+              << SuccessMsg(std::to_string(m_config.syncMaxPeers)) << std::endl;
+    std::cout << InformationMsg("Configured P2P Out/In Peers: ")
+              << SuccessMsg(std::to_string(m_config.p2pOutPeers) + "/" + std::to_string(m_config.p2pInPeers))
+              << std::endl;
+    std::cout << InformationMsg("Configured Sync Failure Threshold: ")
+              << SuccessMsg(std::to_string(m_config.syncPeerFailureThreshold)) << std::endl;
+    std::cout << InformationMsg("Configured Sync Batch Min/Max: ")
+              << SuccessMsg(std::to_string(m_config.syncBatchMin) + "/" + std::to_string(m_config.syncBatchMax))
+              << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Size: ")
+              << SuccessMsg(std::to_string(m_config.blockSyncSize)) << std::endl;
+    std::cout << InformationMsg("Configured Block Sync Bytes: ")
+              << SuccessMsg(Utilities::prettyPrintBytes(m_config.blockSyncBytes)) << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
+{
+    auto res = rpc_get("/info");
+
+    if (!res || res->status != 200)
+    {
+        std::cout << WarningMsg("Problem retrieving sync peer diagnostics from RPC server.") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document resp;
+
+    if (resp.Parse(res->body.c_str()).HasParseError())
+    {
+        std::cout << WarningMsg("Problem parsing sync peer diagnostics response.") << std::endl;
+        return false;
+    }
+
+    std::cout << InformationMsg("Sync Active Peers: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_active_peers"))) << std::endl;
+    std::cout << InformationMsg("Average Sync Batch Size: ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
+    std::cout << InformationMsg("Demoted Sync Peers (lifetime): ")
+              << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
+{
+    const std::string engine = "RocksDB";
+    const fs::path dbPath = fs::path(m_config.dataDirectory) / "DB";
+    const DbDirStats stats = collectDbDirStats(dbPath);
+    const bool compressionEnabled = m_config.enableDbCompression;
+
+    std::cout << InformationMsg("DB Engine: ") << SuccessMsg(engine) << std::endl;
+    std::cout << InformationMsg("Compression Enabled: ")
+              << SuccessMsg(compressionEnabled ? "Yes" : "No") << std::endl;
+
+    std::cout << InformationMsg("Compression Mode: ")
+              << SuccessMsg(compressionEnabled ? "RocksDB ZSTD (L2+; L0/L1 uncompressed)" : "Disabled")
+              << std::endl;
+
+    std::cout << InformationMsg("DB Path: ") << SuccessMsg(dbPath.string()) << std::endl;
+    std::cout << InformationMsg("DB Size: ") << SuccessMsg(Utilities::prettyPrintBytes(stats.bytes)) << std::endl;
+    std::cout << InformationMsg("Files: ") << SuccessMsg(std::to_string(stats.files)) << std::endl;
+    std::cout << InformationMsg("Directories: ") << SuccessMsg(std::to_string(stats.directories)) << std::endl;
+
+    if (stats.extensionCounts.empty())
+    {
+        std::cout << WarningMsg("No DB files found in the selected path.") << std::endl;
+        return true;
+    }
+
+    std::cout << InformationMsg("File type counts:") << std::endl;
+
+    for (const auto &[ext, count] : stats.extensionCounts)
+    {
+        std::cout << "  " << ext << ": " << count << std::endl;
+    }
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
+{
+    const std::string sub = args.empty() ? "start" : args[0];
+
+    if (sub != "start" && sub != "status" && sub != "wait")
+    {
+        std::cout << "Usage: compact_db [start|status|wait]" << std::endl;
+        return true;
+    }
+
+    std::lock_guard<std::mutex> lock(m_compactionMutex);
+    refresh_compaction_state_locked();
+
+    if (sub == "status")
+    {
+        if (m_compactionRunning)
+        {
+            const uint64_t now = static_cast<uint64_t>(time(nullptr));
+            const uint64_t elapsed = now > m_compactionStartedAt ? (now - m_compactionStartedAt) : 0;
+            std::cout << InformationMsg("DB compaction status: ")
+                      << SuccessMsg("running (" + std::to_string(elapsed) + "s elapsed)") << std::endl;
+            return true;
+        }
+
+        std::cout << InformationMsg("DB compaction status: ") << SuccessMsg("idle") << std::endl;
+
+        if (compaction_marker_exists_locked())
+        {
+            std::cout << WarningMsg(
+                             "Persistent compaction marker present (previous run may have terminated mid-compaction).")
+                      << std::endl;
+        }
+
+        if (m_compactionHasResult)
+        {
+            if (m_compactionLastError)
+            {
+                std::string message = "Last result: failed - " + m_compactionLastError.message();
+                if (!m_compactionLastErrorDetails.empty())
+                {
+                    message += " (" + m_compactionLastErrorDetails + ")";
+                }
+                std::cout << WarningMsg(message) << std::endl;
+            }
+            else
+            {
+                std::cout << SuccessMsg("Last result: completed successfully") << std::endl;
+            }
+        }
+
+        return true;
+    }
+
+    if (sub == "wait")
+    {
+        if (!m_compactionRunning)
+        {
+            std::cout << InformationMsg("No DB compaction is running.") << std::endl;
+            return true;
+        }
+
+        std::cout << InformationMsg("Waiting for DB compaction to complete...") << std::endl;
+        m_compactionTask.wait();
+        refresh_compaction_state_locked();
+
+        if (m_compactionLastError)
+        {
+            std::string message = "DB compaction failed: " + m_compactionLastError.message();
+            if (!m_compactionLastErrorDetails.empty())
+            {
+                message += " (" + m_compactionLastErrorDetails + ")";
+            }
+            std::cout << WarningMsg(message) << std::endl;
+            return false;
+        }
+
+        std::cout << SuccessMsg("DB compaction completed.") << std::endl;
+        return true;
+    }
+
+    if (m_compactionRunning)
+    {
+        std::cout << WarningMsg("DB compaction is already running. Use `compact_db status` or `compact_db wait`.")
+                  << std::endl;
+        return true;
+    }
+
+    m_compactionHasResult = false;
+    m_compactionLastError = std::error_code();
+    m_compactionLastErrorDetails.clear();
+    m_compactionStartedAt = static_cast<uint64_t>(time(nullptr));
+    m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
+    m_compactionRunning = true;
+    create_compaction_marker_locked();
+    logger(Logging::INFO) << "Starting DB compaction (manual console request).";
+    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
+
+    std::cout << InformationMsg("DB compaction started in background. Use `compact_db status` or `compact_db wait`.")
+              << std::endl;
+    return true;
+}
+
+void DaemonCommandsHandler::refresh_compaction_state_locked()
+{
+    if (!m_compactionRunning || !m_compactionTask.valid())
+    {
+        return;
+    }
+
+    if (m_compactionTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    {
+        return;
+    }
+
+    const auto compactionResult = m_compactionTask.get();
+    m_compactionLastError = compactionResult.first;
+    m_compactionLastErrorDetails = compactionResult.second;
+    m_compactionRunning = false;
+    m_compactionHasResult = true;
+    m_compactionFinishedAt = static_cast<uint64_t>(time(nullptr));
+    m_compactionFinishedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
+    clear_compaction_marker_locked();
+}
+
+std::string DaemonCommandsHandler::get_compaction_marker_path() const
+{
+    const fs::path markerPath = fs::path(m_config.dataDirectory) / "DB" / COMPACTION_MARKER_FILE;
+    return markerPath.string();
+}
+
+bool DaemonCommandsHandler::compaction_marker_exists_locked() const
+{
+    std::error_code ec;
+    const bool exists = fs::exists(get_compaction_marker_path(), ec);
+    return !ec && exists;
+}
+
+void DaemonCommandsHandler::create_compaction_marker_locked()
+{
+    std::error_code ec;
+    const fs::path markerPath = get_compaction_marker_path();
+    fs::create_directories(markerPath.parent_path(), ec);
+    ec.clear();
+
+    std::ofstream marker(markerPath.string(), std::ios::trunc);
+    if (!marker.good())
+    {
+        std::cout << WarningMsg("Failed to create DB compaction marker file: " + markerPath.string()) << std::endl;
+        return;
+    }
+
+    marker << static_cast<uint64_t>(time(nullptr)) << "\n";
+}
+
+void DaemonCommandsHandler::clear_compaction_marker_locked()
+{
+    std::error_code ec;
+    fs::remove(get_compaction_marker_path(), ec);
+}
+
+void DaemonCommandsHandler::compaction_scheduler_loop()
+{
+    while (!m_stopCompactionScheduler)
+    {
+        const uint64_t sleepSeconds = m_schedulerCheckIntervalSeconds;
+
+        for (uint64_t i = 0; i < sleepSeconds; ++i)
+        {
+            if (m_stopCompactionScheduler)
+            {
+                return;
+            }
+
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+
+        std::lock_guard<std::mutex> lock(m_compactionMutex);
+        refresh_compaction_state_locked();
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t currentHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
+
+        {
+            auto res = rpc_get("/info");
+            if (res && res->status == 200)
+            {
+                rapidjson::Document resp;
+                if (!resp.Parse(res->body.c_str()).HasParseError())
+                {
+                    const uint64_t localHeight = getUint64FromJSON(resp, "height");
+                    const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");
+                    const uint64_t lag = networkHeight > localHeight ? (networkHeight - localHeight) : 0;
+
+                    if (lag <= AUTO_COMPACTION_NEAR_SYNC_LAG_BLOCKS)
+                    {
+                        m_nearSyncStreak += 1;
+                    }
+                    else if (lag >= AUTO_COMPACTION_RESYNC_LAG_BLOCKS)
+                    {
+                        m_nearSyncStreak = 0;
+                    }
+
+                    const uint64_t desiredInterval =
+                        m_nearSyncStreak >= AUTO_COMPACTION_NEAR_SYNC_STREAK_REQUIRED
+                        ? AUTO_COMPACTION_CHECK_INTERVAL_SLOW_SECONDS
+                        : AUTO_COMPACTION_CHECK_INTERVAL_FAST_SECONDS;
+
+                    if (desiredInterval != m_schedulerCheckIntervalSeconds)
+                    {
+                        m_schedulerCheckIntervalSeconds = desiredInterval;
+                        logger(Logging::INFO)
+                            << "Adaptive maintenance scheduler interval switched to "
+                            << m_schedulerCheckIntervalSeconds << "s (local height: " << localHeight
+                            << ", network height: " << networkHeight
+                            << ", lag: " << lag << ").";
+                    }
+                }
+            }
+        }
+
+        const fs::path dbPath = fs::path(m_config.dataDirectory) / "DB";
+        const uint64_t freeBytes = getAvailableBytes(dbPath);
+        const bool lowSpaceForPrune = freeBytes < m_config.autoPruneMinFreeBytes;
+        const bool lowSpaceForCompaction = freeBytes < m_config.autoCompactionMinFreeBytes;
+        const bool pruneGapReached = m_config.autoPruneMinGapBlocks == 0
+            ? false
+            : (m_lastAutoPruneHeight == 0
+                || (currentHeight > m_lastAutoPruneHeight
+                    && (currentHeight - m_lastAutoPruneHeight) >= m_config.autoPruneMinGapBlocks));
+
+        if (m_config.prune
+            && (pruneGapReached || lowSpaceForPrune))
+        {
+            if (lowSpaceForPrune)
+            {
+                logger(Logging::WARNING)
+                    << "Low free disk space (" << freeBytes
+                    << " bytes). Forcing periodic prune pass regardless of block gap.";
+            }
+
+            logger(Logging::INFO)
+                << "Starting periodic prune pass in background (depth " << m_config.pruneDepth << ").";
+
+            try
+            {
+                const auto prunedBlocks = m_core.pruneRawBlocks(m_config.pruneDepth);
+                logger(Logging::INFO) << "Periodic prune pass completed. Raw block slots processed: " << prunedBlocks;
+            }
+            catch (const std::exception &e)
+            {
+                logger(Logging::WARNING) << "Periodic prune pass failed: " << e.what();
+            }
+
+            m_lastAutoPruneHeight = currentHeight;
+        }
+
+        if (m_compactionRunning)
+        {
+            continue;
+        }
+
+        if (lowSpaceForCompaction)
+        {
+            logger(Logging::WARNING)
+                << "Skipping automatic DB compaction due to low free disk space ("
+                << freeBytes << " bytes, required at least " << m_config.autoCompactionMinFreeBytes << " bytes).";
+            continue;
+        }
+
+        if (m_config.autoCompactionMinGapBlocks == 0)
+        {
+            continue;
+        }
+
+        const uint64_t lastActivityHeight = std::max(m_compactionStartedAtHeight, m_compactionFinishedAtHeight);
+
+        if (lastActivityHeight != 0
+            && currentHeight > lastActivityHeight
+            && (currentHeight - lastActivityHeight) < m_config.autoCompactionMinGapBlocks)
+        {
+            continue;
+        }
+
+        m_compactionHasResult = false;
+        m_compactionLastError = std::error_code();
+        m_compactionLastErrorDetails.clear();
+        m_compactionStartedAt = now;
+        m_compactionStartedAtHeight = currentHeight;
+        m_compactionRunning = true;
+        create_compaction_marker_locked();
+        logger(Logging::INFO) << "Starting DB compaction (automatic periodic background task).";
+        m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
+        std::cout << InformationMsg("Automatic periodic DB compaction started in background.") << std::endl;
+    }
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
+{
+    if (args.empty())
+    {
+        std::cout << "Usage: ban list | ban add <ip> [seconds] | ban delete <ip>" << std::endl;
+        return true;
+    }
+
+    const std::string sub = args[0];
+
+    if (sub == "list")
+    {
+        const auto bans = m_srv.get_banned_hosts();
+
+        if (bans.empty())
+        {
+            std::cout << InformationMsg("Ban list is empty.") << std::endl;
+            return true;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::cout << InformationMsg("Banned hosts:") << std::endl;
+        for (const auto &[ip, until] : bans)
+        {
+            const uint64_t remaining = until > now ? (until - now) : 0;
+            std::cout << "  " << Common::ipAddressToString(ip) << " (" << remaining << "s remaining)" << std::endl;
+        }
+
+        return true;
+    }
+
+    if (sub == "add")
+    {
+        if (args.size() < 2 || args.size() > 3)
+        {
+            std::cout << "Usage: ban add <ip> [seconds]" << std::endl;
+            return true;
+        }
+
+        uint64_t seconds = 900;
+        if (args.size() == 3 && !Common::fromString(args[2], seconds))
+        {
+            std::cout << WarningMsg("Invalid ban seconds value.") << std::endl;
+            return true;
+        }
+
+        if (seconds == 0)
+        {
+            std::cout << WarningMsg("Ban seconds must be greater than zero.") << std::endl;
+            return true;
+        }
+
+        uint32_t ipHostOrder = 0;
+        try
+        {
+            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            return true;
+        }
+
+        const uint32_t ip = hostToNetwork(ipHostOrder);
+        m_srv.ban_host(ip, seconds);
+        std::cout << SuccessMsg("Ban added for " + Common::ipAddressToString(ip) + " (" + std::to_string(seconds) + "s)")
+                  << std::endl;
+        return true;
+    }
+
+    if (sub == "delete")
+    {
+        if (args.size() != 2)
+        {
+            std::cout << "Usage: ban delete <ip>" << std::endl;
+            return true;
+        }
+
+        uint32_t ipHostOrder = 0;
+        try
+        {
+            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            return true;
+        }
+
+        const uint32_t ip = hostToNetwork(ipHostOrder);
+        const bool removed = m_srv.unban_host(ip);
+
+        if (!removed)
+        {
+            std::cout << WarningMsg("IP not found in ban list.") << std::endl;
+            return true;
+        }
+
+        std::cout << SuccessMsg("Ban removed for " + Common::ipAddressToString(ip)) << std::endl;
+        return true;
+    }
+
+    std::cout << "Usage: ban list | ban add <ip> [seconds] | ban delete <ip>" << std::endl;
     return true;
 }

@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -13,6 +14,7 @@
 #include <rapidjson/istreamwrapper.h>
 #include <rapidjson/ostreamwrapper.h>
 #include <rapidjson/prettywriter.h>
+#include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/Input.h>
 #include <utilities/String.h>
@@ -32,6 +34,12 @@ const std::string getAddressBookName(const std::vector<AddressBookEntry> address
         std::getline(std::cin, friendlyName);
 
         Utilities::trim(friendlyName);
+
+        if (friendlyName.empty())
+        {
+            std::cout << WarningMsg("Friendly name cannot be empty.") << std::endl << std::endl;
+            continue;
+        }
 
         const auto it = std::find(addressBook.begin(), addressBook.end(), AddressBookEntry(friendlyName));
 
@@ -76,10 +84,23 @@ void addToAddressBook()
         return;
     }
 
+    if (!Utilities::isIntegratedAddress(address))
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("standard") << std::endl;
+    }
+    else if (address.length() == WalletConfig::integratedAddressLength)
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-short") << std::endl;
+    }
+    else
+    {
+        std::cout << InformationMsg("Address type: ") << SuccessMsg("integrated-long") << std::endl;
+    }
+
     std::string paymentID;
 
     /* Don't prompt for a payment ID if we have an integrated address */
-    if (address.length() == WalletConfig::standardAddressLength)
+    if (!Utilities::isIntegratedAddress(address))
     {
         const bool cancelAllowed = true;
 
@@ -94,6 +115,10 @@ void addToAddressBook()
 
             return;
         }
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is already embedded.") << std::endl;
     }
 
     addressBook.emplace_back(friendlyName, address, paymentID);
@@ -208,6 +233,7 @@ void sendFromAddressBook(const std::shared_ptr<WalletBackend> walletBackend)
     if (!success)
     {
         std::cout << WarningMsg("Cancelling transaction.\n");
+        return;
     }
 
     sendTransaction(walletBackend, addressBookEntry.address, amount, addressBookEntry.paymentID);
@@ -258,7 +284,7 @@ void deleteFromAddressBook()
 
         if (it != addressBook.end())
         {
-            addressBook.erase(it);
+            addressBook.erase(it, addressBook.end());
 
             if (saveAddressBook(addressBook))
             {
@@ -325,13 +351,35 @@ std::vector<AddressBookEntry> getAddressBook()
     {
         rapidjson::IStreamWrapper isw(input);
         rapidjson::Document j;
-        if (!j.ParseStream(isw).HasParseError())
+        if (j.ParseStream(isw).HasParseError())
         {
-            for (auto &v : j.GetArray())
+            std::cout << WarningMsg("Failed to parse address book JSON. Using empty address book.") << std::endl;
+            return addressBook;
+        }
+
+        if (!j.IsArray())
+        {
+            std::cout << WarningMsg("Address book file has invalid format. Using empty address book.") << std::endl;
+            return addressBook;
+        }
+
+        for (auto &v : j.GetArray())
+        {
+            if (!v.IsObject())
+            {
+                std::cout << WarningMsg("Skipping invalid address book entry (expected JSON object).") << std::endl;
+                continue;
+            }
+
+            try
             {
                 AddressBookEntry entry;
                 entry.fromJSON(v);
                 addressBook.push_back(entry);
+            }
+            catch (const std::exception &)
+            {
+                std::cout << WarningMsg("Skipping malformed address book entry.") << std::endl;
             }
         }
     }

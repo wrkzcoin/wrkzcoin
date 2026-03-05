@@ -285,10 +285,11 @@ bool BlockDownloader::downloadBlocks()
     /* Timestamp is transient and can change - block height is constant. */
     if (m_startTimestamp != 0)
     {
+        const uint64_t previousStartTimestamp = m_startTimestamp;
         m_startTimestamp = 0;
         m_startHeight = blocks.front().blockHeight;
 
-        m_subWallets->convertSyncTimestampToHeight(m_startTimestamp, m_startHeight);
+        m_subWallets->convertSyncTimestampToHeight(previousStartTimestamp, m_startHeight);
     }
 
     std::stringstream stream;

@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2018, The Karai Developers
 //
 // Please see the included LICENSE file for more information.
@@ -267,6 +268,10 @@ namespace CryptoNote
             KV_MEMBER(outs);
         }
     };
+
+    /* Forward declare converters so RandomOuts vector conversion resolves under newer nlohmann::json. */
+    inline void to_json(nlohmann::json &j, const OutputEntry &o);
+    inline void from_json(const nlohmann::json &j, OutputEntry &o);
 
     inline void to_json(nlohmann::json &j, const RandomOuts &r)
     {

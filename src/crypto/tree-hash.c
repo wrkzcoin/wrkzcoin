@@ -1,11 +1,16 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
 #include "hash-ops.h"
 
+#if defined(_WIN32) || defined(__MINGW32__)
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>

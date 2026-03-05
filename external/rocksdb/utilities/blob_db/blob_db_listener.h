@@ -5,8 +5,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
-
 #include <atomic>
 
 #include "rocksdb/listener.h"
@@ -23,19 +21,24 @@ class BlobDBListener : public EventListener {
 
   void OnFlushBegin(DB* /*db*/, const FlushJobInfo& /*info*/) override {
     assert(blob_db_impl_ != nullptr);
-    blob_db_impl_->SyncBlobFiles();
+    blob_db_impl_->SyncBlobFiles(WriteOptions(Env::IOActivity::kFlush))
+        .PermitUncheckedError();
   }
 
   void OnFlushCompleted(DB* /*db*/, const FlushJobInfo& /*info*/) override {
     assert(blob_db_impl_ != nullptr);
-    blob_db_impl_->UpdateLiveSSTSize();
+    blob_db_impl_->UpdateLiveSSTSize(WriteOptions(Env::IOActivity::kFlush));
   }
 
   void OnCompactionCompleted(DB* /*db*/,
                              const CompactionJobInfo& /*info*/) override {
     assert(blob_db_impl_ != nullptr);
-    blob_db_impl_->UpdateLiveSSTSize();
+    blob_db_impl_->UpdateLiveSSTSize(
+        WriteOptions(Env::IOActivity::kCompaction));
   }
+
+  const char* Name() const override { return kClassName(); }
+  static const char* kClassName() { return "BlobDBListener"; }
 
  protected:
   BlobDBImpl* blob_db_impl_;
@@ -46,6 +49,8 @@ class BlobDBListenerGC : public BlobDBListener {
   explicit BlobDBListenerGC(BlobDBImpl* blob_db_impl)
       : BlobDBListener(blob_db_impl) {}
 
+  const char* Name() const override { return kClassName(); }
+  static const char* kClassName() { return "BlobDBListenerGC"; }
   void OnFlushCompleted(DB* db, const FlushJobInfo& info) override {
     BlobDBListener::OnFlushCompleted(db, info);
 
@@ -63,4 +68,3 @@ class BlobDBListenerGC : public BlobDBListener {
 
 }  // namespace blob_db
 }  // namespace ROCKSDB_NAMESPACE
-#endif  // !ROCKSDB_LITE

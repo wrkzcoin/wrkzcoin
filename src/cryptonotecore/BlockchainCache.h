@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -47,8 +48,16 @@ namespace CryptoNote
 
         std::vector<TransactionOutputTarget> outputs;
 
+        std::vector<uint64_t> outputAmounts;
+
         // needed for getTransactionGlobalIndexes query
         std::vector<uint32_t> globalIndexes;
+
+        std::vector<KeyInput> keyInputs;
+
+        Crypto::PublicKey transactionPublicKey;
+
+        std::string paymentId;
 
         void serialize(ISerializer &s);
     };

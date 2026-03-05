@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -48,8 +49,16 @@ std::string getPrompt(std::shared_ptr<WalletBackend> walletBackend)
     }
 
     const std::string shortName = walletName.substr(0, promptLength);
+    const auto [walletBlockCount, localDaemonBlockCount, networkBlockCount] = walletBackend->getSyncStatus();
 
-    return "[" + WalletConfig::ticker + " " + shortName + "]: ";
+    std::string syncRemark;
+
+    if (localDaemonBlockCount + 1 < networkBlockCount || walletBlockCount + 10 < networkBlockCount)
+    {
+        syncRemark = " (out-of-sync)";
+    }
+
+    return "[" + WalletConfig::ticker + " " + shortName + syncRemark + "]: ";
 }
 
 template<typename T> std::string getInput(const std::vector<T> &availableCommands, const std::string prompt)
@@ -125,6 +134,29 @@ std::string getAddress(const std::string msg, const bool integratedAddressesAllo
         if (Error error = validateAddresses({address}, integratedAddressesAllowed); error != SUCCESS)
         {
             std::cout << WarningMsg("Invalid address: ") << WarningMsg(error) << std::endl;
+
+            switch (error.getErrorCode())
+            {
+                case ADDRESS_WRONG_PREFIX:
+                    std::cout << InformationMsg("Tip: Use a ") << SuccessMsg(WalletConfig::ticker)
+                              << InformationMsg(" address starting with ") << SuccessMsg(WalletConfig::addressPrefix)
+                              << "." << std::endl;
+                    break;
+                case ADDRESS_WRONG_LENGTH:
+                    std::cout << InformationMsg("Tip: Valid lengths are ")
+                              << SuccessMsg(WalletConfig::standardAddressLength) << InformationMsg(" (standard), ")
+                              << SuccessMsg(WalletConfig::integratedAddressLength)
+                              << InformationMsg(" (integrated-short), ")
+                              << SuccessMsg(WalletConfig::integratedAddressLengthLong)
+                              << InformationMsg(" (integrated-long).") << std::endl;
+                    break;
+                case ADDRESS_NOT_BASE58:
+                    std::cout << InformationMsg("Tip: Remove spaces/symbols and ensure it is pure base58 text.")
+                              << std::endl;
+                    break;
+                default:
+                    break;
+            }
         }
         else
         {
@@ -166,6 +198,18 @@ std::string getPaymentID(const std::string msg, const bool cancelAllowed)
         if (Error error = validatePaymentID(paymentID); error != SUCCESS)
         {
             std::cout << WarningMsg("Invalid payment ID: ") << WarningMsg(error) << std::endl;
+
+            switch (error.getErrorCode())
+            {
+                case PAYMENT_ID_WRONG_LENGTH:
+                    std::cout << InformationMsg("Tip: Payment ID must be 16 or 64 hex characters.") << std::endl;
+                    break;
+                case PAYMENT_ID_INVALID:
+                    std::cout << InformationMsg("Tip: Use only hexadecimal characters: 0-9 and a-f.") << std::endl;
+                    break;
+                default:
+                    break;
+            }
         }
         else
         {

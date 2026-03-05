@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -163,15 +164,28 @@ std::string getAction(const ZedConfig &config)
     return parseCommand(startupCommands(), startupCommands(), "What would you like to do?: ");
 }
 
+void printStartupHealth(const std::shared_ptr<WalletBackend> walletBackend)
+{
+    const WalletTypes::WalletStatus status = walletBackend->getStatus();
+
+    std::cout << InformationMsg("\nStartup Health Check") << std::endl;
+    std::cout << "Daemon reachable: " << SuccessMsg(walletBackend->daemonOnline() ? "yes" : "no") << std::endl;
+    std::cout << "Wallet/local/network height: " << SuccessMsg(status.walletBlockCount) << "/"
+              << SuccessMsg(status.localDaemonBlockCount) << "/" << SuccessMsg(status.networkBlockCount) << std::endl;
+    std::cout << "Peers: " << SuccessMsg(status.peerCount) << std::endl;
+}
+
 void mainLoop(const std::shared_ptr<WalletBackend> walletBackend, const std::shared_ptr<std::mutex> mutex)
 {
+    printStartupHealth(walletBackend);
+
     if (walletBackend->isViewWallet())
     {
-        printCommands(basicViewWalletCommands());
+        printCommands(allViewWalletCommands());
     }
     else
     {
-        printCommands(basicCommands());
+        printCommands(allCommands());
     }
 
     while (true)
@@ -180,11 +194,11 @@ void mainLoop(const std::shared_ptr<WalletBackend> walletBackend, const std::sha
 
         if (walletBackend->isViewWallet())
         {
-            command = parseCommand(basicViewWalletCommands(), allViewWalletCommands(), getPrompt(walletBackend));
+            command = parseCommand(allViewWalletCommands(), allViewWalletCommands(), getPrompt(walletBackend));
         }
         else
         {
-            command = parseCommand(basicCommands(), allCommands(), getPrompt(walletBackend));
+            command = parseCommand(allCommands(), allCommands(), getPrompt(walletBackend));
         }
 
         /* User exited */

@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -10,6 +11,8 @@
 #include <CryptoNote.h>
 #include <errors/Errors.h>
 #include <JsonHelper.h>
+#include <cstdint>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -550,6 +553,14 @@ namespace WalletTypes
         TransactionResult tx;
         Crypto::Hash transactionHash;
     };
+
+    /* Forward declare nlohmann converters used by nested/vector serializers. */
+    inline void to_json(nlohmann::json &j, const KeyOutput &k);
+    inline void from_json(const nlohmann::json &j, KeyOutput &k);
+    inline void to_json(nlohmann::json &j, const RawCoinbaseTransaction &r);
+    inline void from_json(const nlohmann::json &j, RawCoinbaseTransaction &r);
+    inline void to_json(nlohmann::json &j, const RawTransaction &r);
+    inline void from_json(const nlohmann::json &j, RawTransaction &r);
 
     inline void to_json(nlohmann::json &j, const TopBlock &t)
     {

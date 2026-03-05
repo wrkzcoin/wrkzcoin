@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -21,6 +22,7 @@ namespace System
             bindingContext(dispatcher.getReusableContext())
         {
             bindingContext.interrupted = false;
+            bindingContext.interruptProcedure = nullptr;
             bindingContext.groupNext = nullptr;
             bindingContext.groupPrev = nullptr;
             bindingContext.group = nullptr;
@@ -80,6 +82,16 @@ namespace System
                 {
                     interrupt();
                 }
+                catch (...)
+                {
+                    // dispatch() threw a non-InterruptedException (e.g. swapcontext
+                    // failure under memory pressure).  Re-interrupt the wrapped context
+                    // so it eventually unwinds and sets ready, then keep looping until
+                    // ready is actually set.  Without this the caller returns prematurely
+                    // while the context fiber still holds a waiter on ready, causing an
+                    // Event::~Event() assertion failure.
+                    interrupt();
+                }
             }
         }
 
@@ -107,6 +119,7 @@ namespace System
             bindingContext(dispatcher.getReusableContext())
         {
             bindingContext.interrupted = false;
+            bindingContext.interruptProcedure = nullptr;
             bindingContext.groupNext = nullptr;
             bindingContext.groupPrev = nullptr;
             bindingContext.group = nullptr;
@@ -162,6 +175,16 @@ namespace System
                 }
                 catch (InterruptedException &)
                 {
+                    interrupt();
+                }
+                catch (...)
+                {
+                    // dispatch() threw a non-InterruptedException (e.g. swapcontext
+                    // failure under memory pressure).  Re-interrupt the wrapped context
+                    // so it eventually unwinds and sets ready, then keep looping until
+                    // ready is actually set.  Without this the caller returns prematurely
+                    // while the context fiber still holds a waiter on ready, causing an
+                    // Event::~Event() assertion failure.
                     interrupt();
                 }
             }

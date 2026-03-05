@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -23,21 +24,20 @@ namespace System
 
     } // namespace
 
-    Event::Event(): dispatcher(nullptr) {}
+    Event::Event(): dispatcher(nullptr), state(false), first(nullptr), last(nullptr) {}
 
-    Event::Event(Dispatcher &dispatcher): dispatcher(&dispatcher), state(false), first(nullptr) {}
+    Event::Event(Dispatcher &dispatcher): dispatcher(&dispatcher), state(false), first(nullptr), last(nullptr) {}
 
     Event::Event(Event &&other): dispatcher(other.dispatcher)
     {
         if (dispatcher != nullptr)
         {
             state = other.state;
-            if (!state)
-            {
-                assert(other.first == nullptr);
-                first = nullptr;
-            }
+            first = other.first;
+            last = other.last;
 
+            other.first = nullptr;
+            other.last = nullptr;
             other.dispatcher = nullptr;
         }
     }
@@ -54,12 +54,11 @@ namespace System
         if (dispatcher != nullptr)
         {
             state = other.state;
-            if (!state)
-            {
-                assert(other.first == nullptr);
-                first = nullptr;
-            }
+            first = other.first;
+            last = other.last;
 
+            other.first = nullptr;
+            other.last = nullptr;
             other.dispatcher = nullptr;
         }
 
@@ -79,6 +78,7 @@ namespace System
         {
             state = false;
             first = nullptr;
+            last = nullptr;
         }
     }
 
@@ -146,10 +146,72 @@ namespace System
             }
 
             last = &waiter;
-            dispatcher->dispatch();
+            try
+            {
+                dispatcher->dispatch();
+            }
+            catch (...)
+            {
+                // dispatch() threw (e.g. swapcontext failed). The waiter is still
+                // linked in the event list but its stack frame is about to be
+                // destroyed. Unlink it now and clear interruptProcedure to prevent
+                // dangling-pointer access from a later Event::set() call.
+                if (!waiter.interrupted)
+                {
+                    if (waiter.next != nullptr)
+                    {
+                        waiter.next->prev = waiter.prev;
+                    }
+                    else
+                    {
+                        last = waiter.prev;
+                    }
+
+                    if (waiter.prev != nullptr)
+                    {
+                        waiter.prev->next = waiter.next;
+                    }
+                    else
+                    {
+                        first = waiter.next;
+                    }
+                }
+
+                waiter.context->interruptProcedure = nullptr;
+                throw;
+            }
+
             assert(waiter.context == dispatcher->getCurrentContext());
             assert(waiter.context->interruptProcedure == nullptr);
             assert(dispatcher != nullptr);
+
+            // Unlink stack-allocated waiter on normal wakeup. Interrupted wakeup
+            // already unlinks via interruptProcedure.
+            if (!waiter.interrupted)
+            {
+                if (waiter.next != nullptr)
+                {
+                    assert(waiter.next->prev == &waiter);
+                    waiter.next->prev = waiter.prev;
+                }
+                else
+                {
+                    assert(last == &waiter);
+                    last = waiter.prev;
+                }
+
+                if (waiter.prev != nullptr)
+                {
+                    assert(waiter.prev->next == &waiter);
+                    waiter.prev->next = waiter.next;
+                }
+                else
+                {
+                    assert(first == &waiter);
+                    first = waiter.next;
+                }
+            }
+
             if (waiter.interrupted)
             {
                 throw InterruptedException();

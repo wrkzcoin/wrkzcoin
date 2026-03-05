@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "db/arena_wrapped_db_iter.h"
+#include "db/blob/blob_index.h"
 #include "db/column_family.h"
 #include "db/db_iter.h"
 #include "db/db_test_util.h"
@@ -41,14 +42,13 @@ class DBBlobIndexTest : public DBTestBase {
                                        Tier::kImmutableMemtables,
                                        Tier::kL0SstFile, Tier::kLnSstFile};
 
-  DBBlobIndexTest()
-      : DBTestBase("/db_blob_index_test", /*env_do_fsync=*/true) {}
+  DBBlobIndexTest() : DBTestBase("db_blob_index_test", /*env_do_fsync=*/true) {}
 
   ColumnFamilyHandle* cfh() { return dbfull()->DefaultColumnFamily(); }
-
-  ColumnFamilyData* cfd() {
-    return static_cast_with_check<ColumnFamilyHandleImpl>(cfh())->cfd();
+  ColumnFamilyHandleImpl* cfh_impl() {
+    return static_cast_with_check<ColumnFamilyHandleImpl>(cfh());
   }
+  ColumnFamilyData* cfd() { return cfh_impl()->cfd(); }
 
   Status PutBlobIndex(WriteBatch* batch, const Slice& key,
                       const Slice& blob_index) {
@@ -96,9 +96,11 @@ class DBBlobIndexTest : public DBTestBase {
   }
 
   ArenaWrappedDBIter* GetBlobIterator() {
-    return dbfull()->NewIteratorImpl(
-        ReadOptions(), cfd(), dbfull()->GetLatestSequenceNumber(),
-        nullptr /*read_callback*/, true /*expose_blob_index*/);
+    DBImpl* db_impl = dbfull();
+    return db_impl->NewIteratorImpl(
+        ReadOptions(), cfh_impl(), cfd()->GetReferencedSuperVersion(db_impl),
+        db_impl->GetLatestSequenceNumber(), nullptr /*read_callback*/,
+        true /*expose_blob_index*/);
   }
 
   Options GetTestOptions() {
@@ -131,28 +133,45 @@ class DBBlobIndexTest : public DBTestBase {
         ASSERT_OK(Flush());
         ASSERT_OK(
             dbfull()->CompactRange(CompactRangeOptions(), nullptr, nullptr));
-#ifndef ROCKSDB_LITE
         ASSERT_EQ("0,1", FilesPerLevel());
-#endif  // !ROCKSDB_LITE
         break;
     }
   }
 };
 
-// Should be able to write kTypeBlobIndex to memtables and SST files.
+// Note: the following test case pertains to the StackableDB-based BlobDB
+// implementation. We should be able to write kTypeBlobIndex to memtables and
+// SST files.
 TEST_F(DBBlobIndexTest, Write) {
   for (auto tier : kAllTiers) {
     DestroyAndReopen(GetTestOptions());
-    for (int i = 1; i <= 5; i++) {
-      std::string index = ToString(i);
+
+    std::vector<std::pair<std::string, std::string>> key_values;
+
+    constexpr size_t num_key_values = 5;
+
+    key_values.reserve(num_key_values);
+
+    for (size_t i = 1; i <= num_key_values; ++i) {
+      std::string key = "key" + std::to_string(i);
+
+      std::string blob_index;
+      BlobIndex::EncodeInlinedTTL(&blob_index, /* expiration */ 9876543210,
+                                  "blob" + std::to_string(i));
+
+      key_values.emplace_back(std::move(key), std::move(blob_index));
+    }
+
+    for (const auto& key_value : key_values) {
       WriteBatch batch;
-      ASSERT_OK(PutBlobIndex(&batch, "key" + index, "blob" + index));
+      ASSERT_OK(PutBlobIndex(&batch, key_value.first, key_value.second));
       ASSERT_OK(Write(&batch));
     }
+
     MoveDataTo(tier);
-    for (int i = 1; i <= 5; i++) {
-      std::string index = ToString(i);
-      ASSERT_EQ("blob" + index, GetBlobIndex("key" + index));
+
+    for (const auto& key_value : key_values) {
+      ASSERT_EQ(GetBlobIndex(key_value.first), key_value.second);
     }
   }
 }
@@ -165,13 +184,19 @@ TEST_F(DBBlobIndexTest, Write) {
 // accidentally opening the base DB of a stacked BlobDB and actual corruption
 // when using the integrated BlobDB.
 TEST_F(DBBlobIndexTest, Get) {
+  std::string blob_index;
+  BlobIndex::EncodeInlinedTTL(&blob_index, /* expiration */ 9876543210, "blob");
+
   for (auto tier : kAllTiers) {
     DestroyAndReopen(GetTestOptions());
+
     WriteBatch batch;
     ASSERT_OK(batch.Put("key", "value"));
-    ASSERT_OK(PutBlobIndex(&batch, "blob_key", "blob_index"));
+    ASSERT_OK(PutBlobIndex(&batch, "blob_key", blob_index));
     ASSERT_OK(Write(&batch));
+
     MoveDataTo(tier);
+
     // Verify normal value
     bool is_blob_index = false;
     PinnableSlice value;
@@ -179,6 +204,7 @@ TEST_F(DBBlobIndexTest, Get) {
     ASSERT_EQ("value", GetImpl("key"));
     ASSERT_EQ("value", GetImpl("key", &is_blob_index));
     ASSERT_FALSE(is_blob_index);
+
     // Verify blob index
     if (tier <= kImmutableMemtables) {
       ASSERT_TRUE(Get("blob_key", &value).IsNotSupported());
@@ -187,7 +213,7 @@ TEST_F(DBBlobIndexTest, Get) {
       ASSERT_TRUE(Get("blob_key", &value).IsCorruption());
       ASSERT_EQ("CORRUPTION", GetImpl("blob_key"));
     }
-    ASSERT_EQ("blob_index", GetImpl("blob_key", &is_blob_index));
+    ASSERT_EQ(blob_index, GetImpl("blob_key", &is_blob_index));
     ASSERT_TRUE(is_blob_index);
   }
 }
@@ -197,11 +223,14 @@ TEST_F(DBBlobIndexTest, Get) {
 // if blob index is updated with a normal value. See the test case above for
 // more details.
 TEST_F(DBBlobIndexTest, Updated) {
+  std::string blob_index;
+  BlobIndex::EncodeInlinedTTL(&blob_index, /* expiration */ 9876543210, "blob");
+
   for (auto tier : kAllTiers) {
     DestroyAndReopen(GetTestOptions());
     WriteBatch batch;
     for (int i = 0; i < 10; i++) {
-      ASSERT_OK(PutBlobIndex(&batch, "key" + ToString(i), "blob_index"));
+      ASSERT_OK(PutBlobIndex(&batch, "key" + std::to_string(i), blob_index));
     }
     ASSERT_OK(Write(&batch));
     // Avoid blob values from being purged.
@@ -219,7 +248,7 @@ TEST_F(DBBlobIndexTest, Updated) {
     ASSERT_OK(dbfull()->DeleteRange(WriteOptions(), cfh(), "key6", "key9"));
     MoveDataTo(tier);
     for (int i = 0; i < 10; i++) {
-      ASSERT_EQ("blob_index", GetBlobIndex("key" + ToString(i), snapshot));
+      ASSERT_EQ(blob_index, GetBlobIndex("key" + std::to_string(i), snapshot));
     }
     ASSERT_EQ("new_value", Get("key1"));
     if (tier <= kImmutableMemtables) {
@@ -231,9 +260,9 @@ TEST_F(DBBlobIndexTest, Updated) {
     ASSERT_EQ("NOT_FOUND", Get("key4"));
     ASSERT_EQ("a,b,c", GetImpl("key5"));
     for (int i = 6; i < 9; i++) {
-      ASSERT_EQ("NOT_FOUND", Get("key" + ToString(i)));
+      ASSERT_EQ("NOT_FOUND", Get("key" + std::to_string(i)));
     }
-    ASSERT_EQ("blob_index", GetBlobIndex("key9"));
+    ASSERT_EQ(blob_index, GetBlobIndex("key9"));
     dbfull()->ReleaseSnapshot(snapshot);
   }
 }
@@ -272,7 +301,7 @@ TEST_F(DBBlobIndexTest, Iterate) {
   };
 
   auto get_value = [&](int index, int version) {
-    return get_key(index) + "_value" + ToString(version);
+    return get_key(index) + "_value" + std::to_string(version);
   };
 
   auto check_iterator = [&](Iterator* iterator, Status::Code expected_status,
@@ -294,8 +323,7 @@ TEST_F(DBBlobIndexTest, Iterate) {
 
   auto check_is_blob = [&](bool is_blob) {
     return [is_blob](Iterator* iterator) {
-      ASSERT_EQ(is_blob,
-                reinterpret_cast<ArenaWrappedDBIter*>(iterator)->IsBlob());
+      ASSERT_EQ(is_blob, static_cast<ArenaWrappedDBIter*>(iterator)->IsBlob());
     };
   };
 
@@ -430,7 +458,6 @@ TEST_F(DBBlobIndexTest, Iterate) {
     verify(15, Status::kOk, get_value(16, 0), get_value(14, 0),
            create_blob_iterator, check_is_blob(false));
 
-#ifndef ROCKSDB_LITE
     // Iterator with blob support and using seek.
     ASSERT_OK(dbfull()->SetOptions(
         cfh(), {{"max_sequential_skip_in_iterations", "0"}}));
@@ -455,7 +482,6 @@ TEST_F(DBBlobIndexTest, Iterate) {
            create_blob_iterator, check_is_blob(false));
     verify(15, Status::kOk, get_value(16, 0), get_value(14, 0),
            create_blob_iterator, check_is_blob(false));
-#endif  // !ROCKSDB_LITE
 
     for (auto* snapshot : snapshots) {
       dbfull()->ReleaseSnapshot(snapshot);
@@ -472,7 +498,7 @@ TEST_F(DBBlobIndexTest, IntegratedBlobIterate) {
   auto get_key = [](size_t index) { return ("key" + std::to_string(index)); };
 
   auto get_value = [&](size_t index, size_t version) {
-    return get_key(index) + "_value" + ToString(version);
+    return get_key(index) + "_value" + std::to_string(version);
   };
 
   auto check_iterator = [&](Iterator* iterator, Status expected_status,
@@ -555,12 +581,10 @@ TEST_F(DBBlobIndexTest, IntegratedBlobIterate) {
   Status expected_status;
   verify(1, expected_status, expected_value);
 
-#ifndef ROCKSDB_LITE
   // Test DBIter::FindValueForCurrentKeyUsingSeek flow.
   ASSERT_OK(dbfull()->SetOptions(cfh(),
                                  {{"max_sequential_skip_in_iterations", "0"}}));
   verify(1, expected_status, expected_value);
-#endif  // !ROCKSDB_LITE
 }
 
 }  // namespace ROCKSDB_NAMESPACE
@@ -568,5 +592,6 @@ TEST_F(DBBlobIndexTest, IntegratedBlobIterate) {
 int main(int argc, char** argv) {
   ROCKSDB_NAMESPACE::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
+  RegisterCustomObjects(argc, argv);
   return RUN_ALL_TESTS();
 }

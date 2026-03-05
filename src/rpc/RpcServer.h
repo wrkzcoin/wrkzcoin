@@ -6,8 +6,10 @@
 
 #include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "httplib.h"
 #include "JsonHelper.h"
@@ -21,10 +23,8 @@
 
 enum class RpcMode
 {
-    Default = 0,
-    BlockExplorerEnabled = 1,
-	MiningEnabled = 2,
-    AllMethodsEnabled = 3,
+    Standard = 0,
+    Explorer = 1,
 };
 
 class RpcServer
@@ -38,8 +38,14 @@ class RpcServer
         const uint16_t bindPort,
         const std::string rpcBindIp,
         const std::string corsHeader,
-        const std::string feeAddress,
-        const uint64_t feeAmount,
+        const std::string rpcAccessToken,
+        const uint32_t rpcReadTimeout,
+        const uint32_t rpcWriteTimeout,
+        const uint64_t rpcMaxRequestBodyBytes,
+        const uint32_t rpcMaxRequestsPerMinute,
+        const uint32_t rpcMaxGlobalIndexesRange,
+        const uint32_t rpcMaxBlockCount,
+        const bool rpcTrustProxy,
         const RpcMode rpcMode,
         const std::shared_ptr<CryptoNote::Core> core,
         const std::shared_ptr<CryptoNote::NodeServer> p2p,
@@ -92,6 +98,10 @@ class RpcServer
         const std::string errorMessage,
         httplib::Response &res);
 
+    std::string getClientIp(const httplib::Request &req) const;
+
+    bool isRateLimited(const std::string &clientIp);
+
     /////////////////////
     /* OPTION REQUESTS */
     /////////////////////
@@ -104,9 +114,6 @@ class RpcServer
 
     std::tuple<Error, uint16_t>
         info(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
-
-    std::tuple<Error, uint16_t>
-        fee(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
     std::tuple<Error, uint16_t>
         height(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
@@ -203,14 +210,24 @@ class RpcServer
      * header is not added. */
     const std::string m_corsHeader;
 
+    const std::string m_rpcAccessToken;
+
+    const uint32_t m_rpcReadTimeout;
+
+    const uint32_t m_rpcWriteTimeout;
+
+    const uint64_t m_rpcMaxRequestBodyBytes;
+
+    const uint32_t m_rpcMaxRequestsPerMinute;
+
+    const uint32_t m_rpcMaxGlobalIndexesRange;
+
+    const uint32_t m_rpcMaxBlockCount;
+
+    const bool m_rpcTrustProxy;
+
     /* The thread running the server */
     std::thread m_serverThread;
-
-    /* The address to return from the /fee endpoint */
-    const std::string m_feeAddress;
-
-    /* The amount to return from the /fee endpoint */
-    const uint64_t m_feeAmount;
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;
@@ -222,4 +239,7 @@ class RpcServer
     const std::shared_ptr<CryptoNote::NodeServer> m_p2p;
 
     const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> m_syncManager;
+
+    std::mutex m_rateLimitMutex;
+    std::unordered_map<std::string, std::pair<uint64_t, uint32_t>> m_rateLimitByIp;
 };

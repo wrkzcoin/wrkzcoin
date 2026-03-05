@@ -1,7 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2024, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -363,10 +363,12 @@ namespace CryptoNote
             2800000,  // 17
             3500000,  // 18
             3800000,  // 19
+            4300000,  // 20
+            4500000,  // 21 prune capability + mixed full/pruned sync policy activation
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 19;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 21;
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 
@@ -389,6 +391,9 @@ namespace CryptoNote
         
         /* Maximum allowable blocks to rewind from existing chain */
         const uint64_t MAX_BLOCK_ALLOWED_TO_REWIND = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 3;
+
+        /* Feature fork where prune capability signaling and sync policy enforcement activate. */
+        const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";
@@ -430,6 +435,8 @@ namespace CryptoNote
 
     const int RPC_DEFAULT_PORT = 17856;
 
+    const int ZMQ_PUB_DEFAULT_PORT = 17857;
+
     const int SERVICE_DEFAULT_PORT = 7856;
 
     const size_t P2P_LOCAL_WHITE_PEERLIST_LIMIT = 1000;
@@ -464,15 +471,10 @@ namespace CryptoNote
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
 
-    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 2; // 2 MB
+    const uint64_t ROCKSDB_WRITE_BUFFER_MB = 64; // 64 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB
-    const uint64_t ROCKSDB_MAX_OPEN_FILES = 512; // 512 files
+    const uint64_t ROCKSDB_MAX_OPEN_FILES = 4096; // 4096 files
     const uint64_t ROCKSDB_BACKGROUND_THREADS = 8; // 4 DB threads
-
-    const uint64_t LEVELDB_WRITE_BUFFER_MB = 2; // 2 MB
-    const uint64_t LEVELDB_READ_BUFFER_MB = 128; // 128 MB
-    const uint64_t LEVELDB_MAX_OPEN_FILES = 512; // 512 files
-    const uint64_t LEVELDB_MAX_FILE_SIZE_MB = 1024; // 1024MB = 1GB
 
     const char LATEST_VERSION_URL[] = "https://latest.wrkz.work";
 
@@ -482,7 +484,14 @@ namespace CryptoNote
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {
-        "23.88.42.100:17855",      // node-fin.wrkz.work
-        "195.7.5.101:17855"        // node-wrkz.btipz.com
+        "node-fin.wrkz.work:17855",
+        "node-wrkz.btipz.com:17855"
+    };
+
+    /* DNS seed hostnames — each may return multiple A records via DNS.
+     * All resolved IPs are added as seed nodes using P2P_DEFAULT_PORT.
+     * Only add hosts here that are guaranteed to run on the default port. */
+    const char *const DNS_SEED_NODES[] = {
+        "seeds.wrkz.work"
     };
 } // namespace CryptoNote

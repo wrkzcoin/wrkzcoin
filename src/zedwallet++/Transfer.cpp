@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -7,7 +8,12 @@
 /////////////////////////////////
 
 #include <config/WalletConfig.h>
+#include <config/CryptoNoteConfig.h>
+#include <algorithm>
+#include <chrono>
 #include <iostream>
+#include <thread>
+#include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Input.h>
@@ -20,6 +26,68 @@ namespace
     void cancel()
     {
         std::cout << WarningMsg("Cancelling transaction.\n");
+    }
+
+    std::string getAddressTypeLabel(const std::string &address)
+    {
+        if (!Utilities::isIntegratedAddress(address))
+        {
+            return "standard";
+        }
+
+        if (address.length() == WalletConfig::integratedAddressLength)
+        {
+            return "integrated-short";
+        }
+
+        return "integrated-long";
+    }
+
+    void watchTransactionUntilConfirmed(
+        const std::shared_ptr<WalletBackend> &walletBackend,
+        const Crypto::Hash &hash,
+        const uint64_t waitSeconds = 20)
+    {
+        const uint64_t intervalSeconds = 5;
+        const uint64_t maxChecks = std::max<uint64_t>(1, waitSeconds / intervalSeconds);
+
+        for (uint64_t i = 0; i < maxChecks; i++)
+        {
+            const auto unconfirmed = walletBackend->getUnconfirmedTransactions();
+
+            const auto inPool = std::find_if(unconfirmed.begin(), unconfirmed.end(), [&hash](const auto &tx) {
+                return tx.hash == hash;
+            });
+
+            if (inPool != unconfirmed.end())
+            {
+                std::cout << InformationMsg("Status: pending in pool...") << std::endl;
+                std::this_thread::sleep_for(std::chrono::seconds(intervalSeconds));
+                continue;
+            }
+
+            const auto confirmed = walletBackend->getTransactions();
+            const auto inBlock = std::find_if(confirmed.begin(), confirmed.end(), [&hash](const auto &tx) {
+                return tx.hash == hash;
+            });
+
+            if (inBlock != confirmed.end())
+            {
+                std::cout << SuccessMsg("Status: confirmed in block ") << SuccessMsg(inBlock->blockHeight) << std::endl;
+                return;
+            }
+
+            std::this_thread::sleep_for(std::chrono::seconds(intervalSeconds));
+        }
+
+        std::cout << WarningMsg("Status still pending. Returning to prompt so you can continue using the wallet.")
+                  << std::endl;
+        std::cout << InformationMsg("Use ")
+                  << SuccessMsg("txs")
+                  << InformationMsg(" / ")
+                  << SuccessMsg("list_transfers")
+                  << InformationMsg(" to check confirmation later.")
+                  << std::endl;
     }
 } // namespace
 
@@ -46,11 +114,12 @@ void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sen
         return;
     }
 
+    std::cout << InformationMsg("Address type: ") << SuccessMsg(getAddressTypeLabel(address)) << std::endl;
     std::cout << "\n";
 
     std::string paymentID;
 
-    if (address.length() == WalletConfig::standardAddressLength)
+    if (!Utilities::isIntegratedAddress(address))
     {
         paymentID = getPaymentID(
             "What payment ID do you want to use?\n"
@@ -64,6 +133,12 @@ void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sen
         }
 
         std::cout << "\n";
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is embedded; skipping payment ID prompt.")
+                  << std::endl
+                  << std::endl;
     }
 
     /* If we're using send all, then we'll work out the max in the WalletBackend
@@ -110,6 +185,27 @@ void sendTransaction(
     const std::string paymentID,
     const bool sendAll)
 {
+    std::string destination = address;
+    std::string effectivePaymentID = paymentID;
+
+    if (Utilities::isIntegratedAddress(destination))
+    {
+        const auto [extractedAddress, extractedPaymentID] = Utilities::extractIntegratedAddressData(destination);
+        destination = extractedAddress;
+
+        if (effectivePaymentID.empty())
+        {
+            effectivePaymentID = extractedPaymentID;
+        }
+        else if (effectivePaymentID != extractedPaymentID)
+        {
+            std::cout << WarningMsg("Conflicting payment IDs detected between integrated address and input PID.")
+                      << std::endl;
+            cancel();
+            return;
+        }
+    }
+
     const auto unlockedBalance = walletBackend->getTotalUnlockedBalance();
 
     /* nodeFee will be zero if using a node without a fee, so we can add this
@@ -137,9 +233,9 @@ void sendTransaction(
     WalletTypes::PreparedTransactionInfo preparedTransaction;
 
     std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionBasic(
-        address,
+        destination,
         amount,
-        paymentID,
+        effectivePaymentID,
         sendAll,
         false /* Don't relay to network */
     );
@@ -173,9 +269,9 @@ void sendTransaction(
 
         /* Resend the transaction */
         std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionBasic(
-            address,
+            destination,
             amount,
-            paymentID,
+            effectivePaymentID,
             sendAll,
             false /* Don't relay to network */
         );
@@ -206,7 +302,7 @@ void sendTransaction(
         ? unlockedBalance - nodeFee - preparedTransaction.fee
         : amount;
 
-    if (!confirmTransaction(walletBackend, address, actualAmount, paymentID, nodeFee, preparedTransaction.fee))
+    if (!confirmTransaction(walletBackend, destination, actualAmount, effectivePaymentID, nodeFee, preparedTransaction.fee))
     {
         cancel();
         return;
@@ -223,6 +319,15 @@ void sendTransaction(
     else
     {
         std::cout << SuccessMsg("Transaction has been sent!\nHash: ") << SuccessMsg(hash) << std::endl;
+
+        if (Utilities::confirm("Watch transaction status now (pool -> block)?"))
+        {
+            watchTransactionUntilConfirmed(walletBackend, hash);
+        }
+
+        std::cout << InformationMsg(
+                         "Note: recipients typically see incoming funds once a block confirms the transaction.")
+                  << std::endl;
     }
 }
 
@@ -254,6 +359,10 @@ bool confirmTransaction(
 
     std::cout << "\n\nFROM: " << SuccessMsg(walletBackend->getWalletLocation()) << "\nTO: " << SuccessMsg(address)
               << "\n\n";
+
+    std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
+              << SuccessMsg(CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS) << InformationMsg(" blocks")
+              << std::endl;
 
     if (Utilities::confirm("Is this correct?"))
     {

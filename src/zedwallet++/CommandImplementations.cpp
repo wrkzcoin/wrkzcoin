@@ -1,5 +1,6 @@
 // Portions Copyright (c) 2018-2019, The Catalyst Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -9,7 +10,10 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
+#include <crypto/random.h>
+#include <common/StringTools.h>
 #include <errors/ValidateParameters.h>
+#include <cstdlib>
 #include <fstream>
 #include <logger/Logger.h>
 #include <utilities/Addresses.h>
@@ -295,6 +299,13 @@ void reset(const std::shared_ptr<WalletBackend> walletBackend)
     walletBackend->m_eventHandler->onTransaction.resume();
 }
 
+void refresh(const std::shared_ptr<WalletBackend> walletBackend)
+{
+    walletBackend->m_eventHandler->onTransaction.pause();
+    syncWallet(walletBackend);
+    walletBackend->m_eventHandler->onTransaction.resume();
+}
+
 void saveCSV(const std::shared_ptr<WalletBackend> walletBackend)
 {
     const auto transactions = walletBackend->getTransactions();
@@ -417,6 +428,64 @@ void printIncomingTransfer(const WalletTypes::Transaction tx)
     }
 }
 
+void printTransferOneLine(const WalletTypes::Transaction tx)
+{
+    const bool incoming = tx.totalAmount() >= 0;
+    const int64_t amount = std::abs(tx.totalAmount());
+
+    std::stringstream stream;
+
+    stream << (incoming ? "[IN] " : "[OUT] ");
+
+    if (tx.blockHeight == 0 || tx.timestamp == 0)
+    {
+        stream << "h:pending t:pending ";
+    }
+    else
+    {
+        stream << "h:" << tx.blockHeight << " ";
+        stream << "t:" << Utilities::unixTimeToDate(tx.timestamp) << " ";
+    }
+
+    stream << (incoming ? "+" : "-") << Utilities::formatAmount(amount) << " ";
+
+    if (!incoming && tx.fee != 0)
+    {
+        stream << "fee:" << Utilities::formatAmount(tx.fee) << " ";
+    }
+
+    stream << "tx:" << tx.hash;
+
+    if (incoming)
+    {
+        const int64_t difference = tx.unlockTime - tx.blockHeight;
+
+        if (tx.unlockTime != 0 && difference > 0
+            && tx.unlockTime < CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
+        {
+            stream << " unlock_h:" << tx.unlockTime;
+        }
+        else if (tx.unlockTime > static_cast<uint64_t>(std::time(nullptr)))
+        {
+            stream << " unlock_t:" << Utilities::unixTimeToDate(tx.unlockTime);
+        }
+    }
+
+    if (!tx.paymentID.empty())
+    {
+        stream << " pid:" << tx.paymentID;
+    }
+
+    if (incoming)
+    {
+        std::cout << SuccessMsg(stream.str()) << std::endl;
+    }
+    else
+    {
+        std::cout << WarningMsg(stream.str()) << std::endl;
+    }
+}
+
 void listTransfers(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend)
 {
     uint64_t totalSpent = 0;
@@ -439,6 +508,58 @@ void listTransfers(const bool incoming, const bool outgoing, const std::shared_p
         /* Is a fusion transaction (on a view only wallet). It appears to have
            an incoming amount, because we can't detract the outputs (can't
            decrypt them) */
+        if (tx.isFusionTransaction())
+        {
+            continue;
+        }
+
+        const int64_t amount = tx.totalAmount();
+
+        if (amount < 0 && outgoing)
+        {
+            printTransferOneLine(tx);
+
+            totalSpent += -amount;
+            numOutgoingTransactions++;
+        }
+        else if (amount > 0 && incoming)
+        {
+            printTransferOneLine(tx);
+
+            totalReceived += amount;
+            numIncomingTransactions++;
+        }
+    }
+
+    std::cout << InformationMsg("Summary:\n\n");
+
+    if (incoming)
+    {
+        std::cout << SuccessMsg(numIncomingTransactions) << SuccessMsg(" incoming transactions, totalling ")
+                  << SuccessMsg(Utilities::formatAmount(totalReceived)) << std::endl;
+    }
+
+    if (outgoing)
+    {
+        std::cout << WarningMsg(numOutgoingTransactions) << WarningMsg(" outgoing transactions, totalling ")
+                  << WarningMsg(Utilities::formatAmount(totalSpent)) << std::endl;
+    }
+}
+
+void listTransfersVerbose(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend)
+{
+    uint64_t totalSpent = 0;
+    uint64_t totalReceived = 0;
+
+    uint64_t numIncomingTransactions = 0;
+    uint64_t numOutgoingTransactions = 0;
+
+    std::vector<WalletTypes::Transaction> transactions = walletBackend->getTransactions();
+    const auto unconfirmedTransactions = walletBackend->getUnconfirmedTransactions();
+    transactions.insert(transactions.end(), unconfirmedTransactions.begin(), unconfirmedTransactions.end());
+
+    for (const auto &tx : transactions)
+    {
         if (tx.isFusionTransaction())
         {
             continue;
@@ -493,7 +614,7 @@ void save(const std::shared_ptr<WalletBackend> walletBackend)
     }
 }
 
-void createIntegratedAddress()
+void createIntegratedAddress(const std::shared_ptr<WalletBackend> walletBackend)
 {
     std::cout << InformationMsg("Creating an integrated address from an ")
               << InformationMsg("address and payment ID pair...") << std::endl
@@ -509,6 +630,13 @@ void createIntegratedAddress()
         std::getline(std::cin, address);
 
         Utilities::trim(address);
+
+        if (address.empty())
+        {
+            address = walletBackend->getPrimaryAddress();
+            std::cout << InformationMsg("No address provided. Using primary wallet address: ")
+                      << SuccessMsg(address) << std::endl;
+        }
 
         const bool integratedAddressesAllowed = false;
 
@@ -529,6 +657,13 @@ void createIntegratedAddress()
         std::getline(std::cin, paymentID);
 
         Utilities::trim(paymentID);
+
+        if (paymentID.empty())
+        {
+            paymentID = Common::toHex(Random::randomBytes(8));
+            std::cout << InformationMsg("No payment ID provided. Generated random short payment ID: ")
+                      << SuccessMsg(paymentID) << std::endl;
+        }
 
         /* Validate the payment ID */
         if (Error error = validatePaymentID(paymentID); error != SUCCESS)
@@ -558,26 +693,64 @@ void help(const std::shared_ptr<WalletBackend> walletBackend)
 {
     if (walletBackend->isViewWallet())
     {
-        printCommands(basicViewWalletCommands());
+        printCommands(allViewWalletCommands());
     }
     else
     {
-        printCommands(basicCommands());
+        printCommands(allCommands());
     }
+}
+
+void listTransfersBrief(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend)
+{
+    std::vector<WalletTypes::Transaction> transactions = walletBackend->getTransactions();
+    const auto unconfirmedTransactions = walletBackend->getUnconfirmedTransactions();
+    transactions.insert(transactions.end(), unconfirmedTransactions.begin(), unconfirmedTransactions.end());
+
+    uint64_t displayed = 0;
+    uint64_t matched = 0;
+    constexpr uint64_t pageSize = 25;
+
+    for (const auto &tx : transactions)
+    {
+        if (tx.isFusionTransaction())
+        {
+            continue;
+        }
+
+        const int64_t amount = tx.totalAmount();
+        const bool isIncoming = amount > 0;
+        const bool isOutgoing = amount < 0;
+
+        if ((isIncoming && !incoming) || (isOutgoing && !outgoing) || (!isIncoming && !isOutgoing))
+        {
+            continue;
+        }
+
+        printTransferOneLine(tx);
+        matched++;
+        displayed++;
+
+        if (displayed % pageSize == 0)
+        {
+            std::cout << InformationMsg("Press Enter for more, or type q to stop: ");
+            std::string input;
+            std::getline(std::cin, input);
+            Utilities::trim(input);
+
+            if (input == "q" || input == "Q")
+            {
+                break;
+            }
+        }
+    }
+
+    std::cout << InformationMsg("Displayed ") << SuccessMsg(matched) << InformationMsg(" transfer(s).") << std::endl;
 }
 
 void advanced(const std::shared_ptr<WalletBackend> walletBackend)
 {
-    /* We pass the offset of the command to know what index to print for
-       command numbers */
-    if (walletBackend->isViewWallet())
-    {
-        printCommands(advancedViewWalletCommands(), basicViewWalletCommands().size());
-    }
-    else
-    {
-        printCommands(advancedCommands(), basicCommands().size());
-    }
+    help(walletBackend);
 }
 
 void swapNode(const std::shared_ptr<WalletBackend> walletBackend)
@@ -613,6 +786,157 @@ void getTxPrivateKey(const std::shared_ptr<WalletBackend> walletBackend)
     else
     {
         std::cout << InformationMsg("Transaction private key: ") << SuccessMsg(key) << std::endl;
+    }
+}
+
+void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    std::string txHash;
+
+    if (commandInput.rfind("check_tx ", 0) == 0)
+    {
+        txHash = commandInput.substr(std::string("check_tx ").size());
+        Utilities::trim(txHash);
+    }
+
+    if (txHash.empty())
+    {
+        txHash = getHash("Transaction hash to check (or cancel): ", true);
+    }
+
+    if (txHash == "cancel")
+    {
+        return;
+    }
+
+    if (Error error = validateHash(txHash); error != SUCCESS)
+    {
+        std::cout << WarningMsg("Invalid hash: ") << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    Crypto::Hash hash;
+    Common::podFromHex(txHash, hash);
+
+    const auto unconfirmed = walletBackend->getUnconfirmedTransactions();
+    const auto unconfirmedIt = std::find_if(unconfirmed.begin(), unconfirmed.end(), [&hash](const auto &tx) {
+        return tx.hash == hash;
+    });
+
+    const auto confirmed = walletBackend->getTransactions();
+    const auto confirmedIt = std::find_if(confirmed.begin(), confirmed.end(), [&hash](const auto &tx) {
+        return tx.hash == hash;
+    });
+
+    std::cout << InformationMsg("Wallet lookup: ");
+    if (unconfirmedIt != unconfirmed.end())
+    {
+        std::cout << WarningMsg("found (pending outgoing in pool)") << std::endl;
+        std::cout << "  amount: " << WarningMsg(Utilities::formatAmount(std::abs(unconfirmedIt->totalAmount())))
+                  << ", fee: " << WarningMsg(Utilities::formatAmount(unconfirmedIt->fee)) << std::endl;
+    }
+    else if (confirmedIt != confirmed.end())
+    {
+        const bool incoming = confirmedIt->totalAmount() > 0;
+        std::cout << SuccessMsg("found (confirmed ") << SuccessMsg(incoming ? "incoming" : "outgoing")
+                  << SuccessMsg(")") << std::endl;
+        std::cout << "  block: " << SuccessMsg(confirmedIt->blockHeight) << ", amount: ";
+        if (incoming)
+        {
+            std::cout << SuccessMsg(Utilities::formatAmount(confirmedIt->totalAmount()));
+        }
+        else
+        {
+            std::cout << WarningMsg(Utilities::formatAmount(std::abs(confirmedIt->totalAmount())));
+        }
+        std::cout << std::endl;
+        if (!confirmedIt->paymentID.empty())
+        {
+            std::cout << "  payment ID: " << SuccessMsg(confirmedIt->paymentID) << std::endl;
+        }
+    }
+    else
+    {
+        std::cout << WarningMsg("not found in this wallet") << std::endl;
+    }
+
+    std::unordered_set<Crypto::Hash> hashes = {hash};
+    std::unordered_set<Crypto::Hash> inPool;
+    std::unordered_set<Crypto::Hash> inBlock;
+    std::unordered_set<Crypto::Hash> unknown;
+
+    const bool daemonOk = walletBackend->getTransactionsStatus(hashes, inPool, inBlock, unknown);
+
+    std::cout << InformationMsg("Node lookup: ");
+    if (!daemonOk)
+    {
+        std::cout << WarningMsg("failed to query daemon") << std::endl;
+        return;
+    }
+
+    if (inPool.find(hash) != inPool.end())
+    {
+        std::cout << WarningMsg("transaction is in pool") << std::endl;
+    }
+    else if (inBlock.find(hash) != inBlock.end())
+    {
+        std::cout << SuccessMsg("transaction is in a block") << std::endl;
+    }
+    else if (unknown.find(hash) != unknown.end())
+    {
+        std::cout << WarningMsg("transaction is unknown to daemon") << std::endl;
+    }
+    else
+    {
+        std::cout << WarningMsg("daemon returned no status for this transaction") << std::endl;
+    }
+}
+
+void decodeIntegrated(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    std::string integratedAddress;
+
+    if (commandInput.rfind("decode_integrated ", 0) == 0)
+    {
+        integratedAddress = commandInput.substr(std::string("decode_integrated ").size());
+        Utilities::trim(integratedAddress);
+    }
+
+    if (integratedAddress.empty())
+    {
+        std::cout << InformationMsg("Integrated address to decode (or cancel): ");
+        std::getline(std::cin, integratedAddress);
+        Utilities::trim(integratedAddress);
+    }
+
+    if (integratedAddress == "cancel")
+    {
+        return;
+    }
+
+    if (!Utilities::isIntegratedAddress(integratedAddress))
+    {
+        std::cout << WarningMsg("This is not an integrated address format for this network.") << std::endl;
+        std::cout << InformationMsg("Expected length: ") << SuccessMsg(WalletConfig::integratedAddressLength)
+                  << InformationMsg(" (short) or ") << SuccessMsg(WalletConfig::integratedAddressLengthLong)
+                  << InformationMsg(" (long).") << std::endl;
+        return;
+    }
+
+    if (Error error = validateAddresses({integratedAddress}, true); error != SUCCESS)
+    {
+        std::cout << WarningMsg("Invalid integrated address: ") << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    const auto [actualAddress, paymentID] = Utilities::extractIntegratedAddressData(integratedAddress);
+
+    std::cout << InformationMsg("Decoded address: ") << SuccessMsg(actualAddress) << std::endl;
+    std::cout << InformationMsg("Embedded payment ID: ") << SuccessMsg(paymentID) << std::endl;
+
+    if (walletBackend != nullptr && actualAddress == walletBackend->getPrimaryAddress())
+    {
+        std::cout << SuccessMsg("This integrated address maps to your primary wallet address.") << std::endl;
     }
 }
 

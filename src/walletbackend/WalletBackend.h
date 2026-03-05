@@ -1,5 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -13,6 +13,7 @@
 #include <string>
 #include <subwallets/SubWallets.h>
 #include <tuple>
+#include <unordered_set>
 #include <vector>
 #include <walletbackend/WalletSynchronizer.h>
 #include <walletbackend/WalletSynchronizerRAIIWrapper.h>
@@ -66,6 +67,18 @@ class WalletBackend
         const Crypto::SecretKey privateSpendKey,
         const Crypto::SecretKey privateViewKey,
         const std::string filename,
+        const std::string password,
+        const uint64_t scanHeight,
+        const std::string daemonHost,
+        const uint16_t daemonPort,
+        const bool daemonSSL,
+        const unsigned int syncThreadCount = std::thread::hardware_concurrency());
+
+    /* Imports a wallet from keys without touching wallet files.
+       Intended for transient/in-memory flows (e.g. browser wasm transfer workers). */
+    static std::tuple<Error, std::shared_ptr<WalletBackend>> importWalletFromKeysTransient(
+        const Crypto::SecretKey privateSpendKey,
+        const Crypto::SecretKey privateViewKey,
         const std::string password,
         const uint64_t scanHeight,
         const std::string daemonHost,
@@ -264,6 +277,12 @@ class WalletBackend
     std::tuple<Error, std::string> getAddress(const Crypto::PublicKey spendKey) const;
 
     std::tuple<Error, Crypto::SecretKey> getTxPrivateKey(const Crypto::Hash txHash) const;
+
+    bool getTransactionsStatus(
+        const std::unordered_set<Crypto::Hash> transactionHashes,
+        std::unordered_set<Crypto::Hash> &transactionsInPool,
+        std::unordered_set<Crypto::Hash> &transactionsInBlock,
+        std::unordered_set<Crypto::Hash> &transactionsUnknown) const;
 
     std::vector<std::tuple<std::string, uint64_t, uint64_t>> getBalances() const;
 

@@ -1,4 +1,4 @@
-# We need 3.8 for set(CMAKE_CXX_STANDARD 17)
+# We need 3.8 for set(CMAKE_CXX_STANDARD 20)
 cmake_minimum_required(VERSION 3.8)
 
 find_program(CCACHE_PROGRAM ccache)
@@ -14,7 +14,23 @@ else ()
 endif ()
 
 set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
-set(ARCH native CACHE STRING "CPU to build for: -march value or native")
+set(ARCH default CACHE STRING "CPU to build for: -march value or native")
+set(CONSENSUS_SAFE_BUILD ON CACHE BOOL "Use reproducible, consensus-safe compiler optimizations")
+set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distributed across different machines")
+set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may reduce CPU portability")
+set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
+set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
+set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
+set(ROCKSDB_BUILD_PARALLEL_CAP "4" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided")
+option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
+option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
+option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
+option(WRKZ_WASM_PTHREADS "Build wallet WASM with pthread/atomics support" OFF)
+option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
+option(WRKZ_ANDROID_HEADER_ONLY_BOOST "Use Boost headers only on Android builds" ON)
+option(WRKZ_ANDROID_DISABLE_OPENSSL "Disable OpenSSL probing/linking on Android builds" ON)
+option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
+set(LIBUCONTEXT_ROOT "" CACHE PATH "Root of prebuilt libucontext for Android (expects include/ and lib/libucontext.a)")
 
 project(WrkzCoin)
 
@@ -32,6 +48,13 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     # Clang 6.0 or higher
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6)
         message(FATAL_ERROR "Clang 6.0 or greater is required to compile. Please check the README.md for detailed compilation instructions.")
+    endif ()
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
+        message(WARNING
+            "Clang < 15 on Linux may fail with C++20 <chrono> depending on libstdc++ headers "
+            "(known issue: clang-14 with GCC 13 libstdc++). Prefer clang >= 15, GCC, clang+libc++, "
+            "or clang with an older GCC toolchain."
+        )
     endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # Visual Studio 15 2017 or higher
@@ -53,10 +76,32 @@ set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON FORCE)
 set(CMAKE_SUPPRESS_REGENERATION ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
-# Enable c++17
-set(CMAKE_CXX_STANDARD 17)
+# Enable c++20 (required by RocksDB 10 headers)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Validate the active compiler/standard-library tuple can compile C++20 <chrono>.
+# This catches known combinations such as clang-14 with GCC 13 libstdc++ headers.
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_QUIET TRUE)
+check_cxx_source_compiles(
+    "
+    #include <chrono>
+    int main() {
+      std::chrono::nanoseconds n{1};
+      return static_cast<int>(n.count());
+    }
+    "
+    WRKZ_CXX20_CHRONO_WORKS
+)
+if (NOT WRKZ_CXX20_CHRONO_WORKS)
+    message(FATAL_ERROR
+        "This compiler/stdlib combination cannot compile C++20 <chrono>.\n"
+        "Known bad combo: clang-14 with GCC 13 libstdc++ headers.\n"
+        "Use GCC, clang >= 15, clang + libc++, or clang with an older GCC toolchain (e.g. g++-11 headers)."
+    )
+endif ()
 
 ## This section is for settings found in the slow-hash routine(s) that may benefit some systems (mostly ARM)
 set(FORCE_USE_HEAP ON CACHE BOOL "Force the use of heap memory allocation")
@@ -64,6 +109,25 @@ set(NO_AES OFF CACHE BOOL "Turn off Hardware AES instructions?")
 set(NO_OPTIMIZED_MULTIPLY_ON_ARM OFF CACHE BOOL "Turn off Optimized Multiplication on ARM?")
 
 message(STATUS "Building for target architecture: ${ARCH}")
+message(STATUS "CONSENSUS_SAFE_BUILD: ${CONSENSUS_SAFE_BUILD}")
+message(STATUS "PORTABLE_BINARY: ${PORTABLE_BINARY}")
+message(STATUS "ENABLE_X86_AESNI: ${ENABLE_X86_AESNI}")
+message(STATUS "FULLY_STATIC: ${FULLY_STATIC}")
+message(STATUS "ENABLE_ZMQ: ${ENABLE_ZMQ}")
+
+if (WRKZ_ANDROID_PROFILE)
+    message(STATUS "Applying Android profile defaults")
+    set(WRKZ_BUILD_EXECUTABLES OFF CACHE BOOL "Build CLI/daemon executables" FORCE)
+    set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+endif ()
+message(STATUS "WRKZ_BUILD_EXECUTABLES: ${WRKZ_BUILD_EXECUTABLES}")
+message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
+message(STATUS "WRKZ_BUILD_WALLET_WASM: ${WRKZ_BUILD_WALLET_WASM}")
+message(STATUS "WRKZ_WASM_PTHREADS: ${WRKZ_WASM_PTHREADS}")
+message(STATUS "WRKZ_ANDROID_PROFILE: ${WRKZ_ANDROID_PROFILE}")
+message(STATUS "WRKZ_ANDROID_HEADER_ONLY_BOOST: ${WRKZ_ANDROID_HEADER_ONLY_BOOST}")
+message(STATUS "WRKZ_ANDROID_DISABLE_OPENSSL: ${WRKZ_ANDROID_DISABLE_OPENSSL}")
+message(STATUS "WRKZ_FORCE_STATIC_INTERNALS: ${WRKZ_FORCE_STATIC_INTERNALS}")
 
 if (FORCE_USE_HEAP)
     add_definitions(-DFORCE_USE_HEAP)
@@ -93,8 +157,8 @@ if (DEFINED ENV{LABEL})
     message(STATUS "Found LABEL: ${LABEL}")
 endif ()
 
-## We only build static binaries -- this is left here for our dependencies
-set(STATIC ON CACHE BOOL FORCE "Link libraries statically? Forced to ON")
+## Keep static internal libraries by default for compatibility.
+set(STATIC ${WRKZ_FORCE_STATIC_INTERNALS} CACHE BOOL "Link libraries statically?" FORCE)
 
 ## This section helps us tag our builds with the git commit information
 set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include commit ID in version")
@@ -130,26 +194,73 @@ endif ()
 include_directories(include "${CMAKE_CURRENT_BINARY_DIR}/version" src external)
 
 ## Platform specific code base information is applied here
-if (MSVC)
+if (WIN32)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/windows)
-    add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
-    foreach (VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
-        string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
-    endforeach ()
-    include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
+    if (MSVC)
+        add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
+        foreach (VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
+            string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
+        endforeach ()
+        include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
+    else ()
+        include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/mingw)
+        add_definitions(-DWIN32 -D_WIN32_WINNT=0x0600 -DWIN32_LEAN_AND_MEAN)
+    endif ()
 elseif (APPLE)
     include_directories(SYSTEM /usr/include/malloc)
     enable_language(ASM)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/osx)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
-
+elseif (ANDROID)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/android)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
+    add_definitions(-D_GNU_SOURCE -D_XOPEN_SOURCE=700)
+    add_definitions(-DBOOST_NO_CXX98_FUNCTION_BASE -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
 else ()
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
 endif ()
 
 if (NOT MSVC)
+    string(TOLOWER "${CMAKE_C_COMPILER}" WRKZ_C_COMPILER_LC)
+    string(TOLOWER "${CMAKE_CXX_COMPILER}" WRKZ_CXX_COMPILER_LC)
+    set(WRKZ_COMPILER_TARGETS_ARM FALSE)
+    set(WRKZ_COMPILER_TARGETS_AARCH64 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARM32 FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMHF FALSE)
+    set(WRKZ_COMPILER_TARGETS_ARMEL FALSE)
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64|arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "aarch64|arm64"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "aarch64|arm64"
+    )
+        set(WRKZ_COMPILER_TARGETS_AARCH64 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf|arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARM32 TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabihf"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMHF TRUE)
+    endif ()
+    if (
+        WRKZ_C_COMPILER_LC MATCHES "arm-linux-gnueabi"
+        OR WRKZ_CXX_COMPILER_LC MATCHES "arm-linux-gnueabi"
+    )
+        set(WRKZ_COMPILER_TARGETS_ARMEL TRUE)
+    endif ()
+
     if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         # This option has no effect in glibc version less than 2.20.
         # Since glibc 2.20 _BSD_SOURCE is deprecated, this macro is recomended instead
@@ -158,9 +269,28 @@ if (NOT MSVC)
 
     ## This is here to support building for multiple architecture types... but we all know how well that usually goes...
     if ("${ARCH}" STREQUAL "default")
-        set(ARCH_FLAG "")
+        if (
+            PORTABLE_BINARY
+            AND NOT WRKZ_COMPILER_TARGETS_ARM
+            AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64"
+        )
+            set(ARCH_FLAG "-march=x86-64 -mtune=generic")
+        else ()
+            set(ARCH_FLAG "")
+        endif ()
     else ()
-        set(ARCH_FLAG "-march=${ARCH}")
+        if (
+            WRKZ_COMPILER_TARGETS_ARM
+            AND "${ARCH}" MATCHES "x86|X86|amd64|AMD64"
+        )
+            message(WARNING "Ignoring ARCH=${ARCH} because selected compiler targets ARM/aarch64.")
+            set(ARCH_FLAG "")
+        else ()
+            set(ARCH_FLAG "-march=${ARCH}")
+        endif ()
+        if (PORTABLE_BINARY AND "${ARCH}" STREQUAL "native")
+            message(WARNING "ARCH=native requested with PORTABLE_BINARY=ON. Result may not run on different CPUs.")
+        endif ()
     endif ()
 
     ## These options generate all those nice warnings we see while building
@@ -177,25 +307,29 @@ if (NOT MSVC)
     set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
     set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
 
-    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64")
+    if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64" OR WRKZ_COMPILER_TARGETS_AARCH64)
         set(MAES_FLAG "")
         set(CRYPTOPP_AARCH64 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch64")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" OR WRKZ_COMPILER_TARGETS_ARMHF)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARMHF ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabihf")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi" OR WRKZ_COMPILER_TARGETS_ARMEL)
         set(MAES_FLAG "")
         set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
         set(MAES_FLAG "")
         set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
-    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
-        set(MAES_FLAG "-maes")
+    elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT WRKZ_COMPILER_TARGETS_ARM AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
+        if (ENABLE_X86_AESNI AND NOT NO_AES)
+            set(MAES_FLAG "-maes")
+        else ()
+            set(MAES_FLAG "")
+        endif ()
     else ()
         set(MAES_FLAG "")
     endif ()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${STATICASSERTC_FLAG} ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 ${STATICASSERTCPP_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 ${STATICASSERTCPP_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
 
     if (APPLE)
         if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -211,7 +345,7 @@ if (NOT MSVC)
         endif ()
     endif ()
 
-    if (NOT APPLE)
+    if (NOT APPLE AND NOT WIN32 AND NOT EMSCRIPTEN)
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
 
@@ -223,7 +357,11 @@ if (NOT MSVC)
     endif ()
 
     ## Setting up RELEASE flags
-    set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
+    if (CONSENSUS_SAFE_BUILD)
+        set(RELEASE_FLAGS "-O2 -DNDEBUG -Wno-unused-variable -fno-strict-aliasing")
+    else ()
+        set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
+    endif ()
 
     if (NOT APPLE)
         # There is a clang bug that does not allow to compile code that uses AES-NI intrinsics if -flto is enabled
@@ -240,27 +378,165 @@ if (NOT MSVC)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} ${RELEASE_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} ${RELEASE_FLAGS}")
 
-    ## Statically link our binaries
-    if (NOT APPLE)
+    ## Statically link our binaries where it is supported.
+    if (NOT APPLE AND NOT ANDROID)
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+        if (FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+            message(STATUS "FULLY_STATIC enabled: linking with -static")
+        endif ()
     endif ()
 endif ()
 
 ## Go get us some static BOOST libraries
 set(Boost_NO_BOOST_CMAKE ON)
-set(Boost_USE_STATIC_LIBS ON)
-set(Boost_USE_STATIC_RUNTIME ON)
-find_package(Boost REQUIRED COMPONENTS system thread date_time chrono serialization)
+if (WRKZ_ANDROID_PROFILE)
+    set(Boost_USE_STATIC_LIBS OFF)
+    set(Boost_USE_STATIC_RUNTIME OFF)
+else ()
+    set(Boost_USE_STATIC_LIBS ON)
+    set(Boost_USE_STATIC_RUNTIME ON)
+endif ()
+if ((WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABLES)
+    OR (ANDROID AND WRKZ_ANDROID_HEADER_ONLY_BOOST))
+    # Android builds can run with Boost headers only.
+    if (NOT DEFINED BOOST_ROOT AND DEFINED ENV{BOOST_ROOT})
+        set(BOOST_ROOT "$ENV{BOOST_ROOT}")
+    endif ()
+
+    set(_WRKZ_BOOST_HEADER_CANDIDATES "")
+    if (DEFINED BOOST_ROOT)
+        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
+    endif ()
+
+    set(Boost_INCLUDE_DIRS "")
+    foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
+        if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
+            set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
+            break()
+        endif ()
+    endforeach ()
+
+    if (Boost_INCLUDE_DIRS STREQUAL "")
+        message(FATAL_ERROR
+            "Android build requires Boost headers but none were found.\n"
+            "Set BOOST_ROOT to an isolated Boost headers prefix containing include/boost/version.hpp.\n"
+            "Do not pass /usr/include directly in cross builds.")
+    endif ()
+
+    # Normalize include root: if the probe resolved to ".../boost", use its parent.
+    if (EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
+        get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
+    endif ()
+
+    if (
+        NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/version.hpp"
+        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp"
+        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/variant.hpp"
+    )
+        message(FATAL_ERROR
+            "Boost include root is invalid for Android build: ${Boost_INCLUDE_DIRS}\n"
+            "Expected headers:\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/version.hpp\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp\n"
+            "  ${Boost_INCLUDE_DIRS}/boost/variant.hpp\n"
+            "Set BOOST_ROOT to a valid isolated Boost prefix.")
+    endif ()
+    message(STATUS "Boost headers for Android build: ${Boost_INCLUDE_DIRS}")
+
+    set(WRKZ_BOOST_LINK_LIBS "")
+else ()
+    if (EMSCRIPTEN)
+        set(_WRKZ_BOOST_HEADER_CANDIDATES "")
+        if (DEFINED BOOST_ROOT)
+            list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
+        endif ()
+        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES
+            "/usr/include"
+            "/usr/local/include"
+            "/opt/homebrew/include"
+            "/opt/local/include")
+
+        set(Boost_INCLUDE_DIRS "")
+        foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
+            if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
+                set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
+                break()
+            endif ()
+        endforeach ()
+
+        if (Boost_INCLUDE_DIRS STREQUAL "")
+            message(FATAL_ERROR
+                "Emscripten wallet_wasm build requires Boost headers but none were found.\n"
+                "Set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
+        endif ()
+
+        # Avoid injecting full host include roots (e.g. /usr/include) into the
+        # Emscripten compile command, which can shadow sysroot libc headers.
+        # Build a shim include dir that only exposes boost/*.
+        set(_WRKZ_BOOST_SHIM_ROOT "${CMAKE_BINARY_DIR}/boost-headers")
+        file(MAKE_DIRECTORY "${_WRKZ_BOOST_SHIM_ROOT}")
+        if (NOT EXISTS "${_WRKZ_BOOST_SHIM_ROOT}/boost")
+            # Use file(COPY) for portability; symlinks require elevated privileges on Windows
+            file(COPY "${Boost_INCLUDE_DIRS}/boost" DESTINATION "${_WRKZ_BOOST_SHIM_ROOT}")
+        endif ()
+        set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_SHIM_ROOT}")
+
+        message(STATUS "Boost headers for Emscripten wallet_wasm: ${Boost_INCLUDE_DIRS}")
+        set(WRKZ_BOOST_LINK_LIBS "")
+    else ()
+        find_package(Boost REQUIRED COMPONENTS date_time)
+        set(WRKZ_BOOST_LINK_LIBS ${Boost_LIBRARIES})
+    endif ()
+endif ()
+if ((NOT Boost_INCLUDE_DIRS OR Boost_INCLUDE_DIRS STREQUAL "") AND DEFINED Boost_INCLUDE_DIR)
+    if (NOT "${Boost_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
+        set(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIR}")
+    endif ()
+endif ()
+if (Boost_INCLUDE_DIRS AND EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
+    get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
+endif ()
 message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-if (APPLE)
-    set(Boost_LIBRARIES "${Boost_LIBRARIES}")
-elseif (NOT MSVC)
-    set(Boost_LIBRARIES "${Boost_LIBRARIES};rt")
+
+## Detect ZLIB before OpenSSL.
+## Static OpenSSL on Linux/macOS commonly has a transitive zlib dependency.
+## CMake's FindOpenSSL appends ZLIB_LIBRARY to OPENSSL_LIBRARIES; if zlib-dev
+## is absent that becomes ZLIB_LIBRARY-NOTFOUND which causes a CMake generate
+## failure for every target that links OpenSSL.  Pre-finding ZLIB here allows
+## FindOpenSSL to resolve it correctly, and our cleanup block below removes
+## stray NOTFOUND entries for systems where zlib-dev is not installed.
+##
+## Debian/Ubuntu: sudo apt install zlib1g-dev
+## Fedora/RHEL:   sudo dnf install zlib-devel
+## macOS:         zlib ships with Xcode CLT (no extra step needed)
+if (NOT EMSCRIPTEN AND NOT (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
+    if (FULLY_STATIC AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        ## Force static zlib when building a fully-static binary; otherwise
+        ## find_package(ZLIB) returns libz.so which the static linker rejects.
+        set(_wrkz_saved_suffixes ${CMAKE_FIND_LIBRARY_SUFFIXES})
+        set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+        find_package(ZLIB QUIET)
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ${_wrkz_saved_suffixes})
+        unset(_wrkz_saved_suffixes)
+    else ()
+        find_package(ZLIB QUIET)
+    endif ()
+    if (ZLIB_FOUND)
+        message(STATUS "Found ZLIB: ${ZLIB_LIBRARIES}")
+    else ()
+        message(STATUS "ZLIB not found (zlib1g-dev / zlib-devel not installed).")
+        message(STATUS "  If the build fails with ZLIB_LIBRARY-NOTFOUND, install the zlib development package.")
+    endif ()
 endif ()
 
 ## Let's see if we have any OpenSSL static libraries available
-set(OPENSSL_USE_STATIC_LIBS ON)
+if (WRKZ_ANDROID_PROFILE)
+    set(OPENSSL_USE_STATIC_LIBS OFF)
+else ()
+    set(OPENSSL_USE_STATIC_LIBS ON)
+endif ()
 ## On MSVC, we need to link the RT/MT libraries
 if (MSVC)
     set(OPENSSL_MSVC_STATIC_RT ON)
@@ -281,42 +557,199 @@ if (APPLE)
     endif ()
 endif ()
 
-find_package(OpenSSL)
+if (EMSCRIPTEN OR (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
+    set(OPENSSL_FOUND FALSE)
+else ()
+    find_package(OpenSSL)
 
-if (NOT OPENSSL_FOUND)
-    find_package(PkgConfig)
+    if (NOT OPENSSL_FOUND)
+        find_package(PkgConfig)
 
-    if (PKG_CONFIG_FOUND)
-        pkg_search_module(OPENSSL openssl)
+        if (PKG_CONFIG_FOUND)
+            pkg_search_module(OPENSSL openssl)
+        endif()
     endif()
-endif()
+endif ()
 
 if (OPENSSL_FOUND)
-    ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
-    if (NOT MSVC)
-        set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};dl")
+    set(WRKZ_OPENSSL_INCLUDE_DIRS "")
+
+    if (DEFINED OPENSSL_INCLUDE_DIRS)
+        foreach(_WRKZ_SSL_DIR IN LISTS OPENSSL_INCLUDE_DIRS)
+            if (NOT "${_WRKZ_SSL_DIR}" MATCHES "-NOTFOUND$")
+                list(APPEND WRKZ_OPENSSL_INCLUDE_DIRS "${_WRKZ_SSL_DIR}")
+            endif ()
+        endforeach ()
     endif ()
 
-    include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
-    add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
-    message(STATUS "OpenSSL Found: ${OPENSSL_INCLUDE_DIR}")
-    message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
+    if (DEFINED OPENSSL_INCLUDE_DIR AND NOT "${OPENSSL_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
+        list(APPEND WRKZ_OPENSSL_INCLUDE_DIRS "${OPENSSL_INCLUDE_DIR}")
+    endif ()
+
+    list(REMOVE_DUPLICATES WRKZ_OPENSSL_INCLUDE_DIRS)
+
+    if (WRKZ_OPENSSL_INCLUDE_DIRS)
+        ## On non MSVC build systems, we need to link ldl with the static OpenSSL library
+        if (NOT MSVC AND NOT WIN32)
+            set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};dl")
+        endif ()
+        if (WIN32)
+            # Static OpenSSL for MinGW needs these system libs after libcrypto/libssl.
+            set(OPENSSL_LIBRARIES "${OPENSSL_LIBRARIES};crypt32;ws2_32;bcrypt;iphlpapi")
+        endif ()
+
+        ## CMake's FindOpenSSL may inject ZLIB_LIBRARY-NOTFOUND into
+        ## OPENSSL_LIBRARIES when zlib-dev is absent.  Strip NOTFOUND entries
+        ## and explicitly add zlib when available so static OpenSSL links.
+        if (NOT WIN32 AND NOT EMSCRIPTEN)
+            list(FILTER OPENSSL_LIBRARIES EXCLUDE REGEX "NOTFOUND")
+            if (ZLIB_FOUND)
+                list(APPEND OPENSSL_LIBRARIES ${ZLIB_LIBRARIES})
+            endif ()
+        endif ()
+
+        include_directories(SYSTEM ${WRKZ_OPENSSL_INCLUDE_DIRS})
+        add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
+        message(STATUS "OpenSSL Found: ${WRKZ_OPENSSL_INCLUDE_DIRS}")
+        message(STATUS "OpenSSL Libraries: ${OPENSSL_LIBRARIES}")
+    else ()
+        message(WARNING
+            "OpenSSL was detected but include directories are invalid. "
+            "Disabling OpenSSL integration for this build.")
+        set(OPENSSL_FOUND FALSE)
+        set(OPENSSL_LIBRARIES "")
+    endif ()
 else ()
     message(STATUS "OpenSSL Found: No... Skipping...")
 endif ()
 
+if (ENABLE_ZMQ)
+    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/libzmq/CMakeLists.txt")
+        set(WRKZ_USE_BUNDLED_ZMQ ON CACHE BOOL "Use bundled libzmq from external/libzmq" FORCE)
+        message(STATUS "ZeroMQ Source: bundled external/libzmq")
+
+        set(WRKZ_ZMQ_LINK_MODE "auto" CACHE STRING "ZeroMQ link mode: auto, shared, static")
+        set_property(CACHE WRKZ_ZMQ_LINK_MODE PROPERTY STRINGS auto shared static)
+
+        if (WRKZ_ZMQ_LINK_MODE STREQUAL "auto")
+            set(WRKZ_ZMQ_LINK_MODE_RESOLVED "static")
+        elseif (WRKZ_ZMQ_LINK_MODE STREQUAL "shared" OR WRKZ_ZMQ_LINK_MODE STREQUAL "static")
+            set(WRKZ_ZMQ_LINK_MODE_RESOLVED "${WRKZ_ZMQ_LINK_MODE}")
+        else ()
+            message(WARNING "Unknown WRKZ_ZMQ_LINK_MODE='${WRKZ_ZMQ_LINK_MODE}', falling back to auto")
+            set(WRKZ_ZMQ_LINK_MODE_RESOLVED "static")
+        endif ()
+
+        if (WRKZ_ZMQ_LINK_MODE_RESOLVED STREQUAL "static")
+            set(WRKZ_ZMQ_TARGET libzmq-static CACHE STRING "ZeroMQ target used by Wrkzd" FORCE)
+        else ()
+            set(WRKZ_ZMQ_TARGET libzmq CACHE STRING "ZeroMQ target used by Wrkzd" FORCE)
+        endif ()
+        message(STATUS "ZeroMQ Link Target: ${WRKZ_ZMQ_TARGET}")
+        include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/external/libzmq/include)
+    else ()
+        message(WARNING "ENABLE_ZMQ=ON but external/libzmq is missing. Disabling ZMQ support for this build.")
+        set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+    endif ()
+endif ()
+
 add_subdirectory(external)
+
+# Optional Emscripten pthread builds require every linked object to be compiled
+# with atomics/bulk-memory support, including external static libraries.
+if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM AND WRKZ_WASM_PTHREADS)
+    # Pthread WASM requires every linked object to be built with atomics and
+    # bulk-memory features, not only final link target.
+    add_compile_options(
+        -pthread
+        -matomics
+        -mbulk-memory
+    )
+    add_link_options(
+        -pthread
+    )
+
+    foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
+        if (TARGET ${_wrkz_pthread_target})
+            target_compile_options(${_wrkz_pthread_target} PRIVATE
+                -pthread
+                -matomics
+                -mbulk-memory
+            )
+        endif ()
+    endforeach ()
+endif ()
+
 add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
 if (NOT MSVC)
-    execute_process(
-         COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/leveldb -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DLEVELDB_BUILD_TESTS=OFF -DLEVELDB_BUILD_BENCHMARKS=OFF -DLEVELDB_INSTALL=OFF -B${PROJECT_BINARY_DIR}/leveldb
-    )
-    set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/leveldb/libleveldb.a")
+    set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
+    set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
+    set(ROCKSDB_CMAKE_EXTRA_ARGS "")
+    if (CMAKE_TOOLCHAIN_FILE)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    endif ()
+    if (CMAKE_SYSROOT)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_SYSROOT=${CMAKE_SYSROOT}")
+    endif ()
+    if (ANDROID)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DANDROID=ON")
+        if (DEFINED ANDROID_ABI AND NOT "${ANDROID_ABI}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DANDROID_ABI=${ANDROID_ABI}")
+        endif ()
+        if (DEFINED ANDROID_PLATFORM AND NOT "${ANDROID_PLATFORM}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DANDROID_PLATFORM=${ANDROID_PLATFORM}")
+        endif ()
+        if (DEFINED ANDROID_NDK AND NOT "${ANDROID_NDK}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DANDROID_NDK=${ANDROID_NDK}")
+        endif ()
+        if (DEFINED CMAKE_ANDROID_NDK AND NOT "${CMAKE_ANDROID_NDK}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_ANDROID_NDK=${CMAKE_ANDROID_NDK}")
+        endif ()
+        if (DEFINED CMAKE_ANDROID_ARCH_ABI AND NOT "${CMAKE_ANDROID_ARCH_ABI}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_ANDROID_ARCH_ABI=${CMAKE_ANDROID_ARCH_ABI}")
+        endif ()
+        if (DEFINED CMAKE_ANDROID_API AND NOT "${CMAKE_ANDROID_API}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_ANDROID_API=${CMAKE_ANDROID_API}")
+        endif ()
+        if (DEFINED CMAKE_ANDROID_STL_TYPE AND NOT "${CMAKE_ANDROID_STL_TYPE}" STREQUAL "")
+            list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_ANDROID_STL_TYPE=${CMAKE_ANDROID_STL_TYPE}")
+        endif ()
+    endif ()
+    # Pass generator so sub-cmake doesn't fall back to VS on Windows
+    list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-G${CMAKE_GENERATOR}")
+    if (CMAKE_MAKE_PROGRAM)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}")
+    endif ()
+    # Emscripten pthreads: provide thread primitives so RocksDB configure succeeds
+    if (EMSCRIPTEN AND WRKZ_WASM_PTHREADS)
+        list(APPEND ROCKSDB_CMAKE_EXTRA_ARGS
+            "-DCMAKE_HAVE_LIBC_PTHREAD=ON"
+            "-DCMAKE_THREAD_LIBS_INIT=-pthread"
+        )
+    endif ()
 
     execute_process(
-        COMMAND ${CMAKE_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb -DARCH=${ARCH} -DWITH_ZSTD=ON -DWITH_GFLAGS=0 -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DWITH_TESTS=OFF -DWITH_TOOLS=OFF -DPORTABLE=ON -DUSE_RTTI=ON -B${PROJECT_BINARY_DIR}/rocksdb
+        COMMAND ${CMAKE_COMMAND}
+            ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb
+            -DWITH_ZSTD=ON
+            -DWITH_SNAPPY=OFF
+            -DWITH_LIBURING=OFF
+            -DWITH_GFLAGS=0
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DWITH_TESTS=OFF
+            -DWITH_TOOLS=OFF
+            -DPORTABLE=ON
+            -DUSE_RTTI=ON
+            -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
+            -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
+            ${ROCKSDB_CMAKE_EXTRA_ARGS}
+            -B${PROJECT_BINARY_DIR}/rocksdb
+        RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
     )
+    if (NOT ROCKSDB_CMAKE_CONFIGURE_RESULT EQUAL 0)
+        message(FATAL_ERROR "RocksDB CMake configure failed with code ${ROCKSDB_CMAKE_CONFIGURE_RESULT}")
+    endif()
     set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
 endif ()

@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -21,4 +22,7 @@ namespace ApiConstants
 
     /* 64 char, hex */
     const std::string hashRegex = "[a-fA-F0-9]{64}";
+
+    /* Payment IDs can be short (16 hex chars) or legacy long (64 hex chars). */
+    const std::string paymentIDRegex = "([a-fA-F0-9]{16}|[a-fA-F0-9]{64})";
 } // namespace ApiConstants

@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 #include "ConsoleHandler.h"
@@ -7,13 +8,14 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include "linenoise.hpp"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
 
-#include <Windows.h>
+#include <windows.h>
 
 #else
 #include <stdio.h>
@@ -80,6 +82,8 @@ namespace Common
         m_queue.close();
 #ifdef _WIN32
         ::CloseHandle(::GetStdHandle(STD_INPUT_HANDLE));
+#else
+        ::close(STDIN_FILENO);
 #endif
 
         if (m_thread.joinable())
@@ -97,13 +101,20 @@ namespace Common
 
     void AsyncConsoleReader::consoleThread()
     {
-        while (waitInput())
+        linenoise::SetHistoryMaxLen(256);
+
+        while (!m_stop)
         {
             std::string line;
-
-            if (!std::getline(std::cin, line))
+            const bool quit = linenoise::Readline("", line);
+            if (quit)
             {
                 break;
+            }
+
+            if (!line.empty())
+            {
+                linenoise::AddHistory(line.c_str());
             }
 
             if (!m_queue.push(line))

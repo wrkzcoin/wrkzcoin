@@ -1,6 +1,6 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -20,6 +20,14 @@ namespace DaemonConfig
 {
     struct DaemonConfiguration
     {
+        static constexpr uint32_t MIN_PRUNE_DEPTH_DAYS = 7;
+        static constexpr uint32_t MIN_PRUNE_DEPTH =
+            CryptoNote::parameters::EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * MIN_PRUNE_DEPTH_DAYS;
+        static constexpr uint32_t DEFAULT_PRUNE_DEPTH =
+            MIN_PRUNE_DEPTH;
+        static constexpr const char *DAEMON_MODE_STANDARD = "standard";
+        static constexpr const char *DAEMON_MODE_EXPLORER = "explorer";
+
         DaemonConfiguration()
         {
             std::stringstream logfile;
@@ -33,13 +41,13 @@ namespace DaemonConfig
             p2pInterface = "0.0.0.0";
             p2pPort = CryptoNote::P2P_DEFAULT_PORT;
             p2pExternalPort = 0;
+            p2pOutPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
+            p2pInPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
             transactionValidationThreads = std::thread::hardware_concurrency();
             rpcInterface = "127.0.0.1";
             rpcPort = CryptoNote::RPC_DEFAULT_PORT;
             noConsole = false;
-            enableBlockExplorer = false;
-            enableBlockExplorerDetailed = false;
-            enableMining = false;
+            daemonMode = DAEMON_MODE_STANDARD;
             localIp = false;
             hideMyPort = false;
             p2pResetPeerstate = false;
@@ -48,19 +56,39 @@ namespace DaemonConfig
             osVersion = false;
             printGenesisTx = false;
             dumpConfig = false;
-            enableDbCompression = false;
+            enableDbCompression = true;
             resync = false;
-            enableLevelDB = false;
             importChain = false;
             exportChain = false;
             exportNumBlocks = 0;
+            prune = false;
+            pruneDepth = DEFAULT_PRUNE_DEPTH;
+            syncMaxPeers = 3;
+            syncPeerFailureThreshold = 2;
+            syncBatchMin = 120;
+            syncBatchMax = 600;
+            blockSyncSize = syncBatchMax;
+            blockSyncBytes = 16ULL * 1024ULL * 1024ULL;
+            rpcAccessToken = "";
+            rpcReadTimeout = 15;
+            rpcWriteTimeout = 30;
+            rpcMaxRequestBodyBytes = 2 * 1024 * 1024;
+            rpcMaxRequestsPerMinute = 240;
+            rpcMaxGlobalIndexesRange = 5000;
+            rpcMaxBlockCount = 100;
+            rpcTrustProxy = false;
+            zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
+            noZmq = false;
+            skipBootCompaction = false;
+            autoPruneMinGapBlocks = 120;
+            autoCompactionMinGapBlocks = 720;
+            autoPruneMinFreeBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+            autoCompactionMinFreeBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
         }
 
         std::string dataDirectory;
 
         std::string logFile;
-
-        std::string feeAddress;
 
         std::string rpcInterface;
 
@@ -80,13 +108,15 @@ namespace DaemonConfig
 
         int logLevel;
 
-        int feeAmount;
-
         int rpcPort;
 
         int p2pPort;
 
         int p2pExternalPort;
+
+        uint32_t p2pOutPeers;
+
+        uint32_t p2pInPeers;
 
         uint32_t transactionValidationThreads;
 
@@ -98,17 +128,11 @@ namespace DaemonConfig
 
         uint64_t dbReadCacheSizeMB;
 
-        uint64_t dbMaxFileSizeMB;
-
         uint32_t rewindToHeight;
 
         bool noConsole;
 
-        bool enableBlockExplorer;
-
-        bool enableBlockExplorerDetailed;
-
-        bool enableMining;
+        std::string daemonMode;
 
         bool localIp;
 
@@ -118,13 +142,57 @@ namespace DaemonConfig
 
         bool p2pResetPeerstate;
 
-        bool enableLevelDB;
-
         bool importChain;
 
         bool exportChain;
 
         uint32_t exportNumBlocks;
+
+        bool prune;
+
+        uint32_t pruneDepth;
+
+        uint32_t syncMaxPeers;
+
+        uint32_t syncPeerFailureThreshold;
+
+        uint32_t syncBatchMin;
+
+        uint32_t syncBatchMax;
+
+        uint32_t blockSyncSize;
+
+        uint64_t blockSyncBytes;
+
+        std::string rpcAccessToken;
+
+        uint32_t rpcReadTimeout;
+
+        uint32_t rpcWriteTimeout;
+
+        uint64_t rpcMaxRequestBodyBytes;
+
+        uint32_t rpcMaxRequestsPerMinute;
+
+        uint32_t rpcMaxGlobalIndexesRange;
+
+        uint32_t rpcMaxBlockCount;
+
+        bool rpcTrustProxy;
+
+        std::string zmqPub;
+
+        bool noZmq;
+
+        bool skipBootCompaction;
+
+        uint32_t autoPruneMinGapBlocks;
+
+        uint32_t autoCompactionMinGapBlocks;
+
+        uint64_t autoPruneMinFreeBytes;
+
+        uint64_t autoCompactionMinFreeBytes;
 
         std::string configFile;
 

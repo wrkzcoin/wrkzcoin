@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -91,8 +92,6 @@ class Nigel
     void backgroundRefresh();
 
     bool getDaemonInfo();
-
-    bool getFeeInfo();
 
     template<typename F>
     auto tryParseJSONResponse(
@@ -231,5 +230,5 @@ class Nigel
     bool m_daemonSSL = false;
 
     /* Whether we should use /getrawblocks instead of /getwalletsyncdata */
-    bool m_useRawBlocks = true;
+    bool m_useRawBlocks = false;
 };

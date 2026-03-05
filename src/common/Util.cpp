@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -10,7 +11,7 @@
 #include <cstdio>
 #include <cstring>
 
-#ifdef WIN32
+#if defined(_WIN32) || defined(WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -25,7 +26,7 @@
 
 namespace Tools
 {
-#ifdef WIN32
+#if defined(_WIN32) || defined(WIN32)
 
     std::string get_windows_version_display_string()
     {
@@ -274,14 +275,14 @@ namespace Tools
 
     std::string get_os_version_string()
     {
-#ifdef WIN32
+#if defined(_WIN32) || defined(WIN32)
         return get_windows_version_display_string();
 #else
         return get_nix_version_display_string();
 #endif
     }
 
-#ifdef WIN32
+#if defined(_WIN32) || defined(WIN32)
 
     std::string get_special_folder_path(int nfolder, bool iscreate)
     {
@@ -304,7 +305,7 @@ namespace Tools
         // Mac: ~/Library/Application Support/CRYPTONOTE_NAME
         // Unix: ~/.CRYPTONOTE_NAME
         std::string config_folder;
-#ifdef WIN32
+#if defined(_WIN32) || defined(WIN32)
         // Windows
         config_folder = get_special_folder_path(CSIDL_APPDATA, true) + "/" + CryptoNote::CRYPTONOTE_NAME;
 #else

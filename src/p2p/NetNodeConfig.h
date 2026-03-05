@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
 //
 // Please see the included LICENSE file for more information.
@@ -23,6 +24,8 @@ namespace CryptoNote
             const std::string interface,
             const int port,
             const int external,
+            const uint32_t outPeers,
+            const uint32_t inPeers,
             const bool localIp,
             const bool hidePort,
             const std::string dataDir,
@@ -41,6 +44,10 @@ namespace CryptoNote
         uint16_t getBindPort() const;
 
         uint16_t getExternalPort() const;
+
+        uint32_t getOutPeers() const;
+
+        uint32_t getInPeers() const;
 
         bool getAllowLocalIp() const;
 
@@ -62,6 +69,10 @@ namespace CryptoNote
         uint16_t bindPort;
 
         uint16_t externalPort;
+
+        uint32_t outPeers;
+
+        uint32_t inPeers;
 
         bool allowLocalIp;
 

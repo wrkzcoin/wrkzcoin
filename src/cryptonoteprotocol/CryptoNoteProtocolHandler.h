@@ -1,6 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -16,6 +17,7 @@
 #include "p2p/P2pProtocolDefinitions.h"
 
 #include <atomic>
+#include <chrono>
 #include <common/ObserverManager.h>
 #include <logging/LoggerRef.h>
 
@@ -84,6 +86,28 @@ namespace CryptoNote
 
         virtual uint32_t getBlockchainHeight() const override;
 
+        virtual bool isPrunedNode() const override;
+
+        virtual uint32_t getPrunedNodeDepth() const override;
+
+        virtual bool isPruneCapabilityActive() const override;
+
+        virtual uint32_t getSyncActivePeers() const override;
+
+        virtual uint32_t getSyncAvgBatchSize() const override;
+
+        virtual uint32_t getSyncDemotedPeers() const override;
+
+        void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
+
+        void setSyncTuning(
+            uint32_t syncMaxPeers,
+            uint32_t syncPeerFailureThreshold,
+            uint32_t syncBatchMin,
+            uint32_t syncBatchMax,
+            uint32_t blockSyncSize,
+            uint64_t blockSyncBytes);
+
         void requestMissingPoolTransactions(const CryptoNoteConnectionContext &context);
 
       private:
@@ -133,7 +157,15 @@ namespace CryptoNote
         virtual void relayTransactions(const std::vector<BinaryArray> &transactions) override;
 
         //----------------------------------------------------------------------------------
-        uint32_t get_current_blockchain_height();
+        uint32_t get_current_blockchain_height() const;
+
+        uint32_t getAdaptiveBatchSize(const CryptoNoteConnectionContext &context) const;
+
+        void onSyncChunkSuccess(CryptoNoteConnectionContext &context, size_t blocks, size_t bytes);
+
+        void onSyncChunkFailure(CryptoNoteConnectionContext &context);
+
+        bool shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const;
 
         bool request_missing_objects(CryptoNoteConnectionContext &context, bool check_having_blocks);
 
@@ -142,6 +174,8 @@ namespace CryptoNote
         void updateObservedHeight(uint32_t peerHeight, const CryptoNoteConnectionContext &context);
 
         void recalculateMaxObservedHeight(const CryptoNoteConnectionContext &context);
+
+        void logSyncProgressLocked(uint64_t currentHeight, uint64_t remoteHeight);
 
         int processObjects(
             CryptoNoteConnectionContext &context,
@@ -179,7 +213,35 @@ namespace CryptoNote
 
         uint32_t m_blockchainHeight;
 
+        bool m_syncLogInitialized;
+
+        uint64_t m_syncLogStartHeight;
+
+        uint64_t m_lastSyncLogHeight;
+
+        std::chrono::steady_clock::time_point m_syncLogStartTime;
+
+        std::chrono::steady_clock::time_point m_lastSyncLogTime;
+
         std::atomic<size_t> m_peersCount;
+
+        bool m_isPrunedNode;
+
+        uint32_t m_prunedNodeDepth;
+
+        uint32_t m_syncMaxPeers;
+
+        uint32_t m_syncPeerFailureThreshold;
+
+        uint32_t m_syncBatchMin;
+
+        uint32_t m_syncBatchMax;
+
+        uint32_t m_syncBlockSyncSize;
+
+        uint64_t m_syncBlockSyncBytes;
+
+        std::atomic<uint32_t> m_syncDemotedPeers;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

@@ -7,22 +7,15 @@
 
 <summary><h2 style="display: inline-block">Table of Contents</h2></summary>
 <ul>
-    <li><a href="#master-build-status">Master Build Status</a></li>
-    <li><a href="#development-build-status">Development Build Status</a></li>
     <li><a href="#installing-wrkzcoin">Installing WrkzCoin</a></li>
+    <li><a href="#node-system-requirements">Node System Requirements</a></li>
+    <li><a href="#build-from-source">Build from Source</a></li>
     <li><a href="#getting-started-fast">Getting Started Fast</a></li>
+    <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
     <li><a href="#a-note-for-contributing-developers">A note for contributing developers</a></li>
     <li><a href="#contributing-projects">Contributing Projects</a></li>
     <li><a href="#our-discord">Our Discord</a></li>
 </ul>
-
-### Master Build Status
-
-![Master Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=master)
-
-### Development Build Status
-
-![Development Build Status](https://github.com/wrkzcoin/wrkzcoin/workflows/Build/badge.svg?branch=development)
 
 ### Installing WrkzCoin
 
@@ -30,7 +23,45 @@ To use WrkzCoin, you'll need a way to connect to the network, and a wallet to ho
 
 **Click here to download: https://latest.wrkz.work**
 
-To compile from source code yourself, [click here for build instructions](https://github.com/wrkzcoin/wrkzcoin/blob/development/COMPILE.md).
+### Node System Requirements
+
+Minimum requirements to run a **Wrkzd** daemon node:
+
+| Requirement | Pruned Node | Full Node |
+|---|---|---|
+| **Internet** | Stable broadband | Stable broadband |
+| **CPU** | 1 core, 1.0 GHz | 1 core, 1.5 GHz |
+| **RAM** | 2 GB | 2 GB |
+| **Free Disk Space** | 30 GB SSD/NVMe | 50 GB SSD/NVMe |
+
+- A **pruned node** (`--prune`) discards raw block and transaction binary data for blocks older than the configured depth (default: 7 days ≈ 10,080 blocks). Block metadata, key images, and transaction indexes are retained for the full chain, so consensus and wallet sync remain functional.
+- A **full node** retains raw block and transaction data for the entire blockchain history.
+- **SSD or NVMe storage is required.** HDDs are too slow for RocksDB random I/O and will cause severe sync delays or daemon instability.
+- Disk usage grows over time as the chain advances — provision extra headroom.
+- RAM shown covers the daemon alone; allow more if also running `wrkz-service` or a miner on the same machine.
+
+#### What a Pruned Node Removes vs. Retains
+
+| Data | Pruned Node | Full Node |
+|---|---|---|
+| Raw block binary data (old blocks) | Removed | Kept |
+| Raw transaction binary data (old blocks) | Removed | Kept |
+| Raw block/transaction data (recent blocks, within prune depth) | Kept | Kept |
+| Block metadata (hash, height, difficulty, timestamp) | Kept for all | Kept for all |
+| Transaction indexes (global output indexes) | Kept for all | Kept for all |
+| Key images (spent output tracking) | Kept for all | Kept for all |
+| Payment ID indexes | Kept for all | Kept for all |
+
+The prune depth controls how many recent blocks keep their raw data. The default is 7 days worth of blocks (`--prune-depth` can increase this). Use `--prune-depth N` to retain more history.
+
+> **Building from source** requires at least **4 GB RAM** for the compiler (RocksDB and C++20 templates are memory-intensive at compile time).
+
+### Build from Source
+
+Build instructions are maintained in:
+
+- [COMPILE.md](COMPILE.md)
+- [Cross-platform build guide](scripts/cross-platform/README.md)
 
 ### Getting Started Fast
 
@@ -39,11 +70,30 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 -   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://github.com/wrkzcoin/checkpoints) or via [Direct link](https://github.com/wrkzcoin/checkpoints/raw/master/wrkzcoin_checkpoints.csv.zip) 
 -   **Backup your keys** - You can generate a wallet right inside the software, or use [this paper wallet generator](https://paperwallet.wrkz.work)
 
+### Daemon DB Compaction
+
+- The daemon can compact RocksDB in background while syncing.
+- Boot-time background compaction is enabled by default.
+- Disable boot compaction with `--skip-boot-compaction`.
+- Check status from daemon console: `compact_db status`.
+- Manual controls: `compact_db start` and `compact_db wait`.
+
+### Daemon ZMQ (Quick Test)
+
+- Default daemon ZMQ PUB endpoint: `tcp://127.0.0.1:17857`
+- Start daemon with explicit endpoint:
+  - `Wrkzd --zmq-pub tcp://127.0.0.1:17857`
+- Test subscriber script:
+  - `pip install pyzmq`
+  - `python scripts/zmq_sub_test.py --endpoint tcp://127.0.0.1:17857 --topics hashblock chain_main`
+
+Build requirements and static/portable notes are in [COMPILE.md](COMPILE.md).
+
 ### A note for contributing developers
 
 Hello, and thank you for helping us! Our work makes use of many brilliant projects from other communities who contributed their code which helped us get to where we are now. To make sure we're always doing things the right way, we try to make sure we get the proper license header in every file we modify. By the terms of this project's license, any open source project may use our software, but the licenses may only be appended to, not altered. 
 
-See [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/commit/28cfef2575f2d767f6e512f2a4017adbf44e610e) for an example.
+See `src/config/CryptoNoteConfig.h` for an example.
 
 ```
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
@@ -60,7 +110,7 @@ See [src/config/CryptoNoteConfig.h](https://github.com/turtlecoin/turtlecoin/com
 
 ### Our Discord
 
-* WrkzCoin: <https://discordapp.com/invite/GpHzURM>
+* WrkzCoin: <https://discord.gg/GpHzURM>
 
 ### Stars
 

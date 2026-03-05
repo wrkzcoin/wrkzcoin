@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -21,7 +22,7 @@ template<typename T> T getJsonValue(const nlohmann::json &body, const std::strin
 {
     if (body.find(key) == body.end())
     {
-        auto exception = json::type_error::create(304, "\nExpected json parameter '" + key + "' does not exist.");
+        auto exception = json::type_error::create(304, "\nExpected json parameter '" + key + "' does not exist.", nullptr);
         throw exception;
     }
 
@@ -37,7 +38,7 @@ template<typename T> T getJsonValue(const nlohmann::json &body, const std::strin
                             "Possibly wrong type? ("
                           + e.what() + ")";
 
-        auto exception = json::type_error::create(e.id, msg);
+        auto exception = json::type_error::create(e.id, msg, nullptr);
 
         throw exception;
     }
@@ -201,6 +202,10 @@ class ApiDispatcher
     /* Sets the daemon node and port */
     std::tuple<Error, uint16_t>
         setNodeInfo(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+
+    /* Forces a sync reconnect using current daemon settings */
+    std::tuple<Error, uint16_t>
+        refreshSync(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     //////////////////
     /* GET REQUESTS */

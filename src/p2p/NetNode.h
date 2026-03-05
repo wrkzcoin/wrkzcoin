@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
 //
 // Please see the included LICENSE file for more information.
@@ -19,6 +20,7 @@
 #include <boost/functional/hash.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <functional>
+#include <mutex>
 #include <system/Context.h>
 #include <system/ContextGroup.h>
 #include <system/Dispatcher.h>
@@ -26,6 +28,7 @@
 #include <system/TcpConnection.h>
 #include <system/TcpListener.h>
 #include <system/Timer.h>
+#include <thread>
 #include <unordered_map>
 
 namespace System
@@ -122,6 +125,18 @@ namespace CryptoNote
 
         uint64_t writeDuration(TimePoint now) const;
 
+        bool canBeInterrupted() const
+        {
+            return !stopped && context != nullptr;
+        }
+
+        void stopWithoutContextInterrupt()
+        {
+            stopped = true;
+            m_state = CryptoNoteConnectionContext::state_shutdown;
+            queueEvent.set();
+        }
+
       private:
         Logging::LoggerRef logger;
 
@@ -176,6 +191,12 @@ namespace CryptoNote
         {
             return m_peerlist;
         }
+
+        bool ban_host(uint32_t ip, uint64_t seconds) override;
+
+        bool unban_host(uint32_t ip) override;
+
+        std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
       private:
         int handleCommand(
@@ -238,6 +259,15 @@ namespace CryptoNote
         bool handleTimedSyncResponse(const BinaryArray &in, P2pConnectionContext &context);
 
         void forEachConnection(std::function<void(P2pConnectionContext &)> action);
+        void relay_notify_to_all_impl(
+            int command,
+            const BinaryArray &data_buff,
+            const boost::uuids::uuid *excludeConnection);
+        bool invoke_notify_to_peer_impl(
+            int command,
+            const BinaryArray &buffer,
+            const boost::uuids::uuid &connectionId);
+        bool isDispatcherThread() const;
 
         void on_connection_new(P2pConnectionContext &context);
 
@@ -271,6 +301,8 @@ namespace CryptoNote
         bool handleConfig(const NetNodeConfig &config);
 
         bool append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr);
+
+        void append_dns_seed_nodes();
 
         bool idle_worker();
 
@@ -314,6 +346,7 @@ namespace CryptoNote
         typedef ConnectionContainer::iterator ConnectionIterator;
 
         ConnectionContainer m_connections;
+        mutable std::mutex m_connectionsMutex;
 
         void acceptLoop();
 
@@ -360,11 +393,16 @@ namespace CryptoNote
 
         bool m_hide_my_port;
 
+        uint32_t m_targetOutgoingConnections;
+
+        uint32_t m_maxIncomingConnections;
+
         std::string m_p2p_state_filename;
 
         bool m_p2p_state_reset;
 
         System::Dispatcher &m_dispatcher;
+        std::thread::id m_dispatcherThreadId;
 
         System::ContextGroup m_workingContextGroup;
 
@@ -410,5 +448,11 @@ namespace CryptoNote
         uint64_t m_peer_livetime;
 
         boost::uuids::uuid m_network_id;
+
+        std::mutex m_banMutex;
+
+        std::unordered_map<uint32_t, uint64_t> m_bannedHostsUntil;
+
+        bool isHostBanned(uint32_t ip);
     };
 } // namespace CryptoNote

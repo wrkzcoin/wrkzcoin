@@ -17,6 +17,16 @@
 
 namespace Crypto
 {
+    [[noreturn]] inline void throwHexParseError()
+    {
+#if defined(NLOHMANN_JSON_VERSION_MAJOR) && defined(NLOHMANN_JSON_VERSION_MINOR) \
+    && ((NLOHMANN_JSON_VERSION_MAJOR > 3) || (NLOHMANN_JSON_VERSION_MAJOR == 3 && NLOHMANN_JSON_VERSION_MINOR >= 12))
+        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!", nullptr);
+#else
+        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
+#endif
+    }
+
     struct EllipticCurvePoint
     {
         EllipticCurvePoint() {}
@@ -423,9 +433,7 @@ namespace Crypto
     {
         if (!Common::podFromHex(j.get<std::string>(), h.data))
         {
-            const auto err = nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-
-            throw nlohmann::json::parse_error(err);
+            throwHexParseError();
         }
     }
 
@@ -438,9 +446,7 @@ namespace Crypto
     {
         if (!Common::podFromHex(j.get<std::string>(), p.data))
         {
-            const auto err = nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-
-            throw nlohmann::json::parse_error(err);
+            throwHexParseError();
         }
     }
 
@@ -453,9 +459,7 @@ namespace Crypto
     {
         if (!Common::podFromHex(j.get<std::string>(), s.data))
         {
-            const auto err = nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-
-            throw nlohmann::json::parse_error(err);
+            throwHexParseError();
         }
     }
 
@@ -468,9 +472,7 @@ namespace Crypto
     {
         if (!Common::podFromHex(j.get<std::string>(), k.data))
         {
-            const auto err = nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-
-            throw nlohmann::json::parse_error(err);
+            throwHexParseError();
         }
     }
 
@@ -483,9 +485,7 @@ namespace Crypto
     {
         if (!Common::podFromHex(j.get<std::string>(), k.data))
         {
-            const auto err = nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-
-            throw nlohmann::json::parse_error(err);
+            throwHexParseError();
         }
     }
 } // namespace Crypto

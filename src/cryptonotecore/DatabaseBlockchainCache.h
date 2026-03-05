@@ -23,10 +23,12 @@
 #include "cryptonotecore/UpgradeManager.h"
 
 #include <IDataBase.h>
+#include <WalletTypes.h>
 #include <cryptonotecore/BlockchainReadBatch.h>
 #include <cryptonotecore/BlockchainWriteBatch.h>
 #include <cryptonotecore/DatabaseCacheData.h>
 #include <cryptonotecore/IBlockchainCacheFactory.h>
+#include <utility>
 
 namespace CryptoNote
 {
@@ -234,6 +236,19 @@ namespace CryptoNote
 
         virtual std::vector<RawBlock>
             getNonEmptyBlocks(const uint64_t startHeight, const size_t blockCount) const override;
+
+        bool getWalletSyncBlock(
+            uint32_t blockIndex,
+            bool skipCoinbaseTransactions,
+            WalletTypes::WalletBlockInfo &walletBlock) const;
+
+        std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
+
+        size_t pruneStoredRawBlocks(uint32_t pruneDepth);
+
+        std::error_code compactDatabase();
+
+        std::pair<std::error_code, std::string> compactDatabaseDetailed();
 
       private:
         const Currency &currency;

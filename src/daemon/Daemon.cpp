@@ -1,13 +1,14 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018, The Karai Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
 #include "DaemonCommandsHandler.h"
 #include "DaemonConfiguration.h"
+#include "ZmqPublisher.h"
 #include "common/CryptoNoteTools.h"
 #include "common/FileSystemShim.h"
 #include "common/PathTools.h"
@@ -21,7 +22,6 @@
 #include "cryptonotecore/Currency.h"
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
-#include "cryptonotecore/LevelDBWrapper.h"
 #include "cryptonotecore/RocksDBWrapper.h"
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
@@ -35,6 +35,9 @@
 #include <config/CryptoNoteCheckpoints.h>
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
+#include <atomic>
+#include <memory>
+#include <optional>
 
 #if defined(WIN32)
 
@@ -50,6 +53,83 @@ using Common::JsonValue;
 using namespace CryptoNote;
 using namespace Logging;
 using namespace DaemonConfig;
+
+namespace
+{
+    const std::string DAEMON_MODE_PROFILE_KEY = "daemon_mode_profile";
+
+    class DaemonModeProfileReadBatch : public IReadBatch
+    {
+      public:
+        virtual ~DaemonModeProfileReadBatch() {}
+
+        virtual std::vector<std::string> getRawKeys() const override
+        {
+            return {DAEMON_MODE_PROFILE_KEY};
+        }
+
+        virtual void submitRawResult(const std::vector<std::string> &values, const std::vector<bool> &resultStates) override
+        {
+            if (values.size() != 1 || resultStates.size() != 1 || !resultStates[0])
+            {
+                return;
+            }
+
+            storedMode = values[0];
+        }
+
+        std::optional<std::string> getStoredMode() const
+        {
+            return storedMode;
+        }
+
+      private:
+        std::optional<std::string> storedMode;
+    };
+
+    class DaemonModeProfileWriteBatch : public IWriteBatch
+    {
+      public:
+        explicit DaemonModeProfileWriteBatch(std::string mode): daemonMode(std::move(mode)) {}
+
+        virtual ~DaemonModeProfileWriteBatch() {}
+
+        virtual std::vector<std::pair<std::string, std::string>> extractRawDataToInsert() override
+        {
+            return {std::make_pair(DAEMON_MODE_PROFILE_KEY, daemonMode)};
+        }
+
+        virtual std::vector<std::string> extractRawKeysToRemove() override
+        {
+            return {};
+        }
+
+      private:
+        std::string daemonMode;
+    };
+
+    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    {
+        DaemonModeProfileReadBatch readBatch;
+        const auto error = database.read(readBatch);
+        if (error)
+        {
+            throw std::system_error(error);
+        }
+
+        return readBatch.getStoredMode();
+    }
+
+    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    {
+        DaemonModeProfileWriteBatch writeBatch(mode);
+        const auto error = database.write(writeBatch);
+        if (error)
+        {
+            throw std::system_error(error);
+        }
+    }
+} // namespace
 
 void print_genesis_tx_hex(const bool blockExplorerMode, std::shared_ptr<LoggerManager> logManager)
 {
@@ -283,8 +363,11 @@ int main(int argc, char *argv[])
         logger(INFO) << "Program Working Directory: " << cwdPath;
 
         // create objects and link them
+        const bool explorerMode = config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER;
+        logger(INFO) << "Daemon mode: " << config.daemonMode;
+
         CryptoNote::CurrencyBuilder currencyBuilder(logManager);
-        currencyBuilder.isBlockexplorer(config.enableBlockExplorer);
+        currencyBuilder.isBlockexplorer(explorerMode);
 
         try
         {
@@ -304,7 +387,6 @@ int main(int argc, char *argv[])
             config.dbMaxOpenFiles,
             config.dbWriteBufferSizeMB,
             config.dbReadCacheSizeMB,
-            config.dbMaxFileSizeMB,
             config.enableDbCompression
         );
 
@@ -337,6 +419,8 @@ int main(int argc, char *argv[])
             config.p2pInterface,
             config.p2pPort,
             config.p2pExternalPort,
+            config.p2pOutPeers,
+            config.p2pInPeers,
             config.localIp,
             config.hideMyPort,
             config.dataDirectory,
@@ -352,15 +436,7 @@ int main(int argc, char *argv[])
         }
 
         std::shared_ptr<IDataBase> database;
-
-        if (config.enableLevelDB)
-        {
-            database = std::make_shared<LevelDBWrapper>(logManager, dbConfig);
-        }
-        else
-        {
-            database = std::make_shared<RocksDBWrapper>(logManager, dbConfig);
-        }
+        database = std::make_shared<RocksDBWrapper>(logManager, dbConfig);
 
         database->init();
         Tools::ScopeExit dbShutdownOnExit([&database]() { database->shutdown(); });
@@ -391,6 +467,34 @@ int main(int argc, char *argv[])
         ccore->load();
 
         logger(INFO) << "Core initialized OK";
+
+        const auto storedDaemonMode = readDaemonModeProfile(*database);
+        const bool hasHistoricalBlocks = ccore->getTopBlockIndex() > 0;
+
+        if (storedDaemonMode)
+        {
+            if (*storedDaemonMode != config.daemonMode)
+            {
+                logger(ERROR) << "Daemon mode mismatch for existing database. Stored mode: " << *storedDaemonMode
+                              << ", requested mode: " << config.daemonMode
+                              << ". Reindex is required before switching mode. Restart with --resync --daemon-mode "
+                              << config.daemonMode;
+                return 1;
+            }
+        }
+        else
+        {
+            if (hasHistoricalBlocks && config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+            {
+                logger(ERROR) << "Daemon database has historical blocks but no stored daemon mode profile. "
+                              << "To ensure explorer index consistency, reindex is required. "
+                              << "Restart with --resync --daemon-mode explorer";
+                return 1;
+            }
+
+            writeDaemonModeProfile(*database, config.daemonMode);
+            logger(INFO) << "Stored daemon mode profile in database: " << config.daemonMode;
+        }
 
         std::string error;
         std::string filepath = "blockchain.dump";
@@ -448,6 +552,13 @@ int main(int argc, char *argv[])
             ccore->rewind(config.rewindToHeight);
         }
 
+        if (config.prune)
+        {
+            logger(INFO) << "Prune mode enabled. Pruning stored raw blocks with depth " << config.pruneDepth << "...";
+            const auto prunedBlocks = ccore->pruneRawBlocks(config.pruneDepth);
+            logger(INFO) << "Prune pass completed. Raw block slots processed: " << prunedBlocks;
+        }
+
         const auto cprotocol = std::make_shared<CryptoNote::CryptoNoteProtocolHandler>(
             currency,
             dispatcher,
@@ -456,33 +567,35 @@ int main(int argc, char *argv[])
             logManager
         );
 
+        cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
+        cprotocol->setSyncTuning(
+            config.syncMaxPeers,
+            config.syncPeerFailureThreshold,
+            config.syncBatchMin,
+            config.syncBatchMax,
+            config.blockSyncSize,
+            config.blockSyncBytes);
+
         const auto p2psrv = std::make_shared<CryptoNote::NodeServer>(
             dispatcher,
             *cprotocol,
             logManager
         );
 
-        RpcMode rpcMode = RpcMode::Default;
-
-        if (config.enableBlockExplorerDetailed)
-        {
-            rpcMode = RpcMode::AllMethodsEnabled;
-        }
-        else if (config.enableBlockExplorer)
-        {
-            rpcMode = RpcMode::BlockExplorerEnabled;
-        }
-        else if (config.enableMining)
-        {
-            rpcMode = RpcMode::MiningEnabled;
-        }
+        RpcMode rpcMode = explorerMode ? RpcMode::Explorer : RpcMode::Standard;
 
         RpcServer rpcServer(
             config.rpcPort,
             config.rpcInterface,
             config.enableCors,
-            config.feeAddress,
-            config.feeAmount,
+            config.rpcAccessToken,
+            config.rpcReadTimeout,
+            config.rpcWriteTimeout,
+            config.rpcMaxRequestBodyBytes,
+            config.rpcMaxRequestsPerMinute,
+            config.rpcMaxGlobalIndexesRange,
+            config.rpcMaxBlockCount,
+            config.rpcTrustProxy,
             rpcMode,
             ccore,
             p2psrv,
@@ -504,6 +617,26 @@ int main(int argc, char *argv[])
 
         rpcServer.start();
 
+        std::unique_ptr<Daemon::ZmqPublisher> zmqPublisher;
+#ifdef WRKZ_ENABLE_ZMQ
+        if (config.noZmq)
+        {
+            if (!config.zmqPub.empty())
+            {
+                logger(INFO) << "ZMQ publisher disabled by --no-zmq.";
+            }
+        }
+        else if (!config.zmqPub.empty())
+        {
+            zmqPublisher = std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub);
+            if (!zmqPublisher->start())
+            {
+                logger(WARNING) << "Failed to start ZMQ publisher on " << config.zmqPub << ". Continuing without ZMQ.";
+                zmqPublisher.reset();
+            }
+        }
+#endif
+
         /* Get the RPC IP address and port we are bound to */
         auto [ip, port] = rpcServer.getConnectionInfo();
 
@@ -516,15 +649,29 @@ int main(int argc, char *argv[])
         }
 
         DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
+        dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)
         {
             dch.start_handling();
         }
 
-        Tools::SignalHandler::install([&dch] {
-            dch.exit({});
-            dch.stop_handling();
+        std::atomic<uint32_t> interruptCount {0};
+        Tools::SignalHandler::install([&dch, &interruptCount] {
+            const uint32_t count = ++interruptCount;
+
+            if (count == 1)
+            {
+                std::cout
+                    << "SIGINT received. Starting graceful shutdown and waiting for safe DB close "
+                       "(flush/WAL sync/background compaction). Press CTRL+C again to force exit."
+                          << std::endl;
+                dch.exit({});
+                return;
+            }
+
+            std::cerr << "Second interrupt received. Forcing immediate exit without waiting for shutdown." << std::endl;
+            std::_Exit(1);
         });
 
         logger(INFO) << "Starting p2p net loop...";
@@ -532,8 +679,16 @@ int main(int argc, char *argv[])
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
+        dch.stop_compaction_scheduler();
+        dch.wait_for_background_compaction();
 
         // stop components
+        if (zmqPublisher)
+        {
+            logger(INFO) << "Stopping ZMQ publisher...";
+            zmqPublisher->stop();
+        }
+
         logger(INFO) << "Stopping core rpc server...";
         rpcServer.stop();
 
@@ -543,6 +698,10 @@ int main(int argc, char *argv[])
 
         cprotocol->set_p2p_endpoint(nullptr);
         ccore->save();
+
+        logger(INFO) << "Flushing and closing blockchain DB...";
+        dbShutdownOnExit.cancel();
+        database->shutdown();
     }
     catch (const std::exception &e)
     {

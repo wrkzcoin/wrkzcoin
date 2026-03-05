@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -27,6 +27,7 @@
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
 #include <unordered_map>
+#include <utility>
 #include <utilities/ThreadPool.h>
 #include <utilities/ThreadSafeQueue.h>
 #include <vector>
@@ -237,6 +238,12 @@ namespace CryptoNote
             const bool performExpensiveValidation) override;
 
         virtual void rewind(const uint64_t blockIndex) override;
+
+        size_t pruneRawBlocks(uint32_t pruneDepth);
+
+        std::error_code compactDatabase();
+
+        std::pair<std::error_code, std::string> compactDatabaseDetailed();
 
       private:
         const Currency &currency;

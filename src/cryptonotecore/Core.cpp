@@ -2,7 +2,7 @@
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The Galaxia Project Developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -21,6 +21,8 @@
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CoreErrors.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
+#include <cryptonotecore/DataBaseErrors.h>
+#include <cryptonotecore/DatabaseBlockchainCache.h>
 #include <cryptonotecore/ITimeProvider.h>
 #include <cryptonotecore/MemoryBlockchainStorage.h>
 #include <cryptonotecore/Mixins.h>
@@ -141,16 +143,9 @@ namespace CryptoNote
                 if (input.type() == typeid(KeyInput))
                 {
                     const KeyInput &in = boost::get<KeyInput>(input);
-                    bool r = spentOutputs.spentKeyImages.insert(in.keyImage).second;
-                    if (r)
-                    {
-                    }
-                    assert(r);
+                    spentOutputs.spentKeyImages.insert(in.keyImage);
                 }
-                else
-                {
-                    assert(false);
-                }
+                // BaseInput (coinbase) has no key image — skip silently.
             }
 
             return spentOutputs;
@@ -772,42 +767,59 @@ namespace CryptoNote
                 return true;
             }
 
-            std::vector<RawBlock> rawBlocks;
-
-            if (skipCoinbaseTransactions)
+            if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+                for (uint64_t index = startIndex; index < endIndex; ++index)
+                {
+                    WalletTypes::WalletBlockInfo walletBlock;
+
+                    if (!dbCache->getWalletSyncBlock(static_cast<uint32_t>(index), skipCoinbaseTransactions, walletBlock))
+                    {
+                        continue;
+                    }
+
+                    walletBlocks.push_back(std::move(walletBlock));
+                }
             }
             else
             {
-                rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
-            }
+                std::vector<RawBlock> rawBlocks;
 
-            for (const auto &rawBlock : rawBlocks)
-            {
-                BlockTemplate block;
-
-                fromBinaryArray(block, rawBlock.block);
-
-                WalletTypes::WalletBlockInfo walletBlock;
-
-                CachedBlock cachedBlock(block);
-
-                walletBlock.blockHeight = cachedBlock.getBlockIndex();
-                walletBlock.blockHash = cachedBlock.getBlockHash();
-                walletBlock.blockTimestamp = block.timestamp;
-
-                if (!skipCoinbaseTransactions)
+                if (skipCoinbaseTransactions)
                 {
-                    walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(block.baseTransaction);
+                    rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+                }
+                else
+                {
+                    rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
                 }
 
-                for (const auto &transaction : rawBlock.transactions)
+                for (const auto &rawBlock : rawBlocks)
                 {
-                    walletBlock.transactions.push_back(getRawTransaction(transaction));
-                }
+                    BlockTemplate block;
 
-                walletBlocks.push_back(walletBlock);
+                    fromBinaryArray(block, rawBlock.block);
+
+                    WalletTypes::WalletBlockInfo walletBlock;
+
+                    CachedBlock cachedBlock(block);
+
+                    walletBlock.blockHeight = cachedBlock.getBlockIndex();
+                    walletBlock.blockHash = cachedBlock.getBlockHash();
+                    walletBlock.blockTimestamp = block.timestamp;
+
+                    if (!skipCoinbaseTransactions)
+                    {
+                        walletBlock.coinbaseTransaction = getRawCoinbaseTransaction(block.baseTransaction);
+                    }
+
+                    for (const auto &transaction : rawBlock.transactions)
+                    {
+                        walletBlock.transactions.push_back(getRawTransaction(transaction));
+                    }
+
+                    walletBlocks.push_back(walletBlock);
+                }
             }
 
             if (walletBlocks.empty())
@@ -1338,7 +1350,7 @@ namespace CryptoNote
                     logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain.";
                     if ((previousBlockIndex + 1) % 100 == 0)
                     {
-                        logger(Logging::INFO) << "Block " << blockStr << " added to main chain";
+                        logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain";
                     }
 
                     notifyObservers(
@@ -1556,7 +1568,7 @@ namespace CryptoNote
                 break;
             }
             default:
-                assert(false);
+                logger(Logging::WARNING) << "addBlockInternal: unhandled AddBlockErrorCode " << static_cast<int>(opResult);
                 break;
         }
     }
@@ -1729,19 +1741,25 @@ namespace CryptoNote
             IBlockchainCache *mainChain = chainsLeaves[0];
 
             std::vector<Crypto::Hash> transactionHashes;
-
-            for (const auto &rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
+            if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                for (const auto &transaction : rawBlock.transactions)
+                transactionHashes = dbCache->getTransactionHashesByBlockRange(startHeight, endHeight);
+            }
+            else
+            {
+                for (const auto &rawBlock : mainChain->getBlocksByHeight(startHeight, endHeight))
                 {
-                    transactionHashes.push_back(getBinaryArrayHash(transaction));
+                    for (const auto &transaction : rawBlock.transactions)
+                    {
+                        transactionHashes.push_back(getBinaryArrayHash(transaction));
+                    }
+
+                    BlockTemplate block;
+
+                    fromBinaryArray(block, rawBlock.block);
+
+                    transactionHashes.push_back(getBinaryArrayHash(toBinaryArray(block.baseTransaction)));
                 }
-
-                BlockTemplate block;
-
-                fromBinaryArray(block, rawBlock.block);
-
-                transactionHashes.push_back(getBinaryArrayHash(toBinaryArray(block.baseTransaction)));
             }
 
             indexes = mainChain->getGlobalIndexes(transactionHashes);
@@ -2154,7 +2172,6 @@ namespace CryptoNote
     CoreStatistics Core::getCoreStatistics() const
     {
         // TODO: implement it
-        assert(false);
         CoreStatistics result;
         std::fill(reinterpret_cast<uint8_t *>(&result), reinterpret_cast<uint8_t *>(&result) + sizeof(result), 0);
         return result;
@@ -2874,6 +2891,42 @@ namespace CryptoNote
         mainChain->rewind(blockIndex);
 
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
+    }
+
+    size_t Core::pruneRawBlocks(uint32_t pruneDepth)
+    {
+        if (pruneDepth == 0)
+        {
+            return 0;
+        }
+
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return 0;
+        }
+
+        return dbCache->pruneStoredRawBlocks(pruneDepth);
+    }
+
+    std::error_code Core::compactDatabase()
+    {
+        return compactDatabaseDetailed().first;
+    }
+
+    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed()
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return {make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR), "No database-backed blockchain cache"};
+        }
+
+        return dbCache->compactDatabaseDetailed();
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

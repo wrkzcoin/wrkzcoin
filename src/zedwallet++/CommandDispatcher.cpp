@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -34,7 +35,15 @@ bool handleCommand(
     {
         std::cout << SuccessMsg(walletBackend->getPrimaryAddress()) << std::endl;
     }
+    else if (command == "addr")
+    {
+        std::cout << SuccessMsg(walletBackend->getPrimaryAddress()) << std::endl;
+    }
     else if (command == "balance")
+    {
+        balance(walletBackend);
+    }
+    else if (command == "bal")
     {
         balance(walletBackend);
     }
@@ -49,6 +58,10 @@ bool handleCommand(
     else if (command == "help")
     {
         help(walletBackend);
+    }
+    else if (command == "refresh")
+    {
+        refresh(walletBackend);
     }
     else if (command == "transfer")
     {
@@ -81,11 +94,26 @@ bool handleCommand(
     {
         getTxPrivateKey(walletBackend);
     }
+    else if (command == "check_tx" || command.rfind("check_tx ", 0) == 0)
+    {
+        checkTx(walletBackend, command);
+    }
+    else if (command == "decode_integrated" || command.rfind("decode_integrated ", 0) == 0)
+    {
+        decodeIntegrated(walletBackend, command);
+    }
     else if (command == "make_integrated_address")
     {
-        createIntegratedAddress();
+        createIntegratedAddress(walletBackend);
     }
     else if (command == "incoming_transfers")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = false;
+
+        listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "in")
     {
         const bool printIncoming = true;
         const bool printOutgoing = false;
@@ -98,6 +126,20 @@ bool handleCommand(
         const bool printOutgoing = true;
 
         listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "txs")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = true;
+
+        listTransfersBrief(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "txs_full")
+    {
+        const bool printIncoming = true;
+        const bool printOutgoing = true;
+
+        listTransfersVerbose(printIncoming, printOutgoing, walletBackend);
     }
     else if (command == "optimize")
     {
@@ -115,6 +157,13 @@ bool handleCommand(
         }
     }
     else if (command == "outgoing_transfers")
+    {
+        const bool printIncoming = false;
+        const bool printOutgoing = true;
+
+        listTransfers(printIncoming, printOutgoing, walletBackend);
+    }
+    else if (command == "out")
     {
         const bool printIncoming = false;
         const bool printOutgoing = true;

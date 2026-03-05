@@ -1,11 +1,13 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace System
 {
@@ -31,6 +33,8 @@ namespace System
         Ipv4Resolver &operator=(Ipv4Resolver &&other);
 
         Ipv4Address resolve(const std::string &host);
+
+        std::vector<Ipv4Address> resolveAll(const std::string &host);
 
       private:
         Dispatcher *dispatcher;

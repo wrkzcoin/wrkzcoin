@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -19,6 +20,7 @@
 #define TX_EXTRA_MERGE_MINING_TAG 0x03
 
 #define TX_EXTRA_NONCE_PAYMENT_ID 0x00
+#define TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID 0x01
 
 namespace CryptoNote
 {

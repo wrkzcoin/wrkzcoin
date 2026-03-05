@@ -1,6 +1,7 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 // Copyright (c) 2019, The CyprusCoin Developers
 //
 // Please see the included LICENSE file for more information.
@@ -40,6 +41,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <crypto/random.h>
 #include <fstream>
+#include <future>
 #include <miniupnpc/miniupnpc.h>
 #include <miniupnpc/upnpcommands.h>
 #include <system/Context.h>
@@ -57,6 +59,9 @@ using namespace CryptoNote;
 
 namespace
 {
+    constexpr size_t PEER_SELECTION_RECENCY_WINDOW = 256;
+    constexpr size_t PEER_SELECTION_MAX_TRIES = 16;
+
     size_t get_random_index_with_fixed_probability(size_t max_index)
     {
         // divide by zero workaround
@@ -195,10 +200,12 @@ namespace CryptoNote
     void P2pConnectionContext::interrupt()
     {
         logger(DEBUGGING) << *this << "Interrupt connection";
-        assert(context != nullptr);
         stopped = true;
         queueEvent.set();
-        context->interrupt();
+        if (context != nullptr)
+        {
+            context->interrupt();
+        }
     }
 
     template<typename Command, typename Handler>
@@ -226,10 +233,13 @@ namespace CryptoNote
         CryptoNote::CryptoNoteProtocolHandler &payload_handler,
         std::shared_ptr<Logging::ILogger> log):
         m_dispatcher(dispatcher),
+        m_dispatcherThreadId(std::this_thread::get_id()),
         m_workingContextGroup(dispatcher),
         m_payload_handler(payload_handler),
         m_allow_local_ip(false),
         m_hide_my_port(false),
+        m_targetOutgoingConnections(CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT),
+        m_maxIncomingConnections(CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT),
         m_network_id(CryptoNote::CRYPTONOTE_NETWORK),
         logger(log, "node_server"),
         m_stopEvent(m_dispatcher),
@@ -369,6 +379,7 @@ namespace CryptoNote
     //-----------------------------------------------------------------------------------
     void NodeServer::for_each_connection(std::function<void(CryptoNoteConnectionContext &, uint64_t)> f)
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (auto &ctx : m_connections)
         {
             f(ctx.second, ctx.second.peerId);
@@ -381,8 +392,11 @@ namespace CryptoNote
         const BinaryArray &data_buff,
         const boost::uuids::uuid *excludeConnection)
     {
-        m_dispatcher.remoteSpawn([this, command, data_buff, excludeConnection] {
-            relay_notify_to_all(command, data_buff, excludeConnection);
+        const boost::uuids::uuid excludeId =
+            excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+
+        m_dispatcher.remoteSpawn([this, command, data_buff, excludeId] {
+            relay_notify_to_all(command, data_buff, &excludeId);
         });
     }
 
@@ -422,6 +436,8 @@ namespace CryptoNote
         m_bind_ip = config.getBindIp();
         m_port = std::to_string(config.getBindPort());
         m_external_port = config.getExternalPort();
+        m_targetOutgoingConnections = std::max<uint32_t>(1, config.getOutPeers());
+        m_maxIncomingConnections = config.getInPeers();
         m_allow_local_ip = config.getAllowLocalIp();
 
         auto peers = config.getPeers();
@@ -473,12 +489,43 @@ namespace CryptoNote
 
     //-----------------------------------------------------------------------------------
 
+    void NodeServer::append_dns_seed_nodes()
+    {
+        for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
+        {
+            try
+            {
+                System::Ipv4Resolver resolver(m_dispatcher);
+                auto addresses = resolver.resolveAll(dnsHost);
+                if (addresses.empty())
+                {
+                    logger(WARNING) << "DNS seed '" << dnsHost << "' returned no addresses";
+                    continue;
+                }
+                for (const auto &addr : addresses)
+                {
+                    NetworkAddress na {hostToNetwork(addr.getValue()), CryptoNote::P2P_DEFAULT_PORT};
+                    m_seed_nodes.push_back(na);
+                    logger(TRACE) << "Added DNS seed node: " << na << " (from " << dnsHost << ")";
+                }
+            }
+            catch (const std::exception &e)
+            {
+                logger(WARNING) << "Failed to resolve DNS seed '" << dnsHost << "': " << e.what();
+            }
+        }
+    }
+
+    //-----------------------------------------------------------------------------------
+
     bool NodeServer::init(const NetNodeConfig &config)
     {
         for (const auto &seed : CryptoNote::SEED_NODES)
         {
             append_net_address(m_seed_nodes, seed);
         }
+
+        append_dns_seed_nodes();
 
         if (!handleConfig(config))
         {
@@ -494,6 +541,8 @@ namespace CryptoNote
             logger(ERROR, BRIGHT_RED) << "Failed to init config.";
             return false;
         }
+
+        m_config.m_net_config.connections_count = m_targetOutgoingConnections;
 
         if (!m_peerlist.init(m_allow_local_ip))
         {
@@ -546,6 +595,7 @@ namespace CryptoNote
 
     bool NodeServer::run()
     {
+        m_dispatcherThreadId = std::this_thread::get_id();
         logger(INFO) << "Starting node_server";
 
         m_workingContextGroup.spawn(std::bind(&NodeServer::acceptLoop, this));
@@ -555,7 +605,12 @@ namespace CryptoNote
 
         m_stopEvent.wait();
 
-        logger(INFO) << "Stopping NodeServer and its " << m_connections.size() << " connections...";
+        size_t connectionCount = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
+            connectionCount = m_connections.size();
+        }
+        logger(INFO) << "Stopping NodeServer and its " << connectionCount << " connections...";
         safeInterrupt(m_workingContextGroup);
         m_workingContextGroup.wait();
 
@@ -567,6 +622,7 @@ namespace CryptoNote
 
     uint64_t NodeServer::get_connections_count()
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         return m_connections.size();
     }
     //-----------------------------------------------------------------------------------
@@ -613,7 +669,11 @@ namespace CryptoNote
 
     bool NodeServer::sendStopSignal()
     {
-        m_stop = true;
+        if (m_stop.exchange(true))
+        {
+            logger(DEBUGGING) << "Stop signal already requested, ignoring duplicate request.";
+            return true;
+        }
 
         m_dispatcher.remoteSpawn([this] {
             m_stopEvent.set();
@@ -746,20 +806,29 @@ namespace CryptoNote
     {
         // create copy of connection ids because the list can be changed during action
         std::vector<boost::uuids::uuid> connectionIds;
-        connectionIds.reserve(m_connections.size());
-        for (const auto &c : m_connections)
         {
-            connectionIds.push_back(c.first);
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
+            connectionIds.reserve(m_connections.size());
+            for (const auto &c : m_connections)
+            {
+                connectionIds.push_back(c.first);
+            }
         }
 
         for (const auto &connId : connectionIds)
         {
+            std::lock_guard<std::mutex> lock(m_connectionsMutex);
             auto it = m_connections.find(connId);
             if (it != m_connections.end())
             {
                 action(it->second);
             }
         }
+    }
+
+    bool NodeServer::isDispatcherThread() const
+    {
+        return std::this_thread::get_id() == m_dispatcherThreadId;
     }
 
     //-----------------------------------------------------------------------------------
@@ -770,6 +839,7 @@ namespace CryptoNote
             return true;
         } // dont make connections to ourself
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &kv : m_connections)
         {
             const auto &cntxt = kv.second;
@@ -785,6 +855,7 @@ namespace CryptoNote
 
     bool NodeServer::is_addr_connected(const NetworkAddress &peer)
     {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &conn : m_connections)
         {
             if (!conn.second.m_is_income && peer.ip == conn.second.m_remote_ip
@@ -802,6 +873,12 @@ namespace CryptoNote
         uint64_t last_seen_stamp,
         bool white)
     {
+        if (isHostBanned(na.ip))
+        {
+            logger(DEBUGGING) << "Skipping banned peer " << na;
+            return false;
+        }
+
         logger(DEBUGGING) << "Connecting to " << na << " (white=" << white << ", last_seen: "
                           << (last_seen_stamp ? Common::timeIntervalToString(time(NULL) - last_seen_stamp) : "never")
                           << ")...";
@@ -885,12 +962,17 @@ namespace CryptoNote
                 throw System::InterruptedException();
             }
 
-            auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
-            const boost::uuids::uuid &connectionId = iter->first;
-            P2pConnectionContext &connectionContext = iter->second;
+            boost::uuids::uuid connectionId;
+            P2pConnectionContext *connectionContext = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                connectionId = iter->first;
+                connectionContext = &iter->second;
+            }
 
             m_workingContextGroup.spawn(
-                std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connectionContext)));
+                std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connectionContext)));
 
             return true;
         }
@@ -917,13 +999,13 @@ namespace CryptoNote
             return false;
         } // no peers
 
-        size_t max_random_index = std::min<uint64_t>(local_peers_count - 1, 20);
+        size_t max_random_index = std::min<uint64_t>(local_peers_count - 1, PEER_SELECTION_RECENCY_WINDOW);
 
         std::set<size_t> tried_peers;
 
         size_t try_count = 0;
         size_t rand_count = 0;
-        while (rand_count < (max_random_index + 1) * 3 && try_count < 10 && !m_stop)
+        while (rand_count < (max_random_index + 1) * 3 && try_count < PEER_SELECTION_MAX_TRIES && !m_stop)
         {
             ++rand_count;
             size_t random_index = get_random_index_with_fixed_probability(max_random_index);
@@ -1073,6 +1155,7 @@ namespace CryptoNote
     size_t NodeServer::get_outgoing_connections_count()
     {
         size_t count = 0;
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             if (!cntxt.second.m_is_income)
@@ -1231,6 +1314,7 @@ namespace CryptoNote
             return 1;
         }
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             connection_entry ce;
@@ -1266,6 +1350,23 @@ namespace CryptoNote
         const BinaryArray &data_buff,
         const boost::uuids::uuid *excludeConnection)
     {
+        if (!isDispatcherThread())
+        {
+            const boost::uuids::uuid excludeId =
+                excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+            m_dispatcher.remoteSpawn(
+                [this, command, data_buff, excludeId] { relay_notify_to_all_impl(command, data_buff, &excludeId); });
+            return;
+        }
+
+        relay_notify_to_all_impl(command, data_buff, excludeConnection);
+    }
+
+    void NodeServer::relay_notify_to_all_impl(
+        int command,
+        const BinaryArray &data_buff,
+        const boost::uuids::uuid *excludeConnection)
+    {
         boost::uuids::uuid excludeId =
             excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
 
@@ -1285,7 +1386,36 @@ namespace CryptoNote
         const BinaryArray &buffer,
         const CryptoNoteConnectionContext &context)
     {
-        auto it = m_connections.find(context.m_connection_id);
+        if (!isDispatcherThread())
+        {
+            auto result = std::make_shared<std::promise<bool>>();
+            auto future = result->get_future();
+            const auto connectionId = context.m_connection_id;
+
+            m_dispatcher.remoteSpawn([this, command, buffer, connectionId, result] {
+                try
+                {
+                    result->set_value(invoke_notify_to_peer_impl(command, buffer, connectionId));
+                }
+                catch (...)
+                {
+                    result->set_exception(std::current_exception());
+                }
+            });
+
+            return future.get();
+        }
+
+        return invoke_notify_to_peer_impl(command, buffer, context.m_connection_id);
+    }
+
+    bool NodeServer::invoke_notify_to_peer_impl(
+        int command,
+        const BinaryArray &buffer,
+        const boost::uuids::uuid &connectionId)
+    {
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
+        auto it = m_connections.find(connectionId);
         if (it == m_connections.end())
         {
             return false;
@@ -1487,12 +1617,107 @@ namespace CryptoNote
         logger(INFO) << "Connections: \r\n" << print_connections_container();
         return true;
     }
+
+    bool NodeServer::ban_host(uint32_t ip, uint64_t seconds)
+    {
+        if (seconds == 0)
+        {
+            return false;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t expireAt = now + seconds;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+            m_bannedHostsUntil[ip] = expireAt;
+        }
+
+        logger(INFO) << "Banned host " << Common::ipAddressToString(ip) << " for " << seconds << " seconds";
+
+        auto disconnectBannedConnections = [this, ip]() {
+            forEachConnection([&](P2pConnectionContext &conn) {
+                if (conn.m_remote_ip == ip)
+                {
+                    conn.m_state = CryptoNoteConnectionContext::state_shutdown;
+                    safeInterrupt(conn);
+                }
+            });
+        };
+
+        if (isDispatcherThread())
+        {
+            disconnectBannedConnections();
+        }
+        else
+        {
+            m_dispatcher.remoteSpawn(disconnectBannedConnections);
+        }
+
+        return true;
+    }
+
+    bool NodeServer::unban_host(uint32_t ip)
+    {
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        const auto it = m_bannedHostsUntil.find(ip);
+        if (it == m_bannedHostsUntil.end())
+        {
+            return false;
+        }
+
+        m_bannedHostsUntil.erase(it);
+        logger(INFO) << "Removed host ban for " << Common::ipAddressToString(ip);
+        return true;
+    }
+
+    std::vector<std::pair<uint32_t, uint64_t>> NodeServer::get_banned_hosts()
+    {
+        std::vector<std::pair<uint32_t, uint64_t>> bans;
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        for (auto it = m_bannedHostsUntil.begin(); it != m_bannedHostsUntil.end();)
+        {
+            if (it->second <= now)
+            {
+                it = m_bannedHostsUntil.erase(it);
+                continue;
+            }
+
+            bans.emplace_back(it->first, it->second);
+            ++it;
+        }
+
+        return bans;
+    }
+
+    bool NodeServer::isHostBanned(uint32_t ip)
+    {
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        auto it = m_bannedHostsUntil.find(ip);
+        if (it == m_bannedHostsUntil.end())
+        {
+            return false;
+        }
+
+        if (it->second <= now)
+        {
+            m_bannedHostsUntil.erase(it);
+            return false;
+        }
+
+        return true;
+    }
     //-----------------------------------------------------------------------------------
 
     std::string NodeServer::print_connections_container()
     {
         std::stringstream ss;
 
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
             ss << Common::ipAddressToString(cntxt.second.m_remote_ip) << ":" << cntxt.second.m_remote_port
@@ -1545,12 +1770,44 @@ namespace CryptoNote
                 ctx.m_remote_ip = hostToNetwork(addressAndPort.first.getValue());
                 ctx.m_remote_port = addressAndPort.second;
 
-                auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
-                const boost::uuids::uuid &connectionId = iter->first;
-                P2pConnectionContext &connection = iter->second;
+                if (isHostBanned(ctx.m_remote_ip))
+                {
+                    logger(DEBUGGING) << "Rejecting incoming connection from banned host "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    continue;
+                }
+
+                size_t incomingConnections = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    for (const auto &kv : m_connections)
+                    {
+                        if (kv.second.m_is_income)
+                        {
+                            ++incomingConnections;
+                        }
+                    }
+                }
+
+                if (incomingConnections >= m_maxIncomingConnections)
+                {
+                    logger(DEBUGGING) << "Rejecting incoming connection due to --in-peers limit ("
+                                      << incomingConnections << "/" << m_maxIncomingConnections << ") from "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    continue;
+                }
+
+                boost::uuids::uuid connectionId;
+                P2pConnectionContext *connection = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                    connectionId = iter->first;
+                    connection = &iter->second;
+                }
 
                 m_workingContextGroup.spawn(
-                    std::bind(&NodeServer::connectionHandler, this, std::cref(connectionId), std::ref(connection)));
+                    std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connection)));
             }
             catch (System::InterruptedException &)
             {
@@ -1600,13 +1857,21 @@ namespace CryptoNote
                 m_timeoutTimer.sleep(std::chrono::seconds(10));
                 auto now = P2pConnectionContext::Clock::now();
 
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
                 for (auto &kv : m_connections)
                 {
                     auto &ctx = kv.second;
+                    if (!ctx.canBeInterrupted())
+                    {
+                        continue;
+                    }
+
                     if (ctx.writeDuration(now) > P2P_DEFAULT_INVOKE_TIMEOUT)
                     {
                         logger(DEBUGGING) << ctx << "write operation timed out, stopping connection";
-                        safeInterrupt(ctx);
+                        // Avoid interrupting the connection context directly from timeoutLoop.
+                        // We only request shutdown and wake the writer loop.
+                        ctx.stopWithoutContextInterrupt();
                     }
                 }
             }
@@ -1709,12 +1974,39 @@ namespace CryptoNote
                 logger(DEBUGGING) << ctx << "Exception in connectionHandler: " << e.what();
             }
 
-            safeInterrupt(ctx);
-            safeInterrupt(writeContext);
-            writeContext.wait();
+            try
+            {
+                safeInterrupt(ctx);
+                safeInterrupt(writeContext);
+                writeContext.wait();
+            }
+            catch (const std::exception &e)
+            {
+                logger(DEBUGGING) << ctx << "Exception while stopping connection contexts: " << e.what();
+            }
+            catch (...)
+            {
+                logger(DEBUGGING) << ctx << "Unknown exception while stopping connection contexts";
+            }
 
-            on_connection_close(ctx);
-            m_connections.erase(connectionId);
+            try
+            {
+                on_connection_close(ctx);
+            }
+            catch (const std::exception &e)
+            {
+                logger(DEBUGGING) << ctx << "Exception in on_connection_close: " << e.what();
+            }
+            catch (...)
+            {
+                logger(DEBUGGING) << ctx << "Unknown exception in on_connection_close";
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                ctx.context = nullptr;
+                m_connections.erase(connectionId);
+            }
         });
 
         ctx.context = &context;
@@ -1735,6 +2027,8 @@ namespace CryptoNote
         {
             logger(WARNING) << "connectionHandler() throws unknown exception";
         }
+
+        ctx.context = nullptr;
     }
 
     void NodeServer::writeHandler(P2pConnectionContext &ctx)
@@ -1768,7 +2062,8 @@ namespace CryptoNote
                             proto.sendReply(msg.command, msg.buffer, msg.returnCode);
                             break;
                         default:
-                            assert(false);
+                            logger(WARNING) << ctx << "writeHandler: unknown P2pMessage type " << msg.type << ", skipping";
+                            break;
                     }
                 }
             }

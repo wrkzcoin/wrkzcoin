@@ -1,5 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -26,6 +27,18 @@ namespace CryptoNote
         virtual size_t getPeerCount() const = 0;
 
         virtual bool isSynchronized() const = 0;
+
+        virtual bool isPrunedNode() const = 0;
+
+        virtual uint32_t getPrunedNodeDepth() const = 0;
+
+        virtual bool isPruneCapabilityActive() const = 0;
+
+        virtual uint32_t getSyncActivePeers() const = 0;
+
+        virtual uint32_t getSyncAvgBatchSize() const = 0;
+
+        virtual uint32_t getSyncDemotedPeers() const = 0;
     };
 
 } // namespace CryptoNote

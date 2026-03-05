@@ -8,7 +8,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include "db/compaction/compaction_picker.h"
 
@@ -19,26 +18,27 @@ class FIFOCompactionPicker : public CompactionPicker {
                        const InternalKeyComparator* icmp)
       : CompactionPicker(ioptions, icmp) {}
 
-  virtual Compaction* PickCompaction(
+  Compaction* PickCompaction(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
-      const MutableDBOptions& mutable_db_options, VersionStorageInfo* version,
-      LogBuffer* log_buffer,
-      SequenceNumber earliest_memtable_seqno = kMaxSequenceNumber) override;
+      const MutableDBOptions& mutable_db_options,
+      const std::vector<SequenceNumber>& /* existing_snapshots */,
+      const SnapshotChecker* /* snapshot_checker */,
+      VersionStorageInfo* version, LogBuffer* log_buffer,
+      bool /* require_max_output_level*/ = false) override;
 
-  virtual Compaction* CompactRange(
+  Compaction* PickCompactionForCompactRange(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
       int input_level, int output_level,
       const CompactRangeOptions& compact_range_options,
       const InternalKey* begin, const InternalKey* end,
       InternalKey** compaction_end, bool* manual_conflict,
-      uint64_t max_file_num_to_ignore) override;
+      uint64_t max_file_num_to_ignore, const std::string& trim_ts) override;
 
   // The maximum allowed output level.  Always returns 0.
-  virtual int MaxOutputLevel() const override { return 0; }
+  int MaxOutputLevel() const override { return 0; }
 
-  virtual bool NeedsCompaction(
-      const VersionStorageInfo* vstorage) const override;
+  bool NeedsCompaction(const VersionStorageInfo* vstorage) const override;
 
  private:
   Compaction* PickTTLCompaction(const std::string& cf_name,
@@ -52,6 +52,11 @@ class FIFOCompactionPicker : public CompactionPicker {
                                  const MutableDBOptions& mutable_db_options,
                                  VersionStorageInfo* version,
                                  LogBuffer* log_buffer);
+
+  // Will pick one file to compact at a time, starting from the oldest file.
+  Compaction* PickTemperatureChangeCompaction(
+      const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+      const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
+      LogBuffer* log_buffer) const;
 };
 }  // namespace ROCKSDB_NAMESPACE
-#endif  // !ROCKSDB_LITE

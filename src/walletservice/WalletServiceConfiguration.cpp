@@ -1,5 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -290,7 +290,7 @@ namespace PaymentService
                 exit(0);
             }
         }
-        catch (const cxxopts::OptionException &e)
+        catch (const cxxopts::exceptions::exception &e)
         {
             std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl
                       << std::endl

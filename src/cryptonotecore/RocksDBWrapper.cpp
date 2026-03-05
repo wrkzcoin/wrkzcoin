@@ -1,6 +1,6 @@
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2018-2019, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -10,7 +10,7 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
 #include "rocksdb/table.h"
-#include "rocksdb/utilities/backupable_db.h"
+#include <algorithm>
 
 using namespace CryptoNote;
 using namespace Logging;
@@ -84,8 +84,21 @@ void RocksDBWrapper::shutdown()
     }
 
     logger(INFO) << "Closing DB.";
-    db->Flush(rocksdb::FlushOptions());
-    db->SyncWAL();
+    rocksdb::FlushOptions flushOptions;
+    flushOptions.wait = true;
+
+    const rocksdb::Status flushStatus = db->Flush(flushOptions);
+    if (!flushStatus.ok())
+    {
+        logger(ERROR) << "Failed to flush RocksDB on shutdown: " << flushStatus.ToString();
+    }
+
+    const rocksdb::Status walStatus = db->SyncWAL();
+    if (!walStatus.ok())
+    {
+        logger(ERROR) << "Failed to sync RocksDB WAL on shutdown: " << walStatus.ToString();
+    }
+
     db.reset();
     state.store(NOT_INITIALIZED);
 }
@@ -122,7 +135,7 @@ std::error_code RocksDBWrapper::write(IWriteBatch &batch)
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
-    return write(batch, false);
+    return write(batch, true);
 }
 
 std::error_code RocksDBWrapper::write(IWriteBatch &batch, bool sync)
@@ -241,6 +254,36 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
     return std::error_code();
 }
 
+std::error_code RocksDBWrapper::compact()
+{
+    return compactDetailed().first;
+}
+
+std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    logger(INFO) << "Starting RocksDB full compaction...";
+
+    rocksdb::CompactRangeOptions options;
+    options.change_level = true;
+    options.target_level = -1;
+
+    const rocksdb::Status status = db->CompactRange(options, nullptr, nullptr);
+    if (!status.ok())
+    {
+        const std::string details = status.ToString();
+        logger(ERROR) << "RocksDB compaction failed: " << details;
+        return {make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR), details};
+    }
+
+    logger(INFO) << "RocksDB full compaction completed.";
+    return {std::error_code(), std::string()};
+}
+
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 {
     rocksdb::DBOptions dbOptions;
@@ -250,7 +293,6 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     // For spinning disk
     dbOptions.skip_stats_update_on_db_open = true;
     dbOptions.compaction_readahead_size  = 2 * 1024 * 1024;
-    dbOptions.new_table_reader_for_compaction_inputs = true;
 
     rocksdb::ColumnFamilyOptions fOptions;
     fOptions.write_buffer_size = static_cast<size_t>(config.writeBufferSize);
@@ -267,10 +309,10 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     fOptions.level0_slowdown_writes_trigger = 30;
     fOptions.level0_stop_writes_trigger = 40;
 
-    // doesn't really matter much, but we don't want to create too many files
-    fOptions.target_file_size_base = config.writeBufferSize / 10;
-    // make Level1 size equal to Level0 size, so that L0->L1 compactions are fast
-    fOptions.max_bytes_for_level_base = config.writeBufferSize;
+    // Keep SST files large enough to avoid excessive file churn.
+    fOptions.target_file_size_base = std::max<uint64_t>(config.writeBufferSize / 2, 8ULL * 1024 * 1024);
+    // Keep L1 reasonably sized relative to the memtable budget.
+    fOptions.max_bytes_for_level_base = std::max<uint64_t>(config.writeBufferSize * 4, 64ULL * 1024 * 1024);
     fOptions.num_levels = 7;
     fOptions.target_file_size_multiplier = 2;
     // level style compaction
@@ -288,8 +330,8 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
         fOptions.compression_per_level[i] = (i < 2 ? rocksdb::kNoCompression : compressionLevel);
     }
 
-    // bottom most use kZSTD
-    fOptions.bottommost_compression = rocksdb::kNoCompression;
+    // Keep bottom-most level compressed as well when compression is enabled.
+    fOptions.bottommost_compression = compressionLevel;
 
     rocksdb::BlockBasedTableOptions tableOptions;
     tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize);

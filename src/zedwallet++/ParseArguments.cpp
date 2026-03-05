@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -24,7 +25,7 @@ ZedConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help, version, scanCoinbaseTransactions;
+    bool help = false, version = false, scanCoinbaseTransactions = false;
 
     std::string remoteDaemon;
 
@@ -35,7 +36,9 @@ ZedConfig parseArguments(int argc, char **argv)
     std::string logFilePath;
 
     options.add_options("Core")(
-        "h,help", "Display this help message", cxxopts::value<bool>(help)->implicit_value("true"))
+        "h,help",
+        "Display this help message",
+        cxxopts::value<bool>(help)->default_value("false")->implicit_value("true"))
 
         ("v,version",
          "Output software version information",
@@ -94,7 +97,7 @@ ZedConfig parseArguments(int argc, char **argv)
         /* We could check if the string is empty, but an empty password is valid */
         config.passGiven = result.count("password") != 0;
     }
-    catch (const cxxopts::OptionException &e)
+    catch (const cxxopts::exceptions::exception &e)
     {
         std::cout << "Error: Unable to parse command line argument options: " << e.what() << std::endl << std::endl;
         std::cout << options.help({}) << std::endl;

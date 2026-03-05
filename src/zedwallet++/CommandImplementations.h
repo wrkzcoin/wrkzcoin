@@ -1,4 +1,5 @@
 // Copyright (c) 2018-2019, The TurtleCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin developers
 //
 // Please see the included LICENSE file for more information.
 
@@ -11,6 +12,7 @@ void changePassword(const std::shared_ptr<WalletBackend> walletBackend);
 void printPrivateKeys(const std::shared_ptr<WalletBackend> walletBackend);
 
 void reset(const std::shared_ptr<WalletBackend> walletBackend);
+void refresh(const std::shared_ptr<WalletBackend> walletBackend);
 
 void status(const std::shared_ptr<WalletBackend> walletBackend);
 
@@ -40,12 +42,16 @@ void saveCSV(const std::shared_ptr<WalletBackend> walletBackend);
 void save(const std::shared_ptr<WalletBackend> walletBackend);
 
 void listTransfers(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
+void listTransfersBrief(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
+void listTransfersVerbose(const bool incoming, const bool outgoing, const std::shared_ptr<WalletBackend> walletBackend);
 
 void printOutgoingTransfer(const WalletTypes::Transaction t);
 
 void printIncomingTransfer(const WalletTypes::Transaction t);
 
-void createIntegratedAddress();
+void printTransferOneLine(const WalletTypes::Transaction t);
+
+void createIntegratedAddress(const std::shared_ptr<WalletBackend> walletBackend);
 
 void help(const std::shared_ptr<WalletBackend> walletBackend);
 
@@ -54,5 +60,7 @@ void advanced(const std::shared_ptr<WalletBackend> walletBackend);
 void swapNode(const std::shared_ptr<WalletBackend> walletBackend);
 
 void getTxPrivateKey(const std::shared_ptr<WalletBackend> walletBackend);
+void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
+void decodeIntegrated(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
 
 void setLogLevel();
