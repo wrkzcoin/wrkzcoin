@@ -24,6 +24,8 @@
 RpcServer::RpcServer(
     const uint16_t bindPort,
     const std::string rpcBindIp,
+    const std::string rpcBindIpv6Address,
+    const bool rpcUseIpv6,
     const std::string corsHeader,
     const std::string rpcAccessToken,
     const uint32_t rpcReadTimeout,
@@ -39,6 +41,7 @@ RpcServer::RpcServer(
     const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager):
     m_port(bindPort),
     m_host(rpcBindIp),
+    m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
     m_corsHeader(corsHeader),
     m_rpcAccessToken(rpcAccessToken),
     m_rpcReadTimeout(std::max<uint32_t>(1, rpcReadTimeout)),
@@ -52,6 +55,16 @@ RpcServer::RpcServer(
     m_core(core),
     m_p2p(p2p),
     m_syncManager(syncManager)
+{
+    setupRoutes(m_server);
+
+    if (!m_ipv6Host.empty())
+    {
+        setupRoutes(m_ipv6Server);
+    }
+}
+
+void RpcServer::setupRoutes(httplib::Server &srv)
 {
     const bool bodyRequired = true;
     const bool bodyNotRequired = false;
@@ -139,26 +152,26 @@ RpcServer::RpcServer(
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
-    m_server.Get("/json_rpc", jsonRpc)
-            .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-            .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-            .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+    srv.Get("/json_rpc", jsonRpc)
+       .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
-            .Post("/json_rpc", jsonRpc)
-            .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
-            .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::Explorer, bodyRequired, syncNotRequired))
-            .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/json_rpc", jsonRpc)
+       .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
+       .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::Explorer, bodyRequired, syncNotRequired))
+       .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Standard, bodyRequired, syncNotRequired))
 
-            /* Matches everything */
-            /* NOTE: Not passing through middleware */
-            .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
+       /* Matches everything */
+       /* NOTE: Not passing through middleware */
+       .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
 }
 
 RpcServer::~RpcServer()
@@ -169,6 +182,11 @@ RpcServer::~RpcServer()
 void RpcServer::start()
 {
     m_serverThread = std::thread(&RpcServer::listen, this);
+
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Thread = std::thread(&RpcServer::listenIpv6, this);
+    }
 }
 
 void RpcServer::listen()
@@ -183,13 +201,36 @@ void RpcServer::listen()
     }
 }
 
+void RpcServer::listenIpv6()
+{
+    const auto listenError = m_ipv6Server.listen(m_ipv6Host, m_port);
+
+    if (listenError != httplib::SUCCESS)
+    {
+        std::cout << WarningMsg("Failed to start IPv6 RPC server on [")
+                  << WarningMsg(m_ipv6Host)
+                  << WarningMsg("]: ")
+                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+    }
+}
+
 void RpcServer::stop()
 {
     m_server.stop();
 
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Server.stop();
+    }
+
     if (m_serverThread.joinable())
     {
         m_serverThread.join();
+    }
+
+    if (m_ipv6Thread.joinable())
+    {
+        m_ipv6Thread.join();
     }
 }
 
