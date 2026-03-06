@@ -191,6 +191,44 @@ namespace Utilities
         address = Utilities::removePrefix(address, "https://");
         address = Utilities::removePrefix(address, "http://");
 
+        /* IPv6 bracket notation: [addr]:port or [addr] */
+        if (!address.empty() && address.front() == '[')
+        {
+            const auto closeBracket = address.find(']');
+
+            if (closeBracket == std::string::npos)
+            {
+                return false;
+            }
+
+            host = address.substr(1, closeBracket - 1);
+
+            if (host.empty())
+            {
+                return false;
+            }
+
+            /* Optional :port after the closing bracket */
+            if (closeBracket + 1 < address.size() && address[closeBracket + 1] == ':')
+            {
+                try
+                {
+                    port = std::stoi(address.substr(closeBracket + 2));
+                }
+                catch (const std::invalid_argument &)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                port = CryptoNote::RPC_DEFAULT_PORT;
+            }
+
+            return true;
+        }
+
+        /* IPv4 address or hostname: host:port or host */
         std::vector<std::string> parts = Utilities::split(address, ':');
 
         if (parts.empty())
