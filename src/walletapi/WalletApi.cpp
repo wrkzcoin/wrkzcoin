@@ -53,7 +53,8 @@ int main(int argc, char **argv)
 
         /* Init the API */
         api = std::make_shared<ApiDispatcher>(
-            config.port, config.rpcBindIp, config.rpcPassword, config.corsHeader, config.threads);
+            config.port, config.rpcBindIp, config.rpcBindIpv6Address, config.rpcUseIpv6,
+            config.rpcPassword, config.corsHeader, config.threads);
 
         /* Launch the API */
         apiThread = std::thread(&ApiDispatcher::start, api.get());
@@ -68,6 +69,12 @@ int main(int argc, char **argv)
         std::string address = "http://" + config.rpcBindIp + ":" + std::to_string(config.port);
 
         std::cout << "The api has been launched on " << address << "." << std::endl;
+
+        if (config.rpcUseIpv6 && !config.rpcBindIpv6Address.empty())
+        {
+            std::cout << "The api is also listening on http://[" << config.rpcBindIpv6Address
+                      << "]:" << std::to_string(config.port) << std::endl;
+        }
 
         if (!config.noConsole)
         {

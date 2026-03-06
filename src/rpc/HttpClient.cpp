@@ -7,8 +7,8 @@
 #include "HttpClient.h"
 
 #include <http/HttpParser.h>
-#include <system/Ipv4Address.h>
-#include <system/Ipv4Resolver.h>
+#include <system/IpAddress.h>
+#include <system/IpResolver.h>
 #include <system/TcpConnector.h>
 
 namespace CryptoNote
@@ -56,7 +56,7 @@ namespace CryptoNote
     {
         try
         {
-            auto ipAddr = System::Ipv4Resolver(m_dispatcher).resolve(m_address);
+            auto ipAddr = System::IpResolver(m_dispatcher).resolve(m_address);
             m_connection = System::TcpConnector(m_dispatcher).connect(ipAddr, m_port);
             m_streamBuf.reset(new System::TcpStreambuf(m_connection));
             m_connected = true;

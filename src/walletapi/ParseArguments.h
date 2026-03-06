@@ -18,6 +18,12 @@ struct ApiConfig
     /* What port should we listen on */
     uint16_t port;
 
+    /* IPv6 address to listen on (empty = disabled) */
+    std::string rpcBindIpv6Address;
+
+    /* Whether to enable the IPv6 listener */
+    bool rpcUseIpv6 = false;
+
     /* Password the user must supply with each request */
     std::string rpcPassword;
 

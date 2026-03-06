@@ -27,11 +27,14 @@
 ApiDispatcher::ApiDispatcher(
     const uint16_t bindPort,
     const std::string rpcBindIp,
+    const std::string rpcBindIpv6Address,
+    const bool rpcUseIpv6,
     const std::string rpcPassword,
     const std::string corsHeader,
     unsigned int walletSyncThreads):
     m_port(bindPort),
     m_host(rpcBindIp),
+    m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
@@ -48,6 +51,16 @@ ApiDispatcher::ApiDispatcher(
     /* Make sure to do this after initializing the salt above! */
     m_hashedPassword = hashPassword(rpcPassword);
 
+    setupRoutes(m_server);
+
+    if (!m_ipv6Host.empty())
+    {
+        setupRoutes(m_ipv6Server);
+    }
+}
+
+void ApiDispatcher::setupRoutes(httplib::Server &srv)
+{
     using namespace std::placeholders;
 
     /* Route the request through our middleware function, before forwarding
@@ -69,7 +82,7 @@ ApiDispatcher::ApiDispatcher(
     const bool viewWalletsBanned = false;
 
     /* POST */
-    m_server
+    srv
         .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed))
 
         /* Import wallet with keys */
@@ -271,11 +284,26 @@ ApiDispatcher::ApiDispatcher(
 
 void ApiDispatcher::start()
 {
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Thread = std::thread([this]() {
+            const auto listenError = m_ipv6Server.listen(m_ipv6Host, m_port);
+
+            if (listenError != httplib::SUCCESS)
+            {
+                std::cout << WarningMsg("Failed to start IPv6 API server on [")
+                          << WarningMsg(m_ipv6Host)
+                          << WarningMsg("]: ")
+                          << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+            }
+        });
+    }
+
     const auto listenError = m_server.listen(m_host, m_port);
 
     if (listenError != httplib::SUCCESS)
     {
-        std::cout << WarningMsg("Failed to start RPC server: ")
+        std::cout << WarningMsg("Failed to start API server: ")
                   << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
 
         exit(1);
@@ -285,6 +313,12 @@ void ApiDispatcher::start()
 void ApiDispatcher::stop()
 {
     m_server.stop();
+
+    if (m_ipv6Thread.joinable())
+    {
+        m_ipv6Server.stop();
+        m_ipv6Thread.join();
+    }
 }
 
 void ApiDispatcher::middleware(
