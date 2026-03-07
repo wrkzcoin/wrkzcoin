@@ -67,7 +67,7 @@ Build instructions are maintained in:
 
 Everyone starts somewhere. If you're new or returning, you'll probably want to get in sync with the network so you can use your funds. Syncing from your own node is faster than syncing from a remote node. Here are some handy links to get you there as soon as possible.
 
--   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://github.com/wrkzcoin/checkpoints) or via [Direct link](https://github.com/wrkzcoin/checkpoints/raw/master/wrkzcoin_checkpoints.csv.zip) 
+-   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://checkpoints.wrkz.work/) or via [Direct link](https://checkpoints.wrkz.work/checkpoints.csv) 
 -   **Backup your keys** - You can generate a wallet right inside the software, or use [this paper wallet generator](https://paperwallet.wrkz.work)
 
 ### Daemon DB Compaction
@@ -99,7 +99,7 @@ See `src/config/CryptoNoteConfig.h` for an example.
 // Copyright (c) 2012-2017, The CryptoNote developers, The Bytecoin developers
 // Copyright (c) 2014-2018, The Monero Project
 // Copyright (c) 2018-2020, The TurtleCoin Developers
-// Copyright (c) 2018-2020, The WrkzCoin Developers
+// Copyright (c) 2018-2026, The WrkzCoin Developers
 //
 // Please see the included LICENSE file for more information.
 ```
