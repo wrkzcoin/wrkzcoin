@@ -454,8 +454,11 @@ namespace CryptoNote
         auto priorityNodes = config.getPriorityNodes();
         std::copy(priorityNodes.begin(), priorityNodes.end(), std::back_inserter(m_priority_peers));
 
-        auto seedNodes = config.getSeedNodes();
-        std::copy(seedNodes.begin(), seedNodes.end(), std::back_inserter(m_seed_nodes));
+        auto seedNodeAddresses = config.getSeedNodeAddresses();
+        for (const auto &seed : seedNodeAddresses)
+        {
+            append_net_address(m_seed_nodes, seed);
+        }
 
         m_hide_my_port = config.getHideMyPort();
         m_bind_ipv6 = config.getBindIpv6Address();

@@ -60,6 +60,7 @@ namespace CryptoNote
         std::vector<NetworkAddress> getExclusiveNodes() const;
 
         std::vector<NetworkAddress> getSeedNodes() const;
+        std::vector<std::string> getSeedNodeAddresses() const;
 
         bool getHideMyPort() const;
 
@@ -89,6 +90,7 @@ namespace CryptoNote
         std::vector<NetworkAddress> exclusiveNodes;
 
         std::vector<NetworkAddress> seedNodes;
+        std::vector<std::string> seedNodeAddresses;
 
         bool hideMyPort;
 

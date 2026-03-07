@@ -129,9 +129,15 @@ namespace CryptoNote
 
         if (!addSeedNodes.empty())
         {
-            if (!parsePeersAndAddToNetworkContainer(addSeedNodes, seedNodes))
+            seedNodeAddresses = addSeedNodes;
+
+            for (const auto &seed : addSeedNodes)
             {
-                return false;
+                NetworkAddress networkAddress = NetworkAddress();
+                if (parsePeerFromString(networkAddress, seed))
+                {
+                    seedNodes.push_back(networkAddress);
+                }
             }
         }
 
@@ -196,6 +202,11 @@ namespace CryptoNote
     std::vector<NetworkAddress> NetNodeConfig::getSeedNodes() const
     {
         return seedNodes;
+    }
+
+    std::vector<std::string> NetNodeConfig::getSeedNodeAddresses() const
+    {
+        return seedNodeAddresses;
     }
 
     bool NetNodeConfig::getHideMyPort() const
