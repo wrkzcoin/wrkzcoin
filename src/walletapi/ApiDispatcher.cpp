@@ -38,6 +38,11 @@ ApiDispatcher::ApiDispatcher(
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
+    m_server.set_address_family(AF_INET);
+    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        std::cout << WarningMsg("API server startup error: ")
+                  << WarningMsg(httplib::to_string(error)) << std::endl;
+    });
     if (walletSyncThreads == 0)
     {
         walletSyncThreads = 1;
@@ -55,6 +60,12 @@ ApiDispatcher::ApiDispatcher(
 
     if (!m_ipv6Host.empty())
     {
+        m_ipv6Server.set_address_family(AF_INET6);
+        m_ipv6Server.set_ipv6_v6only(true);
+        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            std::cout << WarningMsg("IPv6 API server startup error: ")
+                      << WarningMsg(httplib::to_string(error)) << std::endl;
+        });
         setupRoutes(m_ipv6Server);
     }
 }

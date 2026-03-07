@@ -56,17 +56,34 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
+    m_server.set_address_family(AF_INET);
     m_server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
     m_server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
     m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        Logger::logger.log(
+            "RPC server startup error: " + httplib::to_string(error),
+            Logger::WARNING,
+            { Logger::DAEMON_RPC }
+        );
+    });
 
     setupRoutes(m_server);
 
     if (!m_ipv6Host.empty())
     {
+        m_ipv6Server.set_address_family(AF_INET6);
+        m_ipv6Server.set_ipv6_v6only(true);
         m_ipv6Server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
         m_ipv6Server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
         m_ipv6Server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            Logger::logger.log(
+                "RPC IPv6 server startup error: " + httplib::to_string(error),
+                Logger::WARNING,
+                { Logger::DAEMON_RPC }
+            );
+        });
         setupRoutes(m_ipv6Server);
     }
 }
