@@ -250,10 +250,6 @@ namespace CryptoNote
 
         std::pair<std::error_code, std::string> compactDatabaseDetailed();
 
-        bool writeMasternodeStateBlob(const std::string &blob);
-
-        bool readMasternodeStateBlob(std::string &blob) const;
-
       private:
         const Currency &currency;
 
