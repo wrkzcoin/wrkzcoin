@@ -1080,6 +1080,9 @@ function varintEncode(n) {
 
 function parseTxPubKey(extra) {
   if (!extra) return null;
+  if (typeof extra === 'string' && /^[0-9a-fA-F]{64}$/.test(extra) && !/^0+$/.test(extra)) {
+    return hexToU8(extra);
+  }
   if (typeof extra === 'object' && !Array.isArray(extra)) {
     if (typeof extra.publicKey === 'string' && /^[0-9a-fA-F]{64}$/.test(extra.publicKey) && !/^0+$/.test(extra.publicKey)) {
       return hexToU8(extra.publicKey);
