@@ -25,7 +25,14 @@ namespace CryptoNote
         boost::uuids::uuid m_connection_id;
         uint32_t m_remote_ip = 0;
         uint32_t m_remote_port = 0;
+        std::string m_remote_ipv6; // non-empty for pure IPv6 connections (m_remote_ip == 0)
         bool m_is_income = false;
+
+        // Returns the display address string regardless of IP version.
+        std::string remoteAddressStr() const
+        {
+            return m_remote_ipv6.empty() ? Common::ipAddressToString(m_remote_ip) : m_remote_ipv6;
+        }
         time_t m_started = 0;
 
         enum state
@@ -88,7 +95,7 @@ namespace std
 {
     inline std::ostream &operator<<(std::ostream &s, const CryptoNote::CryptoNoteConnectionContext &context)
     {
-        return s << "[" << Common::ipAddressToString(context.m_remote_ip) << ":" << context.m_remote_port
+        return s << "[" << context.remoteAddressStr() << ":" << context.m_remote_port
                  << (context.m_is_income ? " INC" : " OUT") << "] ";
     }
 } // namespace std

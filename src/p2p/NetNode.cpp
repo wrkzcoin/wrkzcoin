@@ -1100,6 +1100,7 @@ namespace CryptoNote
 
             ctx.m_connection_id = boost::uuids::random_generator()();
             ctx.m_remote_ip = 0; // IPv6 — stored as 0; full address tracked via IpAddress
+            ctx.m_remote_ipv6 = addrStr;
             ctx.m_remote_port = na.port;
             ctx.m_is_income = false;
             ctx.m_started = time(nullptr);
@@ -2122,7 +2123,7 @@ namespace CryptoNote
         std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
-            ss << Common::ipAddressToString(cntxt.second.m_remote_ip) << ":" << cntxt.second.m_remote_port
+            ss << cntxt.second.remoteAddressStr() << ":" << cntxt.second.m_remote_port
                << " \t\tpeer_id " << cntxt.second.peerId << " \t\tconn_id " << cntxt.second.m_connection_id
                << (cntxt.second.m_is_income ? " INCOMING" : " OUTGOING") << std::endl;
         }
@@ -2256,6 +2257,7 @@ namespace CryptoNote
                 {
                     ctx.m_remote_ip = 0; // pure IPv6; not representable as uint32_t
                     const std::string addr6 = peerAddr.toString();
+                    ctx.m_remote_ipv6 = addr6;
                     if (isHostBanned6(addr6))
                     {
                         logger(DEBUGGING) << "Rejecting incoming connection from banned IPv6 host "
