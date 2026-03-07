@@ -46,7 +46,7 @@ ZedConfig parseArguments(int argc, char **argv)
 
     options.add_options("Daemon")(
         "r,remote-daemon",
-        "The daemon host:port to use for node operations. For IPv6 use bracket notation, e.g. [::1]:11898",
+        "The daemon host:port to use for node operations. For IPv6 use bracket notation, e.g. [::1]:17856",
         cxxopts::value<std::string>(remoteDaemon)->default_value(defaultRemoteDaemon),
         "<host:port>")
 

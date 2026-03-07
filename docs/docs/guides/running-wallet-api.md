@@ -39,5 +39,5 @@ curl -s -H "X-API-KEY: strong-password" http://127.0.0.1:8070/status
 curl -s -X POST http://127.0.0.1:8070/wallet/open \
   -H "X-API-KEY: strong-password" \
   -H "Content-Type: application/json" \
-  -d '{"filename":"wallet.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"wallet.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```

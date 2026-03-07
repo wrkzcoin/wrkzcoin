@@ -39,7 +39,7 @@ Open wallet:
 curl -s -X POST "$WALLET_API_URL/wallet/open" \
   -H "X-API-KEY: $WALLET_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"filename":"wallet.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"wallet.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Check status:

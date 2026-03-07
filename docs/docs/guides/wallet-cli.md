@@ -21,7 +21,7 @@ Open an existing wallet from command line:
 ./wrkz-wallet \
   --wallet-file wallet.wallet \
   --password "wallet-pass" \
-  --remote-daemon 127.0.0.1:11898 \
+  --remote-daemon 127.0.0.1:17856 \
   --threads 4
 ```
 
@@ -105,7 +105,7 @@ Security and maintenance:
 1. Start:
 
 ```bash
-./wrkz-wallet --remote-daemon 127.0.0.1:11898
+./wrkz-wallet --remote-daemon 127.0.0.1:17856
 ```
 
 2. Create or open wallet in startup menu:

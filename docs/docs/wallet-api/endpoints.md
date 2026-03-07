@@ -91,7 +91,7 @@ Create wallet:
 ```bash
 curl -s -X POST "$WALLET_API_URL/wallet/create" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"new.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"new.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Open wallet:
@@ -99,7 +99,7 @@ Open wallet:
 ```bash
 curl -s -X POST "$WALLET_API_URL/wallet/open" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"new.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"new.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Import from keys:
@@ -107,7 +107,7 @@ Import from keys:
 ```bash
 curl -s -X POST "$WALLET_API_URL/wallet/import/key" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"import.wallet","password":"wallet-pass","privateViewKey":"<view-secret-key>","privateSpendKey":"<spend-secret-key>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"import.wallet","password":"wallet-pass","privateViewKey":"<view-secret-key>","privateSpendKey":"<spend-secret-key>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Import from seed:
@@ -115,7 +115,7 @@ Import from seed:
 ```bash
 curl -s -X POST "$WALLET_API_URL/wallet/import/seed" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"seed.wallet","password":"wallet-pass","mnemonicSeed":"<25-word-seed>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"seed.wallet","password":"wallet-pass","mnemonicSeed":"<25-word-seed>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Import view wallet:
@@ -123,7 +123,7 @@ Import view wallet:
 ```bash
 curl -s -X POST "$WALLET_API_URL/wallet/import/view" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"filename":"view.wallet","password":"wallet-pass","address":"<address>","privateViewKey":"<view-secret-key>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"view.wallet","password":"wallet-pass","address":"<address>","privateViewKey":"<view-secret-key>","scanHeight":0,"daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 Save, reset, close:
@@ -271,7 +271,7 @@ curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/keys"
 curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/keys/<address>"
 curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/keys/mnemonic/<address>"
 curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/node"
-curl -s -X PUT "$WALLET_API_URL/node" -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" -d '{"daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+curl -s -X PUT "$WALLET_API_URL/node" -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" -d '{"daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 curl -s -X PUT "$WALLET_API_URL/sync/refresh" -H "X-API-KEY: $WALLET_API_KEY"
 curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/balance"
 curl -s -H "X-API-KEY: $WALLET_API_KEY" "$WALLET_API_URL/balance/<address>"
