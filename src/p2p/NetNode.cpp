@@ -11,6 +11,7 @@
 #include "ConnectionContext.h"
 #include "LevinProtocol.h"
 #include "P2pProtocolDefinitions.h"
+#include "common/StringTools.h"
 #include "common/StdInputStream.h"
 #include "common/StdOutputStream.h"
 #include "common/Util.h"
@@ -465,19 +466,16 @@ namespace CryptoNote
 
     bool NodeServer::append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr)
     {
-        size_t pos = addr.find_last_of(':');
-        if (!(std::string::npos != pos && addr.length() - 1 != pos && 0 != pos))
+        std::string host;
+        uint32_t port = 0;
+        if (!Common::parseHostAndPort(addr, host, port))
         {
             logger(ERROR, BRIGHT_RED) << "Failed to parse seed address from string: '" << addr << '\'';
             return false;
         }
 
-        std::string host = addr.substr(0, pos);
-
         try
         {
-            uint32_t port = Common::fromString<uint32_t>(addr.substr(pos + 1));
-
             System::IpResolver resolver(m_dispatcher);
             auto resolved = resolver.resolveAll(host);
             if (resolved.empty())
