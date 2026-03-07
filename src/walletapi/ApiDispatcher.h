@@ -355,7 +355,7 @@ class ApiDispatcher
 
     /* Need a mutex for some actions, mainly mutating actions, like opening
        wallets, sending transfers, etc */
-    mutable std::mutex m_mutex;
+    mutable std::recursive_mutex m_mutex;
 
     /* The server host (IPv4) */
     std::string m_host;

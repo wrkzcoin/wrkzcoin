@@ -337,6 +337,8 @@ void ApiDispatcher::middleware(
     const bool viewWalletPermitted,
     std::function<std::tuple<Error, uint16_t>(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)> handler)
 {
+    std::scoped_lock lock(m_mutex);
+
     std::cout << "Incoming " << req.method << " request: " << req.path << std::endl;
 
     nlohmann::json body;
@@ -1343,7 +1345,12 @@ std::tuple<Error, uint16_t> ApiDispatcher::getUnconfirmedTransactionsForAddress(
     httplib::Response &res,
     const nlohmann::json &body) const
 {
-    std::string address = req.path.substr(std::string("/transactions/unconfirmed").size());
+    std::string address = req.path.substr(std::string("/transactions/unconfirmed/").size());
+
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
+    {
+        return {error, 400};
+    }
 
     const auto txs = m_walletBackend->getUnconfirmedTransactions();
 
