@@ -574,7 +574,7 @@ function renderBlockDetail(b) {
   const txRows = (b.transactions || []).map(tx => /* html */ `
     <tr>
       <td class="mono">
-        <a href="#/tx/${escHtml(tx.hash)}" title="${escHtml(tx.hash)}">${shortHash(tx.hash)}</a>
+        <a href="#/tx/${escHtml(tx.hash)}">${escHtml(tx.hash)}</a>
       </td>
       <td>${formatAmount(tx.fee)} ${COIN.ticker}</td>
       <td>${formatAmount(tx.amount_out)} ${COIN.ticker}</td>
