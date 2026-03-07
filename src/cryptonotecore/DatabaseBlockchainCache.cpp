@@ -2546,34 +2546,6 @@ namespace CryptoNote
         return database.compactDetailed();
     }
 
-    bool DatabaseBlockchainCache::writeMasternodeStateBlob(const std::string &blob)
-    {
-        std::vector<std::pair<std::string, std::string>> values;
-        values.emplace_back(
-            CryptoNote::DB::serializeKey(CryptoNote::DB::MASTERNODE_STATE_PREFIX, CryptoNote::DB::MASTERNODE_STATE_KEY),
-            blob);
-        RawWriteBatch batch(std::move(values));
-        return !database.write(batch);
-    }
-
-    bool DatabaseBlockchainCache::readMasternodeStateBlob(std::string &blob) const
-    {
-        RawReadBatch batch(
-            CryptoNote::DB::serializeKey(CryptoNote::DB::MASTERNODE_STATE_PREFIX, CryptoNote::DB::MASTERNODE_STATE_KEY));
-        if (database.read(batch))
-        {
-            return false;
-        }
-
-        if (!batch.found)
-        {
-            return false;
-        }
-
-        blob = std::move(batch.value);
-        return true;
-    }
-
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {
