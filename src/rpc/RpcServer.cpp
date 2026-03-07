@@ -2157,6 +2157,12 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
             writer.Key("extra");
             writer.String(Common::podToHex(transaction.extra));
 
+            writer.Key("publicKey");
+            writer.String(Common::podToHex(txDetails.extra.publicKey));
+
+            writer.Key("nonce");
+            writer.String(Common::toHex(txDetails.extra.nonce));
+
             writer.Key("unlock_time");
             writer.Uint64(transaction.unlockTime);
 

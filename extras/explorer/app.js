@@ -17,6 +17,7 @@ const COIN = {
   decimals:    2,           // CRYPTONOTE_DISPLAY_DECIMAL_POINT = 2  →  atomic / 100
   blockTime:   60,          // DIFFICULTY_TARGET = 60 seconds
   defaultPort: 17856,
+  addressPrefix: 999730,
 };
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
@@ -778,6 +779,8 @@ function renderTxDetail(result) {
   const paymentId = txDetails.paymentId && txDetails.paymentId !== ZERO_PAYMENT_ID
     ? `<span class="hash-full">${escHtml(txDetails.paymentId)}</span>`
     : '<span style="color:var(--text-muted)">None</span>';
+  const txPublicKey = tx?.publicKey || txDetails?.extra?.publicKey || '';
+  const txNonce = tx?.nonce || '';
 
   // CryptoNote serializes as "vin" / "vout" (not "inputs" / "outputs")
   // Type tags serialize as integers: 255 (0xff) = coinbase, 2 (0x02) = key input
@@ -865,6 +868,8 @@ function renderTxDetail(result) {
             <td><span class="hash-full">${escHtml(txDetails.hash)}</span></td>
           </tr>
           <tr><th>Payment ID</th>  <td>${paymentId}</td></tr>
+          <tr><th>TX Public Key</th><td class="mono hash-cell">${escHtml(txPublicKey) || 'â€”'}</td></tr>
+          <tr><th>Nonce</th>       <td class="mono hash-cell">${escHtml(txNonce) || 'â€”'}</td></tr>
           <tr><th>Fee</th>         <td>${formatAmount(txDetails.fee)} ${COIN.ticker}</td></tr>
           <tr><th>Amount Out</th>  <td>${formatAmount(txDetails.amount_out)} ${COIN.ticker}</td></tr>
           <tr><th>Ring Size</th>   <td>${txDetails.mixin ?? '—'} + 1</td></tr>
@@ -904,7 +909,7 @@ function renderTxDetail(result) {
 
     ${renderCheckTxCard()}
   `;
-  initCheckTxEvents(tx);
+  initCheckTxEvents({ tx, txDetails });
 }
 
 // ─── MEMPOOL ──────────────────────────────────────────────────────────────────
@@ -1075,6 +1080,13 @@ function varintEncode(n) {
 
 function parseTxPubKey(extra) {
   if (!extra) return null;
+  if (typeof extra === 'object' && !Array.isArray(extra)) {
+    if (typeof extra.publicKey === 'string' && /^[0-9a-fA-F]{64}$/.test(extra.publicKey) && !/^0+$/.test(extra.publicKey)) {
+      return hexToU8(extra.publicKey);
+    }
+    if (extra.raw) return parseTxPubKey(extra.raw);
+    return null;
+  }
   const bytes = Array.isArray(extra) ? extra
     : typeof extra === 'string' && /^[0-9a-fA-F]+$/.test(extra) ? Array.from(hexToU8(extra))
     : null;
@@ -1085,7 +1097,28 @@ function parseTxPubKey(extra) {
   return null;
 }
 
-async function runCheckTx(tx, address, keyHex, keyType) {
+function getTxPubKeyBytes(txContext) {
+  const candidates = [
+    txContext?.txDetails?.extra?.publicKey,
+    txContext?.tx?.extra?.publicKey,
+    txContext?.extra?.publicKey,
+    txContext?.txDetails?.extra,
+    txContext?.tx?.extra,
+    txContext?.extra,
+    txContext?.txDetails?.extra?.raw,
+    txContext?.tx?.extra?.raw,
+    txContext?.tx?.publicKey,
+    txContext?.publicKey,
+  ];
+  for (const extra of candidates) {
+    const txPubKey = parseTxPubKey(extra);
+    if (txPubKey) return txPubKey;
+  }
+
+  return null;
+}
+
+async function runCheckTx(txContext, address, keyHex, keyType) {
   if (!window._cnCrypto) throw new Error('Crypto library not yet loaded — wait a moment and try again.');
   const { keccak, ed } = window._cnCrypto;
   const l = ed.CURVE.l;
@@ -1099,11 +1132,16 @@ async function runCheckTx(tx, address, keyHex, keyType) {
   const keyScalar = leBytesToBigInt(keyBytes) % l;
   if (keyScalar === 0n) throw new Error('Invalid key (zero scalar).');
 
-  let derivPoint;
-  if (keyType === 'viewkey') {
+  const derivations = [];
+  const txPubBytes = getTxPubKeyBytes(txContext);
+  if (keyType !== 'txkey' && txPubBytes) derivations.push(ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n).toRawBytes());
+  if (keyType !== 'viewkey') derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
+  if (derivations.length === 0) derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
+  /*
+  
     // D = 8 × (privViewKey × txPubKey)
-    const txPubBytes = parseTxPubKey(tx.extra);
-    if (!txPubBytes) throw new Error('Transaction public key not found in extra field. The daemon may not return it for this tx.');
+    const txPubBytes = getTxPubKeyBytes(txContext);
+    if (!txPubBytes) throw new Error('Transaction public key is not available in this tx JSON. Private view key verification needs the tx public key. Try TX Private Key mode if you have the sender tx key.');
     derivPoint = ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n);
   } else {
     // D = 8 × (txPrivKey × recipientViewPubKey)
@@ -1111,7 +1149,8 @@ async function runCheckTx(tx, address, keyHex, keyType) {
   }
 
   const D = derivPoint.toRawBytes(); // 32-byte compressed shared derivation
-  const outputs = tx.vout || tx.outputs || [];
+  */
+  const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
   const matched = [];
 
   for (let i = 0; i < outputs.length; i++) {
@@ -1133,6 +1172,110 @@ async function runCheckTx(tx, address, keyHex, keyType) {
   return matched;
 }
 
+async function runCheckTx(txContext, address, keyHex, keyType) {
+  if (!window._cnCrypto) throw new Error('Crypto library not yet loaded â€” wait a moment and try again.');
+  const { keccak, ed } = window._cnCrypto;
+  const l = ed.CURVE.l;
+
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) throw new Error('Key must be exactly 64 hex characters.');
+
+  const { spendKey, viewKey } = parseCnAddress(address);
+  const spendPoint = ed.Point.fromHex(u8ToHex(spendKey));
+
+  const keyBytes = hexToU8(keyHex);
+  const keyScalar = leBytesToBigInt(keyBytes) % l;
+  if (keyScalar === 0n) throw new Error('Invalid key (zero scalar).');
+
+  const derivations = [];
+  const txPubBytes = getTxPubKeyBytes(txContext);
+
+  if (txPubBytes) {
+    derivations.push(ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n).toRawBytes());
+  }
+
+  derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
+
+  const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
+  const matched = [];
+
+  for (let i = 0; i < outputs.length; i++) {
+    const outKey = outputs[i]?.target?.data?.key ?? outputs[i]?.target?.key ?? '';
+    if (!outKey) continue;
+
+    let isMatch = false;
+    for (const D of derivations) {
+      const idxBytes = varintEncode(i);
+      const hashIn = new Uint8Array(32 + idxBytes.length);
+      hashIn.set(D, 0);
+      hashIn.set(idxBytes, 32);
+
+      const h = keccak(hashIn);
+      const hScalar = leBytesToBigInt(h) % l;
+      if (hScalar === 0n) continue;
+
+      const pCheck = ed.Point.BASE.multiply(hScalar).add(spendPoint);
+      if (pCheck.toHex() === outKey.toLowerCase()) {
+        isMatch = true;
+        break;
+      }
+    }
+
+    if (isMatch) matched.push(i);
+  }
+
+  return matched;
+}
+
+async function runCheckTx(txContext, address, keyHex, keyType) {
+  if (!window.TurtleCoinUtils) throw new Error('Crypto utility library not yet loaded.');
+  if (!window._cnUtils) {
+    window._cnUtils = new window.TurtleCoinUtils.CryptoNote({
+      coinUnitPlaces: COIN.decimals,
+      addressPrefix: COIN.addressPrefix,
+    });
+  }
+
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) throw new Error('Key must be exactly 64 hex characters.');
+
+  let decodedAddress;
+  try {
+    decodedAddress = window._cnUtils.decodeAddress(address);
+  } catch (err) {
+    throw new Error('Invalid recipient address.');
+  }
+  if (!decodedAddress) throw new Error('Invalid recipient address.');
+
+  const txPubBytes = getTxPubKeyBytes(txContext);
+  const txPubHex = txPubBytes ? u8ToHex(txPubBytes) : '';
+  const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
+  const matched = [];
+
+  for (let i = 0; i < outputs.length; i++) {
+    const outKey = outputs[i]?.target?.data?.key ?? outputs[i]?.target?.key ?? '';
+    if (!outKey) continue;
+
+    const output = { index: i, key: outKey };
+    let owned = false;
+
+    if (txPubHex) {
+      owned = window._cnUtils.isOurTransactionOutput(txPubHex, output, keyHex, decodedAddress.publicSpendKey);
+    }
+
+    if (!owned) {
+      owned = window._cnUtils.isOurTransactionOutput(
+        decodedAddress.publicViewKey,
+        output,
+        keyHex,
+        decodedAddress.publicSpendKey
+      );
+    }
+
+    if (owned) matched.push(i);
+  }
+
+  return matched;
+}
+
 function renderCheckTxCard() {
   return /* html */ `
     <div class="detail-card full mt">
@@ -1143,22 +1286,15 @@ function renderCheckTxCard() {
       </p>
       <div class="check-form">
         <div class="check-row">
-          <span class="check-label">Key Type</span>
-          <div>
-            <label class="check-radio"><input type="radio" name="ckKeyType" value="viewkey" checked> Private View Key <span style="color:var(--text-muted);font-size:0.78rem">(recipient's key)</span></label>
-            <label class="check-radio"><input type="radio" name="ckKeyType" value="txkey"> TX Private Key <span style="color:var(--text-muted);font-size:0.78rem">(sender's key)</span></label>
-          </div>
-        </div>
-        <div class="check-row">
           <label class="check-label" for="ckAddr">Recipient Address</label>
           <input id="ckAddr" class="check-input" type="text" placeholder="WrkZ… address" spellcheck="false" autocomplete="off">
         </div>
         <div class="check-row">
           <label class="check-label" for="ckKey">Private Key</label>
-          <input id="ckKey" class="check-input" type="text" placeholder="64 hex characters" spellcheck="false" autocomplete="off">
+          <input id="ckKey" class="check-input" type="text" placeholder="64-char private view key or tx private key" spellcheck="false" autocomplete="off">
         </div>
         <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
-          <button id="ckBtn" class="btn btn-primary">Check Outputs</button>
+          <button id="ckBtn" class="btn btn-primary">Check Transaction</button>
           <span id="ckStatus" style="font-size:0.82rem"></span>
         </div>
       </div>
@@ -1166,13 +1302,13 @@ function renderCheckTxCard() {
     </div>`;
 }
 
-function initCheckTxEvents(tx) {
+function initCheckTxEvents(txContext) {
   const btn = $('ckBtn');
   if (!btn) return;
   btn.addEventListener('click', async () => {
     const addr    = ($('ckAddr')?.value || '').trim();
     const keyHex  = ($('ckKey')?.value  || '').trim();
-    const keyType = document.querySelector('input[name="ckKeyType"]:checked')?.value || 'viewkey';
+    const keyType = 'auto';
     const statusEl = $('ckStatus');
     const resultEl = $('ckResult');
 
@@ -1190,10 +1326,10 @@ function initCheckTxEvents(tx) {
     document.querySelectorAll('[data-out-idx]').forEach(r => r.classList.remove('output-matched','output-nomatch'));
 
     try {
-      const matched = await runCheckTx(tx, addr, keyHex, keyType);
+      const matched = await runCheckTx(txContext, addr, keyHex, keyType);
       statusEl.textContent = '';
 
-      const outputs = tx.vout || tx.outputs || [];
+      const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
       if (matched.length > 0) {
         matched.forEach(idx => {
           document.querySelector(`[data-out-idx="${idx}"]`)?.classList.add('output-matched');
@@ -1202,7 +1338,7 @@ function initCheckTxEvents(tx) {
           if (!matched.includes(parseInt(r.dataset.outIdx, 10))) r.classList.add('output-nomatch');
         });
         const total = matched.reduce((s, i) => s + Number(outputs[i]?.amount || 0), 0);
-        resultEl.innerHTML = `<div class="check-result-ok">✓ ${matched.length} output${matched.length > 1 ? 's' : ''} matched — total <strong>${formatAmount(total)} ${COIN.ticker}</strong></div>`;
+        resultEl.innerHTML = `<div class="check-result-ok">Found <strong>${formatAmount(total)} ${COIN.ticker}</strong></div>`;
       } else {
         resultEl.innerHTML = `<div class="check-result-none">No outputs matched this address / key combination.</div>`;
       }
