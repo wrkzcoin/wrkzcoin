@@ -304,7 +304,7 @@ namespace CryptoNote
     {
         std::stringstream ss;
         const int dirWidth = 3;
-        const int remoteWidth = 22;
+        const int remoteWidth = 46; // wide enough for a full bracketed IPv6 + port
         const int peerWidth = 16;
         const int stateWidth = 14;
         const int ageWidth = 14;
@@ -339,8 +339,7 @@ namespace CryptoNote
 
         m_p2p->for_each_connection([&](const CryptoNoteConnectionContext &cntxt, uint64_t peer_id) {
             const std::string dir = cntxt.m_is_income ? "IN" : "OUT";
-            const std::string remote =
-                Common::ipAddressToString(cntxt.m_remote_ip) + ":" + std::to_string(cntxt.m_remote_port);
+            const std::string remote = cntxt.remoteAddressStr() + ":" + std::to_string(cntxt.m_remote_port);
             std::string state = get_protocol_state_string(cntxt.m_state);
             if (state.find("state_") == 0)
             {

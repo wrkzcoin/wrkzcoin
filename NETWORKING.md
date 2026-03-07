@@ -39,10 +39,20 @@ Wrkzd --p2p-bind-ipv6-address 2001:db8::1 --p2p-bind-port-ipv6 17856
 |------|---------|-------------|
 | `--rpc-bind-ip` | `127.0.0.1` | IPv4 interface for the RPC server |
 | `--rpc-bind-port` | `17856` | TCP port for the RPC server |
-| `--rpc-bind-ipv6-address` | *(empty)* | IPv6 address for the RPC server (future) |
-| `--rpc-use-ipv6` | `false` | Enable IPv6 for the RPC server (future) |
+| `--rpc-bind-ipv6-address` | *(empty)* | IPv6 address for the RPC server. Examples: `::` (all interfaces), `::1` (loopback). Empty = IPv6 RPC disabled. |
+| `--rpc-use-ipv6` | `false` | Enable IPv6 for the RPC server. Must also set `--rpc-bind-ipv6-address`. |
 
-> **Note:** `--rpc-bind-ipv6-address` and `--rpc-use-ipv6` are accepted by the CLI but the RPC server does not yet use them. IPv6 RPC support requires updating the HttpServer and is planned for a future release.
+When `--rpc-use-ipv6` is set and `--rpc-bind-ipv6-address` is non-empty, the daemon starts a **second** RPC server instance bound to the IPv6 address on the same port as `--rpc-bind-port`. An IPv6 bind failure is non-fatal — a warning is logged but the daemon continues running with IPv4 RPC only.
+
+**Example — expose RPC on all IPv6 interfaces:**
+```
+Wrkzd --rpc-bind-ipv6-address :: --rpc-use-ipv6
+```
+
+**Example — loopback only:**
+```
+Wrkzd --rpc-bind-ipv6-address ::1 --rpc-use-ipv6
+```
 
 ---
 
@@ -199,11 +209,14 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 - **DNS seed resolution (A + AAAA)** — both A records (IPv4) and AAAA records (IPv6) from `DNS_SEED_NODES` and `SEED_NODES` hostnames are resolved at startup. IPv4 seeds go to the IPv4 seed list; IPv6 seeds go to a separate IPv6 seed list.
 - **Outbound IPv6 connections** — the daemon dials IPv6 seed nodes and discovered IPv6 peers using `TcpConnector::connect(IpAddress, port)`. IPv6 peers can be synced from alongside IPv4 peers.
 - **IPv6 white-list promotion** — after a successful outbound IPv6 handshake the peer is added to the IPv6 white-list (`PeerlistManager::m_peers_white6`) and reused in future connection cycles.
+- **`print_cn` IPv6 display** — `print_cn` and the sync status table correctly show the remote IPv6 address (e.g. `[2001:db8::1]:17855`) for both inbound and outbound IPv6 connections. `CryptoNoteConnectionContext` carries an `m_remote_ipv6` string alongside the legacy `m_remote_ip` uint32.
+- **Daemon RPC IPv6** — `--rpc-bind-ipv6-address` + `--rpc-use-ipv6` now start a second RPC listener on the IPv6 address. Route registration is shared; IPv6 bind failure is non-fatal.
+- **wallet-api IPv6** — `--rpc-bind-ipv6-address` + `--rpc-use-ipv6` start a second API listener on the IPv6 address.
+- **HttpClient IPv6** — `NodeRpcProxy` (used by wallet-service and walletd) resolves hostnames using AF_UNSPEC (`IpResolver`), so it can connect to an IPv6 daemon when the address resolves to AAAA.
+- **HttpServer IPv6** — wallet-service JSON-RPC can bind to an IPv6 address by passing `::1` or `::` as `--bind-address`.
+- **zedwallet++ `--remote-daemon` IPv6** — bracket notation `[2001:db8::1]:17856` is accepted anywhere a daemon address is parsed (zedwallet++, miner, walletd).
 
-### Not Yet Working / Known Limitations
-- **`print_cn` IPv6 display** — connections from pure IPv6 peers (inbound or outbound) show remote IP as `0.0.0.0` because `CryptoNoteConnectionContext::m_remote_ip` is `uint32_t`. A future refactor is needed to store the full `IpAddress`.
-- **RPC IPv6** — `--rpc-bind-ipv6-address` / `--rpc-use-ipv6` are parsed but not yet applied. The HTTP server only binds IPv4.
-- **Pure IPv6 inbound peer tracking** — peers that connect *inbound* over pure IPv6 still have `m_remote_ip=0` so they are not promoted to the IPv4 white-list. Outbound IPv6 connections are properly tracked in the IPv6 white-list.
-- **IPv6 duplicate-connection detection** — `is_peer_used6()` can only deduplicate by peer ID (not by IP), because `m_remote_ip` does not store IPv6. Duplicate attempts gracefully fail at handshake level.
+### Known Limitations
+- **Pure IPv6 inbound peer tracking** — peers that connect *inbound* over pure IPv6 are tracked in `m_remote_ipv6` for display but are not promoted to the IPv4 white-list (back-ping uses the IPv4 `NetworkAddress` struct). Outbound IPv6 connections are properly tracked in the IPv6 white-list.
+- **IPv6 duplicate-connection detection** — `is_peer_used6()` deduplicates by peer ID only, not by IP. Duplicate attempts gracefully fail at handshake level.
 - **`--add-peer` / `--add-priority-node` / `--add-exclusive-node`** — these CLI flags only accept IPv4 addresses. IPv6 literal support requires updating `parsePeerFromString()` in `NetNodeConfig.cpp`.
-- **wallet-api** — no IPv6 CLI flags added yet.
