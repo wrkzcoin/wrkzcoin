@@ -142,7 +142,7 @@ namespace
 
 } // namespace
 
-std::shared_ptr<httplib::Response> DaemonCommandsHandler::rpc_get(const std::string &path)
+httplib::Result DaemonCommandsHandler::rpc_get(const std::string &path)
 {
     if (m_config.rpcAccessToken.empty())
     {
@@ -618,7 +618,7 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    std::shared_ptr<httplib::Response> res;
+    httplib::Result res;
 
     /* Retry briefly if the RPC server is still binding its socket at startup */
     constexpr int RPC_READY_RETRIES = 6;

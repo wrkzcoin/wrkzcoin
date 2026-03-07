@@ -287,24 +287,22 @@ void ApiDispatcher::start()
     if (!m_ipv6Host.empty())
     {
         m_ipv6Thread = std::thread([this]() {
-            const auto listenError = m_ipv6Server.listen(m_ipv6Host, m_port);
+            const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
 
-            if (listenError != httplib::SUCCESS)
+            if (!isListening)
             {
                 std::cout << WarningMsg("Failed to start IPv6 API server on [")
                           << WarningMsg(m_ipv6Host)
-                          << WarningMsg("]: ")
-                          << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+                          << WarningMsg("].") << std::endl;
             }
         });
     }
 
-    const auto listenError = m_server.listen(m_host, m_port);
+    const auto isListening = m_server.listen(m_host, m_port);
 
-    if (listenError != httplib::SUCCESS)
+    if (!isListening)
     {
-        std::cout << WarningMsg("Failed to start API server: ")
-                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+        std::cout << WarningMsg("Failed to start API server.") << std::endl;
 
         exit(1);
     }

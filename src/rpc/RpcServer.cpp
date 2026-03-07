@@ -56,10 +56,17 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
+    m_server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+    m_server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+    m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+
     setupRoutes(m_server);
 
     if (!m_ipv6Host.empty())
     {
+        m_ipv6Server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+        m_ipv6Server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+        m_ipv6Server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
         setupRoutes(m_ipv6Server);
     }
 }
@@ -191,26 +198,24 @@ void RpcServer::start()
 
 void RpcServer::listen()
 {
-    const auto listenError = m_server.listen(m_host, m_port);
+    const auto isListening = m_server.listen(m_host, m_port);
 
-    if (listenError != httplib::SUCCESS)
+    if (!isListening)
     {
-        std::cout << WarningMsg("Failed to start RPC server: ")
-                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+        std::cout << WarningMsg("Failed to start RPC server.") << std::endl;
         exit(1);
     }
 }
 
 void RpcServer::listenIpv6()
 {
-    const auto listenError = m_ipv6Server.listen(m_ipv6Host, m_port);
+    const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
 
-    if (listenError != httplib::SUCCESS)
+    if (!isListening)
     {
         std::cout << WarningMsg("Failed to start IPv6 RPC server on [")
                   << WarningMsg(m_ipv6Host)
-                  << WarningMsg("]: ")
-                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+                  << WarningMsg("].") << std::endl;
     }
 }
 
@@ -442,7 +447,12 @@ void RpcServer::middleware(
 
 std::string RpcServer::getClientIp(const httplib::Request &req) const
 {
-    std::string ip = req.get_header_value("REMOTE_ADDR");
+    std::string ip = req.remote_addr;
+
+    if (ip.empty())
+    {
+        ip = req.get_header_value("REMOTE_ADDR");
+    }
 
     if (!m_rpcTrustProxy)
     {

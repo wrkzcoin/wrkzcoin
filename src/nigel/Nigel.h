@@ -95,7 +95,7 @@ class Nigel
 
     template<typename F>
     auto tryParseJSONResponse(
-        const std::shared_ptr<httplib::Response> &res,
+        const httplib::Result &res,
         const std::string &failMessage,
         const F parseFunc,
         const bool verifyStatus = true) const -> std::optional<decltype(parseFunc(nlohmann::json()))>
