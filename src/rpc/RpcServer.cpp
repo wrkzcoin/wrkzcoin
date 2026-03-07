@@ -2252,14 +2252,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
             writer.Uint64(txDetails.mixin);
 
             writer.Key("paymentId");
-            if (txDetails.paymentId == Constants::NULL_HASH)
-            {
-                writer.String("");
-            }
-            else
-            {
-                writer.String(Common::podToHex(txDetails.paymentId));
-            }
+            writer.String(Utilities::getPaymentIDFromExtra(transaction.extra).c_str());
 
             writer.Key("size");
             writer.Uint64(txDetails.size);
