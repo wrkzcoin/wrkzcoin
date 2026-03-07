@@ -1770,13 +1770,14 @@ namespace CryptoNote
             return false;
         }
 
+        const bool isIpv6Peer = !context.m_remote_ipv6.empty();
         uint32_t actual_ip = context.m_remote_ip;
-        if (!m_peerlist.is_ip_allowed(actual_ip))
+        if (!isIpv6Peer && !m_peerlist.is_ip_allowed(actual_ip))
         {
             return false;
         }
 
-        auto ip = Common::ipAddressToString(actual_ip);
+        const std::string ip = isIpv6Peer ? context.m_remote_ipv6 : Common::ipAddressToString(actual_ip);
         auto port = node_data.my_port;
         auto peerId = node_data.peer_id;
 
@@ -1786,7 +1787,7 @@ namespace CryptoNote
             COMMAND_PING::response rsp;
             System::Context<> pingContext(m_dispatcher, [&] {
                 System::TcpConnector connector(m_dispatcher);
-                auto connection = connector.connect(System::Ipv4Address(ip), static_cast<uint16_t>(port));
+                auto connection = connector.connect(System::IpAddress(ip), static_cast<uint16_t>(port));
                 LevinProtocol(connection).invoke(COMMAND_PING::ID, req, rsp);
             });
 
@@ -1904,17 +1905,34 @@ namespace CryptoNote
 
             if (try_ping(arg.node_data, context))
             {
-                // called only(!) if success pinged, update local peerlist
-                PeerlistEntry pe;
-                pe.adr.ip = context.m_remote_ip;
-                pe.adr.port = port_l;
-                pe.last_seen = time(nullptr);
-                pe.id = peer_id_l;
-                m_peerlist.append_with_peer_white(pe);
+                if (context.m_remote_ipv6.empty())
+                {
+                    PeerlistEntry pe;
+                    pe.adr.ip = context.m_remote_ip;
+                    pe.adr.port = port_l;
+                    pe.last_seen = time(nullptr);
+                    pe.id = peer_id_l;
+                    m_peerlist.append_with_peer_white(pe);
 
-                logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
-                                       << Common::ipAddressToString(context.m_remote_ip) << ":" << port_l
-                                       << " added to whitelist";
+                    logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
+                                           << Common::ipAddressToString(context.m_remote_ip) << ":" << port_l
+                                           << " added to whitelist";
+                }
+                else
+                {
+                    PeerlistEntry6 pe6 {};
+                    pe6.id = peer_id_l;
+                    pe6.last_seen = time(nullptr);
+                    pe6.adr.port = port_l;
+
+                    System::IpAddress ip6(context.m_remote_ipv6);
+                    memcpy(pe6.adr.ip, ip6.getBytes(), 16);
+                    m_peerlist.append_with_peer_white6(pe6);
+
+                    logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
+                                           << context.m_remote_ipv6 << ":" << port_l
+                                           << " added to IPv6 whitelist";
+                }
             }
         }
 
