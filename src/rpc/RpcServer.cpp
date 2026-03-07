@@ -1899,11 +1899,6 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
         )
     );
 
-    std::vector<Crypto::Hash> ignore;
-    std::vector<std::vector<uint8_t>> transactions;
-
-    m_core->getTransactions(block.transactionHashes, transactions, ignore);
-
     writer.StartObject();
 
     writer.Key("jsonrpc");
@@ -1975,76 +1970,24 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
             writer.Key("effectiveSizeMedian");
             writer.Uint64(blockSizeMedian);
 
-            uint64_t totalFee = 0;
-
             writer.Key("transactions");
             writer.StartArray();
             {
-                /* Coinbase transaction */
-                writer.StartObject();
-                {
-                    const auto txOutputs = block.baseTransaction.outputs;
-
-                    const uint64_t outputAmount = std::accumulate(txOutputs.begin(), txOutputs.end(), 0ull,
-                        [](const auto acc, const auto out) {
-                            return acc + out.amount;
-                        }
-                    );
-
-                    writer.Key("hash");
-                    writer.String(Common::podToHex(getObjectHash(block.baseTransaction)));
-
-                    writer.Key("fee");
-                    writer.Uint64(0);
-
-                    writer.Key("amount_out");
-                    writer.Uint64(outputAmount);
-
-                    writer.Key("size");
-                    writer.Uint64(getObjectBinarySize(block.baseTransaction));
-                }
-                writer.EndObject();
-
-                for (const std::vector<uint8_t> &rawTX : transactions)
+                for (const auto &transaction : extraDetails.transactions)
                 {
                     writer.StartObject();
                     {
-                        CryptoNote::Transaction tx;
-
-                        fromBinaryArray(tx, rawTX);
-
-                        const uint64_t outputAmount = std::accumulate(tx.outputs.begin(), tx.outputs.end(), 0ull,
-                            [](const auto acc, const auto out) {
-                                return acc + out.amount;
-                            }
-                        );
-
-                        const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
-                            [](const auto acc, const auto in) {
-                                if (in.type() == typeid(CryptoNote::KeyInput))
-                                {
-                                    return acc + boost::get<CryptoNote::KeyInput>(in).amount;
-                                }
-
-                                return acc;
-                            }
-                        );
-
-                        const uint64_t fee = inputAmount - outputAmount;
-
                         writer.Key("hash");
-                        writer.String(Common::podToHex(getObjectHash(tx)));
+                        writer.String(Common::podToHex(transaction.hash));
 
                         writer.Key("fee");
-                        writer.Uint64(fee);
+                        writer.Uint64(transaction.fee);
 
                         writer.Key("amount_out");
-                        writer.Uint64(outputAmount);
+                        writer.Uint64(transaction.totalOutputsAmount);
 
                         writer.Key("size");
-                        writer.Uint64(getObjectBinarySize(tx));
-
-                        totalFee += fee;
+                        writer.Uint64(transaction.size);
                     }
                     writer.EndObject();
                 }
@@ -2052,7 +1995,7 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
             writer.EndArray();
 
             writer.Key("totalFeeAmount");
-            writer.Uint64(totalFee);
+            writer.Uint64(extraDetails.totalFeeAmount);
         }
         writer.EndObject();
     }
