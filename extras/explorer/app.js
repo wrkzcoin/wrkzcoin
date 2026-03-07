@@ -325,6 +325,7 @@ async function loadHome() {
   try {
     const info = await api.info();
     renderStats(info);
+    updateCirculatingStat(info.height).catch(() => setText('statCirculating', '—'));
     blockChainHeight = info.height;
     setConnStatus(true, '● Connected');
     clearError();
@@ -338,6 +339,23 @@ async function loadHome() {
     setConnStatus(false, '● Disconnected');
     showError(classifyError(err));
   }
+}
+
+async function updateCirculatingStat(chainHeight) {
+  const latestHeight = Math.max(0, Number(chainHeight || 0) - 1);
+  const header = await api.getBlockHeaderByHeight(latestHeight);
+  const hash = header?.block_header?.hash;
+  if (!hash) {
+    setText('statCirculating', '—');
+    return;
+  }
+
+  const result = await api.getBlockByHash(hash);
+  const circulating = result?.block?.alreadyGeneratedCoins;
+  setText(
+    'statCirculating',
+    circulating == null ? '—' : `${formatAmount(circulating)} ${COIN.ticker}`
+  );
 }
 
 async function loadBlockPage(topHeight) {
@@ -952,7 +970,7 @@ function renderMempool(txs) {
   const rows = txs.map(tx => /* html */ `
     <tr>
       <td class="mono">
-        <a href="#/tx/${escHtml(tx.hash)}" title="${escHtml(tx.hash)}">${shortHash(tx.hash)}</a>
+        <a href="#/tx/${escHtml(tx.hash)}" title="${escHtml(tx.hash)}">${escHtml(tx.hash)}</a>
       </td>
       <td>${formatAmount(tx.fee)} ${COIN.ticker}</td>
       <td>${formatAmount(tx.amount_out)} ${COIN.ticker}</td>
