@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WrkzCoin Block Explorer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════ HEADER ══════════════════════════════ -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="#/" class="brand">
+        <svg class="brand-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="16,2 30,9 30,23 16,30 2,23 2,9" fill="var(--accent)" opacity="0.2" stroke="var(--accent)" stroke-width="2"/>
+          <polygon points="16,8 24,12.5 24,21.5 16,26 8,21.5 8,12.5" fill="var(--accent)" opacity="0.5"/>
+          <circle cx="16" cy="16" r="3" fill="var(--accent)"/>
+        </svg>
+        <span class="brand-name">WrkzCoin <span class="brand-sub">Explorer</span></span>
+      </a>
+
+      <form id="searchForm" class="search-form" role="search">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+          </svg>
+          <input id="searchInput" type="text"
+            placeholder="Block height, block hash, or TX hash…"
+            autocomplete="off" spellcheck="false" />
+          <button type="submit" class="btn btn-primary search-btn">Search</button>
+        </div>
+      </form>
+
+      <div class="header-actions">
+        <a href="#/" class="nav-link" id="navHome">Blocks</a>
+        <a href="#/mempool" class="nav-link" id="navMempool">Mempool</a>
+        <button id="themeToggle" class="icon-btn" title="Toggle dark/light mode" aria-label="Toggle theme">
+          <svg id="iconMoon" class="theme-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/>
+          </svg>
+          <svg id="iconSun" class="theme-icon hidden" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <span id="connStatus" style="display:none"></span>
+
+<!-- ═══════════════════════════ NOTIFICATIONS ══════════════════════════ -->
+  <div id="errorBar" class="alert alert-error" role="alert" style="display:none">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="flex-shrink:0">
+      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+    </svg>
+    <span id="errorMsg"></span>
+    <button class="alert-close" onclick="document.getElementById('errorBar').style.display='none'">✕</button>
+  </div>
+
+  <!-- ═══════════════════════════ LOADING OVERLAY ════════════════════════ -->
+  <div id="loading" class="loading-overlay" style="display:none" aria-live="polite">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- ═══════════════════════════════ MAIN ═══════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- ─── HOME PAGE ─────────────────────────────────────────────────── -->
+    <div id="page-home" class="page active">
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Block Height</div>
+          <div class="stat-value mono" id="statHeight">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Network Difficulty</div>
+          <div class="stat-value" id="statDifficulty">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Hashrate</div>
+          <div class="stat-value" id="statHashrate">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Transactions</div>
+          <div class="stat-value" id="statTxCount">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Connections</div>
+          <div class="stat-value" id="statConnections">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Mempool</div>
+          <div class="stat-value" id="statPool">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Circulating</div>
+          <div class="stat-value" id="statCirculating">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sync Status</div>
+          <div class="stat-value"><span id="statSynced" class="badge">—</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Alt Blocks</div>
+          <div class="stat-value" id="statAltBlocks">—</div>
+        </div>
+      </div>
+
+      <section class="section">
+        <div class="section-header">
+          <h2 class="section-title">Recent Blocks</h2>
+          <div class="section-meta">
+            <span id="refreshCountdown" class="refresh-hint"></span>
+            <button class="btn btn-sm btn-outline" id="refreshBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="blockTable">
+            <thead>
+              <tr>
+                <th>Height</th>
+                <th>Hash</th>
+                <th>Age</th>
+                <th>Txs</th>
+                <th>Difficulty</th>
+                <th>Size</th>
+              </tr>
+            </thead>
+            <tbody id="blockTableBody">
+              <tr><td colspan="6" class="empty-cell">Connecting to daemon…</td></tr>
+            </tbody>
+          </table>
+          <div id="blockPagination" class="pagination" style="display:none"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ─── BLOCK DETAIL PAGE ─────────────────────────────────────────── -->
+    <div id="page-block" class="page">
+      <div id="blockDetail" class="detail-root"></div>
+    </div>
+
+    <!-- ─── TX DETAIL PAGE ───────────────────────────────────────────── -->
+    <div id="page-tx" class="page">
+      <div id="txDetail" class="detail-root"></div>
+    </div>
+
+    <!-- ─── MEMPOOL PAGE ─────────────────────────────────────────────── -->
+    <div id="page-mempool" class="page">
+      <div id="mempoolDetail" class="detail-root"></div>
+    </div>
+
+  </main>
+
+  <!-- ═══════════════════════════════ FOOTER ═════════════════════════════ -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div class="footer-copy">
+        &copy; 2018-2026 WrkzCoin Team. All rights reserved.
+      </div>
+      <div class="footer-links">
+        <a href="#/">Home</a>
+        <span class="sep">·</span>
+        <a href="#/mempool">Mempool</a>
+        <span class="sep">·</span>
+        <a href="https://github.com/wrkzcoin/wrkzcoin/" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span class="sep">·</span>
+        <a href="https://chat.wrkz.work/" target="_blank" rel="noopener noreferrer">Discord</a>
+        <span class="sep">·</span>
+        <a href="http://x.com/wrkzcoin" target="_blank" rel="noopener noreferrer">Twitter (X)</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="vendor/TurtleCoinUtils.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
