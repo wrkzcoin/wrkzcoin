@@ -36,6 +36,8 @@ class PeerlistManager
 
     bool get_peerlist_full(std::list<PeerlistEntry> &pl_gray, std::list<PeerlistEntry> &pl_white) const;
 
+    bool get_peerlist6_full(std::list<PeerlistEntry6> &pl_gray, std::list<PeerlistEntry6> &pl_white) const;
+
     bool get_white_peer_by_index(PeerlistEntry &p, size_t i) const;
 
     bool get_gray_peer_by_index(PeerlistEntry &p, size_t i) const;

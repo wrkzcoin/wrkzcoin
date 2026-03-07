@@ -177,6 +177,14 @@ bool PeerlistManager::get_peerlist_full(std::list<PeerlistEntry> &pl_gray, std::
     return true;
 }
 
+bool PeerlistManager::get_peerlist6_full(std::list<PeerlistEntry6> &pl_gray, std::list<PeerlistEntry6> &pl_white) const
+{
+    std::copy(m_peers_gray6.begin(), m_peers_gray6.end(), std::back_inserter(pl_gray));
+    std::copy(m_peers_white6.begin(), m_peers_white6.end(), std::back_inserter(pl_white));
+
+    return true;
+}
+
 bool PeerlistManager::set_peer_just_seen(uint64_t peer, uint32_t ip, uint32_t port)
 {
     NetworkAddress addr;
@@ -322,7 +330,9 @@ static bool is_ipv6_loopback(const uint8_t ip[16])
 static bool is_ipv6_private(const uint8_t ip[16])
 {
     // fc00::/7  (ULA — unique local addresses)
-    return (ip[0] & 0xfe) == 0xfc;
+    // fe80::/10 (Link-Local — not globally routable)
+    return (ip[0] & 0xfe) == 0xfc ||
+           (ip[0] == 0xfe && (ip[1] & 0xc0) == 0x80);
 }
 
 bool PeerlistManager::merge_peerlist6(const std::list<PeerlistEntry6> &outer_bs)

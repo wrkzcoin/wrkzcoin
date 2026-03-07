@@ -153,6 +153,21 @@ namespace CryptoNote
             return ss.str();
         }
 
+        std::string print_peerlist6_to_string(const std::list<PeerlistEntry6> &pl)
+        {
+            time_t now_time = 0;
+            time(&now_time);
+            std::stringstream ss;
+            ss << std::setfill('0') << std::setw(8) << std::hex << std::noshowbase;
+            for (const auto &pe : pl)
+            {
+                System::IpAddress addr(pe.adr.ip);
+                ss << pe.id << "\t" << addr.toString() << ":" << std::dec << pe.adr.port << std::hex
+                   << " \tlast_seen: " << Common::timeIntervalToString(now_time - pe.last_seen) << std::endl;
+            }
+            return ss.str();
+        }
+
     } // namespace
 
 
@@ -1968,8 +1983,16 @@ namespace CryptoNote
         std::list<PeerlistEntry> pl_wite;
         std::list<PeerlistEntry> pl_gray;
         m_peerlist.get_peerlist_full(pl_gray, pl_wite);
-        logger(INFO) << ENDL << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite) << ENDL
-                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray);
+
+        std::list<PeerlistEntry6> pl_wite6;
+        std::list<PeerlistEntry6> pl_gray6;
+        m_peerlist.get_peerlist6_full(pl_gray6, pl_wite6);
+
+        logger(INFO) << ENDL
+                     << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
+                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
+                     << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
+                     << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
         return true;
     }
     //-----------------------------------------------------------------------------------

@@ -153,7 +153,9 @@ namespace System
         else
         {
             // fc00::/7  (Unique Local Addresses)
-            return (m_bytes[0] & 0xfe) == 0xfc;
+            // fe80::/10 (Link-Local)
+            return (m_bytes[0] & 0xfe) == 0xfc ||
+                   (m_bytes[0] == 0xfe && (m_bytes[1] & 0xc0) == 0x80);
         }
     }
 
