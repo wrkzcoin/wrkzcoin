@@ -8,15 +8,16 @@
 
 #include "Dispatcher.h"
 
+#include <system/Ipv4Address.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace System
 {
     class IpAddress;
-
-    class Ipv4Address;
 
     class TcpConnection
     {

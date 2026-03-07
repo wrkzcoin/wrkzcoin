@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <system/Ipv4Address.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -15,8 +17,6 @@ namespace System
     class Dispatcher;
 
     class IpAddress;
-
-    class Ipv4Address;
 
     class TcpConnection
     {
