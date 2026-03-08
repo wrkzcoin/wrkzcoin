@@ -29,7 +29,8 @@ namespace CryptoNote
             PROOF_OF_WORK_TOO_WEAK,
             TRANSACTION_ABSENT_IN_POOL,
             TRANSACTION_DUPLICATES,
-            TRANSACTION_INCONSISTENCY
+            TRANSACTION_INCONSISTENCY,
+            CHAINLOCK_CONFLICT
         };
 
         // custom category:
@@ -82,6 +83,8 @@ namespace CryptoNote
                         return "Block contains duplicate transaction hashes";
                     case BlockValidationError::TRANSACTION_INCONSISTENCY:
                         return "Block contains inconsisten transaction hashes";
+                    case BlockValidationError::CHAINLOCK_CONFLICT:
+                        return "Block conflicts with an established ChainLock";
                     default:
                         return "Unknown error";
                 }

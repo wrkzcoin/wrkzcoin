@@ -2478,7 +2478,7 @@ namespace CryptoNote
                     {
                         logger(Logging::WARNING) << "Block " << blockStr
                                                  << " conflicts with ChainLock — rejected";
-                        return error::BlockValidationError::REJECTED_AS_ORPHANED;
+                        return error::BlockValidationError::CHAINLOCK_CONFLICT;
                     }
 
                     cache->pushBlock(
