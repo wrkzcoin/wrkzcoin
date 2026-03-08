@@ -32,6 +32,7 @@
 #include <mnemonics/Mnemonics.h>
 #include <noderpcproxy/NodeRpcProxy.h>
 #include <utilities/Addresses.h>
+#include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/Constants.h>
 #include <walletbackend/Transfer.h>
@@ -946,6 +947,167 @@ std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
         extraData,
         optimizeTarget
     );
+}
+
+std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
+    const std::string destination,
+    const std::string paymentID,
+    const uint64_t amountToSweep)
+{
+    std::scoped_lock lock(m_transactionMutex);
+
+    if (isViewWallet())
+    {
+        return {{ILLEGAL_VIEW_WALLET_OPERATION, Crypto::Hash()}};
+    }
+
+    const uint64_t height = m_daemon->networkBlockCount();
+    const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
+    const uint64_t mixin = defaultMixin;
+
+    /* Compute unlock time */
+    uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+    if (height > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+    {
+        unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+    }
+    const uint64_t unlockTime = height + unlock_blocks + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
+    const std::string changeAddress = m_subWallets->getPrimaryAddress();
+
+    /* All spendable inputs across all subwallets */
+    auto allInputs = m_subWallets->getSpendableTransactionInputs(true, {}, height);
+
+    if (allInputs.empty())
+    {
+        return {{NOT_ENOUGH_BALANCE, Crypto::Hash()}};
+    }
+
+    /* Maximum inputs that fit in one tx (leave room for 2 outputs: dest + change) */
+    const size_t maxTxSize = static_cast<size_t>(Utilities::getMaxTxSize(height));
+    const size_t maxInputsPerTx = Utilities::getApproximateMaximumInputCount(maxTxSize, 2, mixin);
+
+    if (maxInputsPerTx == 0)
+    {
+        return {{TOO_MANY_INPUTS_TO_FIT_IN_BLOCK, Crypto::Hash()}};
+    }
+
+    /* If sweeping a specific amount, collect only enough inputs to cover it */
+    if (amountToSweep > 0)
+    {
+        /* Worst-case fee per batch (full batch, 1 destination output) */
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
+
+        uint64_t sum = 0;
+        std::vector<WalletTypes::TxInputAndOwner> needed;
+
+        for (const auto &inp : allInputs)
+        {
+            needed.push_back(inp);
+            sum += inp.input.amount;
+            const size_t batchCount = (needed.size() + maxInputsPerTx - 1) / maxInputsPerTx;
+            if (sum >= amountToSweep + batchCount * feePerBatch)
+            {
+                break;
+            }
+        }
+
+        allInputs = std::move(needed);
+    }
+
+    std::vector<std::tuple<Error, Crypto::Hash>> results;
+
+    for (size_t i = 0; i < allInputs.size(); i += maxInputsPerTx)
+    {
+        const size_t end = std::min(i + maxInputsPerTx, allInputs.size());
+        const std::vector<WalletTypes::TxInputAndOwner> batch(allInputs.begin() + i, allInputs.begin() + end);
+
+        uint64_t batchSum = 0;
+        for (const auto &inp : batch)
+        {
+            batchSum += inp.input.amount;
+        }
+
+        /* Estimate minimum fee for this batch (1 destination output, no change) */
+        const size_t estimatedSize = Utilities::estimateTransactionSize(mixin, batch.size(), 1, paymentID != "", 0);
+        const uint64_t estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+        if (estimatedFee >= batchSum)
+        {
+            /* Fee would consume the entire batch — skip it */
+            results.push_back({NOT_ENOUGH_BALANCE, Crypto::Hash()});
+            continue;
+        }
+
+        /* Amount to destination = all inputs minus fee, zero change */
+        const uint64_t destinationAmount = batchSum - estimatedFee;
+
+        auto destinations = SendTransaction::setupDestinations(
+            {{destination, destinationAmount}},
+            0 /* changeRequired */,
+            changeAddress
+        );
+
+        auto txResult = SendTransaction::makeTransaction(
+            mixin,
+            m_daemon,
+            batch,
+            paymentID,
+            destinations,
+            m_subWallets,
+            unlockTime,
+            {} /* extraData */
+        );
+
+        if (txResult.error)
+        {
+            results.push_back({txResult.error, Crypto::Hash()});
+            continue;
+        }
+
+        Error sizeError = SendTransaction::isTransactionPayloadTooBig(txResult.transaction, height);
+        if (sizeError)
+        {
+            results.push_back({sizeError, Crypto::Hash()});
+            continue;
+        }
+
+        if (!SendTransaction::verifyAmounts(txResult.transaction))
+        {
+            results.push_back({AMOUNTS_NOT_PRETTY, Crypto::Hash()});
+            continue;
+        }
+
+        const uint64_t actualFee = SendTransaction::sumTransactionFee(txResult.transaction);
+
+        const auto [sendError, txHash] = SendTransaction::relayTransaction(txResult.transaction, m_daemon);
+        if (sendError)
+        {
+            results.push_back({sendError, Crypto::Hash()});
+            continue;
+        }
+
+        SendTransaction::storeSentTransaction(
+            txHash, actualFee, paymentID, batch, changeAddress,
+            0 /* changeRequired */, m_subWallets
+        );
+
+        SendTransaction::storeUnconfirmedIncomingInputs(
+            m_subWallets, txResult.outputs, txResult.txKeyPair.publicKey, txHash
+        );
+
+        m_subWallets->storeTxPrivateKey(txResult.txKeyPair.secretKey, txHash);
+
+        for (const auto &inp : batch)
+        {
+            m_subWallets->markInputAsLocked(inp.input.keyImage, inp.publicSpendKey);
+        }
+
+        results.push_back({SUCCESS, txHash});
+    }
+
+    return results;
 }
 
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)

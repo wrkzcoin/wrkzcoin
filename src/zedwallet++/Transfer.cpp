@@ -17,7 +17,6 @@
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Input.h>
-#include <zedwallet++/Fusion.h>
 #include <zedwallet++/GetInput.h>
 #include <zedwallet++/Utilities.h>
 
@@ -257,37 +256,16 @@ void sendTransaction(
     }
     else if (error == TOO_MANY_INPUTS_TO_FIT_IN_BLOCK)
     {
-        std::cout << WarningMsg("Your transaction is too large to be accepted "
-                                "by the network!\n")
-                  << InformationMsg("We're attempting to optimize your wallet,\n"
-                                    "which hopefully will make the transaction small "
-                                    "enough to fit in a block.\n"
-                                    "Please wait, this will take some time...\n\n");
+        std::cout << WarningMsg("Your transaction is too large to fit in a block.\n\n")
+                  << InformationMsg("This usually means you have many small inputs that cannot be\n"
+                                    "combined into a single transaction within the block size limit.\n\n")
+                  << "Use the " << SuccessMsg("sweep") << InformationMsg(" command to send this amount across\n")
+                  << InformationMsg("multiple transactions automatically, without needing to optimize first.\n\n")
+                  << InformationMsg("Example: ") << SuccessMsg("sweep") << InformationMsg(" — then enter the destination address and amount.\n");
 
-        /* Try and perform some fusion transactions to make our inputs bigger */
-        optimize(walletBackend);
+        cancel();
 
-        /* Resend the transaction */
-        std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionBasic(
-            destination,
-            amount,
-            effectivePaymentID,
-            sendAll,
-            false /* Don't relay to network */
-        );
-
-        /* Still too big, split it up (with users approval) */
-        if (error == TOO_MANY_INPUTS_TO_FIT_IN_BLOCK)
-        {
-            std::cout << WarningMsg(
-                "Your transaction is still too large to be accepted "
-                "by the network. Try splitting your transaction up into smaller "
-                "amounts.");
-
-            cancel();
-
-            return;
-        }
+        return;
     }
 
     if (error)
@@ -372,4 +350,151 @@ bool confirmTransaction(
     }
 
     return false;
+}
+
+void sweep(const std::shared_ptr<WalletBackend> walletBackend, const bool sweepAll)
+{
+    std::cout << InformationMsg("Note: You can type cancel at any time to "
+                                "cancel the sweep\n\n");
+
+    if (walletBackend->isViewWallet())
+    {
+        std::cout << WarningMsg("Sweep is not available for view-only wallets.\n");
+        return;
+    }
+
+    const bool integratedAddressesAllowed(true), cancelAllowed(true);
+
+    const auto [nodeFee, nodeAddress] = walletBackend->getNodeFee();
+    const uint64_t unlockedBalance = walletBackend->getTotalUnlockedBalance();
+
+    if (unlockedBalance == 0)
+    {
+        std::cout << WarningMsg("You have no unlocked balance to sweep.\n");
+        return;
+    }
+
+    std::string address =
+        getAddress("What address do you want to sweep to?: ", integratedAddressesAllowed, cancelAllowed);
+
+    if (address == "cancel")
+    {
+        std::cout << WarningMsg("Cancelling sweep.\n");
+        return;
+    }
+
+    std::cout << InformationMsg("Address type: ") << SuccessMsg(getAddressTypeLabel(address)) << "\n\n";
+
+    std::string paymentID;
+
+    if (!Utilities::isIntegratedAddress(address))
+    {
+        paymentID = getPaymentID(
+            "What payment ID do you want to use?\n"
+            "These are usually used for sending to exchanges.",
+            cancelAllowed);
+
+        if (paymentID == "cancel")
+        {
+            std::cout << WarningMsg("Cancelling sweep.\n");
+            return;
+        }
+
+        std::cout << "\n";
+    }
+    else
+    {
+        std::cout << InformationMsg("Integrated address detected. Payment ID is embedded; skipping payment ID prompt.")
+                  << "\n\n";
+    }
+
+    uint64_t amountToSweep = 0; /* 0 = sweep all */
+
+    if (!sweepAll)
+    {
+        bool success;
+        std::tie(success, amountToSweep) =
+            getAmountToAtomic("How much " + WalletConfig::ticker + " do you want to sweep?: ", cancelAllowed);
+
+        std::cout << "\n";
+
+        if (!success)
+        {
+            std::cout << WarningMsg("Cancelling sweep.\n");
+            return;
+        }
+
+        if (amountToSweep > unlockedBalance)
+        {
+            std::cout << WarningMsg("Amount exceeds unlocked balance of ")
+                      << SuccessMsg(Utilities::formatAmount(unlockedBalance)) << "\n";
+            return;
+        }
+    }
+
+    const std::string sweepDesc = sweepAll
+        ? "entire unlocked balance (" + Utilities::formatAmount(unlockedBalance) + ")"
+        : Utilities::formatAmount(amountToSweep);
+
+    std::cout << InformationMsg("\nSweep Summary\n");
+    std::cout << "Sweeping: " << SuccessMsg(sweepDesc) << "\n";
+    std::cout << "To:       " << SuccessMsg(address) << "\n";
+    if (!paymentID.empty())
+    {
+        std::cout << "Payment ID: " << SuccessMsg(paymentID) << "\n";
+    }
+    std::cout << "\n"
+              << InformationMsg("This may send multiple transactions to cover all inputs.\n")
+              << InformationMsg("Each transaction incurs its own network fee.\n\n");
+
+    if (!Utilities::confirm("Proceed with sweep?"))
+    {
+        std::cout << WarningMsg("Cancelling sweep.\n");
+        return;
+    }
+
+    ZedUtilities::confirmPassword(walletBackend, "Confirm your password: ");
+
+    std::cout << "\n" << InformationMsg("Sending sweep transactions...\n\n");
+
+    const auto results = walletBackend->sweepToAddress(address, paymentID, amountToSweep);
+
+    uint64_t successCount = 0;
+    uint64_t failCount = 0;
+
+    for (size_t i = 0; i < results.size(); i++)
+    {
+        const auto &[err, txHash] = results[i];
+
+        std::cout << InformationMsg("Batch ") << SuccessMsg(i + 1) << InformationMsg("/") << SuccessMsg(results.size())
+                  << ": ";
+
+        if (err)
+        {
+            std::cout << WarningMsg("Failed — ") << WarningMsg(err) << "\n";
+            failCount++;
+        }
+        else
+        {
+            std::cout << SuccessMsg("Sent — Hash: ") << SuccessMsg(txHash) << "\n";
+            successCount++;
+        }
+    }
+
+    std::cout << "\n";
+
+    if (successCount > 0 && failCount == 0)
+    {
+        std::cout << SuccessMsg("Sweep complete. ") << SuccessMsg(successCount)
+                  << SuccessMsg(" transaction(s) sent successfully.\n");
+    }
+    else if (successCount > 0)
+    {
+        std::cout << WarningMsg("Sweep partially complete. ") << SuccessMsg(successCount)
+                  << InformationMsg(" sent, ") << WarningMsg(failCount) << WarningMsg(" failed.\n");
+    }
+    else
+    {
+        std::cout << WarningMsg("Sweep failed. No transactions were sent successfully.\n");
+    }
 }

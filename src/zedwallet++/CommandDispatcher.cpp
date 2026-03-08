@@ -188,6 +188,18 @@ bool handleCommand(
 
         transfer(walletBackend, sendAll);
     }
+    else if (command == "sweep")
+    {
+        const bool sweepAll = false;
+
+        sweep(walletBackend, sweepAll);
+    }
+    else if (command == "sweep_all")
+    {
+        const bool sweepAll = true;
+
+        sweep(walletBackend, sweepAll);
+    }
     else if (command == "set_log_level")
     {
         setLogLevel();

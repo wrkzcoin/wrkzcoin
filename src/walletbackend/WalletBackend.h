@@ -183,6 +183,14 @@ class WalletBackend
         const std::vector<uint8_t> extraData,
         const std::optional<uint64_t> optimizeTarget);
 
+    /* Sweep all (or a specific amount) to destination in multiple transactions.
+       amountToSweep = 0 sweeps the entire unlocked balance.
+       Returns one (Error, Hash) tuple per transaction sent. */
+    std::vector<std::tuple<Error, Crypto::Hash>> sweepToAddress(
+        const std::string destination,
+        const std::string paymentID,
+        const uint64_t amountToSweep = 0);
+
     /* Get the balance for one subwallet (error, unlocked, locked) */
     std::tuple<Error, uint64_t, uint64_t> getBalance(const std::string address) const;
 

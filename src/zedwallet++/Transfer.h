@@ -9,6 +9,8 @@
 
 void transfer(const std::shared_ptr<WalletBackend> walletBackend, const bool sendAll);
 
+void sweep(const std::shared_ptr<WalletBackend> walletBackend, const bool sweepAll);
+
 void sendTransaction(
     const std::shared_ptr<WalletBackend> walletBackend,
     const std::string address,
