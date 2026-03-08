@@ -2131,7 +2131,7 @@ namespace CryptoNote
         if (found)
         {
             const auto rawTx = getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
-            for (const auto &input : rawTx.inputs)
+            for (const auto &input : rawTx.keyInputs)
             {
                 keyImages.push_back(input.keyImage);
             }

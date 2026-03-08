@@ -1522,7 +1522,7 @@ namespace CryptoNote
                 const auto rawTx = Core::getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
                 NOTIFY_INSTANTSEND_LOCK::request lockReq;
                 lockReq.txHash = arg.txHash;
-                for (const auto &input : rawTx.inputs)
+                for (const auto &input : rawTx.keyInputs)
                 {
                     BinaryArray ki(sizeof(Crypto::KeyImage));
                     std::copy_n(input.keyImage.data, sizeof(Crypto::KeyImage), ki.data());
