@@ -33,8 +33,8 @@
 
 #ifdef _WIN32
 #if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0A00
-#error                                                                         \
-    "cpp-httplib doesn't support Windows 8 or lower. Please use Windows 10 or later."
+#pragma message(                                                               \
+    "Warning: cpp-httplib targets Windows 10+; building with older _WIN32_WINNT may limit functionality.")
 #endif
 #endif
 
@@ -424,7 +424,8 @@ using socket_t = int;
 #endif
 #define SSL_get1_peer_certificate SSL_get_peer_certificate
 #elif OPENSSL_VERSION_NUMBER < 0x30000000L
-#error Sorry, OpenSSL versions prior to 3.0.0 are not supported
+// OpenSSL 1.1.x: provide the OpenSSL 3 name as an alias (same as BoringSSL above)
+#define SSL_get1_peer_certificate SSL_get_peer_certificate
 #endif
 
 #endif // CPPHTTPLIB_OPENSSL_SUPPORT
@@ -16053,7 +16054,14 @@ inline std::string Request::sni() const {
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
 inline SSL_CTX *Client::ssl_context() const {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   if (is_ssl_) { return static_cast<SSLClient &>(*cli_).ssl_context(); }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
   return nullptr;
 }
 

@@ -111,7 +111,7 @@ namespace CryptoNote
 
     template<class MessageType> void MessageQueue<MessageType>::push(const MessageType &message)
     {
-        dispatcher.remoteSpawn([=]() mutable {
+        dispatcher.remoteSpawn([=, this]() mutable {
             messageQueue.push(std::move(message));
             event.set();
         });
