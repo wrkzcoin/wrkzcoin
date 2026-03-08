@@ -984,7 +984,7 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
 
     if (endpointInput.empty())
     {
-        std::cout << InformationMsg("Enter public endpoint IPv4:port for one-IP commitment (or cancel): ");
+        std::cout << InformationMsg("Enter public endpoint for one-IP commitment (IPv4:port or [IPv6]:port, or cancel): ");
         std::getline(std::cin, endpointInput);
         Utilities::trim(endpointInput);
     }
@@ -994,66 +994,120 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
         return;
     }
 
+    /* Canonicalize an endpoint string into a stable form for the on-chain commitment preimage.
+     * Accepted formats:
+     *   IPv4:  "1.2.3.4:17855"      -> canonical "1.2.3.4:17855"
+     *   IPv6:  "[2001:db8::1]:17855" -> canonical "[2001:db8::1]:17855"
+     * The canonical string is then hashed: cn_fast_hash("MNIP1|<canonical>")
+     * Only the 32-byte hash is stored on-chain; the raw address is never committed. */
     auto canonicalizeEndpoint = [](const std::string &raw, std::string &canonical) -> bool {
-        const auto colonPos = raw.find(':');
-        if (colonPos == std::string::npos || colonPos == 0 || colonPos + 1 >= raw.size())
-        {
-            return false;
-        }
+        std::string ip;
+        std::string portStr;
 
-        const std::string ip = raw.substr(0, colonPos);
-        const std::string portStr = raw.substr(colonPos + 1);
-        uint64_t port = 0;
-        try
+        if (!raw.empty() && raw[0] == '[')
         {
-            port = std::stoull(portStr);
-        }
-        catch (const std::exception &)
-        {
-            return false;
-        }
-        if (port == 0 || port > 65535)
-        {
-            return false;
-        }
+            /* IPv6 bracket notation: [addr]:port */
+            const auto closeBracket = raw.find(']');
+            if (closeBracket == std::string::npos || closeBracket < 2)
+            {
+                return false;
+            }
+            ip = raw.substr(1, closeBracket - 1);
+            if (closeBracket + 1 >= raw.size() || raw[closeBracket + 1] != ':')
+            {
+                return false;
+            }
+            portStr = raw.substr(closeBracket + 2);
 
-        const auto octets = Utilities::split(ip, '.');
-        if (octets.size() != 4)
-        {
-            return false;
-        }
+            /* Basic sanity: must contain at least two colons (IPv6 has ≥2) and no dots */
+            if (std::count(ip.begin(), ip.end(), ':') < 2)
+            {
+                return false;
+            }
 
-        std::array<uint64_t, 4> nums {{0, 0, 0, 0}};
-        for (size_t i = 0; i < octets.size(); ++i)
-        {
+            /* Validate and canonicalize port */
+            uint64_t port = 0;
             try
             {
-                if (octets[i].empty() || octets[i].size() > 3)
-                {
-                    return false;
-                }
-                nums[i] = std::stoull(octets[i]);
+                port = std::stoull(portStr);
             }
             catch (const std::exception &)
             {
                 return false;
             }
-
-            if (nums[i] > 255)
+            if (port == 0 || port > 65535)
             {
                 return false;
             }
-        }
 
-        canonical = std::to_string(nums[0]) + "." + std::to_string(nums[1]) + "." + std::to_string(nums[2]) + "."
-            + std::to_string(nums[3]) + ":" + std::to_string(port);
-        return true;
+            /* Lowercase the IPv6 address for a stable canonical form */
+            std::string lowerIp = ip;
+            std::transform(lowerIp.begin(), lowerIp.end(), lowerIp.begin(), ::tolower);
+            canonical = "[" + lowerIp + "]:" + std::to_string(port);
+            return true;
+        }
+        else
+        {
+            /* IPv4: addr:port — use rfind(':') so dotted-decimal is not confused with IPv6 colons */
+            const auto colonPos = raw.rfind(':');
+            if (colonPos == std::string::npos || colonPos == 0 || colonPos + 1 >= raw.size())
+            {
+                return false;
+            }
+
+            ip = raw.substr(0, colonPos);
+            portStr = raw.substr(colonPos + 1);
+            uint64_t port = 0;
+            try
+            {
+                port = std::stoull(portStr);
+            }
+            catch (const std::exception &)
+            {
+                return false;
+            }
+            if (port == 0 || port > 65535)
+            {
+                return false;
+            }
+
+            const auto octets = Utilities::split(ip, '.');
+            if (octets.size() != 4)
+            {
+                return false;
+            }
+
+            std::array<uint64_t, 4> nums {{0, 0, 0, 0}};
+            for (size_t i = 0; i < octets.size(); ++i)
+            {
+                try
+                {
+                    if (octets[i].empty() || octets[i].size() > 3)
+                    {
+                        return false;
+                    }
+                    nums[i] = std::stoull(octets[i]);
+                }
+                catch (const std::exception &)
+                {
+                    return false;
+                }
+                if (nums[i] > 255)
+                {
+                    return false;
+                }
+            }
+
+            canonical = std::to_string(nums[0]) + "." + std::to_string(nums[1]) + "." + std::to_string(nums[2])
+                + "." + std::to_string(nums[3]) + ":" + std::to_string(port);
+            return true;
+        }
     };
 
     std::string canonicalEndpoint;
     if (!canonicalizeEndpoint(endpointInput, canonicalEndpoint))
     {
-        std::cout << WarningMsg("Invalid endpoint format. Expected IPv4:port") << std::endl;
+        std::cout << WarningMsg("Invalid endpoint format. Expected IPv4:port or [IPv6]:port (e.g. 1.2.3.4:17855 or [2001:db8::1]:17855)") << std::endl;
         return;
     }
 

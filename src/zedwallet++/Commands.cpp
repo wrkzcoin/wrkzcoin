@@ -62,7 +62,7 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("decode_integrated", "[Transactions] Decode integrated address to standard address + payment ID", true, true),
         AdvancedCommand(
             "mn_register",
-            "[Masternode] Register using daemon token and endpoint commitment (mn_register <token> <ipv4:port>)",
+            "[Masternode] Register using daemon token and endpoint commitment (mn_register <token> <addr:port | [ipv6]:port>)",
             false,
             true),
         AdvancedCommand(
