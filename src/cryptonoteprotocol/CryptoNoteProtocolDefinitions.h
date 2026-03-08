@@ -250,7 +250,32 @@ namespace CryptoNote
         {
             KV_MEMBER(height)
             s.binary(&blockHash, sizeof(blockHash), "block_hash");
-            serializeAsBinary(votes, "votes", s);
+            // votes: each entry is mnId(32)|signingKey(32)|sig(64) = 128 bytes
+            // serializeAsBinary cannot handle vector<BinaryArray> (non-POD element),
+            // so we serialize as count + flat packed blob.
+            constexpr uint64_t VOTE_SIZE = 128;
+            uint64_t voteCount = static_cast<uint64_t>(votes.size());
+            s(voteCount, "vote_count");
+            if (voteCount > 0)
+            {
+                if (s.type() == ISerializer::OUTPUT)
+                {
+                    BinaryArray flat;
+                    flat.reserve(static_cast<size_t>(voteCount) * VOTE_SIZE);
+                    for (const auto &v : votes)
+                        flat.insert(flat.end(), v.begin(), v.end());
+                    s.binary(flat.data(), flat.size(), "votes_data");
+                }
+                else
+                {
+                    BinaryArray flat(static_cast<size_t>(voteCount) * VOTE_SIZE, 0);
+                    s.binary(flat.data(), flat.size(), "votes_data");
+                    votes.resize(static_cast<size_t>(voteCount));
+                    for (uint64_t i = 0; i < voteCount; ++i)
+                        votes[i].assign(flat.begin() + i * VOTE_SIZE,
+                                        flat.begin() + (i + 1) * VOTE_SIZE);
+                }
+            }
         }
     };
 
@@ -299,8 +324,58 @@ namespace CryptoNote
         void serialize(ISerializer &s)
         {
             s.binary(&txHash, sizeof(txHash), "tx_hash");
-            serializeAsBinary(keyImages, "key_images", s);
-            serializeAsBinary(votes, "votes", s);
+            // keyImages: each is a 32-byte Crypto::KeyImage packed as BinaryArray.
+            // votes: each entry is mnId(32)|signingKey(32)|sig(64) = 128 bytes.
+            // serializeAsBinary cannot handle vector<BinaryArray> (non-POD element),
+            // so serialize each collection as count + flat packed blob.
+            constexpr uint64_t KI_SIZE   = 32;
+            constexpr uint64_t VOTE_SIZE = 128;
+
+            uint64_t kiCount = static_cast<uint64_t>(keyImages.size());
+            s(kiCount, "ki_count");
+            if (kiCount > 0)
+            {
+                if (s.type() == ISerializer::OUTPUT)
+                {
+                    BinaryArray flat;
+                    flat.reserve(static_cast<size_t>(kiCount) * KI_SIZE);
+                    for (const auto &ki : keyImages)
+                        flat.insert(flat.end(), ki.begin(), ki.end());
+                    s.binary(flat.data(), flat.size(), "key_images");
+                }
+                else
+                {
+                    BinaryArray flat(static_cast<size_t>(kiCount) * KI_SIZE, 0);
+                    s.binary(flat.data(), flat.size(), "key_images");
+                    keyImages.resize(static_cast<size_t>(kiCount));
+                    for (uint64_t i = 0; i < kiCount; ++i)
+                        keyImages[i].assign(flat.begin() + i * KI_SIZE,
+                                            flat.begin() + (i + 1) * KI_SIZE);
+                }
+            }
+
+            uint64_t voteCount = static_cast<uint64_t>(votes.size());
+            s(voteCount, "vote_count");
+            if (voteCount > 0)
+            {
+                if (s.type() == ISerializer::OUTPUT)
+                {
+                    BinaryArray flat;
+                    flat.reserve(static_cast<size_t>(voteCount) * VOTE_SIZE);
+                    for (const auto &v : votes)
+                        flat.insert(flat.end(), v.begin(), v.end());
+                    s.binary(flat.data(), flat.size(), "votes_data");
+                }
+                else
+                {
+                    BinaryArray flat(static_cast<size_t>(voteCount) * VOTE_SIZE, 0);
+                    s.binary(flat.data(), flat.size(), "votes_data");
+                    votes.resize(static_cast<size_t>(voteCount));
+                    for (uint64_t i = 0; i < voteCount; ++i)
+                        votes[i].assign(flat.begin() + i * VOTE_SIZE,
+                                        flat.begin() + (i + 1) * VOTE_SIZE);
+                }
+            }
         }
     };
 
