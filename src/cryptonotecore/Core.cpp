@@ -1771,7 +1771,18 @@ namespace CryptoNote
     {
         tracker.clear();
 
-        for (uint32_t height = 0; height <= topHeight; ++height)
+        /* Skip all blocks before the masternode feature fork: no MN events exist there, and
+         * scanning them is pure deserialization overhead that grows unboundedly with chain height.
+         * The reward fork comes after the feature fork, so starting at MASTERNODE_FEATURE_FORK_HEIGHT
+         * is always safe — no reward records can exist for earlier heights either.
+         *
+         * If MASTERNODE_FEATURE_FORK_HEIGHT == 0 the feature is disabled (dev/test config) and
+         * the loop still starts at 0, preserving existing behaviour. */
+        const uint32_t startHeight = (parameters::MASTERNODE_FEATURE_FORK_HEIGHT > 0)
+            ? static_cast<uint32_t>(parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+            : 0;
+
+        for (uint32_t height = startHeight; height <= topHeight; ++height)
         {
             const auto rawBlock = cache->getBlockByIndex(height);
             BlockTemplate blockTemplate;
@@ -2215,7 +2226,6 @@ namespace CryptoNote
                 // add block on top of leaf segment.
                 auto hashes = preallocateVector<Crypto::Hash>(transactions.size());
 
-                // TODO: exception safety
                 if (cache == chainsLeaves[0])
                 {
                     cache->pushBlock(
@@ -2241,15 +2251,35 @@ namespace CryptoNote
                         logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain";
                     }
 
+                    /* Apply masternode state updates. If an unexpected exception escapes here
+                     * the block is already committed to the cache, so we must recover the
+                     * in-memory tracker from the chain rather than leaving it desynchronised
+                     * (a desynchronised tracker would cause the next block's reward validation
+                     * to fail and halt the node until restart). */
+                    try
+                    {
                         if (
                             rewardDistribution.hasMasternodeWinner && rewardDistribution.masternodeWinner.has_value()
                             && rewardDistribution.masternodeReward > 0)
-                    {
-                        masternodeStateTracker.recordReward(
-                            *rewardDistribution.masternodeWinner, cachedBlock.getBlockIndex(), rewardDistribution.masternodeReward);
-                    }
+                        {
+                            masternodeStateTracker.recordReward(
+                                *rewardDistribution.masternodeWinner, cachedBlock.getBlockIndex(), rewardDistribution.masternodeReward);
+                        }
 
-                    applyMasternodeEventsFromBlock(cachedBlock, transactions, cachedBlock.getBlockIndex());
+                        applyMasternodeEventsFromBlock(cachedBlock, transactions, cachedBlock.getBlockIndex());
+                    }
+                    catch (const std::exception &e)
+                    {
+                        logger(Logging::ERROR) << "Exception applying masternode state for block " << blockStr
+                                               << ": " << e.what() << " — rebuilding tracker from chain";
+                        rebuildMasternodeStateFromMainChain();
+                    }
+                    catch (...)
+                    {
+                        logger(Logging::ERROR) << "Unknown exception applying masternode state for block " << blockStr
+                                               << " — rebuilding tracker from chain";
+                        rebuildMasternodeStateFromMainChain();
+                    }
 
                     notifyObservers(
                         makeDelTransactionMessage(std::move(hashes), Messages::DeleteTransaction::Reason::InBlock));
