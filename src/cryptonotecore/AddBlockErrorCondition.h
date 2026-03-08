@@ -79,7 +79,8 @@ namespace CryptoNote
                         return errorCode == AddBlockErrorCode::REJECTED_AS_ORPHANED;
 
                     case AddBlockErrorCondition::BLOCK_VALIDATION_FAILED:
-                        return &errorCode.category() == &BlockValidationErrorCategory::INSTANCE;
+                        return &errorCode.category() == &BlockValidationErrorCategory::INSTANCE
+                               || errorCode == AddBlockErrorCode::MASTERNODE_STATE_BUILD_FAILED;
 
                     case AddBlockErrorCondition::TRANSACTION_VALIDATION_FAILED:
                         return &errorCode.category() == &TransactionValidationErrorCategory::INSTANCE;

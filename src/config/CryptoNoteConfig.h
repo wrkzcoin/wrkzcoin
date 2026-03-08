@@ -313,6 +313,13 @@ namespace CryptoNote
         const bool MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST = false;
         const std::vector<std::string> MASTERNODE_VERIFIER_PUBKEY_ALLOWLIST = {};
 
+        /* Optional registration authority allowlist.
+         * When enabled, only payout keys listed here may register masternodes.
+         * When disabled (default), registration is open to anyone who holds the required collateral.
+         * If enabled and the list is empty, all registrations are rejected. */
+        const bool MASTERNODE_ENFORCE_REGISTRATION_AUTHORITY = false;
+        const std::vector<std::string> MASTERNODE_REGISTRATION_AUTHORITY_PUBKEYS = {};
+
         static_assert(MASTERNODE_MIN_HEALTH_PERCENT <= 100, "Invalid MASTERNODE_MIN_HEALTH_PERCENT");
         static_assert(MASTERNODE_REWARD_PERCENT <= 100, "Invalid MASTERNODE_REWARD_PERCENT");
         static_assert(

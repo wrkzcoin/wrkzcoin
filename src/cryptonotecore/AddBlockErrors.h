@@ -20,7 +20,8 @@ namespace CryptoNote
             ADDED_TO_ALTERNATIVE_AND_SWITCHED,
             ALREADY_EXISTS,
             REJECTED_AS_ORPHANED,
-            DESERIALIZATION_FAILED
+            DESERIALIZATION_FAILED,
+            MASTERNODE_STATE_BUILD_FAILED
         };
 
         // custom category:
@@ -57,6 +58,8 @@ namespace CryptoNote
                         return "Block rejected as orphaned";
                     case AddBlockErrorCode::DESERIALIZATION_FAILED:
                         return "Deserialization error";
+                    case AddBlockErrorCode::MASTERNODE_STATE_BUILD_FAILED:
+                        return "Masternode state build failed";
                     default:
                         return "Unknown error";
                 }

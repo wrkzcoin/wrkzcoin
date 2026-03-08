@@ -77,30 +77,46 @@ namespace CryptoNote
 
     void MasternodeStateTracker::activateMasternode(const Crypto::Hash &masternodeId)
     {
-        State &state = m_states[masternodeId];
-        state.status = Status::Active;
-        state.deactivationHeight.reset();
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        it->second.status = Status::Active;
+        it->second.deactivationHeight.reset();
     }
 
     void MasternodeStateTracker::deactivateMasternode(const Crypto::Hash &masternodeId, uint32_t height)
     {
-        State &state = m_states[masternodeId];
-        state.status = Status::Inactive;
-        state.deactivationHeight = height;
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        it->second.status = Status::Inactive;
+        it->second.deactivationHeight = height;
     }
 
     void MasternodeStateTracker::penalizeMasternode(const Crypto::Hash &masternodeId, uint32_t height)
     {
-        State &state = m_states[masternodeId];
-        state.status = Status::Penalized;
-        state.deactivationHeight = height;
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        it->second.status = Status::Penalized;
+        it->second.deactivationHeight = height;
     }
 
     void MasternodeStateTracker::revokeMasternode(const Crypto::Hash &masternodeId, uint32_t height)
     {
-        State &state = m_states[masternodeId];
-        state.status = Status::Revoked;
-        state.deactivationHeight = height;
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        it->second.status = Status::Revoked;
+        it->second.deactivationHeight = height;
     }
 
     MasternodeStateTracker::Status MasternodeStateTracker::getStatus(const Crypto::Hash &masternodeId) const
@@ -116,7 +132,12 @@ namespace CryptoNote
 
     void MasternodeStateTracker::recordHealthSample(const Crypto::Hash &masternodeId, uint32_t height, bool healthy)
     {
-        State &state = m_states[masternodeId];
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        State &state = it->second;
         state.healthSamples.push_back({height, healthy});
 
         const uint32_t windowStart = calculateWindowStart(height, MASTERNODE_HEALTH_WINDOW_BLOCKS);
@@ -132,7 +153,12 @@ namespace CryptoNote
         const Crypto::PublicKey &verifierKey,
         bool healthy)
     {
-        State &state = m_states[masternodeId];
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        State &state = it->second;
         state.attestationSamples.push_back({height, verifierKey, healthy});
 
         const uint32_t windowStart = calculateWindowStart(height, MASTERNODE_ATTESTATION_WINDOW_BLOCKS);
@@ -227,7 +253,11 @@ namespace CryptoNote
 
     void MasternodeStateTracker::markDeactivated(const Crypto::Hash &masternodeId, uint32_t height)
     {
-        m_states[masternodeId].deactivationHeight = height;
+        const auto it = m_states.find(masternodeId);
+        if (it != m_states.end())
+        {
+            it->second.deactivationHeight = height;
+        }
     }
 
     void MasternodeStateTracker::clearDeactivation(const Crypto::Hash &masternodeId)
@@ -255,7 +285,12 @@ namespace CryptoNote
 
     void MasternodeStateTracker::recordReward(const Crypto::Hash &masternodeId, uint32_t height, uint64_t amount)
     {
-        State &state = m_states[masternodeId];
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+        State &state = it->second;
         state.rewardSamples.push_back({height, amount});
         state.lastPaidHeight = height;
         state.hasBeenPaid = true;

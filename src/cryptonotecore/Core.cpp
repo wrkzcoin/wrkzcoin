@@ -96,6 +96,30 @@ namespace CryptoNote
             return false;
         }
 
+        bool isAuthorizedMasternodeRegistrant(const Crypto::PublicKey &payoutKey)
+        {
+            if (!parameters::MASTERNODE_ENFORCE_REGISTRATION_AUTHORITY)
+            {
+                return true;
+            }
+
+            for (const auto &hexKey : parameters::MASTERNODE_REGISTRATION_AUTHORITY_PUBKEYS)
+            {
+                Crypto::PublicKey parsed;
+                if (!Common::podFromHex(hexKey, parsed))
+                {
+                    continue;
+                }
+
+                if (parsed == payoutKey)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         template<class T> std::vector<T> preallocateVector(size_t elements)
         {
             std::vector<T> vect;
@@ -1558,6 +1582,10 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
+                if (!isAuthorizedMasternodeRegistrant(payload.payoutKey))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
                 break;
             }
             case MasternodeTxType::Activate:
@@ -1570,6 +1598,10 @@ namespace CryptoNote
                     return error::TransactionValidationError::WRONG_FEE;
                 }
                 if (!tracker.isBonded(payload.masternodeId) || !tracker.hasCollateralBinding(payload.masternodeId))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!tracker.meetsAttestationThreshold(payload.masternodeId, nextBlockHeight))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
@@ -2267,7 +2299,7 @@ namespace CryptoNote
                 if (!buildMasternodeStateForChain(cache, previousBlockIndex, rewardMasternodeTracker))
                 {
                     logger(Logging::DEBUGGING) << "Failed to build branch-local masternode state for block " << blockStr;
-                    return error::AddBlockErrorCode::DESERIALIZATION_FAILED;
+                    return error::AddBlockErrorCode::MASTERNODE_STATE_BUILD_FAILED;
                 }
             }
 
