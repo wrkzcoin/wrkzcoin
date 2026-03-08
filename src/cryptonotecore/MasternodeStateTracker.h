@@ -141,6 +141,13 @@ namespace CryptoNote
             const Crypto::PublicKey &verifierKey,
             uint32_t height) const;
 
+        bool canAcceptEndpointUpdate(const Crypto::Hash &masternodeId, uint32_t height) const;
+
+        void updateEndpointCommitment(
+            const Crypto::Hash &masternodeId,
+            const Crypto::Hash &newCommitment,
+            uint32_t height);
+
         nlohmann::json toJson() const;
 
         bool fromJson(const nlohmann::json &json);
@@ -183,6 +190,7 @@ namespace CryptoNote
             std::optional<Crypto::KeyImage> collateralKeyImage;
             std::optional<Crypto::PublicKey> collateralOutputKey;
             std::optional<Crypto::Hash> endpointCommitment;
+            std::optional<uint32_t> lastEndpointUpdateHeight;
             Crypto::PublicKey payoutKey = Crypto::PublicKey {{0}};
         };
 

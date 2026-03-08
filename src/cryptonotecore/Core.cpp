@@ -1330,6 +1330,12 @@ namespace CryptoNote
                         payload.healthy);
                 }
                 return;
+            case MasternodeTxType::UpdateEndpoint:
+                if (payload.hasNewEndpointCommitment)
+                {
+                    tracker.updateEndpointCommitment(payload.masternodeId, payload.newEndpointCommitment, height);
+                }
+                return;
             default:
                 return;
         }
@@ -1625,6 +1631,36 @@ namespace CryptoNote
                 if (!check_signature(signingHash, payload.verifierKey, payload.signature))
                 {
                     return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                }
+                break;
+            case MasternodeTxType::UpdateEndpoint:
+                if (!exists || (status != MasternodeStateTracker::Status::Active
+                                && status != MasternodeStateTracker::Status::Registered))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!payload.hasNewEndpointCommitment)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (tracker.hasEndpointCommitment(payload.newEndpointCommitment, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!tracker.canAcceptEndpointUpdate(payload.masternodeId, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                {
+                    Crypto::PublicKey ownerKey;
+                    if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
+                    {
+                        return error::TransactionValidationError::WRONG_FEE;
+                    }
+                    if (!check_signature(signingHash, ownerKey, payload.signature))
+                    {
+                        return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                    }
                 }
                 break;
             default:

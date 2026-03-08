@@ -294,6 +294,9 @@ namespace CryptoNote
          * allowing up to 100 missed heartbeats (~500 blocks) per window. */
         const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5;
 
+        /* Minimum blocks between accepted endpoint update transactions per masternode (7 days). */
+        const uint64_t MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
+
         /* External attestation controls (verifier-signed liveness checks). */
         const bool MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true;
         const uint64_t MASTERNODE_ATTESTATION_WINDOW_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;

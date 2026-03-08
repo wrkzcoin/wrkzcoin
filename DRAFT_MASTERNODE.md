@@ -117,6 +117,7 @@ All values are defined in `src/config/CryptoNoteConfig.h` under `CryptoNote::par
 | `MASTERNODE_COLLATERAL_LOCK_AMOUNT` | 200,000,000,000 atomic (2,000,000,000 WRKZ) | Same as bond amount (equal in current config) |
 | `MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS` | 1,440 (1 day) | Registration token validity window |
 | `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` | 5 blocks | Minimum spacing between accepted heartbeat txs |
+| `MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS` | 10,080 (7 days) | Minimum spacing between accepted endpoint update txs |
 | `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` | true | Whether attestation threshold must be met for rewards |
 | `MASTERNODE_ATTESTATION_WINDOW_BLOCKS` | 10,080 (7 days) | Rolling window for attestation health |
 | `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` | 24 | Minimum attestation samples needed in window |
@@ -139,6 +140,7 @@ Masternode operations are embedded in standard CryptoNote transactions via the `
 | `0x05` | **Revoke** | Governance / operator | Permanently revoke; start spend-lock |
 | `0x06` | **Heartbeat** | Operator daemon | Report liveness once per block |
 | `0x07` | **Attest** | Verifier node | Independently attest masternode liveness |
+| `0x08` | **UpdateEndpoint** | Operator wallet | Replace endpoint commitment in-place (7-day cooldown) |
 
 ### Register payload fields
 
@@ -669,7 +671,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 | Limitation | Impact | Planned fix |
 |-----------|--------|-------------|
 | **Collateral UTXO not verified at mempool acceptance** | The output key is verified against the UTXO set during block validation (`extractKeyOutputKeys`), but mempool acceptance does not perform this check — a register tx referencing a non-existent output can enter the mempool and will only be rejected at block inclusion | Add UTXO set lookup during `validateMasternodeTransactionEvent` when `checkPoolTokenReplay=true` |
-| **No wallet `mn_activate` / `mn_deactivate` / `mn_heartbeat` / `mn_revoke` commands** | Governance operations require external tooling to build transactions | Add wallet commands |
+| **No wallet `mn_activate` / `mn_deactivate` / `mn_heartbeat` / `mn_revoke` / `mn_update_endpoint` commands** | Governance/maintenance operations require external tooling to build transactions | Add wallet commands |
 | **Verifier allowlist is stubbed off** | Any key can attest; permissioned verifier governance not yet enforced | Enable via config before mainnet if required |
 | **Masternode set hash not committed in block header** | Set hash is advisory-only; not consensus-enforced per block | Consider adding to coinbase extra or block header in future fork |
 | **No dedicated P2P gossip for MN messages** | Heartbeats and attestations use normal tx pool propagation | Acceptable for current design; revisit at scale |
@@ -708,6 +710,9 @@ const uint64_t MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS = EXPECTED_NUMBER_OF_BLO
 
 // Heartbeat — 1 per 5 blocks; 2,016 opportunities per 7-day health window
 const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5;
+
+// Endpoint update cooldown — at most once per 7-day window
+const uint64_t MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
 
 // Attestation
 const bool     MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION                    = true;
@@ -785,7 +790,15 @@ No — and you cannot. The minimum interval is 5 blocks. Heartbeats submitted to
 
 **Q: Can I change my endpoint (IP address) after registration?**
 
-Not without re-registering. The endpoint commitment is embedded in the Register tx and cannot be updated in-place. To change your public IP you must Revoke the existing masternode and submit a new Register tx with the new endpoint commitment. A future upgrade could add an Update tx type.
+Yes — use the **UpdateEndpoint** transaction (type `0x08`). It replaces the stored endpoint commitment in-place without revoking or touching the collateral.
+
+Rules:
+- Allowed in **Active** or **Registered** status (not Inactive/Penalized/Revoked).
+- The new endpoint commitment must not already be in use by another active or pending masternode.
+- **Cooldown:** at most once every `MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS` (7 days / 10,080 blocks). Attempts within the cooldown window are rejected.
+- Signed with the payout key (same key used for heartbeats).
+
+The update takes effect as soon as the UpdateEndpoint tx is confirmed in a block. The old commitment is immediately released; the new one is uniqueness-checked against all other active registrations.
 
 ---
 

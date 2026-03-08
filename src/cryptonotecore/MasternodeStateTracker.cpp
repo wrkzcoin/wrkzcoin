@@ -682,6 +682,44 @@ namespace CryptoNote
         return true;
     }
 
+    bool MasternodeStateTracker::canAcceptEndpointUpdate(const Crypto::Hash &masternodeId, uint32_t height) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return false;
+        }
+
+        if (!it->second.lastEndpointUpdateHeight.has_value())
+        {
+            return true;
+        }
+
+        const uint32_t last = *it->second.lastEndpointUpdateHeight;
+        if (height <= last)
+        {
+            return false;
+        }
+
+        const uint64_t delta = static_cast<uint64_t>(height) - last;
+        return delta >= MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS;
+    }
+
+    void MasternodeStateTracker::updateEndpointCommitment(
+        const Crypto::Hash &masternodeId,
+        const Crypto::Hash &newCommitment,
+        uint32_t height)
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+
+        it->second.endpointCommitment = newCommitment;
+        it->second.lastEndpointUpdateHeight = height;
+    }
+
     nlohmann::json MasternodeStateTracker::toJson() const
     {
         nlohmann::json root = nlohmann::json::array();
@@ -711,6 +749,9 @@ namespace CryptoNote
             item["endpoint_commitment"] =
                 state.endpointCommitment.has_value() ? nlohmann::json(Common::podToHex(*state.endpointCommitment))
                                                      : nlohmann::json(nullptr);
+            item["last_endpoint_update_height"] =
+                state.lastEndpointUpdateHeight.has_value() ? nlohmann::json(*state.lastEndpointUpdateHeight)
+                                                           : nlohmann::json(nullptr);
             item["deactivation_height"] =
                 state.deactivationHeight.has_value() ? nlohmann::json(*state.deactivationHeight) : nlohmann::json(nullptr);
 
@@ -819,6 +860,11 @@ namespace CryptoNote
             if (!Common::podFromHex(item.at("payout_key").get<std::string>(), state.payoutKey))
             {
                 return false;
+            }
+
+            if (item.contains("last_endpoint_update_height") && !item.at("last_endpoint_update_height").is_null())
+            {
+                state.lastEndpointUpdateHeight = item.at("last_endpoint_update_height").get<uint32_t>();
             }
 
             if (item.contains("deactivation_height") && !item.at("deactivation_height").is_null())

@@ -20,7 +20,8 @@ namespace CryptoNote
         Penalize = 4,
         Revoke = 5,
         Heartbeat = 6,
-        Attest = 7
+        Attest = 7,
+        UpdateEndpoint = 8
     };
 
     enum class MasternodeTxParseResult : uint8_t
@@ -47,6 +48,8 @@ namespace CryptoNote
         Crypto::PublicKey collateralOutputKey = Crypto::PublicKey {{0}};
         bool hasEndpointCommitment = false;
         Crypto::Hash endpointCommitment = Crypto::Hash {{0}};
+        bool hasNewEndpointCommitment = false;
+        Crypto::Hash newEndpointCommitment = Crypto::Hash {{0}};
         bool hasVerifierKey = false;
         Crypto::PublicKey verifierKey = Crypto::PublicKey {{0}};
         bool hasCollateralSignature = false;

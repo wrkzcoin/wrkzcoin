@@ -27,6 +27,8 @@ namespace CryptoNote
         constexpr size_t MN_ATTEST_UNSIGNED_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + 1;
         constexpr size_t MN_ATTEST_PAYLOAD_SIZE = MN_ATTEST_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
         constexpr size_t MN_ACTION_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
+        constexpr size_t MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::Hash);
+        constexpr size_t MN_UPDATE_ENDPOINT_PAYLOAD_SIZE = MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
 
         uint32_t readUint32LE(const std::vector<uint8_t> &data, size_t offset)
         {
@@ -86,6 +88,7 @@ namespace CryptoNote
             case MasternodeTxType::Revoke:
             case MasternodeTxType::Heartbeat:
             case MasternodeTxType::Attest:
+            case MasternodeTxType::UpdateEndpoint:
                 break;
             default:
                 error = "Unknown masternode payload type";
@@ -106,6 +109,8 @@ namespace CryptoNote
         payload.collateralOutputKey = Crypto::PublicKey {{0}};
         payload.hasEndpointCommitment = false;
         payload.endpointCommitment = Crypto::Hash {{0}};
+        payload.hasNewEndpointCommitment = false;
+        payload.newEndpointCommitment = Crypto::Hash {{0}};
         payload.hasVerifierKey = false;
         payload.verifierKey = Crypto::PublicKey {{0}};
         payload.hasCollateralSignature = false;
@@ -214,6 +219,26 @@ namespace CryptoNote
                 payload.signature.data);
             payload.hasSignature = true;
             payload.unsignedPayload.assign(data.begin(), data.begin() + MN_ATTEST_UNSIGNED_PAYLOAD_SIZE);
+        }
+        else if (type == MasternodeTxType::UpdateEndpoint)
+        {
+            if (data.size() != MN_UPDATE_ENDPOINT_PAYLOAD_SIZE)
+            {
+                error = "UpdateEndpoint payload has invalid size";
+                return MasternodeTxParseResult::Invalid;
+            }
+
+            std::copy_n(
+                data.begin() + MN_BASE_PAYLOAD_SIZE,
+                sizeof(Crypto::Hash),
+                payload.newEndpointCommitment.data);
+            payload.hasNewEndpointCommitment = true;
+            std::copy_n(
+                data.begin() + MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE,
+                sizeof(Crypto::Signature),
+                payload.signature.data);
+            payload.hasSignature = true;
+            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE);
         }
         else if (data.size() != MN_ACTION_PAYLOAD_SIZE)
         {
