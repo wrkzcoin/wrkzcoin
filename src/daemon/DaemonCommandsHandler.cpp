@@ -916,7 +916,7 @@ bool DaemonCommandsHandler::mn_registration_string(const std::vector<std::string
               << SuccessMsg(Utilities::formatAmount(bondAmount))
               << " (" << bondAmount << " atomic units)" << std::endl;
     std::cout << InformationMsg("Wallet CLI command: ")
-              << SuccessMsg("mn_register " + token + " <public_ipv4:port>") << std::endl;
+              << SuccessMsg("mn_register " + token + " <addr:port | [ipv6]:port>") << std::endl;
 
     return true;
 }

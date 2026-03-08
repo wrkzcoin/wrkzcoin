@@ -396,7 +396,7 @@ Masternode registration token:
 MNREG2:<mn_id_hex>:<token_id_hex>:<expires_at_height>
 
 Token expires at height: <height>
-Required bond amount: 500.00 WRKZ
+Required bond amount: 2000000000.00 WRKZ
 ```
 
 The token encodes:
@@ -429,7 +429,7 @@ Or run `mn_register` interactively — you will be prompted for the token and en
 The wallet will:
 1. Parse and validate the token
 2. Canonicalize the endpoint and compute the commitment hash
-3. Select a qualifying collateral output (≥ 50,000 WRKZ)
+3. Select a qualifying collateral output (≥ 2,000,000,000 WRKZ)
 4. Build the Register transaction with dual signatures (payout key + collateral key)
 5. Display a confirmation summary and prompt for approval
 6. Broadcast the transaction
@@ -525,8 +525,8 @@ Returns a paginated list of masternode snapshots.
       "mn_id": "abcdef...",
       "state": "Active",
       "bonded": true,
-      "bond_amount": 50000000000000,
-      "collateral_amount": 50000000000000,
+      "bond_amount": 200000000000,
+      "collateral_amount": 200000000000,
       "collateral_global_output_index": 12345,
       "has_endpoint_commitment": true,
       "endpoint_commitment": "deadbeef...",
