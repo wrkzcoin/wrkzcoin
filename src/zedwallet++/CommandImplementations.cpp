@@ -1581,6 +1581,165 @@ void masternodeAttest(const std::shared_ptr<WalletBackend> walletBackend, const 
     std::cout << InformationMsg("Hash: ") << SuccessMsg(txHash) << std::endl;
 }
 
+/* Shared implementation for Activate (type=2), Deactivate (type=3), and Revoke (type=5).
+ * Each action TX payload is: MN01 | typeId | masternodeId[32] (37 bytes unsigned),
+ * signed with the wallet's primary spend key (the MN payout key). */
+static void masternodeLifecycleAction(
+    const std::shared_ptr<WalletBackend> walletBackend,
+    const std::string &commandInput,
+    const std::string &commandName,
+    const std::string &actionDisplay,
+    uint8_t typeId)
+{
+    if (walletBackend->isViewWallet())
+    {
+        std::cout << WarningMsg("Masternode " + actionDisplay + " is not available for view wallets.") << std::endl;
+        return;
+    }
+
+    std::string mnIdHex;
+    if (commandInput.rfind(commandName + " ", 0) == 0)
+    {
+        const auto args = Utilities::split(commandInput.substr(commandName.size() + 1), ' ');
+        if (!args.empty())
+        {
+            mnIdHex = args[0];
+        }
+    }
+
+    if (mnIdHex.empty())
+    {
+        std::cout << InformationMsg("Enter masternode id hex (or cancel): ");
+        std::getline(std::cin, mnIdHex);
+        Utilities::trim(mnIdHex);
+    }
+
+    if (mnIdHex == "cancel")
+    {
+        return;
+    }
+
+    Crypto::Hash masternodeId;
+    if (!Common::podFromHex(mnIdHex, masternodeId))
+    {
+        std::cout << WarningMsg("Invalid masternode id hex.") << std::endl;
+        return;
+    }
+
+    const auto primaryAddress = walletBackend->getPrimaryAddress();
+    const auto [keysError, publicSpendKey, privateSpendKey, walletIndex] = walletBackend->getSpendKeys(primaryAddress);
+    (void)walletIndex;
+    if (keysError)
+    {
+        std::cout << WarningMsg("Failed to read wallet spend keys: ") << WarningMsg(keysError) << std::endl;
+        return;
+    }
+
+    // Build action payload: MN01 | typeId | masternodeId[32]
+    std::vector<uint8_t> unsignedPayload;
+    unsignedPayload.reserve(4 + 1 + sizeof(Crypto::Hash));
+    unsignedPayload.push_back('M');
+    unsignedPayload.push_back('N');
+    unsignedPayload.push_back('0');
+    unsignedPayload.push_back('1');
+    unsignedPayload.push_back(typeId);
+    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
+
+    Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
+    Crypto::Signature signature;
+    Crypto::generate_signature(signingHash, publicSpendKey, privateSpendKey, signature);
+
+    std::vector<uint8_t> extraData = unsignedPayload;
+    extraData.insert(extraData.end(), signature.data, signature.data + sizeof(signature.data));
+
+    const uint64_t actionOutputAmount = WalletConfig::minimumSend;
+    if (walletBackend->getTotalUnlockedBalance() < actionOutputAmount)
+    {
+        std::cout << WarningMsg("Insufficient unlocked balance for masternode " + actionDisplay + " transaction.")
+                  << std::endl;
+        return;
+    }
+
+    const auto [minMixin, maxMixin, defaultMixin] =
+        Utilities::getMixinAllowableRange(walletBackend->getStatus().networkBlockCount);
+    (void)minMixin;
+    (void)maxMixin;
+
+    Error error;
+    WalletTypes::PreparedTransactionInfo preparedTransaction;
+    std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionAdvanced(
+        {{primaryAddress, actionOutputAmount}},
+        defaultMixin,
+        WalletTypes::FeeType::MinimumFee(),
+        "",
+        {},
+        primaryAddress,
+        0,
+        extraData,
+        false,
+        false);
+
+    if (error)
+    {
+        if (error == TOO_MANY_INPUTS_TO_FIT_IN_BLOCK)
+        {
+            std::cout << WarningMsg("Transaction is too large due to input fragmentation.") << std::endl;
+            std::cout << InformationMsg("Run ") << SuccessMsg("optimize") << InformationMsg(" and retry.")
+                      << std::endl;
+            return;
+        }
+
+        std::cout << WarningMsg("Failed to prepare masternode " + actionDisplay + " transaction: ")
+                  << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    std::cout << InformationMsg("Masternode ID: ") << SuccessMsg(Common::podToHex(masternodeId)) << std::endl;
+    std::cout << InformationMsg("Action:        ") << SuccessMsg(actionDisplay) << std::endl;
+    std::cout << InformationMsg("Payout key:    ") << SuccessMsg(Common::podToHex(publicSpendKey)) << std::endl;
+
+    if (typeId == static_cast<uint8_t>(5)) // Revoke
+    {
+        std::cout << WarningMsg("WARNING: Revoking permanently removes the masternode from the active set.") << std::endl;
+        std::cout << WarningMsg("         The collateral spend-lock applies for ~21 days after revocation.") << std::endl;
+    }
+
+    if (!Utilities::confirm("Submit masternode " + actionDisplay + " transaction to blockchain?"))
+    {
+        std::cout << WarningMsg("Masternode " + actionDisplay + " cancelled.") << std::endl;
+        return;
+    }
+
+    ZedUtilities::confirmPassword(walletBackend, "Confirm your password: ");
+
+    Crypto::Hash txHash;
+    std::tie(error, txHash) = walletBackend->sendPreparedTransaction(preparedTransaction.transactionHash);
+    if (error)
+    {
+        std::cout << WarningMsg("Failed to submit masternode " + actionDisplay + " transaction: ")
+                  << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    std::cout << SuccessMsg("Masternode " + actionDisplay + " transaction submitted.") << std::endl;
+    std::cout << InformationMsg("Hash: ") << SuccessMsg(txHash) << std::endl;
+}
+
+void masternodeActivate(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    masternodeLifecycleAction(walletBackend, commandInput, "mn_activate", "Activate", 2);
+}
+
+void masternodeDeactivate(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    masternodeLifecycleAction(walletBackend, commandInput, "mn_deactivate", "Deactivate", 3);
+}
+
+void masternodeRevoke(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    masternodeLifecycleAction(walletBackend, commandInput, "mn_revoke", "Revoke", 5);
+}
+
 void setLogLevel()
 {
     const std::vector<Command> logLevels = {

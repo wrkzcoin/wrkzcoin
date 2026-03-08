@@ -64,5 +64,8 @@ void checkTx(const std::shared_ptr<WalletBackend> walletBackend, const std::stri
 void decodeIntegrated(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
 void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
 void masternodeAttest(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
+void masternodeActivate(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
+void masternodeDeactivate(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
+void masternodeRevoke(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput);
 
 void setLogLevel();

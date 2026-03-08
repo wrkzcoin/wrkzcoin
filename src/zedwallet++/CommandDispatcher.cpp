@@ -109,6 +109,18 @@ bool handleCommand(
     {
         masternodeAttest(walletBackend, command);
     }
+    else if (command == "mn_activate" || command.rfind("mn_activate ", 0) == 0)
+    {
+        masternodeActivate(walletBackend, command);
+    }
+    else if (command == "mn_deactivate" || command.rfind("mn_deactivate ", 0) == 0)
+    {
+        masternodeDeactivate(walletBackend, command);
+    }
+    else if (command == "mn_revoke" || command.rfind("mn_revoke ", 0) == 0)
+    {
+        masternodeRevoke(walletBackend, command);
+    }
     else if (command == "make_integrated_address")
     {
         createIntegratedAddress(walletBackend);

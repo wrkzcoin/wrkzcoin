@@ -70,6 +70,21 @@ std::vector<AdvancedCommand> allCommands()
             "[Masternode] Submit verifier attestation (mn_attest <mn_id_hex> <0|1>)",
             false,
             true),
+        AdvancedCommand(
+            "mn_activate",
+            "[Masternode] Activate a registered masternode (mn_activate <mn_id_hex>)",
+            false,
+            true),
+        AdvancedCommand(
+            "mn_deactivate",
+            "[Masternode] Voluntarily deactivate an active masternode (mn_deactivate <mn_id_hex>)",
+            false,
+            true),
+        AdvancedCommand(
+            "mn_revoke",
+            "[Masternode] Permanently revoke a masternode and release collateral (mn_revoke <mn_id_hex>)",
+            false,
+            true),
         AdvancedCommand("ab_add", "[Address Book] Add a person to your address book", true, true),
         AdvancedCommand("ab_delete", "[Address Book] Delete a person in your address book", true, true),
         AdvancedCommand("ab_list", "[Address Book] List everyone in your address book", true, true),
