@@ -16701,8 +16701,13 @@ inline bool is_peer_closed(session_t session, socket_t sock) {
 
 inline cert_t get_peer_cert(const_session_t session) {
   if (!session) return nullptr;
+#if OPENSSL_VERSION_NUMBER >= 0x30000000L
   return static_cast<cert_t>(SSL_get1_peer_certificate(
       static_cast<SSL *>(const_cast<void *>(session))));
+#else
+  return static_cast<cert_t>(SSL_get_peer_certificate(
+      static_cast<SSL *>(const_cast<void *>(session))));
+#endif
 }
 
 inline void free_cert(cert_t cert) {
