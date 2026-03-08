@@ -26,6 +26,7 @@
 17. [IPv6 Support](#17-ipv6-support)
 18. [Security Model & Known Limitations](#18-security-model--known-limitations)
 19. [Configuration Reference](#19-configuration-reference)
+20. [Frequently Asked Questions](#20-frequently-asked-questions)
 
 ---
 
@@ -719,6 +720,135 @@ const uint64_t MASTERNODE_ATTESTATION_MIN_BLOCK_INTERVAL_PER_VERIFIER     = 60;
 const bool MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST = false;
 const std::vector<std::string> MASTERNODE_VERIFIER_PUBKEY_ALLOWLIST = {};
 ```
+
+---
+
+---
+
+## 20. Frequently Asked Questions
+
+### Collateral & Funds
+
+**Q: How does the network know I haven't spent my collateral?**
+
+At registration, your collateral UTXO's **key image** is committed on-chain. Key images are the cryptographic fingerprints of CryptoNote coin spends — spending any UTXO reveals its unique key image in the transaction input. The consensus layer tracks all registered collateral key images in `MasternodeStateTracker`. Every transaction in every block is checked: if any input key image matches a spend-locked collateral key image, the transaction is rejected and never confirmed. The private key for the collateral UTXO is never at risk — the network simply blocks any spending attempt until the lock expires.
+
+---
+
+**Q: I shut down my node without de-registering. Can I recover my collateral?**
+
+Yes — your funds are never seized or destroyed. What happens depends on how the node exits the Active state:
+
+| Scenario | What happens to collateral |
+|---|---|
+| Node goes offline, health degrades to 0% | Still locked — no spend-lock timer starts until a Deactivate/Revoke tx appears on-chain |
+| A Deactivate or Revoke tx is submitted | Spend-lock timer starts at that block height |
+| 30,240 blocks (~21 days) pass after Deactivate/Revoke | Collateral is fully unlocked and freely spendable |
+
+If no Deactivate/Revoke tx is ever submitted, the spend-lock timer never starts, and the collateral stays locked indefinitely (the node sits in a degraded state receiving no rewards). To free your collateral you need either a wallet `mn_deactivate` or `mn_revoke` command — these are planned but not yet implemented. In the interim, a governance-level Revoke tx can be used.
+
+---
+
+**Q: Can I use the same collateral for two masternodes?**
+
+No. The Register tx validation checks `hasCollateralKeyImage` and `hasCollateralOutpoint` — the same key image or (amount, global output index) pair cannot appear in two active or pending registrations. If you try, the second register tx is rejected.
+
+---
+
+**Q: Can I move my collateral to a different UTXO without revoking?**
+
+No. The collateral binding is permanent for the lifetime of the masternode registration. To change collateral you must Revoke the existing masternode (wait out the spend-lock), then Register again with the new collateral output.
+
+---
+
+### Health & Heartbeats
+
+**Q: What happens if I miss some heartbeats?**
+
+Each missed heartbeat reduces your health percentage over the 7-day rolling window (10,080 blocks). With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5`, there are 2,016 heartbeat opportunities per window. To maintain ≥ 95% health you must submit at least 1,916 healthy heartbeats — meaning you can miss at most **100 consecutive heartbeats (~500 blocks ≈ 8 hours)** before falling below the threshold. Once below 95%, you are excluded from reward selection until health recovers within the rolling window.
+
+---
+
+**Q: What happens if my health drops to 0%?**
+
+You stop receiving rewards but the masternode remains in Active status. The collateral is not automatically seized or locked. Health can recover if you resume sending heartbeats — old zero-health samples age out of the 7-day window over time. No Deactivate tx is issued automatically by the network (automatic deactivation on sustained health failure is a planned future improvement).
+
+---
+
+**Q: Do I need to send a heartbeat every block?**
+
+No — and you cannot. The minimum interval is 5 blocks. Heartbeats submitted too soon are rejected. For maximum health you should send exactly one heartbeat every 5 blocks.
+
+---
+
+### Registration & Lifecycle
+
+**Q: Can I change my endpoint (IP address) after registration?**
+
+Not without re-registering. The endpoint commitment is embedded in the Register tx and cannot be updated in-place. To change your public IP you must Revoke the existing masternode and submit a new Register tx with the new endpoint commitment. A future upgrade could add an Update tx type.
+
+---
+
+**Q: Can two masternodes share the same endpoint commitment?**
+
+No. The Register tx validation calls `hasEndpointCommitment`, which rejects any registration whose commitment hash already appears in an active or pending masternode. This prevents a single server from collecting multiple masternode rewards.
+
+---
+
+**Q: What is the difference between Deactivate and Revoke?**
+
+| | Deactivate | Revoke |
+|---|---|---|
+| Resulting status | Inactive | Revoked |
+| Spend-lock | Yes — 21 days | Yes — 21 days |
+| Re-register allowed? | Not directly — must Revoke first | Yes — after spend-lock expires |
+| Typical use | Temporary removal / maintenance | Permanent exit |
+
+---
+
+**Q: What happens to rewards while the masternode is in Registered status (before Activate)?**
+
+Nothing — a masternode in Registered status is not eligible for rewards. Only Active masternodes are considered for reward selection. The registration establishes the collateral commitment and begins health tracking, but rewards require an explicit Activate transaction.
+
+---
+
+### Rewards
+
+**Q: What if no masternode is eligible for a reward at a given block?**
+
+If no active masternode meets both the health threshold (≥ 95% heartbeat health) and the attestation threshold (≥ 80% attestation health with ≥ 24 samples), the full block reward goes to the PoW miner. No reward is held in reserve or rolled over.
+
+---
+
+**Q: Is the reward winner selection random or deterministic?**
+
+Fully **deterministic** — no randomness is involved. The winner is selected by finding the active eligible masternode with the lowest total reward received in the last 7-day fairness window. Ties are broken by lexicographic comparison of masternode ID bytes. Both nodes independently compute the same winner from the same chain state, ensuring consensus.
+
+---
+
+**Q: Are transaction fees shared with masternodes?**
+
+No. Transaction fees always go 100% to the PoW miner, regardless of whether the reward fork is active.
+
+---
+
+**Q: Can I use a different address to receive rewards than the one holding collateral?**
+
+Yes — this is by design. The **payout key** (where rewards are sent) is separate from the **collateral output key**. You specify the payout key at registration time. It is recommended to keep them in separate wallets so reward income doesn't interact with the spend-locked collateral UTXO.
+
+---
+
+### Attestation
+
+**Q: What is external attestation and do I need to worry about it?**
+
+External attestation is a second liveness check performed by independent **verifier nodes** that submit Attest transactions on-chain. To be reward-eligible your masternode must have ≥ 24 attestation samples in the last 7-day window with ≥ 80% healthy attestations. If `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true` (the current default), a masternode with zero attestation samples will not receive rewards even with 100% heartbeat health. As an operator you cannot control who attests to your node — verifier infrastructure needs to be operational on the network. If no verifiers are running and attestation is required, **no masternode will receive rewards**.
+
+---
+
+**Q: Can I run my own verifier node?**
+
+Yes — `MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST` is currently `false`, meaning any verifier key is accepted. You can run a verifier that submits Attest transactions. Each verifier is rate-limited to one accepted attestation per 60 blocks per masternode to prevent spam. If the allowlist is later enabled (`true`), only pre-approved verifier public keys will be accepted.
 
 ---
 

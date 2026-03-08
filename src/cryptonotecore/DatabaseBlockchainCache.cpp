@@ -2704,4 +2704,30 @@ namespace CryptoNote
         unitsCache.push_back(blockInfo);
     }
 
+    bool DatabaseBlockchainCache::writeMasternodeStateBlob(const std::string &blob)
+    {
+        const std::string key = DB::MASTERNODE_STATE_PREFIX + DB::MASTERNODE_STATE_KEY;
+        RawWriteBatch batch({{key, blob}});
+        const auto err = database.write(batch);
+        if (err)
+        {
+            logger(Logging::WARNING) << "writeMasternodeStateBlob: DB write failed: " << err.message();
+            return false;
+        }
+        return true;
+    }
+
+    bool DatabaseBlockchainCache::readMasternodeStateBlob(std::string &blob) const
+    {
+        const std::string key = DB::MASTERNODE_STATE_PREFIX + DB::MASTERNODE_STATE_KEY;
+        RawReadBatch batch(key);
+        const auto err = database.read(batch);
+        if (err || !batch.found)
+        {
+            return false;
+        }
+        blob = std::move(batch.value);
+        return true;
+    }
+
 } // namespace CryptoNote
