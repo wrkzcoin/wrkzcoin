@@ -112,10 +112,10 @@ All values are defined in `src/config/CryptoNoteConfig.h` under `CryptoNote::par
 | `MASTERNODE_FAIRNESS_WINDOW_BLOCKS` | 10,080 (7 days) | Window used for fairness reward accounting |
 | `MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS` | 30,240 (21 days) | Collateral spend-lock after deactivation/revocation |
 | `MASTERNODE_REWARD_PERCENT` | 70% | Masternode share of distributable block reward |
-| `MASTERNODE_REGISTRATION_BOND_AMOUNT` | 50,000 WRKZ | Minimum collateral output required at registration |
-| `MASTERNODE_COLLATERAL_LOCK_AMOUNT` | 50,000 WRKZ | Same as bond amount (equal in current config) |
+| `MASTERNODE_REGISTRATION_BOND_AMOUNT` | 200,000,000,000 atomic (2,000,000,000 WRKZ) | Minimum collateral output required at registration |
+| `MASTERNODE_COLLATERAL_LOCK_AMOUNT` | 200,000,000,000 atomic (2,000,000,000 WRKZ) | Same as bond amount (equal in current config) |
 | `MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS` | 1,440 (1 day) | Registration token validity window |
-| `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` | 1 block | Minimum spacing between accepted heartbeat txs |
+| `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` | 5 blocks | Minimum spacing between accepted heartbeat txs |
 | `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` | true | Whether attestation threshold must be met for rewards |
 | `MASTERNODE_ATTESTATION_WINDOW_BLOCKS` | 10,080 (7 days) | Rolling window for attestation health |
 | `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` | 24 | Minimum attestation samples needed in window |
@@ -202,7 +202,7 @@ Masternode operations are embedded in standard CryptoNote transactions via the `
 
 ## 7. Collateral & Bond
 
-- The operator must hold an unspent output of at least **50,000 WRKZ** in their wallet.
+- The operator must hold an unspent output of at least **2,000,000,000 WRKZ** (200,000,000,000 atomic units) in their wallet.
 - This output's key image is committed on-chain in the Register transaction.
 - The consensus layer checks the key image against all previously registered masternodes to prevent double-registration.
 - The output is **not frozen at the network level** — but attempting to spend it while the masternode is active or within the spend-lock window will result in a transaction rejected from blocks.
@@ -243,7 +243,7 @@ The commitment uniqueness is enforced on-chain — no two active or pending mast
 
 ### Heartbeat Transactions
 
-A masternode operator sends a **Heartbeat** tx (type `0x06`) approximately once per block. The tx includes:
+A masternode operator sends a **Heartbeat** tx (type `0x06`) at most once per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks. The tx includes:
 - Masternode ID (32 bytes)
 - `healthy` flag (1 byte: `0x01` = healthy, `0x00` = unhealthy)
 - Signature over the unsigned payload using the payout key
@@ -260,8 +260,25 @@ A node must maintain ≥ **95%** health to be reward-eligible.
 
 ### Rate Limiting
 
-- Minimum spacing: `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` (1 block) between accepted heartbeats.
+- Minimum spacing: `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` (5 blocks) between accepted heartbeats.
 - Heartbeats received too quickly are rejected with `EXTRA_TOO_LARGE` validation error.
+
+### Block Space Impact
+
+Each heartbeat is a full CryptoNote transaction. With a fee-bearing input/output structure the tx is roughly **500–1,000 bytes**; a zero-input transaction-PoW heartbeat is roughly **110 bytes** but requires computational work from the operator.
+
+With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5`, each masternode submits at most 1 heartbeat per 5 blocks. The health window (10,080 blocks) provides 2,016 opportunities per masternode; meeting the 95% threshold requires 1,916 healthy samples, allowing up to 100 missed heartbeats (~500 blocks ≈ 8 hours) per window. The block granted full reward zone is **100,000 bytes**.
+
+**Fee-bearing heartbeat txs (~500 bytes each):**
+
+| Active masternodes | Heartbeat txs/block | Block space consumed |
+|---|---|---|
+| 10 | 2 | ~1 KB (1%) |
+| 50 | 10 | ~5 KB (5%) |
+| 100 | 20 | ~10 KB (10%) |
+| 200 | 40 | ~20 KB (20%) |
+| 500 | 100 | ~50 KB (50%) |
+| 1,000 | 200 | ~100 KB (100% — user txs squeezed out) |
 
 ---
 
@@ -356,7 +373,7 @@ The state is also serializable via the key prefix `m/state` in `DBUtils.h`, used
 ### Prerequisites
 
 - A synced `wrkzd` daemon
-- A `zedwallet++` wallet with at least **50,000 WRKZ** in a single unspent output plus enough for transaction fees (~0.1 WRKZ)
+- A `zedwallet++` wallet with at least **2,000,000,000 WRKZ** in a single unspent output plus enough for transaction fees
 - A publicly reachable server with a static IP address (IPv4 or IPv6) and an open P2P port
 
 ### Step 1 — Generate a Registration Token (Daemon)
@@ -655,6 +672,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 | **Verifier allowlist is stubbed off** | Any key can attest; permissioned verifier governance not yet enforced | Enable via config before mainnet if required |
 | **Masternode set hash not committed in block header** | Set hash is advisory-only; not consensus-enforced per block | Consider adding to coinbase extra or block header in future fork |
 | **No dedicated P2P gossip for MN messages** | Heartbeats and attestations use normal tx pool propagation | Acceptable for current design; revisit at scale |
+| **Heartbeat block space scaling** | With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL=5`, 100 fee-bearing masternodes consume ~10% of the 100 KB block reward zone per block; saturation requires ~1,000 masternodes | Monitor as masternode count grows; raise interval further if needed |
 
 ---
 
@@ -670,8 +688,8 @@ const uint64_t MASTERNODE_REWARD_FORK_HEIGHT   = MASTERNODE_FEATURE_FORK_HEIGHT 
 // Reward split
 const uint64_t MASTERNODE_REWARD_PERCENT = 70; // percent of distributable reward to MN winner
 
-// Collateral
-const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT  = 50'000'000'000; // 500 WRKZ in atomic units
+// Collateral — 2,000,000,000 WRKZ × 100 (2 decimal places) = 200,000,000,000 atomic units
+const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT  = 200'000'000'000;
 const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT     = MASTERNODE_REGISTRATION_BOND_AMOUNT;
 
 // Health
@@ -687,8 +705,8 @@ const uint64_t MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS = 21 * EXPECTED_NUMBER_
 // Registration token
 const uint64_t MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
 
-// Heartbeat
-const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 1;
+// Heartbeat — 1 per 5 blocks; 2,016 opportunities per 7-day health window
+const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5;
 
 // Attestation
 const bool     MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION                    = true;

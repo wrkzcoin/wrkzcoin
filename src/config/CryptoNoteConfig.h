@@ -278,8 +278,9 @@ namespace CryptoNote
         /* Reward split percent for masternode winner after reward fork activates. */
         const uint64_t MASTERNODE_REWARD_PERCENT = 70;
 
-        /* Registration bond amount (atomic units). Set > 0 to enforce economic commitment for MN registration. */
-        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 50'000'000'000;
+        /* Registration bond amount (atomic units). Set > 0 to enforce economic commitment for MN registration.
+         * 2,000,000,000 WRKZ × 100 (2 decimal places) = 200,000,000,000 atomic units */
+        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 200'000'000'000;
 
         /* Minimum collateral output amount (atomic units) required for masternode registration. */
         const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT = MASTERNODE_REGISTRATION_BOND_AMOUNT;
@@ -287,8 +288,11 @@ namespace CryptoNote
         /* Registration token TTL in blocks. */
         const uint64_t MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
 
-        /* Minimum spacing between accepted heartbeat events for the same masternode. */
-        const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 1;
+        /* Minimum spacing between accepted heartbeat events for the same masternode.
+         * At 5 blocks per heartbeat the health window (10,080 blocks) yields 2,016
+         * opportunities; meeting the 95% threshold requires 1,916 healthy samples,
+         * allowing up to 100 missed heartbeats (~500 blocks) per window. */
+        const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5;
 
         /* External attestation controls (verifier-signed liveness checks). */
         const bool MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true;
