@@ -883,7 +883,7 @@ std::tuple<Error, uint16_t> RpcServer::instantSendLock(
     {
         const auto rawTx = CryptoNote::Core::getRawTransaction(
             std::vector<uint8_t>(txData.begin(), txData.end()));
-        for (const auto &input : rawTx.inputs)
+        for (const auto &input : rawTx.keyInputs)
         {
             if (m_core->isInstantSendLocked(input.keyImage))
             {

@@ -339,7 +339,7 @@ void MasternodeSigner::instantSendLoop()
                 // Check input count qualification.
                 const auto rawTx = CryptoNote::Core::getRawTransaction(
                     std::vector<uint8_t>(txData.begin(), txData.end()));
-                if (rawTx.inputs.size() > CryptoNote::parameters::INSTANTSEND_MAX_INPUTS)
+                if (rawTx.keyInputs.size() > CryptoNote::parameters::INSTANTSEND_MAX_INPUTS)
                 {
                     continue;
                 }
