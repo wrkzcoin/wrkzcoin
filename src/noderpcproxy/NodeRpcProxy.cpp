@@ -9,6 +9,7 @@
 
 #include "NodeErrors.h"
 #include "common/CryptoNoteTools.h"
+#include <config/CryptoNoteConfig.h>
 #include "common/StringTools.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
@@ -793,6 +794,7 @@ namespace CryptoNote
         req.blockIds = knownBlockIds;
         req.startHeight = startHeight;
         req.startTimestamp = startTimestamp;
+        req.blockCount = CryptoNote::parameters::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
 
         m_logger(TRACE) << "Send getwalletsyncdata request, start timestamp: " << req.startTimestamp
                         << ", start height: " << req.startHeight;
@@ -804,7 +806,17 @@ namespace CryptoNote
             return ec;
         }
 
-        m_logger(TRACE) << "queryblockslite complete, block count " << rsp.items.size();
+        m_logger(TRACE) << "getwalletsyncdata complete, block count " << rsp.items.size();
+
+        /* If the response is empty and we are not yet synced, the node may be
+           pruned and unable to serve blocks at the requested height. Log a
+           warning so the operator knows why sync has stalled. */
+        if (rsp.items.empty() && !rsp.synced)
+        {
+            m_logger(WARNING) << "getwalletsyncdata returned 0 blocks (height " << startHeight
+                              << "). The node may be pruned below this height. "
+                              << "Consider resyncing from a height the node has data for.";
+        }
 
         newBlocks = rsp.items;
 
