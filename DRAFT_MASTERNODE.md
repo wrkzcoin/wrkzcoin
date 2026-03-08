@@ -26,10 +26,11 @@
 17. [Operator Manual — Running & Maintaining a Masternode](#17-operator-manual--running--maintaining-a-masternode)
 18. [RPC API Reference](#18-rpc-api-reference)
 19. [Daemon Console Commands](#19-daemon-console-commands)
-20. [IPv6 Support](#20-ipv6-support)
-21. [Security Model & Known Limitations](#21-security-model--known-limitations)
-22. [Configuration Reference](#22-configuration-reference)
-23. [Frequently Asked Questions](#23-frequently-asked-questions)
+20. [Wallet Commands (zedwallet++)](#20-wallet-commands-zedwallet)
+21. [IPv6 Support](#21-ipv6-support)
+22. [Security Model & Known Limitations](#22-security-model--known-limitations)
+23. [Configuration Reference](#23-configuration-reference)
+24. [Frequently Asked Questions](#24-frequently-asked-questions)
 
 ---
 
@@ -706,9 +707,17 @@ wrkzd --mn-signing-key=<64-hex-chars> \
 - **`mn-signing-key`** — Enables ChainLock/InstantSend quorum participation. The public key was embedded in the Register tx.
 - **`mn-payout-key`** — Enables automated heartbeat submission. This is the spend private key of the wallet address used as the payout address during `mn_register`. You can export it from `zedwallet++` with `keys` (shows spend key).
 
-### Step 4 — Activate (pending implementation)
+### Step 4 — Activate (Wallet)
 
-After the Register tx is confirmed, an **Activate** transaction must be submitted to move the masternode from `Registered` → `Active` status. This step is currently a governance operation; a wallet command (`mn_activate`) is planned.
+After the Register tx is confirmed, submit an **Activate** transaction to move the masternode from `Registered` → `Active` status:
+
+```
+mn_activate <mn_id_hex>
+```
+
+Or run `mn_activate` interactively — you will be prompted for the masternode ID.
+
+The wallet signs the action payload with the primary spend key (the payout key registered in Step 2) and broadcasts a small transaction. The masternode transitions to `Active` status once the transaction is confirmed.
 
 ### Step 5 — Automated Heartbeat
 
@@ -939,7 +948,65 @@ Output includes the `MNREG2:...` token string, expiry height, and required bond 
 
 ---
 
-## 20. IPv6 Support
+## 20. Wallet Commands (zedwallet++)
+
+All masternode lifecycle operations are performed from `zedwallet++`. Commands can be invoked with arguments inline or run interactively (the wallet will prompt for missing inputs).
+
+### `mn_register <token> <addr:port | [ipv6]:port>`
+
+Register a masternode using a daemon-issued token and an endpoint commitment.
+
+```
+mn_register MNREG2:abc...def:123...456:4601440 203.0.113.10:17855
+mn_register MNREG2:abc...def:123...456:4601440 [2001:db8::1]:17855
+```
+
+See Section 16 for the full registration workflow.
+
+### `mn_activate <mn_id_hex>`
+
+Activate a registered masternode, moving it from `Registered` → `Active` status and making it eligible for rewards and quorum selection.
+
+```
+mn_activate abc...def
+```
+
+Signed with the wallet's primary spend key (the payout key). The masternode must be in `Registered` status, bonded, and have a valid collateral binding.
+
+### `mn_deactivate <mn_id_hex>`
+
+Voluntarily deactivate an active masternode, moving it from `Active` → `Inactive`. Starts the 21-day collateral spend-lock timer.
+
+```
+mn_deactivate abc...def
+```
+
+Use this for planned maintenance or temporary removal from the active set. To re-enter the active set after deactivation you must Revoke and re-register.
+
+### `mn_revoke <mn_id_hex>`
+
+Permanently revoke a masternode, removing it from the active set. Starts the 21-day collateral spend-lock timer. After the spend-lock expires, the collateral can be freely spent or used to register a new masternode.
+
+```
+mn_revoke abc...def
+```
+
+**Warning:** This action is irreversible. The masternode is permanently removed from consensus tracking.
+
+### `mn_attest <mn_id_hex> <0|1>`
+
+Submit a verifier attestation for a masternode. The wallet's primary spend key acts as the verifier key.
+
+```
+mn_attest abc...def 1    # attest healthy
+mn_attest abc...def 0    # attest unhealthy
+```
+
+Rate-limited to one accepted attestation per 60 blocks per verifier key per masternode.
+
+---
+
+## 21. IPv6 Support
 
 WrkzCoin masternodes fully support IPv6 for both network connectivity and endpoint commitments.
 
@@ -985,7 +1052,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 
 ---
 
-## 21. Security Model & Known Limitations
+## 22. Security Model & Known Limitations
 
 ### What the consensus layer guarantees
 
@@ -1002,7 +1069,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 | Limitation | Impact | Planned fix |
 |-----------|--------|-------------|
 | **Collateral UTXO not verified at mempool acceptance** | The output key is verified against the UTXO set during block validation (`extractKeyOutputKeys`), but mempool acceptance does not perform this check — a register tx referencing a non-existent output can enter the mempool and will only be rejected at block inclusion | Add UTXO set lookup during `validateMasternodeTransactionEvent` when `checkPoolTokenReplay=true` |
-| **No wallet `mn_activate` / `mn_deactivate` / `mn_revoke` / `mn_update_endpoint` commands** | Governance/maintenance operations require external tooling to build transactions | Add wallet commands (heartbeat is now automated via daemon) |
+| **No wallet `mn_update_endpoint` command** | Endpoint update operations require external tooling to build transactions | Add wallet command |
 | **Verifier allowlist is disabled** | Any key can attest; permissioned verifier governance not yet enforced | Enable via config before mainnet if required |
 | **Masternode set hash not committed in block header** | Set hash is advisory-only; not consensus-enforced per block | Consider adding to coinbase extra or block header in future fork |
 | **No dedicated P2P gossip for MN heartbeat/attest messages** | Heartbeats and attestations use normal tx pool propagation | Acceptable for current design; revisit at scale |
@@ -1011,7 +1078,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 
 ---
 
-## 22. Configuration Reference
+## 23. Configuration Reference
 
 Edit `src/config/CryptoNoteConfig.h` to change any parameter. Requires recompilation.
 
@@ -1072,7 +1139,7 @@ const uint64_t INSTANTSEND_MAX_INPUTS        = 10;  // max inputs to qualify for
 
 ---
 
-## 23. Frequently Asked Questions
+## 24. Frequently Asked Questions
 
 ### Collateral & Funds
 
@@ -1092,7 +1159,7 @@ Yes — your funds are never seized or destroyed. What happens depends on how th
 | A Deactivate or Revoke tx is submitted | Spend-lock timer starts at that block height |
 | 30,240 blocks (~21 days) pass after Deactivate/Revoke | Collateral is fully unlocked and freely spendable |
 
-If no Deactivate/Revoke tx is ever submitted, the spend-lock timer never starts, and the collateral stays locked indefinitely (the node sits in a degraded state receiving no rewards). To free your collateral you need either a wallet `mn_deactivate` or `mn_revoke` command — these are planned but not yet implemented. In the interim, a governance-level Revoke tx can be used.
+If no Deactivate/Revoke tx is ever submitted, the spend-lock timer never starts, and the collateral stays locked indefinitely (the node sits in a degraded state receiving no rewards). To free your collateral, use the `mn_deactivate` or `mn_revoke` wallet command in `zedwallet++`.
 
 ---
 
