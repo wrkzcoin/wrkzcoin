@@ -436,16 +436,26 @@ void sweep(const std::shared_ptr<WalletBackend> walletBackend, const bool sweepA
         ? "entire unlocked balance (" + Utilities::formatAmount(unlockedBalance) + ")"
         : Utilities::formatAmount(amountToSweep);
 
+    /* Pre-flight estimate: show tx count and total fee before asking to confirm */
+    const auto [estTxCount, estTotalFee] = walletBackend->estimateSweep(paymentID, amountToSweep);
+
     std::cout << InformationMsg("\nSweep Summary\n");
-    std::cout << "Sweeping: " << SuccessMsg(sweepDesc) << "\n";
-    std::cout << "To:       " << SuccessMsg(address) << "\n";
+    std::cout << "Sweeping:    " << SuccessMsg(sweepDesc) << "\n";
+    std::cout << "To:          " << SuccessMsg(address) << "\n";
     if (!paymentID.empty())
     {
-        std::cout << "Payment ID: " << SuccessMsg(paymentID) << "\n";
+        std::cout << "Payment ID:  " << SuccessMsg(paymentID) << "\n";
     }
-    std::cout << "\n"
-              << InformationMsg("This may send multiple transactions to cover all inputs.\n")
-              << InformationMsg("Each transaction incurs its own network fee.\n\n");
+    if (estTxCount > 0)
+    {
+        std::cout << "Transactions:" << SuccessMsg(" " + std::to_string(estTxCount)) << "\n";
+        std::cout << "Total fee:   " << WarningMsg(Utilities::formatAmount(estTotalFee)) << "\n";
+    }
+    else
+    {
+        std::cout << WarningMsg("Could not estimate transaction count (no spendable inputs or inputs too small to cover fees).\n");
+    }
+    std::cout << "\n";
 
     if (!Utilities::confirm("Proceed with sweep?"))
     {

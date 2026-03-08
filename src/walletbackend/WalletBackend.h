@@ -191,6 +191,12 @@ class WalletBackend
         const std::string paymentID,
         const uint64_t amountToSweep = 0);
 
+    /* Estimate how many transactions sweep would produce and the total fee.
+       Returns {txCount, totalEstimatedFee}. Does not send anything. */
+    std::tuple<size_t, uint64_t> estimateSweep(
+        const std::string paymentID,
+        const uint64_t amountToSweep = 0) const;
+
     /* Get the balance for one subwallet (error, unlocked, locked) */
     std::tuple<Error, uint64_t, uint64_t> getBalance(const std::string address) const;
 

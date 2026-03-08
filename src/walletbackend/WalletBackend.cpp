@@ -1110,6 +1110,80 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
     return results;
 }
 
+std::tuple<size_t, uint64_t> WalletBackend::estimateSweep(
+    const std::string paymentID,
+    const uint64_t amountToSweep) const
+{
+    const uint64_t height = m_daemon->networkBlockCount();
+    const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
+    const uint64_t mixin = defaultMixin;
+
+    const size_t maxTxSize = static_cast<size_t>(Utilities::getMaxTxSize(height));
+    const size_t maxInputsPerTx = Utilities::getApproximateMaximumInputCount(maxTxSize, 2, mixin);
+
+    if (maxInputsPerTx == 0)
+    {
+        return {0, 0};
+    }
+
+    auto allInputs = m_subWallets->getSpendableTransactionInputs(true, {}, height);
+
+    if (allInputs.empty())
+    {
+        return {0, 0};
+    }
+
+    if (amountToSweep > 0)
+    {
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
+
+        uint64_t sum = 0;
+        std::vector<WalletTypes::TxInputAndOwner> needed;
+
+        for (const auto &inp : allInputs)
+        {
+            needed.push_back(inp);
+            sum += inp.input.amount;
+            const size_t batchCount = (needed.size() + maxInputsPerTx - 1) / maxInputsPerTx;
+            if (sum >= amountToSweep + batchCount * feePerBatch)
+            {
+                break;
+            }
+        }
+
+        allInputs = std::move(needed);
+    }
+
+    size_t txCount = 0;
+    uint64_t totalFee = 0;
+
+    for (size_t i = 0; i < allInputs.size(); i += maxInputsPerTx)
+    {
+        const size_t end = std::min(i + maxInputsPerTx, allInputs.size());
+        const size_t batchSize = end - i;
+
+        uint64_t batchSum = 0;
+        for (size_t j = i; j < end; j++)
+        {
+            batchSum += allInputs[j].input.amount;
+        }
+
+        const size_t estimatedSize = Utilities::estimateTransactionSize(mixin, batchSize, 1, paymentID != "", 0);
+        const uint64_t estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+        if (estimatedFee >= batchSum)
+        {
+            continue; /* would be skipped in actual sweep */
+        }
+
+        txCount++;
+        totalFee += estimatedFee;
+    }
+
+    return {txCount, totalFee};
+}
+
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)
 {
     m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this, scanHeight, timestamp]() mutable {
