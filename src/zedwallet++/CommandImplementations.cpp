@@ -8,6 +8,7 @@
 #include <zedwallet++/CommandImplementations.h>
 ///////////////////////////////////////////////
 
+#include <arpa/inet.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
 #include <crypto/crypto.h>
@@ -1040,10 +1041,20 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
                 return false;
             }
 
-            /* Lowercase the IPv6 address for a stable canonical form */
-            std::string lowerIp = ip;
-            std::transform(lowerIp.begin(), lowerIp.end(), lowerIp.begin(), ::tolower);
-            canonical = "[" + lowerIp + "]:" + std::to_string(port);
+            /* Use inet_pton + inet_ntop for RFC 5952 canonical form.
+             * This normalises leading zeros, expanded groups, and :: compression,
+             * so "2001:0DB8::0001" and "2001:db8::1" produce the same commitment. */
+            struct in6_addr addr6;
+            if (inet_pton(AF_INET6, ip.c_str(), &addr6) != 1)
+            {
+                return false;
+            }
+            char canonBuf[INET6_ADDRSTRLEN];
+            if (inet_ntop(AF_INET6, &addr6, canonBuf, sizeof(canonBuf)) == nullptr)
+            {
+                return false;
+            }
+            canonical = "[" + std::string(canonBuf) + "]:" + std::to_string(port);
             return true;
         }
         else

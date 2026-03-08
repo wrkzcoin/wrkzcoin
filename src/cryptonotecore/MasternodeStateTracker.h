@@ -122,6 +122,8 @@ namespace CryptoNote
 
         std::vector<Snapshot> getSnapshots(uint32_t currentHeight, size_t offset, size_t limit) const;
 
+        std::optional<Snapshot> getSnapshotById(const Crypto::Hash &masternodeId, uint32_t currentHeight) const;
+
         bool hasMasternode(const Crypto::Hash &masternodeId) const;
 
         bool getPayoutKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &payoutKey) const;

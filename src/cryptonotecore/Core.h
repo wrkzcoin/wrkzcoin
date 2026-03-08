@@ -207,6 +207,8 @@ namespace CryptoNote
 
         std::vector<MasternodeStateTracker::Snapshot> getMasternodeSnapshots(size_t offset, size_t limit) const;
 
+        std::optional<MasternodeStateTracker::Snapshot> getMasternodeSnapshot(const Crypto::Hash &masternodeId) const;
+
         size_t getMasternodeEligibleCount(uint32_t height) const;
 
         Crypto::Hash getMasternodeSetHash(uint32_t height) const;

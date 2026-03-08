@@ -204,7 +204,36 @@ namespace CryptoNote
 
     bool MasternodeStateTracker::meetsHealthThreshold(const Crypto::Hash &masternodeId, uint32_t currentHeight) const
     {
-        return getHealthPercent(masternodeId, currentHeight) >= MASTERNODE_MIN_HEALTH_PERCENT;
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return false;
+        }
+
+        const uint32_t windowStart = calculateWindowStart(currentHeight, MASTERNODE_HEALTH_WINDOW_BLOCKS);
+        uint64_t totalSamples = 0;
+        uint64_t healthySamples = 0;
+
+        for (const auto &sample : it->second.healthSamples)
+        {
+            if (sample.height < windowStart)
+            {
+                continue;
+            }
+            ++totalSamples;
+            if (sample.healthy)
+            {
+                ++healthySamples;
+            }
+        }
+
+        if (totalSamples == 0)
+        {
+            return false;
+        }
+
+        // Exact integer comparison: avoids floor-division rounding at threshold boundary.
+        return healthySamples * 100 >= MASTERNODE_MIN_HEALTH_PERCENT * totalSamples;
     }
 
     bool MasternodeStateTracker::meetsAttestationThreshold(const Crypto::Hash &masternodeId, uint32_t currentHeight) const
@@ -248,7 +277,7 @@ namespace CryptoNote
             return false;
         }
 
-        return (healthySamples * 100) / totalSamples >= MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT;
+        return healthySamples * 100 >= MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT * totalSamples;
     }
 
     void MasternodeStateTracker::markDeactivated(const Crypto::Hash &masternodeId, uint32_t height)
@@ -506,6 +535,40 @@ namespace CryptoNote
         }
 
         return snapshots;
+    }
+
+    std::optional<MasternodeStateTracker::Snapshot>
+        MasternodeStateTracker::getSnapshotById(const Crypto::Hash &masternodeId, uint32_t currentHeight) const
+    {
+        const auto stateIt = m_states.find(masternodeId);
+        if (stateIt == m_states.end())
+        {
+            return std::nullopt;
+        }
+
+        Snapshot snapshot;
+        snapshot.masternodeId = masternodeId;
+        snapshot.status = stateIt->second.status;
+        snapshot.bonded = stateIt->second.bonded;
+        snapshot.bondAmount = stateIt->second.bondAmount;
+        snapshot.collateralAmount = stateIt->second.collateralAmount;
+        snapshot.collateralGlobalOutputIndex = stateIt->second.collateralGlobalOutputIndex;
+        snapshot.hasCollateral = stateIt->second.collateralKeyImage.has_value();
+        snapshot.hasEndpointCommitment = stateIt->second.endpointCommitment.has_value();
+        if (stateIt->second.endpointCommitment.has_value())
+        {
+            snapshot.endpointCommitment = *stateIt->second.endpointCommitment;
+        }
+        snapshot.healthPercent = getHealthPercent(masternodeId, currentHeight);
+        snapshot.spendLocked = isSpendLocked(masternodeId, currentHeight);
+        snapshot.lastPaidHeight = stateIt->second.lastPaidHeight;
+        snapshot.rewardInFairnessWindow = getRewardAmountInFairnessWindow(masternodeId, currentHeight);
+        snapshot.hasSigningKey = stateIt->second.hasSigningKey;
+        if (stateIt->second.hasSigningKey)
+        {
+            snapshot.signingKey = stateIt->second.signingKey;
+        }
+        return snapshot;
     }
 
     bool MasternodeStateTracker::hasMasternode(const Crypto::Hash &masternodeId) const
@@ -781,7 +844,7 @@ namespace CryptoNote
 
     nlohmann::json MasternodeStateTracker::toJson() const
     {
-        nlohmann::json root = nlohmann::json::array();
+        nlohmann::json items = nlohmann::json::array();
 
         for (const auto &[id, state] : m_states)
         {
@@ -838,22 +901,37 @@ namespace CryptoNote
             }
             item["attestations"] = std::move(attestations);
 
-            root.push_back(std::move(item));
+            items.push_back(std::move(item));
         }
 
+        nlohmann::json root;
+        root["version"] = 1;
+        root["masternodes"] = std::move(items);
         return root;
     }
 
     bool MasternodeStateTracker::fromJson(const nlohmann::json &json)
     {
-        if (!json.is_array())
+        const nlohmann::json *dataArray = nullptr;
+
+        if (json.is_array())
+        {
+            // Legacy format (version 0): root was a bare array.
+            dataArray = &json;
+        }
+        else if (json.is_object() && json.contains("version") && json.contains("masternodes")
+                 && json.at("masternodes").is_array())
+        {
+            dataArray = &json.at("masternodes");
+        }
+        else
         {
             return false;
         }
 
         std::unordered_map<Crypto::Hash, State> loaded;
 
-        for (const auto &item : json)
+        for (const auto &item : *dataArray)
         {
             if (
                 !item.is_object() || !item.contains("id") || !item.contains("status") || !item.contains("payout_key")

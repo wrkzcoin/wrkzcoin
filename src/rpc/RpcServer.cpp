@@ -183,6 +183,7 @@ void RpcServer::setupRoutes(httplib::Server &srv)
             .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/masternodes/count", router(&RpcServer::masternodeCount, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/masternodes", router(&RpcServer::masternodes, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/masternode/:id", router(&RpcServer::masternode, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/chainlock/:height", router(&RpcServer::chainlock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/instantsend/:txhash", router(&RpcServer::instantSendLock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
@@ -797,6 +798,66 @@ std::tuple<Error, uint16_t> RpcServer::masternodes(
         writer.EndObject();
     }
     writer.EndArray();
+    writer.Key("status");
+    writer.String("OK");
+    writer.EndObject();
+
+    res.body = sb.GetString();
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::masternode(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    const auto idHex = req.path_params.count("id") ? req.path_params.at("id") : std::string {};
+    Crypto::Hash masternodeId;
+    if (!Common::podFromHex(idHex, masternodeId))
+    {
+        return {Error(UNKNOWN_ERROR, "Invalid masternode id: expected 64 hex characters"), 400};
+    }
+
+    const auto snapshot = m_core->getMasternodeSnapshot(masternodeId);
+    if (!snapshot.has_value())
+    {
+        return {Error(UNKNOWN_ERROR, "Masternode not found"), 404};
+    }
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+    writer.Key("mn_id");
+    writer.String(Common::podToHex(snapshot->masternodeId));
+    writer.Key("state");
+    writer.String(CryptoNote::Core::masternodeStatusToString(snapshot->status));
+    writer.Key("bonded");
+    writer.Bool(snapshot->bonded);
+    writer.Key("bond_amount");
+    writer.Uint64(snapshot->bondAmount);
+    writer.Key("has_collateral");
+    writer.Bool(snapshot->hasCollateral);
+    writer.Key("collateral_amount");
+    writer.Uint64(snapshot->collateralAmount);
+    writer.Key("collateral_global_output_index");
+    writer.Uint64(snapshot->collateralGlobalOutputIndex);
+    writer.Key("has_endpoint_commitment");
+    writer.Bool(snapshot->hasEndpointCommitment);
+    writer.Key("endpoint_commitment");
+    writer.String(snapshot->hasEndpointCommitment ? Common::podToHex(snapshot->endpointCommitment) : "");
+    writer.Key("health_percent");
+    writer.Uint64(snapshot->healthPercent);
+    writer.Key("spend_locked");
+    writer.Bool(snapshot->spendLocked);
+    writer.Key("last_paid_height");
+    writer.Uint64(snapshot->lastPaidHeight);
+    writer.Key("reward_in_fairness_window");
+    writer.Uint64(snapshot->rewardInFairnessWindow);
+    writer.Key("has_signing_key");
+    writer.Bool(snapshot->hasSigningKey);
+    writer.Key("signing_key");
+    writer.String(snapshot->hasSigningKey ? Common::podToHex(snapshot->signingKey) : "");
     writer.Key("status");
     writer.String("OK");
     writer.EndObject();

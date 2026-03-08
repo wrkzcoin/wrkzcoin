@@ -2006,6 +2006,13 @@ namespace CryptoNote
         return masternodeStateTracker.getSnapshots(currentHeight, offset, limit);
     }
 
+    std::optional<MasternodeStateTracker::Snapshot> Core::getMasternodeSnapshot(const Crypto::Hash &masternodeId) const
+    {
+        throwIfNotInitialized();
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        return masternodeStateTracker.getSnapshotById(masternodeId, currentHeight);
+    }
+
     size_t Core::getMasternodeEligibleCount(uint32_t height) const
     {
         throwIfNotInitialized();

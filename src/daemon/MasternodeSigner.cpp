@@ -124,6 +124,11 @@ void MasternodeSigner::onNewTransaction(const Crypto::Hash &txHash)
 
 void MasternodeSigner::chainLockLoop()
 {
+    // Track block hashes signed this session to avoid redundant re-broadcasts
+    // when relay fails mid-operation. Signatures are deterministic so re-signing
+    // is safe, but re-broadcasting the same vote is unnecessary network noise.
+    std::vector<Crypto::Hash> alreadySigned;
+
     while (m_running)
     {
         std::vector<BlockWork> work;
@@ -140,6 +145,12 @@ void MasternodeSigner::chainLockLoop()
 
         for (const auto &item : work)
         {
+            // Skip if we already successfully relayed a vote for this block hash.
+            if (std::find(alreadySigned.begin(), alreadySigned.end(), item.blockHash) != alreadySigned.end())
+            {
+                continue;
+            }
+
             try
             {
                 const uint32_t height = item.height;
@@ -148,6 +159,7 @@ void MasternodeSigner::chainLockLoop()
                 // Check if already locked.
                 if (m_core.hasChainLock(height))
                 {
+                    alreadySigned.push_back(blockHash);
                     continue;
                 }
 
@@ -185,6 +197,9 @@ void MasternodeSigner::chainLockLoop()
 
                 // Broadcast to network.
                 m_protocol.relayChainLockVote(req);
+
+                // Mark as relayed — no need to re-broadcast for this block hash.
+                alreadySigned.push_back(blockHash);
             }
             catch (...)
             {
@@ -281,7 +296,14 @@ void MasternodeSigner::heartbeatLoop()
             {
                 lastHeartbeatHeight = height;
             }
-            // Suppress pool-already-exists failures (expected after restart).
+            else if (errMsg.find("already") == std::string::npos)
+            {
+                // Log unexpected rejections (suppress the expected "already in pool" on restart).
+                fprintf(stderr,
+                    "[mn-heartbeat] WARNING: heartbeat TX rejected at height %u: %s\n",
+                    static_cast<unsigned>(height),
+                    errMsg.c_str());
+            }
         }
         catch (...)
         {
