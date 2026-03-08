@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <system/Ipv4Address.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -14,7 +16,7 @@ namespace System
 {
     class Dispatcher;
 
-    class Ipv4Address;
+    class IpAddress;
 
     class TcpConnection
     {
@@ -36,6 +38,8 @@ namespace System
         std::size_t write(const uint8_t *data, std::size_t size);
 
         std::pair<Ipv4Address, uint16_t> getPeerAddressAndPort() const;
+
+        IpAddress getPeerIpAddress() const;
 
       private:
         friend class TcpConnector;

@@ -54,6 +54,8 @@ class ApiDispatcher
     ApiDispatcher(
         const uint16_t bindPort,
         const std::string rpcBindIp,
+        const std::string rpcBindIpv6Address,
+        const bool rpcUseIpv6,
         const std::string rpcPassword,
         std::string corsHeader,
         unsigned int walletSyncThreads = std::thread::hardware_concurrency());
@@ -330,14 +332,20 @@ class ApiDispatcher
 
     std::string hashPassword(const std::string password) const;
 
+    /* Registers all HTTP routes on the given server instance */
+    void setupRoutes(httplib::Server &srv);
+
     //////////////////////////////
     /* Private member variables */
     //////////////////////////////
 
     std::shared_ptr<WalletBackend> m_walletBackend = nullptr;
 
-    /* Our server instance */
+    /* Our IPv4 server instance */
     httplib::Server m_server;
+
+    /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
+    httplib::Server m_ipv6Server;
 
     /* The --rpc-password hashed with pbkdf2 */
     std::string m_hashedPassword;
@@ -347,13 +355,19 @@ class ApiDispatcher
 
     /* Need a mutex for some actions, mainly mutating actions, like opening
        wallets, sending transfers, etc */
-    mutable std::mutex m_mutex;
+    mutable std::recursive_mutex m_mutex;
 
-    /* The server host */
+    /* The server host (IPv4) */
     std::string m_host;
 
     /* The server port */
     uint16_t m_port;
+
+    /* The IPv6 bind address (empty = IPv6 disabled) */
+    std::string m_ipv6Host;
+
+    /* The thread running the IPv6 server */
+    std::thread m_ipv6Thread;
 
     /* The header to use with 'Access-Control-Allow-Origin'. If empty string,
        header is not added. */

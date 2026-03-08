@@ -13,7 +13,7 @@ export WALLET_API_KEY="strong-password"
 curl -s -X POST "$WALLET_API_URL/wallet/create" \
   -H "X-API-KEY: $WALLET_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"filename":"demo.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"demo.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 ## 2) Open wallet
@@ -22,7 +22,7 @@ curl -s -X POST "$WALLET_API_URL/wallet/create" \
 curl -s -X POST "$WALLET_API_URL/wallet/open" \
   -H "X-API-KEY: $WALLET_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"filename":"demo.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":11898,"daemonSSL":false}'
+  -d '{"filename":"demo.wallet","password":"wallet-pass","daemonHost":"127.0.0.1","daemonPort":17856,"daemonSSL":false}'
 ```
 
 ## 3) Check status and balance

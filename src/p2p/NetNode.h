@@ -198,6 +198,12 @@ namespace CryptoNote
 
         std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
+        bool ban_host6(const std::string &addr, uint64_t seconds);
+
+        bool unban_host6(const std::string &addr);
+
+        std::vector<std::pair<std::string, uint64_t>> get_banned_hosts6();
+
       private:
         int handleCommand(
             const LevinProtocol::Command &cmd,
@@ -327,6 +333,16 @@ namespace CryptoNote
             uint64_t last_seen_stamp = 0,
             bool white = true);
 
+        bool try_to_connect_and_handshake_with_new_peer6(
+            const NetworkAddress6 &na,
+            bool just_take_peerlist = false,
+            uint64_t last_seen_stamp = 0,
+            bool white = true);
+
+        bool make_new_connection_from_peerlist6(bool use_white_list);
+
+        bool is_peer_used6(const PeerlistEntry6 &peer);
+
         bool is_peer_used(const PeerlistEntry &peer);
 
         bool is_addr_connected(const NetworkAddress &peer);
@@ -349,6 +365,8 @@ namespace CryptoNote
         mutable std::mutex m_connectionsMutex;
 
         void acceptLoop();
+
+        void acceptLoopIPv6();
 
         void connectionHandler(const boost::uuids::uuid &connectionId, P2pConnectionContext &connection);
 
@@ -414,6 +432,14 @@ namespace CryptoNote
 
         System::TcpListener m_listener;
 
+        System::TcpListener m_listenerIPv6;
+
+        bool m_enableIPv6;
+
+        std::string m_bind_ipv6;
+
+        uint16_t m_port_ipv6;
+
         Logging::LoggerRef logger;
 
         std::atomic<bool> m_stop;
@@ -443,6 +469,8 @@ namespace CryptoNote
 
         std::vector<NetworkAddress> m_seed_nodes;
 
+        std::vector<NetworkAddress6> m_seed_nodes6;
+
         std::list<PeerlistEntry> m_command_line_peers;
 
         uint64_t m_peer_livetime;
@@ -453,6 +481,11 @@ namespace CryptoNote
 
         std::unordered_map<uint32_t, uint64_t> m_bannedHostsUntil;
 
+        // IPv6 ban list (key: normalized IPv6 string as returned by IpAddress::toString())
+        std::unordered_map<std::string, uint64_t> m_bannedIPv6HostsUntil;
+
         bool isHostBanned(uint32_t ip);
+
+        bool isHostBanned6(const std::string &addr);
     };
 } // namespace CryptoNote

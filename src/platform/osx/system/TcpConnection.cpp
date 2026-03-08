@@ -14,6 +14,7 @@
 #include <sys/event.h>
 #include <sys/socket.h>
 #include <system/ErrorMessage.h>
+#include <system/IpAddress.h>
 #include <system/InterruptedException.h>
 #include <system/Ipv4Address.h>
 #include <unistd.h>
@@ -252,15 +253,51 @@ namespace System
 
     std::pair<Ipv4Address, uint16_t> TcpConnection::getPeerAddressAndPort() const
     {
-        sockaddr_in addr;
+        sockaddr_storage addr;
         socklen_t size = sizeof(addr);
         if (getpeername(connection, reinterpret_cast<sockaddr *>(&addr), &size) != 0)
         {
             throw std::runtime_error("TcpConnection::getPeerAddress, getpeername failed, " + lastErrorMessage());
         }
 
-        assert(size == sizeof(sockaddr_in));
-        return std::make_pair(Ipv4Address(htonl(addr.sin_addr.s_addr)), htons(addr.sin_port));
+        if (addr.ss_family == AF_INET)
+        {
+            const auto &in4 = reinterpret_cast<const sockaddr_in &>(addr);
+            return std::make_pair(Ipv4Address(ntohl(in4.sin_addr.s_addr)), ntohs(in4.sin_port));
+        }
+        else if (addr.ss_family == AF_INET6)
+        {
+            const auto &in6 = reinterpret_cast<const sockaddr_in6 &>(addr);
+            const uint8_t *b = in6.sin6_addr.s6_addr;
+            if (b[0]==0&&b[1]==0&&b[2]==0&&b[3]==0&&b[4]==0&&b[5]==0&&
+                b[6]==0&&b[7]==0&&b[8]==0&&b[9]==0&&b[10]==0xff&&b[11]==0xff)
+            {
+                uint32_t v4 = (uint32_t(b[12])<<24)|(uint32_t(b[13])<<16)|(uint32_t(b[14])<<8)|b[15];
+                return std::make_pair(Ipv4Address(v4), ntohs(in6.sin6_port));
+            }
+            return std::make_pair(Ipv4Address(0), ntohs(in6.sin6_port));
+        }
+        throw std::runtime_error("TcpConnection::getPeerAddressAndPort, unknown address family");
+    }
+
+    IpAddress TcpConnection::getPeerIpAddress() const
+    {
+        sockaddr_storage addr;
+        socklen_t size = sizeof(addr);
+        if (getpeername(connection, reinterpret_cast<sockaddr *>(&addr), &size) != 0)
+        {
+            throw std::runtime_error("TcpConnection::getPeerIpAddress, getpeername failed, " + lastErrorMessage());
+        }
+
+        if (addr.ss_family == AF_INET)
+        {
+            return IpAddress(ntohl(reinterpret_cast<const sockaddr_in &>(addr).sin_addr.s_addr));
+        }
+        else if (addr.ss_family == AF_INET6)
+        {
+            return IpAddress(reinterpret_cast<const sockaddr_in6 &>(addr).sin6_addr.s6_addr);
+        }
+        throw std::runtime_error("TcpConnection::getPeerIpAddress, unknown address family");
     }
 
     TcpConnection::TcpConnection(Dispatcher &dispatcher, int socket):

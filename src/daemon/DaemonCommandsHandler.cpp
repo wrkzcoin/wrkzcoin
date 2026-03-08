@@ -27,6 +27,7 @@
 #include <thread>
 #include <fstream>
 #include <limits>
+#include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 #include <p2p/P2pProtocolTypes.h>
 
@@ -141,7 +142,7 @@ namespace
 
 } // namespace
 
-std::shared_ptr<httplib::Response> DaemonCommandsHandler::rpc_get(const std::string &path)
+httplib::Result DaemonCommandsHandler::rpc_get(const std::string &path)
 {
     if (m_config.rpcAccessToken.empty())
     {
@@ -617,7 +618,7 @@ bool DaemonCommandsHandler::print_pool_sh(const std::vector<std::string> &args)
 //--------------------------------------------------------------------------------
 bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 {
-    std::shared_ptr<httplib::Response> res;
+    httplib::Result res;
 
     /* Retry briefly if the RPC server is still binding its socket at startup */
     constexpr int RPC_READY_RETRIES = 6;
@@ -1233,9 +1234,10 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
 
     if (sub == "list")
     {
-        const auto bans = m_srv.get_banned_hosts();
+        const auto bans4 = m_srv.get_banned_hosts();
+        const auto bans6 = m_srv.get_banned_hosts6();
 
-        if (bans.empty())
+        if (bans4.empty() && bans6.empty())
         {
             std::cout << InformationMsg("Ban list is empty.") << std::endl;
             return true;
@@ -1243,10 +1245,15 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
 
         const uint64_t now = static_cast<uint64_t>(time(nullptr));
         std::cout << InformationMsg("Banned hosts:") << std::endl;
-        for (const auto &[ip, until] : bans)
+        for (const auto &[ip, until] : bans4)
         {
             const uint64_t remaining = until > now ? (until - now) : 0;
             std::cout << "  " << Common::ipAddressToString(ip) << " (" << remaining << "s remaining)" << std::endl;
+        }
+        for (const auto &[addr, until] : bans6)
+        {
+            const uint64_t remaining = until > now ? (until - now) : 0;
+            std::cout << "  " << addr << " (" << remaining << "s remaining)" << std::endl;
         }
 
         return true;
@@ -1273,22 +1280,38 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
             return true;
         }
 
-        uint32_t ipHostOrder = 0;
+        // Try IPv4 first, then IPv6
         try
         {
-            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+            const uint32_t ipHostOrder = System::Ipv4Address(args[1]).getValue();
+            const uint32_t ip = hostToNetwork(ipHostOrder);
+            m_srv.ban_host(ip, seconds);
+            std::cout << SuccessMsg("Ban added for " + Common::ipAddressToString(ip) + " (" + std::to_string(seconds) + "s)")
+                      << std::endl;
+            return true;
+        }
+        catch (const std::exception &) {}
+
+        // Try IPv6
+        try
+        {
+            System::IpAddress addr6(args[1]);
+            if (!addr6.isV6())
+            {
+                std::cout << WarningMsg("Invalid IP address: " + args[1]) << std::endl;
+                return true;
+            }
+            const std::string normalized = addr6.toString();
+            m_srv.ban_host6(normalized, seconds);
+            std::cout << SuccessMsg("Ban added for " + normalized + " (" + std::to_string(seconds) + "s)")
+                      << std::endl;
+            return true;
         }
         catch (const std::exception &)
         {
-            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            std::cout << WarningMsg("Invalid IP address: " + args[1]) << std::endl;
             return true;
         }
-
-        const uint32_t ip = hostToNetwork(ipHostOrder);
-        m_srv.ban_host(ip, seconds);
-        std::cout << SuccessMsg("Ban added for " + Common::ipAddressToString(ip) + " (" + std::to_string(seconds) + "s)")
-                  << std::endl;
-        return true;
     }
 
     if (sub == "delete")
@@ -1299,28 +1322,50 @@ bool DaemonCommandsHandler::ban(const std::vector<std::string> &args)
             return true;
         }
 
-        uint32_t ipHostOrder = 0;
+        // Try IPv4 first, then IPv6
         try
         {
-            ipHostOrder = System::Ipv4Address(args[1]).getValue();
+            const uint32_t ipHostOrder = System::Ipv4Address(args[1]).getValue();
+            const uint32_t ip = hostToNetwork(ipHostOrder);
+            const bool removed = m_srv.unban_host(ip);
+
+            if (!removed)
+            {
+                std::cout << WarningMsg("IP not found in ban list.") << std::endl;
+                return true;
+            }
+
+            std::cout << SuccessMsg("Ban removed for " + Common::ipAddressToString(ip)) << std::endl;
+            return true;
+        }
+        catch (const std::exception &) {}
+
+        // Try IPv6
+        try
+        {
+            System::IpAddress addr6(args[1]);
+            if (!addr6.isV6())
+            {
+                std::cout << WarningMsg("Invalid IP address: " + args[1]) << std::endl;
+                return true;
+            }
+            const std::string normalized = addr6.toString();
+            const bool removed = m_srv.unban_host6(normalized);
+
+            if (!removed)
+            {
+                std::cout << WarningMsg("IP not found in ban list.") << std::endl;
+                return true;
+            }
+
+            std::cout << SuccessMsg("Ban removed for " + normalized) << std::endl;
+            return true;
         }
         catch (const std::exception &)
         {
-            std::cout << WarningMsg("Invalid IPv4 address.") << std::endl;
+            std::cout << WarningMsg("Invalid IP address: " + args[1]) << std::endl;
             return true;
         }
-
-        const uint32_t ip = hostToNetwork(ipHostOrder);
-        const bool removed = m_srv.unban_host(ip);
-
-        if (!removed)
-        {
-            std::cout << WarningMsg("IP not found in ban list.") << std::endl;
-            return true;
-        }
-
-        std::cout << SuccessMsg("Ban removed for " + Common::ipAddressToString(ip)) << std::endl;
-        return true;
     }
 
     std::cout << "Usage: ban list | ban add <ip> [seconds] | ban delete <ip>" << std::endl;

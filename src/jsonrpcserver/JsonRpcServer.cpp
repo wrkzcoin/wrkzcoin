@@ -18,7 +18,6 @@
 #include <future>
 #include <memory>
 #include <sstream>
-#include <system/Ipv4Address.h>
 #include <system/TcpConnection.h>
 #include <system/TcpListener.h>
 #include <system/TcpStream.h>

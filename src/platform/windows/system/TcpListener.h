@@ -13,6 +13,8 @@ namespace System
 {
     class Dispatcher;
 
+    class IpAddress;
+
     class Ipv4Address;
 
     class TcpConnection;
@@ -23,6 +25,8 @@ namespace System
         TcpListener();
 
         TcpListener(Dispatcher &dispatcher, const Ipv4Address &address, uint16_t port);
+
+        TcpListener(Dispatcher &dispatcher, const IpAddress &address, uint16_t port);
 
         TcpListener(const TcpListener &) = delete;
 
@@ -40,6 +44,8 @@ namespace System
         Dispatcher *dispatcher;
 
         size_t listener;
+
+        int m_af; // AF_INET or AF_INET6
 
         void *context;
     };

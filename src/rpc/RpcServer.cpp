@@ -24,6 +24,8 @@
 RpcServer::RpcServer(
     const uint16_t bindPort,
     const std::string rpcBindIp,
+    const std::string rpcBindIpv6Address,
+    const bool rpcUseIpv6,
     const std::string corsHeader,
     const std::string rpcAccessToken,
     const uint32_t rpcReadTimeout,
@@ -39,6 +41,7 @@ RpcServer::RpcServer(
     const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager):
     m_port(bindPort),
     m_host(rpcBindIp),
+    m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
     m_corsHeader(corsHeader),
     m_rpcAccessToken(rpcAccessToken),
     m_rpcReadTimeout(std::max<uint32_t>(1, rpcReadTimeout)),
@@ -52,6 +55,40 @@ RpcServer::RpcServer(
     m_core(core),
     m_p2p(p2p),
     m_syncManager(syncManager)
+{
+    m_server.set_address_family(AF_INET);
+    m_server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+    m_server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+    m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        Logger::logger.log(
+            "RPC server startup error: " + httplib::to_string(error),
+            Logger::WARNING,
+            { Logger::DAEMON_RPC }
+        );
+    });
+
+    setupRoutes(m_server);
+
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Server.set_address_family(AF_INET6);
+        m_ipv6Server.set_ipv6_v6only(true);
+        m_ipv6Server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+        m_ipv6Server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+        m_ipv6Server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            Logger::logger.log(
+                "RPC IPv6 server startup error: " + httplib::to_string(error),
+                Logger::WARNING,
+                { Logger::DAEMON_RPC }
+            );
+        });
+        setupRoutes(m_ipv6Server);
+    }
+}
+
+void RpcServer::setupRoutes(httplib::Server &srv)
 {
     const bool bodyRequired = true;
     const bool bodyNotRequired = false;
@@ -139,26 +176,26 @@ RpcServer::RpcServer(
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
-    m_server.Get("/json_rpc", jsonRpc)
-            .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-            .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-            .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+    srv.Get("/json_rpc", jsonRpc)
+       .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
-            .Post("/json_rpc", jsonRpc)
-            .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
-            .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::Explorer, bodyRequired, syncNotRequired))
-            .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Standard, bodyRequired, syncNotRequired))
-            .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/json_rpc", jsonRpc)
+       .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
+       .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/getwalletsyncdata", router(&RpcServer::getWalletSyncData, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_global_indexes_for_range", router(&RpcServer::getGlobalIndexes, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/queryblockslite", router(&RpcServer::queryBlocksLite, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_transactions_status", router(&RpcServer::getTransactionsStatus, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/get_pool_changes_lite", router(&RpcServer::getPoolChanges, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/queryblocksdetailed", router(&RpcServer::queryBlocksDetailed, RpcMode::Explorer, bodyRequired, syncNotRequired))
+       .Post("/get_o_indexes", router(&RpcServer::getGlobalIndexesDeprecated, RpcMode::Standard, bodyRequired, syncNotRequired))
+       .Post("/getrawblocks", router(&RpcServer::getRawBlocks, RpcMode::Standard, bodyRequired, syncNotRequired))
 
-            /* Matches everything */
-            /* NOTE: Not passing through middleware */
-            .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
+       /* Matches everything */
+       /* NOTE: Not passing through middleware */
+       .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
 }
 
 RpcServer::~RpcServer()
@@ -169,17 +206,33 @@ RpcServer::~RpcServer()
 void RpcServer::start()
 {
     m_serverThread = std::thread(&RpcServer::listen, this);
+
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Thread = std::thread(&RpcServer::listenIpv6, this);
+    }
 }
 
 void RpcServer::listen()
 {
-    const auto listenError = m_server.listen(m_host, m_port);
+    const auto isListening = m_server.listen(m_host, m_port);
 
-    if (listenError != httplib::SUCCESS)
+    if (!isListening)
     {
-        std::cout << WarningMsg("Failed to start RPC server: ")
-                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+        std::cout << WarningMsg("Failed to start RPC server.") << std::endl;
         exit(1);
+    }
+}
+
+void RpcServer::listenIpv6()
+{
+    const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
+
+    if (!isListening)
+    {
+        std::cout << WarningMsg("Failed to start IPv6 RPC server on [")
+                  << WarningMsg(m_ipv6Host)
+                  << WarningMsg("].") << std::endl;
     }
 }
 
@@ -187,9 +240,19 @@ void RpcServer::stop()
 {
     m_server.stop();
 
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Server.stop();
+    }
+
     if (m_serverThread.joinable())
     {
         m_serverThread.join();
+    }
+
+    if (m_ipv6Thread.joinable())
+    {
+        m_ipv6Thread.join();
     }
 }
 
@@ -401,7 +464,12 @@ void RpcServer::middleware(
 
 std::string RpcServer::getClientIp(const httplib::Request &req) const
 {
-    std::string ip = req.get_header_value("REMOTE_ADDR");
+    std::string ip = req.remote_addr;
+
+    if (ip.empty())
+    {
+        ip = req.get_header_value("REMOTE_ADDR");
+    }
 
     if (!m_rpcTrustProxy)
     {
@@ -2211,14 +2279,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
             writer.Uint64(txDetails.mixin);
 
             writer.Key("paymentId");
-            if (txDetails.paymentId == Constants::NULL_HASH)
-            {
-                writer.String("");
-            }
-            else
-            {
-                writer.String(Common::podToHex(txDetails.paymentId));
-            }
+            writer.String(Utilities::getPaymentIDFromExtra(transaction.extra).c_str());
 
             writer.Key("size");
             writer.Uint64(txDetails.size);

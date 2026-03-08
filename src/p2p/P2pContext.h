@@ -60,6 +60,8 @@ namespace CryptoNote
 
         uint16_t getPeerPort() const;
 
+        uint8_t getPeerVersion() const;
+
         const NetworkAddress &getRemoteAddress() const;
 
         bool isIncoming() const;

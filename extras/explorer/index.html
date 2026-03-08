@@ -73,43 +73,79 @@
     <!-- ─── HOME PAGE ─────────────────────────────────────────────────── -->
     <div id="page-home" class="page active">
 
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Block Height</div>
-          <div class="stat-value mono" id="statHeight">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Network Difficulty</div>
-          <div class="stat-value" id="statDifficulty">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Hashrate</div>
-          <div class="stat-value" id="statHashrate">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Transactions</div>
-          <div class="stat-value" id="statTxCount">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Connections</div>
-          <div class="stat-value" id="statConnections">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Mempool</div>
-          <div class="stat-value" id="statPool">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Circulating</div>
-          <div class="stat-value" id="statCirculating">—</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Sync Status</div>
-          <div class="stat-value"><span id="statSynced" class="badge">—</span></div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Alt Blocks</div>
-          <div class="stat-value" id="statAltBlocks">—</div>
-        </div>
+      <div class="home-overview">
+        <section class="overview-panel">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-label">Block Height</div>
+              <div class="stat-value mono" id="statHeight">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Network Difficulty</div>
+              <div class="stat-value" id="statDifficulty">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Hashrate</div>
+              <div class="stat-value" id="statHashrate">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Transactions</div>
+              <div class="stat-value" id="statTxCount">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Connections</div>
+              <div class="stat-value" id="statConnections">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Mempool</div>
+              <div class="stat-value" id="statPool">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Circulating</div>
+              <div class="stat-value" id="statCirculating">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Block Reward</div>
+              <div class="stat-value" id="statBlockReward">—</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Sync Status</div>
+              <div class="stat-value"><span id="statSynced" class="badge">—</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Alt Blocks</div>
+              <div class="stat-value" id="statAltBlocks">—</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="network-panel" id="networkPanel">
+          <div class="network-panel-head">
+            <div>
+              <div class="network-panel-eyebrow">Latest block snapshot</div>
+              <h3 class="network-panel-title">Network Chart</h3>
+            </div>
+            <span class="badge badge-accent" id="networkChartHeight">—</span>
+          </div>
+
+          <div class="network-metrics" id="networkMetrics">
+            <span class="badge badge-accent">Difficulty —</span>
+            <span class="badge badge-yellow">Block Size —</span>
+            <span class="badge badge-green">Tx Count —</span>
+            <span class="badge badge-red">Block Reward —</span>
+          </div>
+
+          <div class="network-chart-list" id="networkChartList">
+            <div class="network-chart-card">
+              <div class="network-chart-meta">
+                <span class="network-chart-label">Combined Network View</span>
+                <span class="network-chart-value">—</span>
+              </div>
+              <div class="network-chart-plot"></div>
+              <div class="network-chart-legend"></div>
+            </div>
+          </div>
+        </aside>
       </div>
 
       <section class="section">
@@ -178,7 +214,6 @@
     </div>
   </footer>
 
-  <script src="vendor/TurtleCoinUtils.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

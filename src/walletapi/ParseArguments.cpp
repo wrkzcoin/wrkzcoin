@@ -24,7 +24,7 @@ ApiConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false;
+    bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false, rpcUseIpv6 = false;
 
     int logLevel;
 
@@ -73,7 +73,16 @@ ApiConfig parseArguments(int argc, char **argv)
 
         ("rpc-bind-ip",
          "Interface IP address for the RPC service",
-         cxxopts::value<std::string>(config.rpcBindIp)->default_value("127.0.0.1"));
+         cxxopts::value<std::string>(config.rpcBindIp)->default_value("127.0.0.1"))
+
+        ("rpc-bind-ipv6-address",
+         "IPv6 bind address for the API service (e.g. ::1). Empty disables IPv6.",
+         cxxopts::value<std::string>(config.rpcBindIpv6Address),
+         "<ipv6>")
+
+        ("rpc-use-ipv6",
+         "Enable IPv6 support for the API service",
+         cxxopts::value<bool>(rpcUseIpv6)->default_value("false")->implicit_value("true"));
 
     options.add_options("RPC")(
         "enable-cors",
@@ -146,6 +155,11 @@ ApiConfig parseArguments(int argc, char **argv)
     if (noConsole)
     {
         config.noConsole = true;
+    }
+
+    if (rpcUseIpv6)
+    {
+        config.rpcUseIpv6 = true;
     }
 
     if (threads == 0)

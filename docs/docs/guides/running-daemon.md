@@ -28,7 +28,7 @@ See definitions in `src/daemon/DaemonConfiguration.cpp`.
 ```bash
 ./Wrkzd \
   --rpc-bind-ip 127.0.0.1 \
-  --rpc-bind-port 11898 \
+  --rpc-bind-port 17856 \
   --rpc-access-token "strong-token" \
   --rpc-max-body-bytes 2097152 \
   --rpc-max-rpm 240 \
@@ -39,8 +39,8 @@ See definitions in `src/daemon/DaemonConfiguration.cpp`.
 ## Smoke tests
 
 ```bash
-curl -s -H "X-API-Key: strong-token" http://127.0.0.1:11898/info
+curl -s -H "X-API-Key: strong-token" http://127.0.0.1:17856/info
 curl -s -H "X-API-Key: strong-token" -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":"1","method":"getblockcount","params":{}}' \
-  http://127.0.0.1:11898/json_rpc
+  http://127.0.0.1:17856/json_rpc
 ```

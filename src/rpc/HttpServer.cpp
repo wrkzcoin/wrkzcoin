@@ -9,7 +9,7 @@
 #include <boost/scope_exit.hpp>
 #include <http/HttpParser.h>
 #include <system/InterruptedException.h>
-#include <system/Ipv4Address.h>
+#include <system/IpAddress.h>
 #include <system/TcpStream.h>
 
 using namespace Logging;
@@ -25,7 +25,7 @@ namespace CryptoNote
 
     void HttpServer::start(const std::string &address, uint16_t port)
     {
-        m_listener = System::TcpListener(m_dispatcher, System::Ipv4Address(address), port);
+        m_listener = System::TcpListener(m_dispatcher, System::IpAddress(address), port);
         workingContextGroup.spawn(std::bind(&HttpServer::acceptLoop, this));
     }
 
@@ -67,9 +67,10 @@ namespace CryptoNote
 
             workingContextGroup.spawn(std::bind(&HttpServer::acceptLoop, this));
 
-            auto addr = connection.getPeerAddressAndPort();
+            auto peerIp = connection.getPeerIpAddress().toString();
+            auto peerPort = connection.getPeerAddressAndPort().second;
 
-            logger(DEBUGGING) << "Incoming connection from " << addr.first.toDottedDecimal() << ":" << addr.second;
+            logger(DEBUGGING) << "Incoming connection from " << peerIp << ":" << peerPort;
 
             System::TcpStreambuf streambuf(connection);
             std::iostream stream(&streambuf);
@@ -92,7 +93,7 @@ namespace CryptoNote
                 }
             }
 
-            logger(DEBUGGING) << "Closing connection from " << addr.first.toDottedDecimal() << ":" << addr.second
+            logger(DEBUGGING) << "Closing connection from " << peerIp << ":" << peerPort
                               << " total=" << m_connections.size();
         }
         catch (System::InterruptedException &)

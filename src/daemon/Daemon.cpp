@@ -428,7 +428,9 @@ int main(int argc, char *argv[])
             config.exclusiveNodes,
             config.priorityNodes,
             config.seedNodes,
-            config.p2pResetPeerstate);
+            config.p2pResetPeerstate,
+            config.p2pBindIpv6Address,
+            config.p2pBindPortIpv6);
 
         if (!Tools::create_directories_if_necessary(dbConfig.dataDir))
         {
@@ -587,6 +589,8 @@ int main(int argc, char *argv[])
         RpcServer rpcServer(
             config.rpcPort,
             config.rpcInterface,
+            config.rpcBindIpv6Address,
+            config.rpcUseIpv6,
             config.enableCors,
             config.rpcAccessToken,
             config.rpcReadTimeout,
@@ -614,6 +618,11 @@ int main(int argc, char *argv[])
 
         // Fire up the RPC Server
         logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
+
+        if (config.rpcUseIpv6 && !config.rpcBindIpv6Address.empty())
+        {
+            logger(INFO) << "Starting core rpc server on IPv6 address [" << config.rpcBindIpv6Address << "]:" << config.rpcPort;
+        }
 
         rpcServer.start();
 

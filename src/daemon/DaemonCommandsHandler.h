@@ -115,7 +115,7 @@ class DaemonCommandsHandler
 
     bool ban(const std::vector<std::string> &args);
 
-    std::shared_ptr<httplib::Response> rpc_get(const std::string &path);
+    httplib::Result rpc_get(const std::string &path);
 
     void refresh_compaction_state_locked();
 

@@ -11,6 +11,7 @@
 #include "ConnectionContext.h"
 #include "LevinProtocol.h"
 #include "P2pProtocolDefinitions.h"
+#include "common/StringTools.h"
 #include "common/StdInputStream.h"
 #include "common/StdOutputStream.h"
 #include "common/Util.h"
@@ -48,8 +49,10 @@
 #include <system/ContextGroupTimeout.h>
 #include <system/EventLock.h>
 #include <system/InterruptedException.h>
+#include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 #include <system/Ipv4Resolver.h>
+#include <system/IpResolver.h>
 #include <system/TcpConnector.h>
 #include <system/TcpListener.h>
 
@@ -145,6 +148,21 @@ namespace CryptoNote
             for (const auto &pe : pl)
             {
                 ss << pe.id << "\t" << pe.adr
+                   << " \tlast_seen: " << Common::timeIntervalToString(now_time - pe.last_seen) << std::endl;
+            }
+            return ss.str();
+        }
+
+        std::string print_peerlist6_to_string(const std::list<PeerlistEntry6> &pl)
+        {
+            time_t now_time = 0;
+            time(&now_time);
+            std::stringstream ss;
+            ss << std::setfill('0') << std::setw(8) << std::hex << std::noshowbase;
+            for (const auto &pe : pl)
+            {
+                System::IpAddress addr(pe.adr.ip);
+                ss << pe.id << "\t" << addr.toString() << ":" << std::dec << pe.adr.port << std::hex
                    << " \tlast_seen: " << Common::timeIntervalToString(now_time - pe.last_seen) << std::endl;
             }
             return ss.str();
@@ -247,6 +265,8 @@ namespace CryptoNote
         m_timedSyncTimer(m_dispatcher),
         m_timeoutTimer(m_dispatcher),
         m_stop(false),
+        m_enableIPv6(false),
+        m_port_ipv6(0),
         // intervals
         // m_peer_handshake_idle_maker_interval(CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL),
         m_connections_maker_interval(1),
@@ -449,33 +469,56 @@ namespace CryptoNote
         auto priorityNodes = config.getPriorityNodes();
         std::copy(priorityNodes.begin(), priorityNodes.end(), std::back_inserter(m_priority_peers));
 
-        auto seedNodes = config.getSeedNodes();
-        std::copy(seedNodes.begin(), seedNodes.end(), std::back_inserter(m_seed_nodes));
+        auto seedNodeAddresses = config.getSeedNodeAddresses();
+        for (const auto &seed : seedNodeAddresses)
+        {
+            append_net_address(m_seed_nodes, seed);
+        }
 
         m_hide_my_port = config.getHideMyPort();
+        m_bind_ipv6 = config.getBindIpv6Address();
+        m_port_ipv6 = config.getBindPortIpv6();
+        m_enableIPv6 = !m_bind_ipv6.empty();
         return true;
     }
 
     bool NodeServer::append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr)
     {
-        size_t pos = addr.find_last_of(':');
-        if (!(std::string::npos != pos && addr.length() - 1 != pos && 0 != pos))
+        std::string host;
+        uint32_t port = 0;
+        if (!Common::parseHostAndPort(addr, host, port))
         {
             logger(ERROR, BRIGHT_RED) << "Failed to parse seed address from string: '" << addr << '\'';
             return false;
         }
 
-        std::string host = addr.substr(0, pos);
-
         try
         {
-            uint32_t port = Common::fromString<uint32_t>(addr.substr(pos + 1));
+            System::IpResolver resolver(m_dispatcher);
+            auto resolved = resolver.resolveAll(host);
+            if (resolved.empty())
+            {
+                logger(ERROR, BRIGHT_YELLOW) << "No addresses resolved for host '" << host << "'";
+                return false;
+            }
 
-            System::Ipv4Resolver resolver(m_dispatcher);
-            auto addr = resolver.resolve(host);
-            nodes.push_back(NetworkAddress {hostToNetwork(addr.getValue()), port});
-
-            logger(TRACE) << "Added seed node: " << nodes.back() << " (" << host << ")";
+            for (const auto &a : resolved)
+            {
+                if (a.isV4())
+                {
+                    NetworkAddress na {hostToNetwork(a.toV4()), port};
+                    nodes.push_back(na);
+                    logger(TRACE) << "Added seed node: " << na << " (" << host << ")";
+                }
+                else
+                {
+                    NetworkAddress6 na6 {};
+                    memcpy(na6.ip, a.getBytes(), 16);
+                    na6.port = port;
+                    m_seed_nodes6.push_back(na6);
+                    logger(TRACE) << "Added IPv6 seed node: " << a.toString() << ":" << port << " (" << host << ")";
+                }
+            }
         }
         catch (const std::exception &e)
         {
@@ -495,18 +538,30 @@ namespace CryptoNote
         {
             try
             {
-                System::Ipv4Resolver resolver(m_dispatcher);
+                System::IpResolver resolver(m_dispatcher);
                 auto addresses = resolver.resolveAll(dnsHost);
                 if (addresses.empty())
                 {
                     logger(WARNING) << "DNS seed '" << dnsHost << "' returned no addresses";
                     continue;
                 }
-                for (const auto &addr : addresses)
+                for (const auto &a : addresses)
                 {
-                    NetworkAddress na {hostToNetwork(addr.getValue()), CryptoNote::P2P_DEFAULT_PORT};
-                    m_seed_nodes.push_back(na);
-                    logger(TRACE) << "Added DNS seed node: " << na << " (from " << dnsHost << ")";
+                    if (a.isV4())
+                    {
+                        NetworkAddress na {hostToNetwork(a.toV4()), CryptoNote::P2P_DEFAULT_PORT};
+                        m_seed_nodes.push_back(na);
+                        logger(TRACE) << "Added DNS seed node: " << na << " (from " << dnsHost << ")";
+                    }
+                    else
+                    {
+                        NetworkAddress6 na6 {};
+                        memcpy(na6.ip, a.getBytes(), 16);
+                        na6.port = CryptoNote::P2P_DEFAULT_PORT;
+                        m_seed_nodes6.push_back(na6);
+                        logger(TRACE) << "Added IPv6 DNS seed node: " << a.toString()
+                                      << ":" << CryptoNote::P2P_DEFAULT_PORT << " (from " << dnsHost << ")";
+                    }
                 }
             }
             catch (const std::exception &e)
@@ -576,6 +631,13 @@ namespace CryptoNote
 
         logger(INFO) << "Net service bound on " << m_bind_ip << ":" << m_listeningPort;
 
+        if (m_enableIPv6)
+        {
+            m_listenerIPv6 =
+                System::TcpListener(m_dispatcher, System::IpAddress(m_bind_ipv6), m_port_ipv6);
+            logger(INFO) << "IPv6 P2P net service bound on [" << m_bind_ipv6 << "]:" << m_port_ipv6;
+        }
+
         if (m_external_port)
         {
             logger(INFO) << "External port defined as " << m_external_port;
@@ -599,6 +661,10 @@ namespace CryptoNote
         logger(INFO) << "Starting node_server";
 
         m_workingContextGroup.spawn(std::bind(&NodeServer::acceptLoop, this));
+        if (m_enableIPv6)
+        {
+            m_workingContextGroup.spawn(std::bind(&NodeServer::acceptLoopIPv6, this));
+        }
         m_workingContextGroup.spawn(std::bind(&NodeServer::onIdle, this));
         m_workingContextGroup.spawn(std::bind(&NodeServer::timedSyncLoop, this));
         m_workingContextGroup.spawn(std::bind(&NodeServer::timeoutLoop, this));
@@ -730,6 +796,11 @@ namespace CryptoNote
             return false;
         }
 
+        if (rsp.node_data.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION && !rsp.local_peerlist6.empty())
+        {
+            m_peerlist.merge_peerlist6(rsp.local_peerlist6);
+        }
+
         if (just_take_peerlist)
         {
             return true;
@@ -787,6 +858,11 @@ namespace CryptoNote
             logger(Logging::ERROR) << context
                                    << "COMMAND_TIMED_SYNC: failed to handle_remote_peerlist(...), closing connection.";
             return false;
+        }
+
+        if (context.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION && !rsp.local_peerlist6.empty())
+        {
+            m_peerlist.merge_peerlist6(rsp.local_peerlist6);
         }
 
         if (!context.m_is_income)
@@ -990,6 +1066,213 @@ namespace CryptoNote
     }
 
     //-----------------------------------------------------------------------------------
+    bool NodeServer::try_to_connect_and_handshake_with_new_peer6(
+        const NetworkAddress6 &na,
+        bool just_take_peerlist,
+        uint64_t last_seen_stamp,
+        bool white)
+    {
+        System::IpAddress ipAddr(na.ip);
+        std::string addrStr = ipAddr.toString();
+
+        if (isHostBanned6(addrStr))
+        {
+            logger(DEBUGGING) << "Skipping banned IPv6 peer " << addrStr;
+            return false;
+        }
+
+        logger(DEBUGGING) << "Connecting to IPv6 peer " << addrStr << ":" << na.port
+                          << " (white=" << white << ", last_seen: "
+                          << (last_seen_stamp ? Common::timeIntervalToString(time(NULL) - last_seen_stamp) : "never")
+                          << ")...";
+
+        try
+        {
+            System::TcpConnection connection;
+
+            try
+            {
+                System::Context<System::TcpConnection> connectionContext(m_dispatcher, [&] {
+                    System::TcpConnector connector(m_dispatcher);
+                    return connector.connect(ipAddr, static_cast<uint16_t>(na.port));
+                });
+
+                System::Context<> timeoutContext(m_dispatcher, [&] {
+                    System::Timer(m_dispatcher)
+                        .sleep(std::chrono::milliseconds(m_config.m_net_config.connection_timeout));
+                    logger(DEBUGGING) << "Connection to IPv6 peer " << addrStr << " timed out, interrupt it";
+                    safeInterrupt(connectionContext);
+                });
+
+                connection = std::move(connectionContext.get());
+            }
+            catch (System::InterruptedException &)
+            {
+                logger(DEBUGGING) << "IPv6 connection timed out";
+                return false;
+            }
+
+            P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), std::move(connection));
+
+            ctx.m_connection_id = boost::uuids::random_generator()();
+            ctx.m_remote_ip = 0; // IPv6 — stored as 0; full address tracked via IpAddress
+            ctx.m_remote_ipv6 = addrStr;
+            ctx.m_remote_port = na.port;
+            ctx.m_is_income = false;
+            ctx.m_started = time(nullptr);
+
+            try
+            {
+                System::Context<bool> handshakeContext(m_dispatcher, [&] {
+                    CryptoNote::LevinProtocol proto(ctx.connection);
+                    return handshake(proto, ctx, just_take_peerlist);
+                });
+
+                System::Context<> timeoutContext(m_dispatcher, [&] {
+                    System::Timer(m_dispatcher)
+                        .sleep(std::chrono::milliseconds(m_config.m_net_config.connection_timeout * 3));
+                    logger(DEBUGGING) << "Handshake with IPv6 peer " << addrStr << " timed out, interrupt it";
+                    safeInterrupt(handshakeContext);
+                });
+
+                if (!handshakeContext.get())
+                {
+                    logger(DEBUGGING) << "Failed to HANDSHAKE with IPv6 peer " << addrStr;
+                    return false;
+                }
+            }
+            catch (System::InterruptedException &)
+            {
+                logger(DEBUGGING) << "IPv6 handshake timed out";
+                return false;
+            }
+
+            if (just_take_peerlist)
+            {
+                logger(Logging::DEBUGGING, Logging::BRIGHT_GREEN) << ctx << "IPv6 CONNECTION HANDSHAKED OK AND CLOSED.";
+                return true;
+            }
+
+            PeerlistEntry6 pe6 {};
+            pe6.id = ctx.peerId;
+            pe6.last_seen = time(nullptr);
+            pe6.adr = na;
+            m_peerlist.append_with_peer_white6(pe6);
+
+            if (m_stop)
+            {
+                throw System::InterruptedException();
+            }
+
+            boost::uuids::uuid connectionId;
+            P2pConnectionContext *connectionContext = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                connectionId = iter->first;
+                connectionContext = &iter->second;
+            }
+
+            m_workingContextGroup.spawn(
+                std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connectionContext)));
+
+            return true;
+        }
+        catch (System::InterruptedException &)
+        {
+            logger(DEBUGGING) << "IPv6 connection process interrupted";
+            throw;
+        }
+        catch (const std::exception &e)
+        {
+            logger(DEBUGGING) << "Connection to IPv6 peer " << addrStr << " failed: " << e.what();
+        }
+
+        return false;
+    }
+
+    //-----------------------------------------------------------------------------------
+    bool NodeServer::is_peer_used6(const PeerlistEntry6 &peer)
+    {
+        if (m_config.m_peer_id == peer.id)
+        {
+            return true; // don't connect to ourselves
+        }
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
+        for (const auto &kv : m_connections)
+        {
+            if (kv.second.peerId == peer.id)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //-----------------------------------------------------------------------------------
+    bool NodeServer::make_new_connection_from_peerlist6(bool use_white_list)
+    {
+        size_t local_peers_count =
+            use_white_list ? m_peerlist.get_white6_peers_count() : m_peerlist.get_gray6_peers_count();
+        if (!local_peers_count)
+        {
+            return false;
+        }
+
+        size_t max_random_index = std::min<uint64_t>(local_peers_count - 1, PEER_SELECTION_RECENCY_WINDOW);
+
+        std::set<size_t> tried_peers;
+
+        size_t try_count = 0;
+        size_t rand_count = 0;
+        while (rand_count < (max_random_index + 1) * 3 && try_count < PEER_SELECTION_MAX_TRIES && !m_stop)
+        {
+            ++rand_count;
+            size_t random_index = get_random_index_with_fixed_probability(max_random_index);
+            if (!(random_index < local_peers_count))
+            {
+                logger(ERROR, BRIGHT_RED) << "random_starter_index < peers_local6.size() failed!!";
+                return false;
+            }
+
+            if (tried_peers.count(random_index))
+            {
+                continue;
+            }
+
+            tried_peers.insert(random_index);
+            PeerlistEntry6 pe = boost::value_initialized<PeerlistEntry6>();
+            bool r = use_white_list ? m_peerlist.get_white6_peer_by_index(pe, random_index)
+                                    : m_peerlist.get_gray6_peer_by_index(pe, random_index);
+            if (!r)
+            {
+                logger(ERROR, BRIGHT_RED) << "Failed to get random IPv6 peer from peerlist(white:" << use_white_list << ")";
+                return false;
+            }
+
+            ++try_count;
+
+            if (is_peer_used6(pe))
+            {
+                continue;
+            }
+
+            System::IpAddress ipAddr(pe.adr.ip);
+            logger(DEBUGGING) << "Selected IPv6 peer: " << pe.id << " " << ipAddr.toString() << ":" << pe.adr.port
+                              << " [white=" << use_white_list << "] last_seen: "
+                              << (pe.last_seen ? Common::timeIntervalToString(time(NULL) - pe.last_seen) : "never");
+
+            if (!try_to_connect_and_handshake_with_new_peer6(pe.adr, false, pe.last_seen, use_white_list))
+            {
+                continue;
+            }
+
+            return true;
+        }
+        return false;
+    }
+
+    //-----------------------------------------------------------------------------------
     bool NodeServer::make_new_connection_from_peerlist(bool use_white_list)
     {
         size_t local_peers_count =
@@ -1088,6 +1371,32 @@ namespace CryptoNote
             }
         }
 
+        // Bootstrap from IPv6 seeds if no white peers (IPv4 or IPv6) and IPv6 seeds are available
+        if (!m_peerlist.get_white_peers_count() && !m_peerlist.get_white6_peers_count()
+            && m_seed_nodes6.size())
+        {
+            size_t try_count = 0;
+            size_t current_index = Random::randomValue<size_t>() % m_seed_nodes6.size();
+
+            while (true)
+            {
+                if (try_to_connect_and_handshake_with_new_peer6(m_seed_nodes6[current_index], true))
+                {
+                    break;
+                }
+
+                if (++try_count > m_seed_nodes6.size())
+                {
+                    logger(ERROR) << "Failed to connect to any of IPv6 seed peers, continuing without IPv6 seeds";
+                    break;
+                }
+                if (++current_index >= m_seed_nodes6.size())
+                {
+                    current_index = 0;
+                }
+            }
+        }
+
         if (!connect_to_peerlist(m_priority_peers))
         {
             return false;
@@ -1101,28 +1410,70 @@ namespace CryptoNote
         {
             if (conn_count < expected_white_connections)
             {
-                // start from white list
+                // start from white list (IPv4 then IPv6)
                 if (!make_expected_connections_count(true, expected_white_connections))
                 {
                     return false;
                 }
-                // and then do grey list
+                // supplement with IPv6 white peers if still under target
+                conn_count = get_outgoing_connections_count();
+                while (conn_count < expected_white_connections && !m_stopEvent.get())
+                {
+                    if (!make_new_connection_from_peerlist6(true))
+                    {
+                        break;
+                    }
+                    conn_count = get_outgoing_connections_count();
+                }
+
+                // and then do grey list (IPv4)
                 if (!make_expected_connections_count(false, m_config.m_net_config.connections_count))
                 {
                     return false;
+                }
+                // supplement with IPv6 gray peers
+                conn_count = get_outgoing_connections_count();
+                while (conn_count < m_config.m_net_config.connections_count && !m_stopEvent.get())
+                {
+                    if (!make_new_connection_from_peerlist6(false))
+                    {
+                        break;
+                    }
+                    conn_count = get_outgoing_connections_count();
                 }
             }
             else
             {
-                // start from grey list
+                // start from grey list (IPv4)
                 if (!make_expected_connections_count(false, m_config.m_net_config.connections_count))
                 {
                     return false;
                 }
-                // and then do white list
+                // supplement with IPv6 gray peers
+                conn_count = get_outgoing_connections_count();
+                while (conn_count < m_config.m_net_config.connections_count && !m_stopEvent.get())
+                {
+                    if (!make_new_connection_from_peerlist6(false))
+                    {
+                        break;
+                    }
+                    conn_count = get_outgoing_connections_count();
+                }
+
+                // and then do white list (IPv4)
                 if (!make_expected_connections_count(true, m_config.m_net_config.connections_count))
                 {
                     return false;
+                }
+                // supplement with IPv6 white peers
+                conn_count = get_outgoing_connections_count();
+                while (conn_count < m_config.m_net_config.connections_count && !m_stopEvent.get())
+                {
+                    if (!make_new_connection_from_peerlist6(true))
+                    {
+                        break;
+                    }
+                    conn_count = get_outgoing_connections_count();
                 }
             }
         }
@@ -1434,13 +1785,14 @@ namespace CryptoNote
             return false;
         }
 
+        const bool isIpv6Peer = !context.m_remote_ipv6.empty();
         uint32_t actual_ip = context.m_remote_ip;
-        if (!m_peerlist.is_ip_allowed(actual_ip))
+        if (!isIpv6Peer && !m_peerlist.is_ip_allowed(actual_ip))
         {
             return false;
         }
 
-        auto ip = Common::ipAddressToString(actual_ip);
+        const std::string ip = isIpv6Peer ? context.m_remote_ipv6 : Common::ipAddressToString(actual_ip);
         auto port = node_data.my_port;
         auto peerId = node_data.peer_id;
 
@@ -1450,7 +1802,7 @@ namespace CryptoNote
             COMMAND_PING::response rsp;
             System::Context<> pingContext(m_dispatcher, [&] {
                 System::TcpConnector connector(m_dispatcher);
-                auto connection = connector.connect(System::Ipv4Address(ip), static_cast<uint16_t>(port));
+                auto connection = connector.connect(System::IpAddress(ip), static_cast<uint16_t>(port));
                 LevinProtocol(connection).invoke(COMMAND_PING::ID, req, rsp);
             });
 
@@ -1496,6 +1848,10 @@ namespace CryptoNote
         // fill response
         rsp.local_time = time(NULL);
         m_peerlist.get_peerlist_head(rsp.local_peerlist);
+        if (context.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION)
+        {
+            m_peerlist.get_peerlist6_head(rsp.local_peerlist6);
+        }
         m_payload_handler.get_payload_sync_data(rsp.payload_data);
         logger(Logging::TRACE) << context << "COMMAND_TIMED_SYNC";
         return 1;
@@ -1564,22 +1920,43 @@ namespace CryptoNote
 
             if (try_ping(arg.node_data, context))
             {
-                // called only(!) if success pinged, update local peerlist
-                PeerlistEntry pe;
-                pe.adr.ip = context.m_remote_ip;
-                pe.adr.port = port_l;
-                pe.last_seen = time(nullptr);
-                pe.id = peer_id_l;
-                m_peerlist.append_with_peer_white(pe);
+                if (context.m_remote_ipv6.empty())
+                {
+                    PeerlistEntry pe;
+                    pe.adr.ip = context.m_remote_ip;
+                    pe.adr.port = port_l;
+                    pe.last_seen = time(nullptr);
+                    pe.id = peer_id_l;
+                    m_peerlist.append_with_peer_white(pe);
 
-                logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
-                                       << Common::ipAddressToString(context.m_remote_ip) << ":" << port_l
-                                       << " added to whitelist";
+                    logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
+                                           << Common::ipAddressToString(context.m_remote_ip) << ":" << port_l
+                                           << " added to whitelist";
+                }
+                else
+                {
+                    PeerlistEntry6 pe6 {};
+                    pe6.id = peer_id_l;
+                    pe6.last_seen = time(nullptr);
+                    pe6.adr.port = port_l;
+
+                    System::IpAddress ip6(context.m_remote_ipv6);
+                    memcpy(pe6.adr.ip, ip6.getBytes(), 16);
+                    m_peerlist.append_with_peer_white6(pe6);
+
+                    logger(Logging::TRACE) << context << "BACK PING SUCCESS, "
+                                           << context.m_remote_ipv6 << ":" << port_l
+                                           << " added to IPv6 whitelist";
+                }
             }
         }
 
         // fill response
         m_peerlist.get_peerlist_head(rsp.local_peerlist);
+        if (arg.node_data.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION)
+        {
+            m_peerlist.get_peerlist6_head(rsp.local_peerlist6);
+        }
         get_local_node_data(rsp.node_data);
         m_payload_handler.get_payload_sync_data(rsp.payload_data);
 
@@ -1606,8 +1983,16 @@ namespace CryptoNote
         std::list<PeerlistEntry> pl_wite;
         std::list<PeerlistEntry> pl_gray;
         m_peerlist.get_peerlist_full(pl_gray, pl_wite);
-        logger(INFO) << ENDL << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite) << ENDL
-                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray);
+
+        std::list<PeerlistEntry6> pl_wite6;
+        std::list<PeerlistEntry6> pl_gray6;
+        m_peerlist.get_peerlist6_full(pl_gray6, pl_wite6);
+
+        logger(INFO) << ENDL
+                     << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
+                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
+                     << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
+                     << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
         return true;
     }
     //-----------------------------------------------------------------------------------
@@ -1713,6 +2098,66 @@ namespace CryptoNote
     }
     //-----------------------------------------------------------------------------------
 
+    bool NodeServer::isHostBanned6(const std::string &addr)
+    {
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        auto it = m_bannedIPv6HostsUntil.find(addr);
+        if (it == m_bannedIPv6HostsUntil.end())
+        {
+            return false;
+        }
+
+        if (it->second <= now)
+        {
+            m_bannedIPv6HostsUntil.erase(it);
+            return false;
+        }
+
+        return true;
+    }
+    //-----------------------------------------------------------------------------------
+
+    bool NodeServer::ban_host6(const std::string &addr, uint64_t seconds)
+    {
+        const uint64_t until = static_cast<uint64_t>(time(nullptr)) + seconds;
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        m_bannedIPv6HostsUntil[addr] = until;
+        return true;
+    }
+    //-----------------------------------------------------------------------------------
+
+    bool NodeServer::unban_host6(const std::string &addr)
+    {
+        std::lock_guard<std::mutex> lock(m_banMutex);
+        return m_bannedIPv6HostsUntil.erase(addr) > 0;
+    }
+    //-----------------------------------------------------------------------------------
+
+    std::vector<std::pair<std::string, uint64_t>> NodeServer::get_banned_hosts6()
+    {
+        std::vector<std::pair<std::string, uint64_t>> result;
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        for (auto it = m_bannedIPv6HostsUntil.begin(); it != m_bannedIPv6HostsUntil.end();)
+        {
+            if (it->second <= now)
+            {
+                it = m_bannedIPv6HostsUntil.erase(it);
+            }
+            else
+            {
+                result.emplace_back(it->first, it->second);
+                ++it;
+            }
+        }
+
+        return result;
+    }
+    //-----------------------------------------------------------------------------------
+
     std::string NodeServer::print_connections_container()
     {
         std::stringstream ss;
@@ -1720,7 +2165,7 @@ namespace CryptoNote
         std::lock_guard<std::mutex> lock(m_connectionsMutex);
         for (const auto &cntxt : m_connections)
         {
-            ss << Common::ipAddressToString(cntxt.second.m_remote_ip) << ":" << cntxt.second.m_remote_port
+            ss << cntxt.second.remoteAddressStr() << ":" << cntxt.second.m_remote_port
                << " \t\tpeer_id " << cntxt.second.peerId << " \t\tconn_id " << cntxt.second.m_connection_id
                << (cntxt.second.m_is_income ? " INCOMING" : " OUTGOING") << std::endl;
         }
@@ -1821,6 +2266,91 @@ namespace CryptoNote
         }
 
         logger(DEBUGGING) << "acceptLoop finished";
+    }
+
+    void NodeServer::acceptLoopIPv6()
+    {
+        while (!m_stop)
+        {
+            try
+            {
+                P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), m_listenerIPv6.accept());
+                ctx.m_connection_id = boost::uuids::random_generator()();
+                ctx.m_is_income = true;
+                ctx.m_started = time(nullptr);
+
+                // Use getPeerIpAddress() for full dual-stack address.
+                // getPeerAddressAndPort() still gives us the port and IPv4 for IPv4-mapped peers.
+                const System::IpAddress peerAddr = ctx.connection.getPeerIpAddress();
+                const auto addrAndPort = ctx.connection.getPeerAddressAndPort();
+                ctx.m_remote_port = addrAndPort.second;
+
+                if (peerAddr.isV4())
+                {
+                    ctx.m_remote_ip = hostToNetwork(peerAddr.toV4());
+                    if (isHostBanned(ctx.m_remote_ip))
+                    {
+                        logger(DEBUGGING) << "Rejecting incoming IPv6-listener connection from banned host "
+                                          << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                        continue;
+                    }
+                }
+                else
+                {
+                    ctx.m_remote_ip = 0; // pure IPv6; not representable as uint32_t
+                    const std::string addr6 = peerAddr.toString();
+                    ctx.m_remote_ipv6 = addr6;
+                    if (isHostBanned6(addr6))
+                    {
+                        logger(DEBUGGING) << "Rejecting incoming connection from banned IPv6 host "
+                                          << addr6 << ":" << ctx.m_remote_port;
+                        continue;
+                    }
+                }
+
+                size_t incomingConnections = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    for (const auto &kv : m_connections)
+                    {
+                        if (kv.second.m_is_income)
+                        {
+                            ++incomingConnections;
+                        }
+                    }
+                }
+
+                if (incomingConnections >= m_maxIncomingConnections)
+                {
+                    logger(DEBUGGING) << "Rejecting incoming IPv6 connection due to --in-peers limit ("
+                                      << incomingConnections << "/" << m_maxIncomingConnections << ")";
+                    continue;
+                }
+
+                boost::uuids::uuid connectionId;
+                P2pConnectionContext *connection = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(m_connectionsMutex);
+                    auto iter = m_connections.emplace(ctx.m_connection_id, std::move(ctx)).first;
+                    connectionId = iter->first;
+                    connection = &iter->second;
+                }
+
+                m_workingContextGroup.spawn(
+                    std::bind(&NodeServer::connectionHandler, this, connectionId, std::ref(*connection)));
+            }
+            catch (System::InterruptedException &)
+            {
+                logger(DEBUGGING) << "acceptLoopIPv6() is interrupted";
+                break;
+            }
+            catch (const std::exception &e)
+            {
+                logger(DEBUGGING) << "Exception in acceptLoopIPv6: " << e.what();
+            }
+        }
+
+        logger(DEBUGGING) << "acceptLoopIPv6 finished";
     }
 
     void NodeServer::onIdle()

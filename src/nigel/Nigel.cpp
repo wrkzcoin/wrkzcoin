@@ -27,32 +27,39 @@ using json = nlohmann::json;
 /*   Inline helper methods    */
 ////////////////////////////////
 
+inline std::string daemonBaseUrl(const std::string &host, const uint16_t port, const bool ssl)
+{
+    const uint16_t defaultPort = ssl ? 443 : 80;
+    const std::string portStr = (port == defaultPort) ? "" : (":" + std::to_string(port));
+    const bool needsIpv6Brackets = host.find(':') != std::string::npos && (host.empty() || host.front() != '[');
+    const std::string formattedHost = needsIpv6Brackets ? ("[" + host + "]") : host;
+    return std::string(ssl ? "https://" : "http://") + formattedHost + portStr;
+}
+
 inline std::shared_ptr<httplib::Client> getClient(
     const std::string daemonHost,
     const uint16_t daemonPort,
     const bool daemonSSL,
     const std::chrono::seconds timeout)
 {
+    const bool useSsl =
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    if (daemonSSL)
-    {
-        return std::make_shared<httplib::SSLClient>(daemonHost.c_str(), daemonPort, timeout.count());
-    }
-    else
-    {
+        daemonSSL;
+#else
+        false;
 #endif
-        return std::make_shared<httplib::Client>(daemonHost.c_str(), daemonPort, timeout.count());
-#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    }
-#endif
+
+    auto client = std::make_shared<httplib::Client>(daemonBaseUrl(daemonHost, daemonPort, useSsl));
+    client->set_connection_timeout(timeout);
+    client->set_read_timeout(timeout);
+    client->set_write_timeout(timeout);
+    return client;
 }
 
 #if defined(__EMSCRIPTEN__)
 inline std::string daemonUrl(const std::string &host, const uint16_t port, const bool ssl, const std::string &path)
 {
-    const uint16_t defaultPort = ssl ? 443 : 80;
-    const std::string portStr = (port == defaultPort) ? "" : (":" + std::to_string(port));
-    return std::string(ssl ? "https://" : "http://") + host + portStr + path;
+    return daemonBaseUrl(host, port, ssl) + path;
 }
 
 // Synchronous HTTP helper using JavaScript's synchronous XMLHttpRequest API.
@@ -137,7 +144,7 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
     return ptr;
 });
 
-inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
+inline httplib::Result emscriptenRequestJson(
     const std::string &url,
     const char *method,
     const std::string *jsonBody)
@@ -155,10 +162,10 @@ inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
         {
             free(respBuf);
         }
-        return nullptr;
+        return {nullptr, httplib::Error::Connection};
     }
 
-    auto response = std::make_shared<httplib::Response>();
+    auto response = std::make_unique<httplib::Response>();
     response->status = status;
     if (respBuf && respLen > 0)
     {
@@ -168,7 +175,7 @@ inline std::shared_ptr<httplib::Response> emscriptenRequestJson(
     {
         free(respBuf);
     }
-    return response;
+    return {std::move(response), httplib::Error::Success};
 }
 #endif
 

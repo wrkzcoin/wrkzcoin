@@ -3,7 +3,7 @@
 Set shared vars:
 
 ```bash
-export DAEMON_RPC_URL="http://127.0.0.1:11898"
+export DAEMON_RPC_URL="http://127.0.0.1:17856"
 export DAEMON_RPC_TOKEN="strong-token"
 ```
 

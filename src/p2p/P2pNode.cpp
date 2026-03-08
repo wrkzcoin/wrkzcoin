@@ -21,6 +21,7 @@
 #include <random>
 #include <system/ContextGroupTimeout.h>
 #include <system/InterruptedException.h>
+#include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 #include <system/OperationTimeout.h>
 #include <system/TcpConnection.h>
@@ -139,7 +140,19 @@ namespace CryptoNote
         m_queueEvent(dispatcher)
     {
         m_peerlist.init(cfg.getAllowLocalIp());
-        m_listener = TcpListener(m_dispatcher, Ipv4Address(m_cfg.getBindIp()), m_cfg.getBindPort());
+        {
+            const std::string &bindIpv6 = m_cfg.getBindIpv6Address();
+            if (!bindIpv6.empty())
+            {
+                // IPv6 enabled: dual-stack socket (IPV6_V6ONLY=0) accepts both IPv4 and IPv6
+                m_listener = TcpListener(m_dispatcher, System::IpAddress(bindIpv6), m_cfg.getBindPortIpv6());
+            }
+            else
+            {
+                const std::string &bindIp = m_cfg.getBindIp();
+                m_listener = TcpListener(m_dispatcher, System::Ipv4Address(bindIp.empty() ? "0.0.0.0" : bindIp), m_cfg.getBindPort());
+            }
+        }
         for (auto &peer : cfg.getPeers())
         {
             m_peerlist.append_with_peer_white(peer);
@@ -493,7 +506,18 @@ namespace CryptoNote
                                 << CryptoNote::LATEST_VERSION_URL << " for the latest version.";
             }
 
-            return handleRemotePeerList(response.local_peerlist, response.node_data.local_time);
+            if (!handleRemotePeerList(response.local_peerlist, response.node_data.local_time))
+            {
+                return false;
+            }
+
+            if (response.node_data.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION
+                && !response.local_peerlist6.empty())
+            {
+                m_peerlist.merge_peerlist6(response.local_peerlist6);
+            }
+
+            return true;
         }
         catch (std::exception &e)
         {
@@ -530,6 +554,11 @@ namespace CryptoNote
         return m_peerlist.merge_peerlist(fixTimeDelta(peerlist, remoteTime));
     }
 
+    void P2pNode::handleRemotePeerList6(const std::list<PeerlistEntry6> &peerlist6)
+    {
+        m_peerlist.merge_peerlist6(peerlist6);
+    }
+
     const CORE_SYNC_DATA &P2pNode::getGenesisPayload() const
     {
         return m_genesisPayload;
@@ -539,6 +568,13 @@ namespace CryptoNote
     {
         std::list<PeerlistEntry> peerlist;
         m_peerlist.get_peerlist_head(peerlist);
+        return peerlist;
+    }
+
+    std::list<PeerlistEntry6> P2pNode::getLocalPeerList6()
+    {
+        std::list<PeerlistEntry6> peerlist;
+        m_peerlist.get_peerlist6_head(peerlist);
         return peerlist;
     }
 

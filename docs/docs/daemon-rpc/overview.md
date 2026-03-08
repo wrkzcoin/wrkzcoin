@@ -38,7 +38,7 @@ See the other daemon RPC pages for auth, limits, and method lists.
 Set shared environment variables:
 
 ```bash
-export DAEMON_RPC_URL="http://127.0.0.1:11898"
+export DAEMON_RPC_URL="http://127.0.0.1:17856"
 export DAEMON_RPC_TOKEN="replace-me"
 ```
 

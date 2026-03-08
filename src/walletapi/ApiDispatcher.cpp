@@ -27,14 +27,22 @@
 ApiDispatcher::ApiDispatcher(
     const uint16_t bindPort,
     const std::string rpcBindIp,
+    const std::string rpcBindIpv6Address,
+    const bool rpcUseIpv6,
     const std::string rpcPassword,
     const std::string corsHeader,
     unsigned int walletSyncThreads):
     m_port(bindPort),
     m_host(rpcBindIp),
+    m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
+    m_server.set_address_family(AF_INET);
+    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        std::cout << WarningMsg("API server startup error: ")
+                  << WarningMsg(httplib::to_string(error)) << std::endl;
+    });
     if (walletSyncThreads == 0)
     {
         walletSyncThreads = 1;
@@ -48,6 +56,22 @@ ApiDispatcher::ApiDispatcher(
     /* Make sure to do this after initializing the salt above! */
     m_hashedPassword = hashPassword(rpcPassword);
 
+    setupRoutes(m_server);
+
+    if (!m_ipv6Host.empty())
+    {
+        m_ipv6Server.set_address_family(AF_INET6);
+        m_ipv6Server.set_ipv6_v6only(true);
+        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            std::cout << WarningMsg("IPv6 API server startup error: ")
+                      << WarningMsg(httplib::to_string(error)) << std::endl;
+        });
+        setupRoutes(m_ipv6Server);
+    }
+}
+
+void ApiDispatcher::setupRoutes(httplib::Server &srv)
+{
     using namespace std::placeholders;
 
     /* Route the request through our middleware function, before forwarding
@@ -69,7 +93,7 @@ ApiDispatcher::ApiDispatcher(
     const bool viewWalletsBanned = false;
 
     /* POST */
-    m_server
+    srv
         .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed))
 
         /* Import wallet with keys */
@@ -271,12 +295,25 @@ ApiDispatcher::ApiDispatcher(
 
 void ApiDispatcher::start()
 {
-    const auto listenError = m_server.listen(m_host, m_port);
-
-    if (listenError != httplib::SUCCESS)
+    if (!m_ipv6Host.empty())
     {
-        std::cout << WarningMsg("Failed to start RPC server: ")
-                  << WarningMsg(httplib::detail::getSocketErrorMessage(listenError)) << std::endl;
+        m_ipv6Thread = std::thread([this]() {
+            const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
+
+            if (!isListening)
+            {
+                std::cout << WarningMsg("Failed to start IPv6 API server on [")
+                          << WarningMsg(m_ipv6Host)
+                          << WarningMsg("].") << std::endl;
+            }
+        });
+    }
+
+    const auto isListening = m_server.listen(m_host, m_port);
+
+    if (!isListening)
+    {
+        std::cout << WarningMsg("Failed to start API server.") << std::endl;
 
         exit(1);
     }
@@ -285,6 +322,12 @@ void ApiDispatcher::start()
 void ApiDispatcher::stop()
 {
     m_server.stop();
+
+    if (m_ipv6Thread.joinable())
+    {
+        m_ipv6Server.stop();
+        m_ipv6Thread.join();
+    }
 }
 
 void ApiDispatcher::middleware(
@@ -294,6 +337,8 @@ void ApiDispatcher::middleware(
     const bool viewWalletPermitted,
     std::function<std::tuple<Error, uint16_t>(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)> handler)
 {
+    std::scoped_lock lock(m_mutex);
+
     std::cout << "Incoming " << req.method << " request: " << req.path << std::endl;
 
     nlohmann::json body;
@@ -1300,7 +1345,12 @@ std::tuple<Error, uint16_t> ApiDispatcher::getUnconfirmedTransactionsForAddress(
     httplib::Response &res,
     const nlohmann::json &body) const
 {
-    std::string address = req.path.substr(std::string("/transactions/unconfirmed").size());
+    std::string address = req.path.substr(std::string("/transactions/unconfirmed/").size());
+
+    if (Error error = validateAddresses({address}, false); error != SUCCESS)
+    {
+        return {error, 400};
+    }
 
     const auto txs = m_walletBackend->getUnconfirmedTransactions();
 

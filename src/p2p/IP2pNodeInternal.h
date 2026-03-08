@@ -21,6 +21,8 @@ namespace CryptoNote
 
         virtual std::list<PeerlistEntry> getLocalPeerList() = 0;
 
+        virtual std::list<PeerlistEntry6> getLocalPeerList6() = 0;
+
         virtual basic_node_data getNodeData() const = 0;
 
         virtual uint64_t getPeerId() const = 0;
@@ -28,6 +30,8 @@ namespace CryptoNote
         virtual void handleNodeData(const basic_node_data &node, P2pContext &ctx) = 0;
 
         virtual bool handleRemotePeerList(const std::list<PeerlistEntry> &peerlist, time_t local_time) = 0;
+
+        virtual void handleRemotePeerList6(const std::list<PeerlistEntry6> &peerlist6) = 0;
 
         virtual void tryPing(P2pContext &ctx) = 0;
     };

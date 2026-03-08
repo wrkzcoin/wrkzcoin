@@ -37,6 +37,8 @@ class RpcServer
     RpcServer(
         const uint16_t bindPort,
         const std::string rpcBindIp,
+        const std::string rpcBindIpv6Address,
+        const bool rpcUseIpv6,
         const std::string corsHeader,
         const std::string rpcAccessToken,
         const uint32_t rpcReadTimeout,
@@ -71,8 +73,14 @@ class RpcServer
     /* Private member functions */
     //////////////////////////////
 
-    /* Starts listening for requests on the server */
+    /* Starts listening for requests on the server (IPv4) */
     void listen();
+
+    /* Starts listening for requests on the server (IPv6) */
+    void listenIpv6();
+
+    /* Registers all HTTP routes on the given server instance */
+    void setupRoutes(httplib::Server &srv);
 
     std::optional<rapidjson::Document> getJsonBody(
         const httplib::Request &req,
@@ -197,14 +205,20 @@ class RpcServer
     /* Private member variables */
     //////////////////////////////
 
-    /* Our server instance */
+    /* Our IPv4 server instance */
     httplib::Server m_server;
 
-    /* The server host */
+    /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
+    httplib::Server m_ipv6Server;
+
+    /* The server host (IPv4) */
     const std::string m_host;
 
     /* The server port */
     const uint16_t m_port;
+
+    /* The IPv6 bind address (empty = IPv6 disabled) */
+    const std::string m_ipv6Host;
 
     /* The header to use with 'Access-Control-Allow-Origin'. If empty string,
      * header is not added. */
@@ -226,8 +240,11 @@ class RpcServer
 
     const bool m_rpcTrustProxy;
 
-    /* The thread running the server */
+    /* The thread running the IPv4 server */
     std::thread m_serverThread;
+
+    /* The thread running the IPv6 server (only used when m_ipv6Host is non-empty) */
+    std::thread m_ipv6Thread;
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;

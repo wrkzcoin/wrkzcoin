@@ -29,6 +29,7 @@ let theme        = localStorage.getItem('theme') || 'dark';
 let refreshTimer = null;
 let countdownTimer = null;
 let countdownSec   = 30;
+let turtleCoinUtilsPromise = null;
 
 // Block list pagination state
 let blockPageTop    = null;  // top block height currently shown (null = unset, use latest)
@@ -135,6 +136,69 @@ function formatSize(bytes) {
   return `${b} B`;
 }
 
+function formatCompactNumber(value) {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  return new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Number(value));
+}
+
+function formatChartMetric(label, value) {
+  switch (label) {
+    case 'Difficulty':
+      return Number(value || 0).toLocaleString();
+    case 'Block Size':
+      return formatSize(value);
+    case 'Tx Count':
+      return Number(value || 0).toLocaleString();
+    default:
+      return String(value ?? '—');
+  }
+}
+
+function buildCombinedTrendChartSvg(series) {
+  const width = 360;
+  const height = 104;
+  const padX = 12;
+  const padTop = 10;
+  const padBottom = 12;
+  const innerWidth = width - (padX * 2);
+  const innerHeight = height - padTop - padBottom;
+  const gridLines = [0.25, 0.5, 0.75].map(step => {
+    const y = padTop + (innerHeight * step);
+    return `<line x1="${padX}" y1="${y}" x2="${width - padX}" y2="${y}"></line>`;
+  }).join('');
+  const lines = series.map(item => {
+    const normalizedValues = item.values.length ? item.values : [0];
+    const min = Math.min(...normalizedValues);
+    const max = Math.max(...normalizedValues);
+    const span = Math.max(max - min, 1);
+    const points = normalizedValues.map((value, index) => {
+      const x = padX + ((innerWidth / Math.max(normalizedValues.length - 1, 1)) * index);
+      const ratio = normalizedValues.length === 1 ? 0.5 : (value - min) / span;
+      const y = padTop + innerHeight - (ratio * innerHeight);
+      return [Number(x.toFixed(2)), Number(y.toFixed(2))];
+    });
+
+    const linePath = points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'}${x} ${y}`).join(' ');
+    const dots = points.map(([x, y], index) => {
+      const latest = index === points.length - 1;
+      return `<circle class="network-chart-dot" cx="${x}" cy="${y}" r="${latest ? 3.5 : 2.5}" fill="${item.color}" stroke="rgba(15,23,42,0.8)"></circle>`;
+    }).join('');
+
+    return `<path class="network-chart-line" d="${linePath}" stroke="${item.color}"></path>${dots}`;
+  }).join('');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+      <g class="network-chart-grid">${gridLines}</g>
+      <line class="network-chart-axis" x1="${padX}" y1="${height - padBottom}" x2="${width - padX}" y2="${height - padBottom}"></line>
+      ${lines}
+    </svg>
+  `;
+}
+
 function timeAgo(ts) {
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
   if (diff < 0)    return 'just now';
@@ -205,6 +269,31 @@ function hideLoading() {
 }
 
 function setConnStatus() { /* UI element removed */ }
+
+function ensureTurtleCoinUtils() {
+  if (window.TurtleCoinUtils) return Promise.resolve(window.TurtleCoinUtils);
+  if (turtleCoinUtilsPromise) return turtleCoinUtilsPromise;
+
+  turtleCoinUtilsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'vendor/TurtleCoinUtils.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.TurtleCoinUtils) {
+        resolve(window.TurtleCoinUtils);
+      } else {
+        reject(new Error('Crypto utility library loaded but is unavailable.'));
+      }
+    };
+    script.onerror = () => reject(new Error('Failed to load crypto utility library.'));
+    document.body.appendChild(script);
+  }).catch(err => {
+    turtleCoinUtilsPromise = null;
+    throw err;
+  });
+
+  return turtleCoinUtilsPromise;
+}
 
 // ─── ROUTING ──────────────────────────────────────────────────────────────────
 
@@ -313,19 +402,26 @@ async function showHome() {
   setPage('home');
   clearError();
   await loadHome();
-  $('refreshBtn')?.addEventListener('click', () => {
+  const refreshBtn = $('refreshBtn');
+  if (refreshBtn) refreshBtn.onclick = () => {
     countdownSec = 30;
     blockPageTop = null; // jump back to latest on manual refresh
     loadHome();
-  }, { once: false });
-  startRefresh(loadHome, 30);
+  };
+  startRefresh(() => {
+    blockPageTop = null; // keep auto-refresh pinned to the latest recent blocks
+    loadHome();
+  }, 30);
 }
 
 async function loadHome() {
   try {
     const info = await api.info();
     renderStats(info);
-    updateCirculatingStat(info.height).catch(() => setText('statCirculating', '—'));
+    updateLatestBlockStats(info.height).catch(() => {
+      setText('statCirculating', '—');
+      setText('statBlockReward', '—');
+    });
     blockChainHeight = info.height;
     setConnStatus(true, '● Connected');
     clearError();
@@ -341,20 +437,26 @@ async function loadHome() {
   }
 }
 
-async function updateCirculatingStat(chainHeight) {
+async function updateLatestBlockStats(chainHeight) {
   const latestHeight = Math.max(0, Number(chainHeight || 0) - 1);
   const header = await api.getBlockHeaderByHeight(latestHeight);
   const hash = header?.block_header?.hash;
   if (!hash) {
     setText('statCirculating', '—');
+    setText('statBlockReward', '—');
     return;
   }
 
   const result = await api.getBlockByHash(hash);
   const circulating = result?.block?.alreadyGeneratedCoins;
+  const reward = result?.block?.reward;
   setText(
     'statCirculating',
     circulating == null ? '—' : `${formatAmount(circulating)} ${COIN.ticker}`
+  );
+  setText(
+    'statBlockReward',
+    reward == null ? '—' : `${formatAmount(reward)} ${COIN.ticker}`
   );
 }
 
@@ -365,9 +467,11 @@ async function loadBlockPage(topHeight) {
     if (blocks.length > 0) blockPageSize = blocks.length;
     blockPageTop = topHeight;
     renderBlockList(blocks);
+    renderNetworkChart(blocks);
     renderBlockPagination();
   } catch (err) {
     showError(classifyError(err));
+    renderNetworkChart([]);
     renderBlockPagination();
   }
 }
@@ -419,6 +523,87 @@ function renderBlockList(blocks) {
       <td>${formatSize(b.cumul_size)}</td>
     </tr>
   `).join('');
+}
+
+function renderNetworkChart(blocks) {
+  const heightEl = $('networkChartHeight');
+  const metricsEl = $('networkMetrics');
+  const listEl = $('networkChartList');
+  if (!heightEl || !metricsEl || !listEl) return;
+
+  if (!blocks.length) {
+    heightEl.textContent = '—';
+    metricsEl.innerHTML = `
+      <span class="badge badge-accent">Difficulty —</span>
+      <span class="badge badge-yellow">Block Size —</span>
+      <span class="badge badge-green">Tx Count —</span>
+      <span class="badge badge-red">Block Reward —</span>
+    `;
+    listEl.innerHTML = `
+      <div class="network-chart-card">
+        <div class="network-chart-meta">
+          <span class="network-chart-label">Combined Network View</span>
+          <span class="network-chart-value">—</span>
+        </div>
+        <div class="network-chart-plot"></div>
+        <div class="network-chart-legend"></div>
+      </div>
+    `;
+    return;
+  }
+
+  const latest = blocks[0];
+  const latestReward = latest.reward == null ? '—' : `${formatAmount(latest.reward)} ${COIN.ticker}`;
+  heightEl.textContent = `#${Number(latest.height).toLocaleString()}`;
+  metricsEl.innerHTML = `
+    <span class="badge badge-accent">Difficulty ${formatCompactNumber(latest.difficulty)}</span>
+    <span class="badge badge-yellow">Block Size ${formatSize(latest.cumul_size)}</span>
+    <span class="badge badge-green">Tx Count ${(latest.tx_count ?? 0).toLocaleString()}</span>
+    <span class="badge badge-red">Block Reward ${latestReward}</span>
+  `;
+
+  const chartBlocks = [...blocks.slice(0, 12)].reverse();
+  const series = [
+    {
+      label: 'Difficulty',
+      value: Number(latest.difficulty || 0),
+      color: '#7c83eb',
+      values: chartBlocks.map(b => Number(b.difficulty || 0)),
+    },
+    {
+      label: 'Block Size',
+      value: Number(latest.cumul_size || 0),
+      color: '#f2ba2e',
+      values: chartBlocks.map(b => Number(b.cumul_size || 0)),
+    },
+    {
+      label: 'Tx Count',
+      value: Number(latest.tx_count || 0),
+      color: '#3ecf9a',
+      values: chartBlocks.map(b => Number(b.tx_count || 0)),
+    },
+  ];
+
+  const legendHtml = series.map(item => `
+    <span class="network-legend-item">
+      <span class="network-legend-swatch" style="background:${item.color}"></span>
+      <span>${item.label}</span>
+      <strong>${formatChartMetric(item.label, item.value)}</strong>
+    </span>
+  `).join('');
+
+  listEl.innerHTML = `
+    <div class="network-chart-card">
+      <div class="network-chart-meta">
+        <span class="network-chart-label">Combined Network View</span>
+        <span class="network-chart-value">Last ${chartBlocks.length} blocks</span>
+      </div>
+      <div class="network-chart-plot">
+        ${buildCombinedTrendChartSvg(series)}
+      </div>
+      <div class="network-chart-legend">${legendHtml}</div>
+    </div>
+  `;
 }
 
 function renderBlockPagination() {
@@ -574,7 +759,7 @@ function renderBlockDetail(b) {
   const txRows = (b.transactions || []).map(tx => /* html */ `
     <tr>
       <td class="mono">
-        <a href="#/tx/${escHtml(tx.hash)}" title="${escHtml(tx.hash)}">${shortHash(tx.hash)}</a>
+        <a href="#/tx/${escHtml(tx.hash)}">${escHtml(tx.hash)}</a>
       </td>
       <td>${formatAmount(tx.fee)} ${COIN.ticker}</td>
       <td>${formatAmount(tx.amount_out)} ${COIN.ticker}</td>
@@ -1248,7 +1433,7 @@ async function runCheckTx(txContext, address, keyHex, keyType) {
 }
 
 async function runCheckTx(txContext, address, keyHex, keyType) {
-  if (!window.TurtleCoinUtils) throw new Error('Crypto utility library not yet loaded.');
+  await ensureTurtleCoinUtils();
   if (!window._cnUtils) {
     window._cnUtils = new window.TurtleCoinUtils.CryptoNote({
       coinUnitPlaces: COIN.decimals,
@@ -1326,11 +1511,30 @@ function renderCheckTxCard() {
 function initCheckTxEvents(txContext) {
   const btn = $('ckBtn');
   if (!btn) return;
+  const statusEl = $('ckStatus');
+
+  btn.disabled = true;
+  if (statusEl) {
+    statusEl.style.color = 'var(--text-muted)';
+    statusEl.textContent = 'Loading crypto tools…';
+  }
+
+  ensureTurtleCoinUtils()
+    .then(() => {
+      btn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+    })
+    .catch(err => {
+      if (statusEl) {
+        statusEl.style.color = 'var(--red)';
+        statusEl.textContent = err.message;
+      }
+    });
+
   btn.addEventListener('click', async () => {
     const addr    = ($('ckAddr')?.value || '').trim();
     const keyHex  = ($('ckKey')?.value  || '').trim();
     const keyType = 'auto';
-    const statusEl = $('ckStatus');
     const resultEl = $('ckResult');
 
     const setErr = msg => { statusEl.style.color = 'var(--red)'; statusEl.textContent = msg; };

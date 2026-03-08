@@ -13,6 +13,8 @@ namespace System
 {
     class Dispatcher;
 
+    class IpAddress;
+
     class Ipv4Address;
 
     class TcpConnection;
@@ -35,6 +37,8 @@ namespace System
         TcpConnector &operator=(TcpConnector &&other);
 
         TcpConnection connect(const Ipv4Address &address, uint16_t port);
+
+        TcpConnection connect(const IpAddress &address, uint16_t port);
 
       private:
         Dispatcher *dispatcher;

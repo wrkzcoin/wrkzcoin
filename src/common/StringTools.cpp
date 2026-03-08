@@ -277,6 +277,55 @@ namespace Common
         return true;
     }
 
+    bool parseHostAndPort(const std::string &addr, std::string &host, uint32_t &port)
+    {
+        if (addr.empty())
+        {
+            return false;
+        }
+
+        if (addr[0] == '[')
+        {
+            // IPv6 bracket notation: "[::1]:8080"
+            auto closeBracket = addr.find(']');
+            if (closeBracket == std::string::npos)
+            {
+                return false;
+            }
+            host = addr.substr(1, closeBracket - 1);
+            if (closeBracket + 1 >= addr.size() || addr[closeBracket + 1] != ':')
+            {
+                return false;
+            }
+            try
+            {
+                port = static_cast<uint32_t>(std::stoul(addr.substr(closeBracket + 2)));
+            }
+            catch (...)
+            {
+                return false;
+            }
+            return true;
+        }
+
+        // IPv4 or hostname: "1.2.3.4:8080" or "hostname:8080"
+        auto colon = addr.rfind(':');
+        if (colon == std::string::npos)
+        {
+            return false;
+        }
+        host = addr.substr(0, colon);
+        try
+        {
+            port = static_cast<uint32_t>(std::stoul(addr.substr(colon + 1)));
+        }
+        catch (...)
+        {
+            return false;
+        }
+        return true;
+    }
+
     std::string timeIntervalToString(uint64_t intervalInSeconds)
     {
         auto tail = intervalInSeconds;

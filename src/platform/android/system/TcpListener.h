@@ -13,6 +13,8 @@ namespace System
 {
     class Dispatcher;
 
+    class IpAddress;
+
     class Ipv4Address;
 
     class TcpConnection;
@@ -23,6 +25,8 @@ namespace System
         TcpListener();
 
         TcpListener(Dispatcher &dispatcher, const Ipv4Address &address, uint16_t port);
+
+        TcpListener(Dispatcher &dispatcher, const IpAddress &address, uint16_t port);
 
         TcpListener(const TcpListener &) = delete;
 
