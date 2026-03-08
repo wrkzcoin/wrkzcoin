@@ -794,7 +794,7 @@ namespace CryptoNote
         req.blockIds = knownBlockIds;
         req.startHeight = startHeight;
         req.startTimestamp = startTimestamp;
-        req.blockCount = CryptoNote::parameters::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+        req.blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
 
         m_logger(TRACE) << "Send getwalletsyncdata request, start timestamp: " << req.startTimestamp
                         << ", start height: " << req.startHeight;
