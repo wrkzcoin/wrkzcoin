@@ -158,6 +158,16 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
             "/transactions/send/fusion/advanced",
             router(&ApiDispatcher::sendAdvancedFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
 
+        /* Sweep a specific amount across multiple transactions (no fusion) */
+        .Post(
+            "/transactions/send/sweep",
+            router(&ApiDispatcher::sendSweepTransaction, WalletMustBeOpen, viewWalletsBanned))
+
+        /* Sweep entire balance across multiple transactions (no fusion) */
+        .Post(
+            "/transactions/send/sweep/all",
+            router(&ApiDispatcher::sendSweepAllTransaction, WalletMustBeOpen, viewWalletsBanned))
+
         .Post(
             "/export/json",
             router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed))
@@ -1003,6 +1013,95 @@ std::tuple<Error, uint16_t>
     res.set_content(j.dump(4) + "\n", "application/json");
 
     return {SUCCESS, 201};
+}
+
+std::tuple<Error, uint16_t>
+    ApiDispatcher::sendSweepTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+{
+    const std::string destination = getJsonValue<std::string>(body, "destination");
+
+    std::string paymentID;
+    if (body.find("paymentID") != body.end())
+    {
+        paymentID = getJsonValue<std::string>(body, "paymentID");
+    }
+
+    uint64_t amount = 0;
+    if (body.find("amount") != body.end())
+    {
+        amount = getJsonValue<uint64_t>(body, "amount");
+    }
+
+    const auto results = m_walletBackend->sweepToAddress(destination, paymentID, amount);
+
+    nlohmann::json txArray = nlohmann::json::array();
+
+    for (const auto &[error, hash] : results)
+    {
+        if (error)
+        {
+            txArray.push_back({
+                {"success", false},
+                {"errorCode", error.getErrorCode()},
+                {"errorMessage", error.getErrorMessage()}
+            });
+        }
+        else
+        {
+            txArray.push_back({
+                {"success", true},
+                {"transactionHash", hash}
+            });
+        }
+    }
+
+    nlohmann::json j {{"transactions", txArray}};
+
+    res.set_content(j.dump(4) + "\n", "application/json");
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t>
+    ApiDispatcher::sendSweepAllTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+{
+    const std::string destination = getJsonValue<std::string>(body, "destination");
+
+    std::string paymentID;
+    if (body.find("paymentID") != body.end())
+    {
+        paymentID = getJsonValue<std::string>(body, "paymentID");
+    }
+
+    /* amountToSweep = 0 means sweep entire balance */
+    const auto results = m_walletBackend->sweepToAddress(destination, paymentID, 0);
+
+    nlohmann::json txArray = nlohmann::json::array();
+
+    for (const auto &[error, hash] : results)
+    {
+        if (error)
+        {
+            txArray.push_back({
+                {"success", false},
+                {"errorCode", error.getErrorCode()},
+                {"errorMessage", error.getErrorMessage()}
+            });
+        }
+        else
+        {
+            txArray.push_back({
+                {"success", true},
+                {"transactionHash", hash}
+            });
+        }
+    }
+
+    nlohmann::json j {{"transactions", txArray}};
+
+    res.set_content(j.dump(4) + "\n", "application/json");
+
+    return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t>
