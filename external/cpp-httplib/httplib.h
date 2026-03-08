@@ -5248,8 +5248,13 @@ inline bool mmap::open(const char *path) {
   auto wpath = u8string_to_wstring(path);
   if (wpath.empty()) { return false; }
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0602
   hFile_ = ::CreateFile2(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ,
                          OPEN_EXISTING, NULL);
+#else
+  hFile_ = ::CreateFileW(wpath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+#endif
 
   if (hFile_ == INVALID_HANDLE_VALUE) { return false; }
 
@@ -5265,8 +5270,15 @@ inline bool mmap::open(const char *path) {
   }
   size_ = static_cast<size_t>(size.QuadPart);
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0602
   hMapping_ =
       ::CreateFileMappingFromApp(hFile_, NULL, PAGE_READONLY, size_, NULL);
+#else
+  hMapping_ = ::CreateFileMappingW(
+      hFile_, NULL, PAGE_READONLY,
+      static_cast<DWORD>(static_cast<ULONGLONG>(size.QuadPart) >> 32),
+      static_cast<DWORD>(size.QuadPart), NULL);
+#endif
 
   // Special treatment for an empty file...
   if (hMapping_ == NULL && size_ == 0) {
@@ -5280,7 +5292,11 @@ inline bool mmap::open(const char *path) {
     return false;
   }
 
+#if defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0602
   addr_ = ::MapViewOfFileFromApp(hMapping_, FILE_MAP_READ, 0, 0);
+#else
+  addr_ = ::MapViewOfFile(hMapping_, FILE_MAP_READ, 0, 0, 0);
+#endif
 
   if (addr_ == nullptr) {
     close();
@@ -16067,7 +16083,14 @@ inline SSL_CTX *Client::ssl_context() const {
 
 inline void Client::set_server_certificate_verifier(
     std::function<SSLVerifierResponse(SSL *ssl)> verifier) {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   cli_->set_server_certificate_verifier(verifier);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 inline long Client::get_verify_result() const {
