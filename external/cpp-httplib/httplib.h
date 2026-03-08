@@ -16063,7 +16063,14 @@ inline void Client::set_server_certificate_verifier(
 }
 
 inline long Client::get_verify_result() const {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
   if (is_ssl_) { return static_cast<SSLClient &>(*cli_).get_verify_result(); }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
   return -1; // NOTE: -1 doesn't match any of X509_V_ERR_???
 }
 #endif // CPPHTTPLIB_OPENSSL_SUPPORT
@@ -16311,7 +16318,7 @@ inline bool load_system_certs(ctx_t ctx) {
   bool loaded_any = false;
   static const wchar_t *store_names[] = {L"ROOT", L"CA"};
   for (auto store_name : store_names) {
-    auto hStore = CertOpenSystemStoreW(NULL, store_name);
+    auto hStore = CertOpenSystemStoreW(0, store_name);
     if (!hStore) continue;
 
     PCCERT_CONTEXT pContext = nullptr;
