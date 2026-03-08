@@ -22,6 +22,7 @@ namespace CryptoNote
         using parameters::MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL;
         using parameters::MASTERNODE_HEALTH_WINDOW_BLOCKS;
         using parameters::MASTERNODE_MIN_HEALTH_PERCENT;
+        using parameters::MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS;
 
         bool isRewardCandidateStatus(const MasternodeStateTracker::Status status)
         {
