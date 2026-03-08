@@ -650,7 +650,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 
 | Limitation | Impact | Planned fix |
 |-----------|--------|-------------|
-| **Collateral UTXO not verified against UTXO set at registration** | An operator could try to register with a non-existent output; caught at block validation but not at mempool acceptance | Add UTXO set lookup during `validateMasternodeTransactionEvent` |
+| **Collateral UTXO not verified at mempool acceptance** | The output key is verified against the UTXO set during block validation (`extractKeyOutputKeys`), but mempool acceptance does not perform this check — a register tx referencing a non-existent output can enter the mempool and will only be rejected at block inclusion | Add UTXO set lookup during `validateMasternodeTransactionEvent` when `checkPoolTokenReplay=true` |
 | **No wallet `mn_activate` / `mn_deactivate` / `mn_heartbeat` / `mn_revoke` commands** | Governance operations require external tooling to build transactions | Add wallet commands |
 | **Verifier allowlist is stubbed off** | Any key can attest; permissioned verifier governance not yet enforced | Enable via config before mainnet if required |
 | **Masternode set hash not committed in block header** | Set hash is advisory-only; not consensus-enforced per block | Consider adding to coinbase extra or block header in future fork |

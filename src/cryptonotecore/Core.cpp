@@ -2021,10 +2021,23 @@ namespace CryptoNote
             isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()) || isMasternodeRewardForkActive(cachedBlock.getBlockIndex());
         if (useValidationMasternodeTracker)
         {
-            if (!buildMasternodeStateForChain(cache, previousBlockIndex, rewardMasternodeTracker))
+            if (cache == chainsLeaves[0])
             {
-                logger(Logging::DEBUGGING) << "Failed to build branch-local masternode state for block " << blockStr;
-                return error::AddBlockErrorCode::DESERIALIZATION_FAILED;
+                /* Main chain: the global masternodeStateTracker is always kept current at
+                 * previousBlockIndex by applyMasternodeEventsFromBlock on each accepted block.
+                 * Copying it is O(masternodes) rather than O(blocks_since_fork), which avoids
+                 * a full chain replay on every block validation. */
+                rewardMasternodeTracker = masternodeStateTracker;
+            }
+            else
+            {
+                /* Alternative chain segment: the global tracker reflects the main chain, not
+                 * this fork, so we must replay from the fork point to get correct state. */
+                if (!buildMasternodeStateForChain(cache, previousBlockIndex, rewardMasternodeTracker))
+                {
+                    logger(Logging::DEBUGGING) << "Failed to build branch-local masternode state for block " << blockStr;
+                    return error::AddBlockErrorCode::DESERIALIZATION_FAILED;
+                }
             }
 
             validationMasternodeTracker = rewardMasternodeTracker;
