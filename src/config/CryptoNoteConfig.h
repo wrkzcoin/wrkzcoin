@@ -319,6 +319,35 @@ namespace CryptoNote
         static_assert(
             MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT <= 100,
             "Invalid MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT");
+
+        /* ------------------------------------------------------------------ */
+        /* ChainLock parameters                                                */
+        /* ------------------------------------------------------------------ */
+
+        /* Number of masternodes selected for the ChainLock quorum (capped at active-set size). */
+        const uint64_t CHAINLOCK_QUORUM_SIZE = 20;
+
+        /* Minimum votes required from the quorum to form a valid ChainLock (60%). */
+        const uint64_t CHAINLOCK_THRESHOLD = 12;
+
+        /* ------------------------------------------------------------------ */
+        /* InstantSend parameters                                              */
+        /* ------------------------------------------------------------------ */
+
+        /* Number of masternodes selected for the InstantSend quorum per transaction. */
+        const uint64_t INSTANTSEND_QUORUM_SIZE = 10;
+
+        /* Minimum votes required from the IS quorum (60%). */
+        const uint64_t INSTANTSEND_THRESHOLD = 6;
+
+        /* Blocks after which an IS lock expires if the transaction is not confirmed. */
+        const uint64_t INSTANTSEND_LOCK_EXPIRY_BLOCKS = 60;
+
+        /* Maximum number of inputs a transaction may have to qualify for InstantSend. */
+        const uint64_t INSTANTSEND_MAX_INPUTS = 10;
+
+        static_assert(CHAINLOCK_THRESHOLD <= CHAINLOCK_QUORUM_SIZE, "CHAINLOCK_THRESHOLD must be <= CHAINLOCK_QUORUM_SIZE");
+        static_assert(INSTANTSEND_THRESHOLD <= INSTANTSEND_QUORUM_SIZE, "INSTANTSEND_THRESHOLD must be <= INSTANTSEND_QUORUM_SIZE");
         
         /* Output / Input factor: how many times we factor Output diff. Assuming input is 1 */
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1 = 4;

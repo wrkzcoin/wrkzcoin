@@ -183,6 +183,8 @@ void RpcServer::setupRoutes(httplib::Server &srv)
             .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/masternodes/count", router(&RpcServer::masternodeCount, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/masternodes", router(&RpcServer::masternodes, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/chainlock/:height", router(&RpcServer::chainlock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/instantsend/:txhash", router(&RpcServer::instantSendLock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
        .Post("/json_rpc", jsonRpc)
        .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
@@ -799,6 +801,118 @@ std::tuple<Error, uint16_t> RpcServer::masternodes(
     writer.String("OK");
     writer.EndObject();
 
+    res.body = sb.GetString();
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::chainlock(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    uint32_t height = 0;
+    try
+    {
+        height = static_cast<uint32_t>(std::stoul(req.path_params.at("height")));
+    }
+    catch (const std::exception &)
+    {
+        return {Error(UNKNOWN_ERROR, "Invalid height parameter"), 400};
+    }
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    writer.StartObject();
+    writer.Key("height");
+    writer.Uint64(height);
+
+    const bool locked = m_core->hasChainLock(height);
+    writer.Key("locked");
+    writer.Bool(locked);
+
+    if (locked)
+    {
+        const auto clOpt = m_core->getChainLock(height);
+        if (clOpt.has_value())
+        {
+            writer.Key("block_hash");
+            writer.String(Common::podToHex(clOpt->blockHash));
+            writer.Key("vote_count");
+            writer.Uint64(clOpt->votes.size());
+            writer.Key("votes");
+            writer.StartArray();
+            for (const auto &vote : clOpt->votes)
+            {
+                writer.StartObject();
+                writer.Key("mn_id");
+                writer.String(Common::podToHex(vote.masternodeId));
+                writer.Key("signing_key");
+                writer.String(Common::podToHex(vote.signingKey));
+                writer.EndObject();
+            }
+            writer.EndArray();
+        }
+    }
+
+    writer.Key("status");
+    writer.String("OK");
+    writer.EndObject();
+    res.body = sb.GetString();
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::instantSendLock(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    Crypto::Hash txHash;
+    const std::string txHashStr = req.path_params.at("txhash");
+    if (!Common::podFromHex(txHashStr, txHash))
+    {
+        return {Error(UNKNOWN_ERROR, "Invalid txhash parameter"), 400};
+    }
+
+    // Check if any input of this tx is IS-locked.
+    const auto [found, txData] = m_core->getPoolTransaction(txHash);
+    bool locked = false;
+    std::string lockTxHash;
+    size_t voteCount = 0;
+
+    if (found)
+    {
+        const auto rawTx = CryptoNote::Core::getRawTransaction(
+            std::vector<uint8_t>(txData.begin(), txData.end()));
+        for (const auto &input : rawTx.inputs)
+        {
+            if (m_core->isInstantSendLocked(input.keyImage))
+            {
+                locked = true;
+                const auto lockOpt = m_core->getInstantSendLock(input.keyImage);
+                if (lockOpt.has_value())
+                {
+                    lockTxHash = Common::podToHex(lockOpt->txHash);
+                    voteCount = lockOpt->votes.size();
+                }
+                break;
+            }
+        }
+    }
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    writer.StartObject();
+    writer.Key("tx_hash");
+    writer.String(txHashStr);
+    writer.Key("is_locked");
+    writer.Bool(locked);
+    writer.Key("lock_tx_hash");
+    writer.String(locked ? lockTxHash : "");
+    writer.Key("vote_count");
+    writer.Uint64(voteCount);
+    writer.Key("status");
+    writer.String("OK");
+    writer.EndObject();
     res.body = sb.GetString();
     return {SUCCESS, 200};
 }

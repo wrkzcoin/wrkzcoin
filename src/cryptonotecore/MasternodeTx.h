@@ -50,6 +50,8 @@ namespace CryptoNote
         Crypto::Hash endpointCommitment = Crypto::Hash {{0}};
         bool hasNewEndpointCommitment = false;
         Crypto::Hash newEndpointCommitment = Crypto::Hash {{0}};
+        bool hasSigningKey = false;
+        Crypto::PublicKey signingKey = Crypto::PublicKey {{0}};
         bool hasVerifierKey = false;
         Crypto::PublicKey verifierKey = Crypto::PublicKey {{0}};
         bool hasCollateralSignature = false;

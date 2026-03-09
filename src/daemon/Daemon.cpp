@@ -8,6 +8,7 @@
 
 #include "DaemonCommandsHandler.h"
 #include "DaemonConfiguration.h"
+#include "MasternodeSigner.h"
 #include "ZmqPublisher.h"
 #include "common/CryptoNoteTools.h"
 #include "common/FileSystemShim.h"
@@ -663,6 +664,58 @@ int main(int argc, char *argv[])
             ip = "127.0.0.1";
         }
 
+        // Start the masternode signer if a signing key is configured.
+        std::unique_ptr<MasternodeSigner> masternodeSigner;
+        if (!config.mnSigningKey.empty())
+        {
+            Crypto::SecretKey mnSigningPrivKey;
+            Crypto::PublicKey mnSigningPubKey;
+            if (!parseMnSigningKey(config.mnSigningKey, mnSigningPrivKey, mnSigningPubKey))
+            {
+                logger(ERROR, BRIGHT_RED) << "Invalid --mn-signing-key: must be 64 hex characters (32-byte private key).";
+                return 1;
+            }
+
+            // Find the masternode ID registered with this signing key.
+            const uint32_t currentHeight = ccore->getTopBlockIndex();
+            const auto snapshots = ccore->getMasternodeSnapshots(0, 10000);
+            Crypto::Hash myMasternodeId;
+            bool foundMn = false;
+            for (const auto &snap : snapshots)
+            {
+                if (snap.hasSigningKey && snap.signingKey == mnSigningPubKey)
+                {
+                    myMasternodeId = snap.masternodeId;
+                    foundMn = true;
+                    break;
+                }
+            }
+
+            if (!foundMn)
+            {
+                logger(WARNING) << "--mn-signing-key provided but no registered masternode found with this signing key. "
+                                   "Signer will not start until the registration is confirmed on-chain.";
+            }
+            else
+            {
+                logger(INFO) << "Starting masternode signer for MN " << Common::podToHex(myMasternodeId);
+                masternodeSigner = std::make_unique<MasternodeSigner>(
+                    *ccore, *cprotocol, mnSigningPrivKey, mnSigningPubKey, myMasternodeId);
+                masternodeSigner->start();
+
+                // Wire Core event callbacks so the signer is notified of new blocks and mempool TXs.
+                MasternodeSigner *signerPtr = masternodeSigner.get();
+                ccore->setBlockNotifyCallback(
+                    [signerPtr](uint32_t height, const Crypto::Hash &hash) {
+                        signerPtr->onNewBlock(height, hash);
+                    });
+                ccore->setTransactionNotifyCallback(
+                    [signerPtr](const Crypto::Hash &txHash) {
+                        signerPtr->onNewTransaction(txHash);
+                    });
+            }
+        }
+
         DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
         dch.start_boot_compaction_if_needed();
 
@@ -702,6 +755,12 @@ int main(int argc, char *argv[])
         {
             logger(INFO) << "Stopping ZMQ publisher...";
             zmqPublisher->stop();
+        }
+
+        if (masternodeSigner)
+        {
+            logger(INFO) << "Stopping masternode signer...";
+            masternodeSigner->stop();
         }
 
         logger(INFO) << "Stopping core rpc server...";

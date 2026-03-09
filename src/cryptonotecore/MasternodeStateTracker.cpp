@@ -41,7 +41,9 @@ namespace CryptoNote
         uint32_t collateralGlobalOutputIndex,
         const Crypto::KeyImage &collateralKeyImage,
         const Crypto::PublicKey &collateralOutputKey,
-        const Crypto::Hash &endpointCommitment)
+        const Crypto::Hash &endpointCommitment,
+        bool hasSigningKey,
+        const Crypto::PublicKey &signingKey)
     {
         State &state = m_states[masternodeId];
         state.status = Status::Registered;
@@ -55,6 +57,22 @@ namespace CryptoNote
         state.collateralKeyImage = collateralKeyImage;
         state.collateralOutputKey = collateralOutputKey;
         state.endpointCommitment = endpointCommitment;
+        state.hasSigningKey = hasSigningKey;
+        if (hasSigningKey)
+        {
+            state.signingKey = signingKey;
+        }
+    }
+
+    bool MasternodeStateTracker::getSigningKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &signingKey) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end() || !it->second.hasSigningKey)
+        {
+            return false;
+        }
+        signingKey = it->second.signingKey;
+        return true;
     }
 
     void MasternodeStateTracker::activateMasternode(const Crypto::Hash &masternodeId)
@@ -444,6 +462,11 @@ namespace CryptoNote
             snapshot.spendLocked = isSpendLocked(id, currentHeight);
             snapshot.lastPaidHeight = stateIt->second.lastPaidHeight;
             snapshot.rewardInFairnessWindow = getRewardAmountInFairnessWindow(id, currentHeight);
+            snapshot.hasSigningKey = stateIt->second.hasSigningKey;
+            if (stateIt->second.hasSigningKey)
+            {
+                snapshot.signingKey = stateIt->second.signingKey;
+            }
             snapshots.push_back(snapshot);
         }
 
@@ -755,6 +778,8 @@ namespace CryptoNote
                                                            : nlohmann::json(nullptr);
             item["deactivation_height"] =
                 state.deactivationHeight.has_value() ? nlohmann::json(*state.deactivationHeight) : nlohmann::json(nullptr);
+            item["signing_key"] =
+                state.hasSigningKey ? nlohmann::json(Common::podToHex(state.signingKey)) : nlohmann::json(nullptr);
 
             nlohmann::json health = nlohmann::json::array();
             for (const auto &sample : state.healthSamples)
@@ -871,6 +896,17 @@ namespace CryptoNote
             if (item.contains("deactivation_height") && !item.at("deactivation_height").is_null())
             {
                 state.deactivationHeight = item.at("deactivation_height").get<uint32_t>();
+            }
+
+            if (item.contains("signing_key") && !item.at("signing_key").is_null())
+            {
+                Crypto::PublicKey sk;
+                if (!Common::podFromHex(item.at("signing_key").get<std::string>(), sk))
+                {
+                    return false;
+                }
+                state.hasSigningKey = true;
+                state.signingKey = sk;
             }
 
             if (item.contains("health"))

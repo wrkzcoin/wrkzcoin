@@ -153,10 +153,34 @@ namespace CryptoNote
             NOTIFY_MISSING_TXS::request &arg,
             CryptoNoteConnectionContext &context);
 
+        int handle_notify_chainlock_vote(
+            int command,
+            NOTIFY_CHAINLOCK_VOTE::request &arg,
+            CryptoNoteConnectionContext &context);
+
+        int handle_notify_chainlock(
+            int command,
+            NOTIFY_CHAINLOCK::request &arg,
+            CryptoNoteConnectionContext &context);
+
+        int handle_notify_instantsend_vote(
+            int command,
+            NOTIFY_INSTANTSEND_VOTE::request &arg,
+            CryptoNoteConnectionContext &context);
+
+        int handle_notify_instantsend_lock(
+            int command,
+            NOTIFY_INSTANTSEND_LOCK::request &arg,
+            CryptoNoteConnectionContext &context);
+
         //----------------- i_cryptonote_protocol ----------------------------------
         virtual void relayBlock(NOTIFY_NEW_BLOCK::request &arg) override;
 
         virtual void relayTransactions(const std::vector<BinaryArray> &transactions) override;
+
+        virtual void relayChainLockVote(NOTIFY_CHAINLOCK_VOTE::request &arg) override;
+
+        virtual void relayInstantSendVote(NOTIFY_INSTANTSEND_VOTE::request &arg) override;
 
         //----------------------------------------------------------------------------------
         uint32_t get_current_blockchain_height() const;

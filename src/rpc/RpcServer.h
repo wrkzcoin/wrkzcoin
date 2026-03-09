@@ -134,6 +134,12 @@ class RpcServer
     std::tuple<Error, uint16_t>
         masternodes(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
 
+    std::tuple<Error, uint16_t>
+        chainlock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+
+    std::tuple<Error, uint16_t>
+        instantSendLock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+
     ///////////////////
     /* POST REQUESTS */
     ///////////////////

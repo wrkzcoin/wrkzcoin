@@ -308,6 +308,10 @@ namespace DaemonConfig
             "rpc-use-ipv6",
             "Enable IPv6 support for the RPC service",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "mn-signing-key",
+            "Masternode signing private key (64 hex chars). Enables ChainLock/InstantSend signing.",
+            cxxopts::value<std::string>()->default_value(""),
+            "<hex>")(
             "rpc-bind-ip",
             "Interface IP address for the RPC service",
             cxxopts::value<std::string>()->default_value(config.rpcInterface),
@@ -632,6 +636,11 @@ namespace DaemonConfig
             if (cli.count("rpc-use-ipv6") > 0)
             {
                 config.rpcUseIpv6 = cli["rpc-use-ipv6"].as<bool>();
+            }
+
+            if (cli.count("mn-signing-key") > 0)
+            {
+                config.mnSigningKey = cli["mn-signing-key"].as<std::string>();
             }
 
             if (cli.count("rpc-bind-ip") > 0)
@@ -1070,6 +1079,11 @@ namespace DaemonConfig
                 else if (cfgKey.compare("rpc-use-ipv6") == 0)
                 {
                     config.rpcUseIpv6 = cfgValue.at(0) == '1';
+                    updated = true;
+                }
+                else if (cfgKey.compare("mn-signing-key") == 0)
+                {
+                    config.mnSigningKey = cfgValue;
                     updated = true;
                 }
                 else if (cfgKey.compare("add-exclusive-node") == 0)
@@ -1529,6 +1543,11 @@ namespace DaemonConfig
             config.rpcUseIpv6 = j["rpc-use-ipv6"].get<bool>();
         }
 
+        if (j.contains("mn-signing-key"))
+        {
+            config.mnSigningKey = j["mn-signing-key"].get<std::string>();
+        }
+
         if (j.contains("rpc-bind-ip"))
         {
             config.rpcInterface = j["rpc-bind-ip"].get<std::string>();
@@ -1737,6 +1756,7 @@ namespace DaemonConfig
         j["p2p-bind-port-ipv6"] = config.p2pBindPortIpv6;
         j["rpc-bind-ipv6-address"] = config.rpcBindIpv6Address;
         j["rpc-use-ipv6"] = config.rpcUseIpv6;
+        j["mn-signing-key"] = config.mnSigningKey;
         j["rpc-bind-ip"] = config.rpcInterface;
         j["rpc-bind-port"] = config.rpcPort;
         j["add-exclusive-node"] = config.exclusiveNodes;

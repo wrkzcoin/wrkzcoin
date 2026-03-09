@@ -49,6 +49,8 @@ namespace CryptoNote
             bool spendLocked = false;
             uint32_t lastPaidHeight = 0;
             uint64_t rewardInFairnessWindow = 0;
+            bool hasSigningKey = false;
+            Crypto::PublicKey signingKey = Crypto::PublicKey {{0}};
         };
 
         void registerMasternode(
@@ -62,7 +64,11 @@ namespace CryptoNote
             uint32_t collateralGlobalOutputIndex,
             const Crypto::KeyImage &collateralKeyImage,
             const Crypto::PublicKey &collateralOutputKey,
-            const Crypto::Hash &endpointCommitment);
+            const Crypto::Hash &endpointCommitment,
+            bool hasSigningKey = false,
+            const Crypto::PublicKey &signingKey = Crypto::PublicKey {{0}});
+
+        bool getSigningKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &signingKey) const;
 
         void activateMasternode(const Crypto::Hash &masternodeId);
 
@@ -192,6 +198,8 @@ namespace CryptoNote
             std::optional<Crypto::Hash> endpointCommitment;
             std::optional<uint32_t> lastEndpointUpdateHeight;
             Crypto::PublicKey payoutKey = Crypto::PublicKey {{0}};
+            bool hasSigningKey = false;
+            Crypto::PublicKey signingKey = Crypto::PublicKey {{0}};
         };
 
         static bool hashLess(const Crypto::Hash &lhs, const Crypto::Hash &rhs);

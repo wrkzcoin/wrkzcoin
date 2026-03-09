@@ -8,6 +8,7 @@
 #include "CryptoNoteProtocolHandler.h"
 
 #include "common/CryptoNoteTools.h"
+#include "cryptonotecore/Core.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "cryptonotecore/CryptoNoteFormatUtils.h"
 #include "cryptonotecore/Currency.h"
@@ -571,6 +572,10 @@ namespace CryptoNote
             HANDLE_NOTIFY(NOTIFY_REQUEST_TX_POOL, handleRequestTxPool)
             HANDLE_NOTIFY(NOTIFY_NEW_LITE_BLOCK, handle_notify_new_lite_block)
             HANDLE_NOTIFY(NOTIFY_MISSING_TXS, handle_notify_missing_txs)
+            HANDLE_NOTIFY(NOTIFY_CHAINLOCK_VOTE, handle_notify_chainlock_vote)
+            HANDLE_NOTIFY(NOTIFY_CHAINLOCK, handle_notify_chainlock)
+            HANDLE_NOTIFY(NOTIFY_INSTANTSEND_VOTE, handle_notify_instantsend_vote)
+            HANDLE_NOTIFY(NOTIFY_INSTANTSEND_LOCK, handle_notify_instantsend_lock)
 
             default:
                 handled = false;
@@ -1395,6 +1400,211 @@ namespace CryptoNote
         return 1;
     }
 
+    int CryptoNoteProtocolHandler::handle_notify_chainlock_vote(
+        int command,
+        NOTIFY_CHAINLOCK_VOTE::request &arg,
+        CryptoNoteConnectionContext &context)
+    {
+        logger(Logging::TRACE) << context << "NOTIFY_CHAINLOCK_VOTE height=" << arg.height;
+
+        ChainLockVote vote;
+        vote.height = arg.height;
+        vote.blockHash = arg.blockHash;
+        vote.masternodeId = arg.masternodeId;
+        vote.signingKey = arg.signingKey;
+        vote.signature = arg.signature;
+
+        auto &core = dynamic_cast<Core &>(m_core);
+        const bool assembled = core.addChainLockVote(vote);
+
+        // Relay valid vote to all peers (flood).
+        const auto buf = LevinProtocol::encode(arg);
+        m_p2p->externalRelayNotifyToAll(NOTIFY_CHAINLOCK_VOTE::ID, buf, &context.m_connection_id);
+
+        if (assembled)
+        {
+            // Broadcast the assembled ChainLock.
+            const auto clOpt = core.getChainLock(arg.height);
+            if (clOpt.has_value())
+            {
+                NOTIFY_CHAINLOCK::request clReq;
+                clReq.height = clOpt->height;
+                clReq.blockHash = clOpt->blockHash;
+                for (const auto &v : clOpt->votes)
+                {
+                    BinaryArray entry(sizeof(Crypto::Hash) * 2 + sizeof(Crypto::Signature));
+                    size_t offset = 0;
+                    std::copy_n(v.masternodeId.data, sizeof(Crypto::Hash), entry.data() + offset);
+                    offset += sizeof(Crypto::Hash);
+                    std::copy_n(v.signingKey.data, sizeof(Crypto::PublicKey), entry.data() + offset);
+                    offset += sizeof(Crypto::PublicKey);
+                    std::copy_n(v.signature.data, sizeof(Crypto::Signature), entry.data() + offset);
+                    clReq.votes.push_back(std::move(entry));
+                }
+                const auto clBuf = LevinProtocol::encode(clReq);
+                m_p2p->externalRelayNotifyToAll(NOTIFY_CHAINLOCK::ID, clBuf, nullptr);
+                logger(Logging::INFO) << "ChainLock assembled for height=" << arg.height
+                                      << " block=" << Common::podToHex(arg.blockHash);
+            }
+        }
+
+        return 1;
+    }
+
+    int CryptoNoteProtocolHandler::handle_notify_chainlock(
+        int command,
+        NOTIFY_CHAINLOCK::request &arg,
+        CryptoNoteConnectionContext &context)
+    {
+        logger(Logging::TRACE) << context << "NOTIFY_CHAINLOCK height=" << arg.height;
+
+        // Decode votes from binary blobs.
+        ChainLock cl;
+        cl.height = arg.height;
+        cl.blockHash = arg.blockHash;
+        constexpr size_t entrySize = sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Signature);
+        for (const auto &entry : arg.votes)
+        {
+            if (entry.size() != entrySize)
+            {
+                continue;
+            }
+            ChainLockVote vote;
+            vote.height = arg.height;
+            vote.blockHash = arg.blockHash;
+            size_t offset = 0;
+            std::copy_n(entry.data() + offset, sizeof(Crypto::Hash), vote.masternodeId.data);
+            offset += sizeof(Crypto::Hash);
+            std::copy_n(entry.data() + offset, sizeof(Crypto::PublicKey), vote.signingKey.data);
+            offset += sizeof(Crypto::PublicKey);
+            std::copy_n(entry.data() + offset, sizeof(Crypto::Signature), vote.signature.data);
+            cl.votes.push_back(vote);
+        }
+
+        auto &core = dynamic_cast<Core &>(m_core);
+        if (core.addChainLock(cl))
+        {
+            // Relay to all peers.
+            const auto buf = LevinProtocol::encode(arg);
+            m_p2p->externalRelayNotifyToAll(NOTIFY_CHAINLOCK::ID, buf, &context.m_connection_id);
+            logger(Logging::INFO) << "ChainLock stored from peer for height=" << arg.height;
+        }
+
+        return 1;
+    }
+
+    int CryptoNoteProtocolHandler::handle_notify_instantsend_vote(
+        int command,
+        NOTIFY_INSTANTSEND_VOTE::request &arg,
+        CryptoNoteConnectionContext &context)
+    {
+        logger(Logging::TRACE) << context << "NOTIFY_INSTANTSEND_VOTE tx=" << Common::podToHex(arg.txHash);
+
+        InstantSendVote vote;
+        vote.txHash = arg.txHash;
+        vote.masternodeId = arg.masternodeId;
+        vote.signingKey = arg.signingKey;
+        vote.signature = arg.signature;
+
+        auto &core = dynamic_cast<Core &>(m_core);
+        const bool assembled = core.addInstantSendVote(vote);
+
+        // Relay valid vote.
+        const auto buf = LevinProtocol::encode(arg);
+        m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_VOTE::ID, buf, &context.m_connection_id);
+
+        if (assembled)
+        {
+            // Get the lock and broadcast it.
+            const auto [found, txData] = m_core.getPoolTransaction(arg.txHash);
+            if (found)
+            {
+                const auto rawTx = Core::getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
+                NOTIFY_INSTANTSEND_LOCK::request lockReq;
+                lockReq.txHash = arg.txHash;
+                for (const auto &input : rawTx.inputs)
+                {
+                    BinaryArray ki(sizeof(Crypto::KeyImage));
+                    std::copy_n(input.keyImage.data, sizeof(Crypto::KeyImage), ki.data());
+                    lockReq.keyImages.push_back(std::move(ki));
+
+                    const auto lockOpt = core.getInstantSendLock(input.keyImage);
+                    if (lockOpt.has_value() && lockReq.votes.empty())
+                    {
+                        for (const auto &v : lockOpt->votes)
+                        {
+                            BinaryArray entry(sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Signature));
+                            size_t offset = 0;
+                            std::copy_n(v.masternodeId.data, sizeof(Crypto::Hash), entry.data() + offset);
+                            offset += sizeof(Crypto::Hash);
+                            std::copy_n(v.signingKey.data, sizeof(Crypto::PublicKey), entry.data() + offset);
+                            offset += sizeof(Crypto::PublicKey);
+                            std::copy_n(v.signature.data, sizeof(Crypto::Signature), entry.data() + offset);
+                            lockReq.votes.push_back(std::move(entry));
+                        }
+                    }
+                }
+                const auto lockBuf = LevinProtocol::encode(lockReq);
+                m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_LOCK::ID, lockBuf, nullptr);
+                logger(Logging::INFO) << "InstantSend lock assembled for tx=" << Common::podToHex(arg.txHash);
+            }
+        }
+
+        return 1;
+    }
+
+    int CryptoNoteProtocolHandler::handle_notify_instantsend_lock(
+        int command,
+        NOTIFY_INSTANTSEND_LOCK::request &arg,
+        CryptoNoteConnectionContext &context)
+    {
+        logger(Logging::TRACE) << context << "NOTIFY_INSTANTSEND_LOCK tx=" << Common::podToHex(arg.txHash);
+
+        // Decode key images and votes.
+        InstantSendLock lock;
+        lock.txHash = arg.txHash;
+        lock.lockedAtHeight = m_core.getTopBlockIndex();
+
+        for (const auto &ki : arg.keyImages)
+        {
+            if (ki.size() != sizeof(Crypto::KeyImage))
+            {
+                continue;
+            }
+            Crypto::KeyImage keyImage;
+            std::copy_n(ki.data(), sizeof(Crypto::KeyImage), keyImage.data);
+            lock.keyImages.push_back(keyImage);
+        }
+
+        constexpr size_t entrySize = sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Signature);
+        for (const auto &entry : arg.votes)
+        {
+            if (entry.size() != entrySize)
+            {
+                continue;
+            }
+            InstantSendVote vote;
+            vote.txHash = arg.txHash;
+            size_t offset = 0;
+            std::copy_n(entry.data() + offset, sizeof(Crypto::Hash), vote.masternodeId.data);
+            offset += sizeof(Crypto::Hash);
+            std::copy_n(entry.data() + offset, sizeof(Crypto::PublicKey), vote.signingKey.data);
+            offset += sizeof(Crypto::PublicKey);
+            std::copy_n(entry.data() + offset, sizeof(Crypto::Signature), vote.signature.data);
+            lock.votes.push_back(vote);
+        }
+
+        auto &core = dynamic_cast<Core &>(m_core);
+        if (core.addInstantSendLock(lock))
+        {
+            const auto buf = LevinProtocol::encode(arg);
+            m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_LOCK::ID, buf, &context.m_connection_id);
+            logger(Logging::INFO) << "InstantSend lock stored from peer for tx=" << Common::podToHex(arg.txHash);
+        }
+
+        return 1;
+    }
+
     void CryptoNoteProtocolHandler::relayBlock(NOTIFY_NEW_BLOCK::request &arg)
     {
         // generate a lite block request from the received normal block.
@@ -1445,6 +1655,18 @@ namespace CryptoNote
     {
         auto buf = LevinProtocol::encode(NOTIFY_NEW_TRANSACTIONS::request {transactions});
         m_p2p->externalRelayNotifyToAll(NOTIFY_NEW_TRANSACTIONS::ID, buf, nullptr);
+    }
+
+    void CryptoNoteProtocolHandler::relayChainLockVote(NOTIFY_CHAINLOCK_VOTE::request &arg)
+    {
+        const auto buf = LevinProtocol::encode(arg);
+        m_p2p->externalRelayNotifyToAll(NOTIFY_CHAINLOCK_VOTE::ID, buf, nullptr);
+    }
+
+    void CryptoNoteProtocolHandler::relayInstantSendVote(NOTIFY_INSTANTSEND_VOTE::request &arg)
+    {
+        const auto buf = LevinProtocol::encode(arg);
+        m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_VOTE::ID, buf, nullptr);
     }
 
     void CryptoNoteProtocolHandler::requestMissingPoolTransactions(const CryptoNoteConnectionContext &context)

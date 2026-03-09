@@ -13,6 +13,8 @@
 namespace CryptoNote
 {
     struct NOTIFY_NEW_BLOCK_request;
+    struct NOTIFY_CHAINLOCK_VOTE_request;
+    struct NOTIFY_INSTANTSEND_VOTE_request;
 
     /************************************************************************/
     /*                                                                      */
@@ -22,6 +24,12 @@ namespace CryptoNote
         virtual void relayBlock(NOTIFY_NEW_BLOCK_request &arg) = 0;
 
         virtual void relayTransactions(const std::vector<BinaryArray> &transactions) = 0;
+
+        // Relay a ChainLock vote originating from this node's own MN signer.
+        virtual void relayChainLockVote(NOTIFY_CHAINLOCK_VOTE_request &arg) = 0;
+
+        // Relay an InstantSend vote originating from this node's own MN signer.
+        virtual void relayInstantSendVote(NOTIFY_INSTANTSEND_VOTE_request &arg) = 0;
     };
 
     struct ICryptoNoteProtocolHandler : ICryptoNoteProtocol, public ICryptoNoteProtocolQuery

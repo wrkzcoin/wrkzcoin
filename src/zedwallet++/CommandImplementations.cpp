@@ -1240,10 +1240,17 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
         return;
     }
 
+    // Generate a dedicated signing keypair for ChainLock/InstantSend participation.
+    // The private key must be saved by the operator and supplied via --mn-signing-key.
+    Crypto::PublicKey signingPublicKey;
+    Crypto::SecretKey signingPrivateKey;
+    Crypto::generate_keys(signingPublicKey, signingPrivateKey);
+
     std::vector<uint8_t> unsignedPayload;
     unsignedPayload.reserve(
         4 + 1 + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
-        + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash));
+        + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey)
+        + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) /* signingKey */);
     unsignedPayload.push_back('M');
     unsignedPayload.push_back('N');
     unsignedPayload.push_back('0');
@@ -1282,6 +1289,11 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
         unsignedPayload.end(),
         endpointCommitment.data,
         endpointCommitment.data + sizeof(endpointCommitment.data));
+    // v2: append signing public key to unsigned payload
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        signingPublicKey.data,
+        signingPublicKey.data + sizeof(signingPublicKey.data));
 
     Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
     Crypto::Signature signature;
@@ -1369,6 +1381,11 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
               << SuccessMsg(Common::podToHex(collateralKeyImage)) << std::endl;
     std::cout << InformationMsg("Endpoint commitment: ")
               << SuccessMsg(Common::podToHex(endpointCommitment)) << std::endl;
+    std::cout << InformationMsg("Signing public key:  ")
+              << SuccessMsg(Common::podToHex(signingPublicKey)) << std::endl;
+    std::cout << WarningMsg("Signing private key: ") << WarningMsg(Common::podToHex(signingPrivateKey)) << std::endl;
+    std::cout << WarningMsg("IMPORTANT: Save the signing private key above. Pass it to your daemon with")  << std::endl;
+    std::cout << WarningMsg("           --mn-signing-key=<hex> to enable ChainLock/InstantSend signing.") << std::endl;
     std::cout << InformationMsg("This operation binds and locks the selected collateral output in consensus.")
               << std::endl;
     std::cout << WarningMsg("Recommendation: use a dedicated wallet for masternode registration.")

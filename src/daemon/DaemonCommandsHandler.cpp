@@ -221,6 +221,14 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         std::bind(&DaemonCommandsHandler::masternodes, this, std::placeholders::_1),
         "Show masternode count/list: masternodes [limit] [offset]");
     m_consoleHandler.setHandler(
+        "print_chainlocks",
+        std::bind(&DaemonCommandsHandler::print_chainlocks, this, std::placeholders::_1),
+        "Show recent ChainLock status: print_chainlocks [count]");
+    m_consoleHandler.setHandler(
+        "print_islocks",
+        std::bind(&DaemonCommandsHandler::print_islocks, this, std::placeholders::_1),
+        "Show active InstantSend locks: print_islocks");
+    m_consoleHandler.setHandler(
         "mn_registration_string",
         std::bind(&DaemonCommandsHandler::mn_registration_string, this, std::placeholders::_1),
         "Generate masternode registration token: mn_registration_string [optional_mn_id_hex]");
@@ -918,6 +926,60 @@ bool DaemonCommandsHandler::mn_registration_string(const std::vector<std::string
     std::cout << InformationMsg("Wallet CLI command: ")
               << SuccessMsg("mn_register " + token + " <addr:port | [ipv6]:port>") << std::endl;
 
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::print_chainlocks(const std::vector<std::string> &args)
+{
+    // Default: show last 10 heights from the top.
+    uint32_t count = 10;
+    if (!args.empty())
+    {
+        try
+        {
+            count = static_cast<uint32_t>(std::stoul(args[0]));
+        }
+        catch (...)
+        {
+            std::cout << WarningMsg("Invalid count. Usage: print_chainlocks [count]") << std::endl;
+            return false;
+        }
+    }
+
+    const uint32_t topHeight = m_core.getTopBlockIndex();
+    const uint32_t startHeight = (topHeight >= count) ? (topHeight - count + 1) : 1;
+
+    std::cout << InformationMsg("ChainLock status for heights " + std::to_string(startHeight)
+                                + " - " + std::to_string(topHeight) + ":") << std::endl;
+
+    bool anyLocked = false;
+    for (uint32_t h = startHeight; h <= topHeight; ++h)
+    {
+        if (m_core.hasChainLock(h))
+        {
+            anyLocked = true;
+            const auto lock = m_core.getChainLock(h);
+            std::cout << SuccessMsg("  [LOCKED] height=" + std::to_string(h))
+                      << InformationMsg(" votes=" + std::to_string(lock ? lock->votes.size() : 0))
+                      << std::endl;
+        }
+    }
+
+    if (!anyLocked)
+    {
+        std::cout << InformationMsg("  No ChainLocks in this range.") << std::endl;
+    }
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::print_islocks(const std::vector<std::string> &args)
+{
+    std::cout << InformationMsg("Active InstantSend locks are tracked per key-image. "
+                                "Use GET /instantsend/<txhash> via the RPC to query a specific TX.")
+              << std::endl;
     return true;
 }
 

@@ -19,6 +19,9 @@
 #include "ITransactionPool.h"
 #include "ITransactionPoolCleaner.h"
 #include "IUpgradeManager.h"
+#include "ChainLockManager.h"
+#include "InstantSendManager.h"
+#include "MasternodeQuorum.h"
 #include "MasternodeStateTracker.h"
 #include "MasternodeTx.h"
 #include "MessageQueue.h"
@@ -27,6 +30,7 @@
 #include <WalletTypes.h>
 #include <common/FileSystemShim.h>
 #include <ctime>
+#include <functional>
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
@@ -198,6 +202,9 @@ namespace CryptoNote
 
         size_t getMasternodeCount() const;
 
+        // Returns the IDs of all masternodes that are currently eligible for rewards / quorum participation.
+        std::vector<Crypto::Hash> getActiveMasternodeSet(uint32_t height) const;
+
         std::vector<MasternodeStateTracker::Snapshot> getMasternodeSnapshots(size_t offset, size_t limit) const;
 
         size_t getMasternodeEligibleCount(uint32_t height) const;
@@ -207,6 +214,24 @@ namespace CryptoNote
         std::optional<Crypto::Hash> getMasternodeRewardWinner(uint32_t height) const;
 
         static const char *masternodeStatusToString(MasternodeStateTracker::Status status);
+
+        // Notification callbacks (called synchronously after block/tx commit; no coroutine context needed).
+        void setBlockNotifyCallback(std::function<void(uint32_t, const Crypto::Hash &)> cb);
+        void setTransactionNotifyCallback(std::function<void(const Crypto::Hash &)> cb);
+
+        // ChainLock API
+        bool addChainLockVote(const ChainLockVote &vote);
+        bool addChainLock(const ChainLock &cl);
+        bool hasChainLock(uint32_t height) const;
+        std::optional<ChainLock> getChainLock(uint32_t height) const;
+        bool isChainLockConflict(uint32_t height, const Crypto::Hash &blockHash) const;
+
+        // InstantSend API
+        bool addInstantSendVote(const InstantSendVote &vote);
+        bool addInstantSendLock(const InstantSendLock &lock);
+        bool isInstantSendLocked(const Crypto::KeyImage &keyImage) const;
+        bool isInstantSendConflict(const Crypto::KeyImage &keyImage, const Crypto::Hash &txHash) const;
+        std::optional<InstantSendLock> getInstantSendLock(const Crypto::KeyImage &keyImage) const;
 
         virtual std::time_t getStartTime() const;
 
@@ -301,6 +326,16 @@ namespace CryptoNote
 
         /* Tracks masternode health, fairness accounting, and spend-lock states. */
         MasternodeStateTracker masternodeStateTracker;
+
+        /* ChainLock vote collection and finalized lock storage. */
+        ChainLockManager m_chainLockManager;
+
+        /* InstantSend lock collection and key-image lock storage. */
+        InstantSendManager m_instantSendManager;
+
+        /* Optional callbacks set by the daemon to forward events to MasternodeSigner. */
+        std::function<void(uint32_t, const Crypto::Hash &)> m_blockNotifyCallback;
+        std::function<void(const Crypto::Hash &)> m_txNotifyCallback;
 
         bool isMasternodeFeatureForkActive(uint32_t height) const;
 

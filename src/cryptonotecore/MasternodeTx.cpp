@@ -18,10 +18,17 @@ namespace CryptoNote
         constexpr uint8_t MN_MAGIC_3 = '1';
         constexpr size_t MN_BASE_PAYLOAD_SIZE = 4 + 1 + sizeof(Crypto::Hash);
         constexpr size_t MN_SIG_PAYLOAD_SIZE = sizeof(Crypto::Signature);
-        constexpr size_t MN_REGISTER_UNSIGNED_PAYLOAD_SIZE =
+        // Unsigned portion of a Register payload (no signing key — legacy v1).
+        constexpr size_t MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 =
             MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
             + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey)
             + sizeof(Crypto::Hash);
+        constexpr size_t MN_REGISTER_PAYLOAD_SIZE_V1 =
+            MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 + MN_SIG_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
+
+        // Unsigned portion of a Register payload including the dedicated signing key (v2).
+        constexpr size_t MN_REGISTER_UNSIGNED_PAYLOAD_SIZE =
+            MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 + sizeof(Crypto::PublicKey); // + signingKey
         constexpr size_t MN_REGISTER_PAYLOAD_SIZE = MN_REGISTER_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
         constexpr size_t MN_HEARTBEAT_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + 1 + MN_SIG_PAYLOAD_SIZE;
         constexpr size_t MN_ATTEST_UNSIGNED_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + 1;
@@ -111,6 +118,8 @@ namespace CryptoNote
         payload.endpointCommitment = Crypto::Hash {{0}};
         payload.hasNewEndpointCommitment = false;
         payload.newEndpointCommitment = Crypto::Hash {{0}};
+        payload.hasSigningKey = false;
+        payload.signingKey = Crypto::PublicKey {{0}};
         payload.hasVerifierKey = false;
         payload.verifierKey = Crypto::PublicKey {{0}};
         payload.hasCollateralSignature = false;
@@ -119,11 +128,16 @@ namespace CryptoNote
 
         if (type == MasternodeTxType::Register)
         {
-            if (data.size() != MN_REGISTER_PAYLOAD_SIZE)
+            // Accept both v1 (no signingKey) and v2 (with signingKey) payloads.
+            const bool isV2 = (data.size() == MN_REGISTER_PAYLOAD_SIZE);
+            const bool isV1 = (data.size() == MN_REGISTER_PAYLOAD_SIZE_V1);
+            if (!isV1 && !isV2)
             {
                 error = "Register payload has invalid size";
                 return MasternodeTxParseResult::Invalid;
             }
+
+            const size_t unsignedSize = isV2 ? MN_REGISTER_UNSIGNED_PAYLOAD_SIZE : MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1;
 
             payload.hasPayoutKey = true;
             std::copy_n(data.begin() + MN_BASE_PAYLOAD_SIZE, sizeof(Crypto::PublicKey), payload.payoutKey.data);
@@ -152,25 +166,32 @@ namespace CryptoNote
                     + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage),
                 sizeof(Crypto::PublicKey),
                 payload.collateralOutputKey.data);
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash)
-                    + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage)
-                    + sizeof(Crypto::PublicKey),
-                sizeof(Crypto::Hash),
-                payload.endpointCommitment.data);
+            const size_t endpointOffset =
+                MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash)
+                + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage)
+                + sizeof(Crypto::PublicKey);
+            std::copy_n(data.begin() + endpointOffset, sizeof(Crypto::Hash), payload.endpointCommitment.data);
             payload.hasEndpointCommitment = true;
             payload.hasCollateral = true;
-            std::copy_n(
-                data.begin() + MN_REGISTER_UNSIGNED_PAYLOAD_SIZE,
-                sizeof(Crypto::Signature),
-                payload.signature.data);
+
+            if (isV2)
+            {
+                // signingKey follows endpointCommitment in the unsigned portion
+                std::copy_n(
+                    data.begin() + endpointOffset + sizeof(Crypto::Hash),
+                    sizeof(Crypto::PublicKey),
+                    payload.signingKey.data);
+                payload.hasSigningKey = true;
+            }
+
+            std::copy_n(data.begin() + unsignedSize, sizeof(Crypto::Signature), payload.signature.data);
             payload.hasSignature = true;
             std::copy_n(
-                data.begin() + MN_REGISTER_UNSIGNED_PAYLOAD_SIZE + sizeof(Crypto::Signature),
+                data.begin() + unsignedSize + sizeof(Crypto::Signature),
                 sizeof(Crypto::Signature),
                 payload.collateralSignature.data);
             payload.hasCollateralSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_REGISTER_UNSIGNED_PAYLOAD_SIZE);
+            payload.unsignedPayload.assign(data.begin(), data.begin() + unsignedSize);
         }
         else if (type == MasternodeTxType::Heartbeat)
         {

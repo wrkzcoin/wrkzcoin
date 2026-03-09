@@ -208,4 +208,106 @@ namespace CryptoNote
         const static int ID = BC_COMMANDS_POOL_BASE + 10;
         typedef NOTIFY_MISSING_TXS_request request;
     };
+
+    // -------------------------------------------------------------------------
+    // ChainLock messages (IDs 2011-2012)
+    // -------------------------------------------------------------------------
+
+    // A single masternode's vote to ChainLock a block at a given height.
+    struct NOTIFY_CHAINLOCK_VOTE_request
+    {
+        uint32_t height;
+        Crypto::Hash blockHash;
+        Crypto::Hash masternodeId;
+        Crypto::PublicKey signingKey;
+        Crypto::Signature signature;
+
+        void serialize(ISerializer &s)
+        {
+            KV_MEMBER(height)
+            s.binary(&blockHash, sizeof(blockHash), "block_hash");
+            s.binary(&masternodeId, sizeof(masternodeId), "mn_id");
+            s.binary(&signingKey, sizeof(signingKey), "signing_key");
+            s.binary(&signature, sizeof(signature), "sig");
+        }
+    };
+
+    struct NOTIFY_CHAINLOCK_VOTE
+    {
+        const static int ID = BC_COMMANDS_POOL_BASE + 11;
+        typedef NOTIFY_CHAINLOCK_VOTE_request request;
+    };
+
+    // An assembled ChainLock (>= threshold votes for the same height + blockHash).
+    struct NOTIFY_CHAINLOCK_request
+    {
+        uint32_t height;
+        Crypto::Hash blockHash;
+        // votes: each entry is [mnId(32) | signingKey(32) | sig(64)]
+        std::vector<BinaryArray> votes;
+
+        void serialize(ISerializer &s)
+        {
+            KV_MEMBER(height)
+            s.binary(&blockHash, sizeof(blockHash), "block_hash");
+            serializeAsBinary(votes, "votes", s);
+        }
+    };
+
+    struct NOTIFY_CHAINLOCK
+    {
+        const static int ID = BC_COMMANDS_POOL_BASE + 12;
+        typedef NOTIFY_CHAINLOCK_request request;
+    };
+
+    // -------------------------------------------------------------------------
+    // InstantSend messages (IDs 2013-2014)
+    // -------------------------------------------------------------------------
+
+    // A single masternode's vote to IS-lock a transaction.
+    struct NOTIFY_INSTANTSEND_VOTE_request
+    {
+        Crypto::Hash txHash;
+        Crypto::Hash masternodeId;
+        Crypto::PublicKey signingKey;
+        Crypto::Signature signature;
+
+        void serialize(ISerializer &s)
+        {
+            s.binary(&txHash, sizeof(txHash), "tx_hash");
+            s.binary(&masternodeId, sizeof(masternodeId), "mn_id");
+            s.binary(&signingKey, sizeof(signingKey), "signing_key");
+            s.binary(&signature, sizeof(signature), "sig");
+        }
+    };
+
+    struct NOTIFY_INSTANTSEND_VOTE
+    {
+        const static int ID = BC_COMMANDS_POOL_BASE + 13;
+        typedef NOTIFY_INSTANTSEND_VOTE_request request;
+    };
+
+    // An assembled InstantSend lock.
+    struct NOTIFY_INSTANTSEND_LOCK_request
+    {
+        Crypto::Hash txHash;
+        // key_images: each is 32 bytes serialized as BinaryArray
+        std::vector<BinaryArray> keyImages;
+        // votes: each entry is [mnId(32) | signingKey(32) | sig(64)]
+        std::vector<BinaryArray> votes;
+
+        void serialize(ISerializer &s)
+        {
+            s.binary(&txHash, sizeof(txHash), "tx_hash");
+            serializeAsBinary(keyImages, "key_images", s);
+            serializeAsBinary(votes, "votes", s);
+        }
+    };
+
+    struct NOTIFY_INSTANTSEND_LOCK
+    {
+        const static int ID = BC_COMMANDS_POOL_BASE + 14;
+        typedef NOTIFY_INSTANTSEND_LOCK_request request;
+    };
+
 } // namespace CryptoNote

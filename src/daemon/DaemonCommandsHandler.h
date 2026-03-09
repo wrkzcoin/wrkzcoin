@@ -101,6 +101,10 @@ class DaemonCommandsHandler
 
     bool masternodes(const std::vector<std::string> &args);
 
+    bool print_chainlocks(const std::vector<std::string> &args);
+
+    bool print_islocks(const std::vector<std::string> &args);
+
     bool mn_registration_string(const std::vector<std::string> &args);
 
     bool prune_status(const std::vector<std::string> &args);

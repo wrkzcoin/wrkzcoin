@@ -226,6 +226,10 @@ namespace DaemonConfig
         bool dumpConfig;
 
         bool enableDbCompression;
+
+        // Masternode signing private key (hex-encoded) for ChainLock/InstantSend participation.
+        // Generate during mn_register (printed by zedwallet++). Leave empty to disable signing.
+        std::string mnSigningKey;
     };
 
     DaemonConfiguration initConfiguration(const char *path);
