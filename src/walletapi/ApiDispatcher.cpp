@@ -75,8 +75,10 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
     using namespace std::placeholders;
 
     /* Route the request through our middleware function, before forwarding
-       to the specified function */
-    const auto router = [this](const auto function, const WalletState walletState, const bool viewWalletPermitted) {
+       to the specified function.
+       isWriteOperation=true: exclusive lock (reassigns m_walletBackend).
+       isWriteOperation=false (default): shared lock (concurrent reads/sends). */
+    const auto router = [this](const auto function, const WalletState walletState, const bool viewWalletPermitted, const bool isWriteOperation = false) {
         return [=](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
@@ -85,28 +87,32 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
                 res,
                 walletState,
                 viewWalletPermitted,
+                isWriteOperation,
                 std::bind(function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         };
     };
+
+    const bool writeOp = true;
 
     const bool viewWalletsAllowed = true;
     const bool viewWalletsBanned = false;
 
     /* POST */
     srv
-        .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed))
+        /* Wallet lifecycle — reassign m_walletBackend, need exclusive lock */
+        .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import wallet with keys */
-        .Post("/wallet/import/key", router(&ApiDispatcher::keyImportWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/key", router(&ApiDispatcher::keyImportWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import wallet with seed */
-        .Post("/wallet/import/seed", router(&ApiDispatcher::seedImportWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/seed", router(&ApiDispatcher::seedImportWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import view wallet */
-        .Post("/wallet/import/view", router(&ApiDispatcher::importViewWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/view", router(&ApiDispatcher::importViewWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Create wallet */
-        .Post("/wallet/create", router(&ApiDispatcher::createWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/create", router(&ApiDispatcher::createWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Create a random address */
         .Post("/addresses/create", router(&ApiDispatcher::createAddress, WalletMustBeOpen, viewWalletsBanned))
@@ -158,14 +164,15 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
             "/transactions/send/sweep/all",
             router(&ApiDispatcher::sendSweepAllTransaction, WalletMustBeOpen, viewWalletsBanned))
 
+        /* File export — concurrent calls would race writing the same file */
         .Post(
             "/export/json",
-            router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed))
+            router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* DELETE */
 
-        /* Close the current wallet */
-        .Delete("/wallet", router(&ApiDispatcher::closeWallet, WalletMustBeOpen, viewWalletsAllowed))
+        /* Close the current wallet — sets m_walletBackend=nullptr, need exclusive lock */
+        .Delete("/wallet", router(&ApiDispatcher::closeWallet, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* Delete the given address */
         .Delete(
@@ -185,11 +192,11 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
         /* Reset the wallet from zero, or given scan height */
         .Put("/reset", router(&ApiDispatcher::resetWallet, WalletMustBeOpen, viewWalletsAllowed))
 
-        /* Swap node details */
-        .Put("/node", router(&ApiDispatcher::setNodeInfo, WalletMustBeOpen, viewWalletsAllowed))
+        /* Swap node details — modifies daemon connection, need exclusive lock */
+        .Put("/node", router(&ApiDispatcher::setNodeInfo, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
-        /* Force wallet sync reconnect */
-        .Put("/sync/refresh", router(&ApiDispatcher::refreshSync, WalletMustBeOpen, viewWalletsAllowed))
+        /* Force wallet sync reconnect — modifies sync state, need exclusive lock */
+        .Put("/sync/refresh", router(&ApiDispatcher::refreshSync, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* GET */
 
@@ -335,9 +342,24 @@ void ApiDispatcher::middleware(
     httplib::Response &res,
     const WalletState walletState,
     const bool viewWalletPermitted,
+    const bool isWriteOperation,
     std::function<std::tuple<Error, uint16_t>(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)> handler)
 {
-    std::scoped_lock lock(m_mutex);
+    /* Write operations (open/create/close wallet) take an exclusive lock so
+       that m_walletBackend can be safely reassigned. Everything else — reads,
+       address ops, tx sends — takes a shared lock, allowing concurrency.
+       Transaction sends are further serialized by WalletBackend's own mutex. */
+    std::unique_lock<std::shared_mutex> writeLock(m_mutex, std::defer_lock);
+    std::shared_lock<std::shared_mutex> readLock(m_mutex, std::defer_lock);
+
+    if (isWriteOperation)
+    {
+        writeLock.lock();
+    }
+    else
+    {
+        readLock.lock();
+    }
 
     std::cout << "Incoming " << req.method << " request: " << req.path << std::endl;
 
