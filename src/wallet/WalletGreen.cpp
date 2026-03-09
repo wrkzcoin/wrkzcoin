@@ -1646,9 +1646,14 @@ namespace CryptoNote
                 unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
             }
 
+            const uint64_t wgMinUnlockBlocks =
+                (m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                    ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+                    : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
             transactionParameters.unlockTimestamp = m_node.getLastKnownBlockHeight()
                 + unlock_blocks
-                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+                + wgMinUnlockBlocks;
         }
 
         size_t id = WALLET_INVALID_TRANSACTION_ID;
@@ -2251,9 +2256,14 @@ namespace CryptoNote
                 unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
             }
 
+            const uint64_t wgMinUnlockBlocks2 =
+                (m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                    ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+                    : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
             sendingTransaction.unlockTimestamp = m_node.getLastKnownBlockHeight()
                 + unlock_blocks
-                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+                + wgMinUnlockBlocks2;
         }
 
         size_t id = WALLET_INVALID_TRANSACTION_ID;

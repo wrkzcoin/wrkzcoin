@@ -338,9 +338,16 @@ bool confirmTransaction(
     std::cout << "\n\nFROM: " << SuccessMsg(walletBackend->getWalletLocation()) << "\nTO: " << SuccessMsg(address)
               << "\n\n";
 
-    std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
-              << SuccessMsg(CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS) << InformationMsg(" blocks")
-              << std::endl;
+    {
+        const auto [walletHeight, localHeight, networkHeight] = walletBackend->getSyncStatus();
+        const uint64_t minUnlock =
+            (networkHeight >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+                : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+        std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
+                  << SuccessMsg(minUnlock) << InformationMsg(" blocks")
+                  << std::endl;
+    }
 
     if (Utilities::confirm("Is this correct?"))
     {

@@ -801,13 +801,20 @@ bool ValidateTransaction::validateTransactionUnlockTime()
 
     bool valid;
 
+    // After the masternode fork, ChainLock + InstantSend reduce double-spend risk to near-zero,
+    // so the unlock time floor is lowered from 15 to 3 blocks.
+    const uint64_t minUnlockBlocks =
+        (m_blockHeight >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+            ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+            : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
     if (m_transaction.unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
     {
-        valid = m_transaction.unlockTime >= m_blockTimestamp + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS * CryptoNote::parameters::DIFFICULTY_TARGET;
+        valid = m_transaction.unlockTime >= m_blockTimestamp + minUnlockBlocks * CryptoNote::parameters::DIFFICULTY_TARGET;
     }
     else
     {
-        valid = m_transaction.unlockTime >= m_blockHeight + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+        valid = m_transaction.unlockTime >= m_blockHeight + minUnlockBlocks;
     }
 
     if (!valid)

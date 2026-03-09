@@ -46,6 +46,11 @@ namespace CryptoNote
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
+        /* After MASTERNODE_FEATURE_FORK_HEIGHT, ChainLock eliminates reorgs and
+         * InstantSend pre-confirms TXs, so the spend-lock window can be reduced.
+         * Recipients wait only ~3 blocks after confirmation instead of ~15. */
+        const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS_V2 = 3;
+
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
 
         /* Unlock V2 */

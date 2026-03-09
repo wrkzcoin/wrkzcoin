@@ -24,6 +24,241 @@
 
 namespace SendTransaction
 {
+    std::tuple<Error, Crypto::Hash>
+        sendFusionTransactionBasic(const std::shared_ptr<Nigel> daemon, const std::shared_ptr<SubWallets> subWallets)
+    {
+        const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(daemon->networkBlockCount());
+
+        /* Assumes the container has at least one subwallet - this is true as long
+           as the static constructors were used */
+        const std::string defaultAddress = subWallets->getPrimaryAddress();
+
+        return sendFusionTransactionAdvanced(defaultMixin, {}, defaultAddress, daemon, subWallets, {}, std::nullopt);
+    }
+
+    std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
+        const uint64_t mixin,
+        const std::vector<std::string> addressesToTakeFrom,
+        std::string destination,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets,
+        const std::vector<uint8_t> extraData,
+        const std::optional<uint64_t> optimizeTarget)
+    {
+        if (destination == "")
+        {
+            destination = subWallets->getPrimaryAddress();
+        }
+
+        /* Validate the transaction input parameters */
+        Error error = validateFusionTransaction(
+            mixin,
+            addressesToTakeFrom,
+            destination,
+            subWallets,
+            daemon->networkBlockCount(),
+            optimizeTarget
+        );
+
+        if (error)
+        {
+            return {error, Crypto::Hash()};
+        }
+
+        /* If no address to take from is given, we will take from all available. */
+        const bool takeFromAllSubWallets = addressesToTakeFrom.empty();
+
+        /* Convert the addresses to public spend keys */
+        const std::vector<Crypto::PublicKey> subWalletsToTakeFrom =
+            Utilities::addressesToSpendKeys(addressesToTakeFrom);
+
+        /* Grab inputs for our fusion transaction */
+        auto [ourInputs, maxFusionInputs, foundMoney] = subWallets->getFusionTransactionInputs(
+            takeFromAllSubWallets,
+            subWalletsToTakeFrom,
+            mixin,
+            daemon->networkBlockCount(),
+            optimizeTarget
+        );
+
+        /* Mixin is too large to get enough outputs whilst remaining in the size
+           and ratio constraints */
+        if (maxFusionInputs < CryptoNote::parameters::FUSION_TX_MIN_INPUT_COUNT)
+        {
+            return {FUSION_MIXIN_TOO_LARGE, Crypto::Hash()};
+        }
+
+        /* Payment ID's are not needed with fusion transactions */
+        const std::string paymentID = "";
+
+        CryptoNote::Transaction tx;
+
+        std::vector<WalletTypes::KeyOutput> transactionOutputs;
+
+        CryptoNote::KeyPair txKeyPair;
+
+        const uint64_t fee = (daemon->networkBlockCount() >= CryptoNote::parameters::FUSION_FEE_V1_HEIGHT
+        && daemon->networkBlockCount() < CryptoNote::parameters::FUSION_ZERO_FEE_V2_HEIGHT)
+            ? CryptoNote::parameters::FUSION_FEE_V1
+            : 0;
+
+        while (true)
+        {
+            /* Not got enough unspent inputs for a fusion tx - we're fully optimized. */
+            if (ourInputs.size() < CryptoNote::parameters::FUSION_TX_MIN_INPUT_COUNT)
+            {
+                return {FULLY_OPTIMIZED, Crypto::Hash()};
+            }
+
+            /* Grab the public keys from the receiver address */
+            const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(destination);
+
+            std::vector<WalletTypes::TransactionDestination> destinations;
+
+            if (fee >= foundMoney)
+            {
+                return {FULLY_OPTIMIZED, Crypto::Hash()};
+            }
+
+            uint64_t amountToSplit = foundMoney - fee;
+
+            /* We have an optimize target, and enough money to make outputs
+             * large enough for the target, lets attempt to make some outputs
+             * of that size. */
+            /* Disabled for now as this will cause the wallet to not create valid
+             * fusion transactions as fusions are required to decompose as
+             * efficiently as possible - i.e. 12345 -> 10000 + 2000 + 300 + 40 + 5 */
+            /* if (optimizeTarget && amountToSplit >= *optimizeTarget) */
+            if (false)
+            {
+                /* Max amount of optimizeTarget destinations we can make */
+                const uint64_t numTargets = amountToSplit / *optimizeTarget;
+
+                /* Change remaining after making as many optimizeTarget destinations */
+                amountToSplit = amountToSplit % *optimizeTarget;
+
+                WalletTypes::TransactionDestination destination;
+
+                destination.amount = *optimizeTarget;
+                destination.receiverPublicSpendKey = publicSpendKey;
+                destination.receiverPublicViewKey = publicViewKey;
+
+                /* Insert all optimizeTarget destination amounts */
+                destinations.insert(destinations.end(), numTargets, destination);
+            }
+
+            /* Split transfer into denominations and create an output for each */
+            for (const auto denomination : splitAmountIntoDenominations(amountToSplit))
+            {
+                WalletTypes::TransactionDestination destination;
+
+                destination.amount = denomination;
+                destination.receiverPublicSpendKey = publicSpendKey;
+                destination.receiverPublicViewKey = publicViewKey;
+
+                destinations.push_back(destination);
+            }
+
+            uint64_t requiredInputOutputRatio = CryptoNote::parameters::FUSION_TX_MIN_IN_OUT_COUNT_RATIO;
+
+            /* We need to have at least 4x more inputs than outputs */
+            if (destinations.size() == 0 || (ourInputs.size() / destinations.size()) < requiredInputOutputRatio)
+            {
+                /* Reduce the amount we're sending */
+                foundMoney -= ourInputs.back().input.amount;
+
+                /* Remove the last input */
+                ourInputs.pop_back();
+
+                /* And try again */
+                continue;
+            }
+
+            uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+
+            if (daemon->networkBlockCount() > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+            {
+                unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+            }
+
+            const uint64_t minUnlockBlocks =
+                (daemon->networkBlockCount() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                    ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+                    : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
+            const uint64_t unlockTime = daemon->networkBlockCount()
+                + unlock_blocks
+                + minUnlockBlocks;
+
+            WalletTypes::TransactionResult txResult =
+                makeTransaction(mixin, daemon, ourInputs, paymentID, destinations, subWallets, unlockTime, extraData);
+
+            tx = txResult.transaction;
+            transactionOutputs = txResult.outputs;
+            txKeyPair = txResult.txKeyPair;
+
+            if (txResult.error)
+            {
+                return {txResult.error, Crypto::Hash()};
+            }
+
+            const uint64_t txSize = toBinaryArray(tx).size();
+
+            /* Transaction is too large, remove an input and try again */
+            if (txSize > CryptoNote::parameters::FUSION_TX_MAX_SIZE)
+            {
+                /* Reduce the amount we're sending */
+                foundMoney -= ourInputs.back().input.amount;
+
+                /* Remove the last input */
+                ourInputs.pop_back();
+
+                /* And try again */
+                continue;
+            }
+
+            break;
+        }
+
+        if (!verifyAmounts(tx))
+        {
+            return {AMOUNTS_NOT_PRETTY, Crypto::Hash()};
+        }
+
+        const uint64_t actualFee = sumTransactionFee(tx);
+
+        if (!verifyTransactionFee(WalletTypes::FeeType::FixedFee(fee), actualFee, daemon->networkBlockCount(), tx))
+        {
+            return {UNEXPECTED_FEE, Crypto::Hash()};
+        }
+
+        /* Try and send the transaction */
+        const auto [sendError, txHash] = relayTransaction(tx, daemon);
+
+        if (sendError)
+        {
+            return {sendError, Crypto::Hash()};
+        }
+
+        /* No fee or change with fusion */
+        const uint64_t changeRequired(0);
+
+        /* Store the unconfirmed transaction, update our balance */
+        storeSentTransaction(txHash, fee, paymentID, ourInputs, destination, changeRequired, subWallets);
+
+        /* Update our locked balance with the incoming funds */
+        storeUnconfirmedIncomingInputs(subWallets, transactionOutputs, txKeyPair.publicKey, txHash);
+
+        subWallets->storeTxPrivateKey(txKeyPair.secretKey, txHash);
+
+        /* Lock the input for spending till it is confirmed as spent in a block */
+        for (const auto &input : ourInputs)
+        {
+            subWallets->markInputAsLocked(input.input.keyImage, input.publicSpendKey);
+        }
+
+        return {SUCCESS, txHash};
+    }
     /* A basic send transaction, the most common transaction, one destination,
        default fee, default mixin, default change address
 
@@ -97,9 +332,14 @@ namespace SendTransaction
                 unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
             }
             
+            const uint64_t minUnlockBlocksV2 =
+                (daemon->networkBlockCount() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                    ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+                    : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
             unlockTime = daemon->networkBlockCount()
                 + unlock_blocks
-                + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+                + minUnlockBlocksV2;
         }
 
         /* Validate the transaction input parameters */

@@ -486,15 +486,20 @@ Error validateUnlockTime(
     const uint64_t unlockTime,
     const uint64_t currentHeight)
 {
+    const uint64_t minUnlockBlocks =
+        (currentHeight >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+            ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
+            : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
     if (unlockTime > CryptoNote::parameters::CRYPTONOTE_MAX_BLOCK_NUMBER)
     {
-        return unlockTime >= std::time(nullptr) + (CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS * CryptoNote::parameters::DIFFICULTY_TARGET)
+        return unlockTime >= std::time(nullptr) + (minUnlockBlocks * CryptoNote::parameters::DIFFICULTY_TARGET)
             ? SUCCESS
             : UNLOCK_TIME_TOO_SMALL;
     }
     else
     {
-        return unlockTime >= currentHeight + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS
+        return unlockTime >= currentHeight + minUnlockBlocks
             ? SUCCESS
             : UNLOCK_TIME_TOO_SMALL;
     }
