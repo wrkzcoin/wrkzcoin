@@ -68,7 +68,6 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("change_password", "[Security] Change your wallet password", true, true),
         AdvancedCommand("save", "[Maintenance] Save your wallet state", true, true),
         AdvancedCommand("save_csv", "[Export] Save all wallet transactions to a CSV file", true, true),
-        AdvancedCommand("optimize", "[Maintenance] Optimize your wallet to send large amounts", false, true),
         AdvancedCommand("reset", "[Maintenance] Recheck the chain from zero for transactions", true, true),
         AdvancedCommand("set_log_level", "[Maintenance] Alter the logging level", true, true),
     };

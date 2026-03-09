@@ -163,19 +163,11 @@ class ApiDispatcher
     std::tuple<Error, uint16_t>
         makeAdvancedTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body, const bool sendTransaction);
 
-    /* Send a basic fusion transaction */
-    std::tuple<Error, uint16_t>
-        sendBasicFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
-
-    /* Send a more customizable fusion transaction */
-    std::tuple<Error, uint16_t>
-        sendAdvancedFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
-
-    /* Sweep a specific amount to an address in multiple transactions (no fusion) */
+    /* Sweep a specific amount to an address in multiple transactions */
     std::tuple<Error, uint16_t>
         sendSweepTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
-    /* Sweep the entire balance to an address in multiple transactions (no fusion) */
+    /* Sweep the entire balance to an address in multiple transactions */
     std::tuple<Error, uint16_t>
         sendSweepAllTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 

@@ -922,33 +922,6 @@ std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBack
     return {error, hash, preparedTransaction};
 }
 
-std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
-{
-    std::scoped_lock lock(m_transactionMutex);
-
-    return SendTransaction::sendFusionTransactionBasic(m_daemon, m_subWallets);
-}
-
-std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
-    const uint64_t mixin,
-    const std::vector<std::string> subWalletsToTakeFrom,
-    const std::string destination,
-    const std::vector<uint8_t> extraData,
-    const std::optional<uint64_t> optimizeTarget)
-{
-    std::scoped_lock lock(m_transactionMutex);
-
-    return SendTransaction::sendFusionTransactionAdvanced(
-        mixin,
-        subWalletsToTakeFrom,
-        destination,
-        m_daemon,
-        m_subWallets,
-        extraData,
-        optimizeTarget
-    );
-}
-
 std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
     const std::string destination,
     const std::string paymentID,

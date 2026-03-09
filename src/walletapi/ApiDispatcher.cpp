@@ -148,22 +148,12 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
             "/transactions/send/advanced",
             router(&ApiDispatcher::sendAdvancedTransaction, WalletMustBeOpen, viewWalletsBanned))
 
-        /* Send a fusion transaction */
-        .Post(
-            "/transactions/send/fusion/basic",
-            router(&ApiDispatcher::sendBasicFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
-
-        /* Send a fusion transaction, more parameters specified */
-        .Post(
-            "/transactions/send/fusion/advanced",
-            router(&ApiDispatcher::sendAdvancedFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
-
-        /* Sweep a specific amount across multiple transactions (no fusion) */
+        /* Sweep a specific amount across multiple transactions */
         .Post(
             "/transactions/send/sweep",
             router(&ApiDispatcher::sendSweepTransaction, WalletMustBeOpen, viewWalletsBanned))
 
-        /* Sweep entire balance across multiple transactions (no fusion) */
+        /* Sweep entire balance across multiple transactions */
         .Post(
             "/transactions/send/sweep/all",
             router(&ApiDispatcher::sendSweepAllTransaction, WalletMustBeOpen, viewWalletsBanned))
@@ -919,96 +909,6 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
         {"fee", preparedTransaction.fee},
         {"relayedToNetwork", sendTransaction}
     };
-
-    res.set_content(j.dump(4) + "\n", "application/json");
-
-    return {SUCCESS, 201};
-}
-
-std::tuple<Error, uint16_t>
-    ApiDispatcher::sendBasicFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
-{
-    auto [error, hash] = m_walletBackend->sendFusionTransactionBasic();
-
-    if (error)
-    {
-        return {error, 400};
-    }
-
-    nlohmann::json j {{"transactionHash", hash}};
-
-    res.set_content(j.dump(4) + "\n", "application/json");
-
-    return {SUCCESS, 201};
-}
-
-std::tuple<Error, uint16_t>
-    ApiDispatcher::sendAdvancedFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
-{
-    std::string destination;
-
-    if (body.find("destination") != body.end())
-    {
-        destination = getJsonValue<std::string>(body, "destination");
-    }
-    else
-    {
-        destination = m_walletBackend->getPrimaryAddress();
-    }
-
-    uint64_t mixin;
-
-    if (body.find("mixin") != body.end())
-    {
-        mixin = getJsonValue<uint64_t>(body, "mixin");
-    }
-    else
-    {
-        /* Get the default mixin */
-        std::tie(std::ignore, std::ignore, mixin) =
-            Utilities::getMixinAllowableRange(m_walletBackend->getStatus().networkBlockCount);
-    }
-
-    std::vector<std::string> subWalletsToTakeFrom;
-
-    if (body.find("sourceAddresses") != body.end())
-    {
-        subWalletsToTakeFrom = getJsonValue<std::vector<std::string>>(body, "sourceAddresses");
-    }
-
-    std::vector<uint8_t> extraData;
-
-    if (body.find("extra") != body.end())
-    {
-        std::string extra = getJsonValue<std::string>(body, "extra");
-
-        if (!Common::fromHex(extra, extraData))
-        {
-            return {INVALID_EXTRA_DATA, 400};
-        }
-    }
-
-    std::optional<uint64_t> optimizeTarget;
-
-    if (body.find("optimizeTarget") != body.end())
-    {
-        optimizeTarget = getJsonValue<uint64_t>(body, "optimizeTarget");
-    }
-
-    auto [error, hash] = m_walletBackend->sendFusionTransactionAdvanced(
-        mixin,
-        subWalletsToTakeFrom,
-        destination,
-        extraData,
-        optimizeTarget
-    );
-
-    if (error)
-    {
-        return {error, 400};
-    }
-
-    nlohmann::json j {{"transactionHash", hash}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 

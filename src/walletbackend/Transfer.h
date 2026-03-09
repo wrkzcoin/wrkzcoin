@@ -15,19 +15,6 @@
 
 namespace SendTransaction
 {
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionBasic(
-        const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets);
-
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
-        const uint64_t mixin,
-        const std::vector<std::string> addressesToTakeFrom,
-        std::string destination,
-        const std::shared_ptr<Nigel> daemon,
-        const std::shared_ptr<SubWallets> subWallets,
-        const std::vector<uint8_t> extraData,
-        const std::optional<uint64_t> optimizeTarget);
-
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionBasic(
         std::string destination,
         const uint64_t amount,

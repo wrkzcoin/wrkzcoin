@@ -171,18 +171,6 @@ class WalletBackend
         const bool sendAll = false,
         const bool sendTransaction = true);
 
-    /* Send a fusion using default mixin, default destination, and
-       taking from all subwallets */
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionBasic();
-
-    /* Send a fusion with advanced options */
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
-        const uint64_t mixin,
-        const std::vector<std::string> subWalletsToTakeFrom,
-        const std::string destinationAddress,
-        const std::vector<uint8_t> extraData,
-        const std::optional<uint64_t> optimizeTarget);
-
     /* Sweep all (or a specific amount) to destination in multiple transactions.
        amountToSweep = 0 sweeps the entire unlocked balance.
        Returns one (Error, Hash) tuple per transaction sent. */
