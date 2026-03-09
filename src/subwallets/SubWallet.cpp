@@ -7,6 +7,7 @@
 #include <subwallets/SubWallet.h>
 /////////////////////////////////
 
+#include <JsonHelper.h>
 #include <common/StringTools.h>
 #include <config/Constants.h>
 #include <logger/Logger.h>

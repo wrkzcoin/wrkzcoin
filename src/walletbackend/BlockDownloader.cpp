@@ -6,6 +6,7 @@
 #include <walletbackend/BlockDownloader.h>
 //////////////////////////////////////////
 
+#include <JsonHelper.h>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
 #include <logger/Logger.h>

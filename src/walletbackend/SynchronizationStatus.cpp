@@ -7,6 +7,7 @@
 #include <walletbackend/SynchronizationStatus.h>
 ////////////////////////////////////////////////
 
+#include <JsonHelper.h>
 #include <common/StringTools.h>
 #include <walletbackend/Constants.h>
 

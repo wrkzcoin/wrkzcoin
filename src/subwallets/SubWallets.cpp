@@ -7,6 +7,7 @@
 #include <subwallets/SubWallets.h>
 //////////////////////////////////
 
+#include <JsonHelper.h>
 #include <common/StringTools.h>
 #include <config/CryptoNoteConfig.h>
 #include <ctime>

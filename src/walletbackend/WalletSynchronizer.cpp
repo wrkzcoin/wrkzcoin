@@ -8,6 +8,7 @@
 /////////////////////////////////////////////
 
 #include <algorithm>
+#include <JsonHelper.h>
 #include <common/StringTools.h>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
