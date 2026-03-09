@@ -35,7 +35,8 @@ namespace CryptoNote
             const std::vector<std::string> addSeedNodes,
             const bool p2pResetPeerState,
             const std::string p2pBindIpv6Address = "",
-            const int p2pBindPortIpv6 = 0);
+            const int p2pBindPortIpv6 = 0,
+            const std::string p2pStateFilenameOverride = "");
 
         std::string getP2pStateFilename() const;
 

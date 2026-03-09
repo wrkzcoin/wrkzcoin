@@ -10,6 +10,7 @@
 #include "common/Util.h"
 
 #include <config/CryptoNoteConfig.h>
+#include <config/NetworkParameters.h>
 #include <logging/ILogger.h>
 #include "json.hpp"
 #include <thread>
@@ -37,13 +38,14 @@ namespace DaemonConfig
             logLevel = Logging::WARNING;
             rewindToHeight = 0;
             p2pInterface = "0.0.0.0";
-            p2pPort = CryptoNote::P2P_DEFAULT_PORT;
+            networkType = CryptoNote::NetworkType::Mainnet;
+            p2pPort = CryptoNote::getNetworkParameters(networkType).p2pPort;
             p2pExternalPort = 0;
             p2pOutPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
             p2pInPeers = CryptoNote::P2P_DEFAULT_CONNECTIONS_COUNT;
             transactionValidationThreads = std::thread::hardware_concurrency();
             rpcInterface = "127.0.0.1";
-            rpcPort = CryptoNote::RPC_DEFAULT_PORT;
+            rpcPort = CryptoNote::getNetworkParameters(networkType).rpcPort;
             noConsole = false;
             daemonMode = DAEMON_MODE_STANDARD;
             localIp = false;
@@ -79,13 +81,14 @@ namespace DaemonConfig
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 100;
             rpcTrustProxy = false;
-            zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
+            zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::getNetworkParameters(networkType).zmqPubPort);
             noZmq = false;
             skipBootCompaction = false;
             autoPruneMinGapBlocks = 120;
             autoCompactionMinGapBlocks = 720;
             autoPruneMinFreeBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
             autoCompactionMinFreeBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+            seedNodes = CryptoNote::getNetworkParameters(networkType).seedNodes;
         }
 
         std::string dataDirectory;
@@ -207,6 +210,8 @@ namespace DaemonConfig
         std::string configFile;
 
         std::string outputFile;
+
+        CryptoNote::NetworkType networkType;
 
         std::vector<std::string> genesisAwardAddresses;
 

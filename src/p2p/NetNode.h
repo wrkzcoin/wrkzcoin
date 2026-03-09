@@ -165,6 +165,8 @@ namespace CryptoNote
 
         bool init(const NetNodeConfig &config);
 
+        void setNetworkId(const boost::uuids::uuid &networkId);
+
         bool deinit();
 
         bool sendStopSignal();

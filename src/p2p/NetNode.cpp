@@ -288,6 +288,11 @@ namespace CryptoNote
         s(m_config.m_peer_id, "peer_id");
     }
 
+    void NodeServer::setNetworkId(const boost::uuids::uuid &networkId)
+    {
+        m_network_id = networkId;
+    }
+
     using namespace std::placeholders;
 
 #define INVOKE_HANDLER(CMD, Handler)                                                           \
@@ -575,18 +580,19 @@ namespace CryptoNote
 
     bool NodeServer::init(const NetNodeConfig &config)
     {
-        for (const auto &seed : CryptoNote::SEED_NODES)
-        {
-            append_net_address(m_seed_nodes, seed);
-        }
-
-        append_dns_seed_nodes();
-
         if (!handleConfig(config))
         {
             logger(ERROR, BRIGHT_RED) << "Failed to handle command line";
             return false;
         }
+        if (m_seed_nodes.empty())
+        {
+            for (const auto &seed : CryptoNote::SEED_NODES)
+            {
+                append_net_address(m_seed_nodes, seed);
+            }
+        }
+        append_dns_seed_nodes();
         m_config_folder = config.getConfigFolder();
         m_p2p_state_filename = config.getP2pStateFilename();
         m_p2p_state_reset = config.getP2pStateReset();

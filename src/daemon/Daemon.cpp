@@ -33,6 +33,7 @@
 #include <common/FileSystemShim.h>
 #include <config/CliHeader.h>
 #include <config/CryptoNoteCheckpoints.h>
+#include <config/NetworkParameters.h>
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
 #include <atomic>
@@ -233,6 +234,7 @@ int main(int argc, char *argv[])
 
     // Load in the CLI specified parameters again to overwrite anything from the config file
     handleSettings(argc, argv, config);
+    const auto &network = CryptoNote::getNetworkParameters(config.networkType);
 
     if (config.dumpConfig)
     {
@@ -261,7 +263,7 @@ int main(int argc, char *argv[])
         std::error_code ec;
 
         std::vector<fs::path> removablePaths = {
-            fs::path(config.dataDirectory) / CryptoNote::parameters::P2P_NET_DATA_FILENAME,
+            fs::path(config.dataDirectory) / network.p2pStateFilename,
             fs::path(config.dataDirectory) / "DB"
         };
 
@@ -361,6 +363,7 @@ int main(int argc, char *argv[])
         logger(INFO, BRIGHT_GREEN) << getProjectCLIHeader() << std::endl;
 
         logger(INFO) << "Program Working Directory: " << cwdPath;
+        logger(INFO) << "Network: " << network.name;
 
         // create objects and link them
         const bool explorerMode = config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER;
@@ -430,7 +433,8 @@ int main(int argc, char *argv[])
             config.seedNodes,
             config.p2pResetPeerstate,
             config.p2pBindIpv6Address,
-            config.p2pBindPortIpv6);
+            config.p2pBindPortIpv6,
+            network.p2pStateFilename);
 
         if (!Tools::create_directories_if_necessary(dbConfig.dataDir))
         {
@@ -584,6 +588,7 @@ int main(int argc, char *argv[])
             *cprotocol,
             logManager
         );
+        p2psrv->setNetworkId(network.networkId);
 
         RpcMode rpcMode = explorerMode ? RpcMode::Explorer : RpcMode::Standard;
 

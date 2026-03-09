@@ -6,12 +6,14 @@
 
 #include "DaemonConfiguration.h"
 
+#include "common/FileSystemShim.h"
 #include "common/PathTools.h"
 #include "common/Util.h"
 #include "json.hpp"
 
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
+#include <config/NetworkParameters.h>
 #include <cxxopts.hpp>
 #include <algorithm>
 #include <cctype>
@@ -69,11 +71,66 @@ namespace DaemonConfig
                 "Invalid daemon-mode: '" + rawMode + "'. Allowed values are '" + std::string(DaemonConfiguration::DAEMON_MODE_STANDARD)
                 + "' or '" + std::string(DaemonConfiguration::DAEMON_MODE_EXPLORER) + "'.");
         }
+
+        std::string defaultDataDirectoryForNetwork(const CryptoNote::NetworkType networkType)
+        {
+            const std::string base = Tools::getDefaultDataDirectory();
+            const auto &network = CryptoNote::getNetworkParameters(networkType);
+            if (network.dataDirectorySuffix.empty())
+            {
+                return base;
+            }
+
+            return (fs::path(base) / network.dataDirectorySuffix).string();
+        }
+
+        std::string normalizeNetworkName(const std::string &rawNetwork)
+        {
+            CryptoNote::NetworkType networkType;
+            if (!CryptoNote::parseNetworkType(rawNetwork, networkType))
+            {
+                throw std::runtime_error("Invalid network: '" + rawNetwork + "'. Allowed values are 'mainnet' or 'testnet'.");
+            }
+
+            return CryptoNote::networkTypeToString(networkType);
+        }
+
+        void applyNetworkDefaults(
+            DaemonConfiguration &config,
+            const bool setDataDir,
+            const bool setP2pPort,
+            const bool setRpcPort,
+            const bool setZmqPub,
+            const bool setSeedNodes)
+        {
+            const auto &network = CryptoNote::getNetworkParameters(config.networkType);
+            if (setDataDir)
+            {
+                config.dataDirectory = defaultDataDirectoryForNetwork(config.networkType);
+            }
+            if (setP2pPort)
+            {
+                config.p2pPort = network.p2pPort;
+            }
+            if (setRpcPort)
+            {
+                config.rpcPort = network.rpcPort;
+            }
+            if (setZmqPub)
+            {
+                config.zmqPub = "tcp://127.0.0.1:" + std::to_string(network.zmqPubPort);
+            }
+            if (setSeedNodes)
+            {
+                config.seedNodes = network.seedNodes;
+            }
+        }
     } // namespace
 
     DaemonConfiguration initConfiguration(const char *path)
     {
         DaemonConfiguration config;
+        applyNetworkDefaults(config, true, true, true, true, true);
         config.logFile = Common::ReplaceExtenstion(Common::NativePathToGeneric(path), ".log");
         return config;
     }
@@ -124,6 +181,10 @@ namespace DaemonConfig
 
         options.add_options("Daemon")(
             "c,config-file", "Specify the <path> to a configuration file", cxxopts::value<std::string>(), "<path>")(
+            "network",
+            "Network profile to use (mainnet or testnet)",
+            cxxopts::value<std::string>(),
+            "<mainnet|testnet>")(
             "data-dir",
             "Specify the <path> to the Blockchain data directory",
             cxxopts::value<std::string>()->default_value(config.dataDirectory),
@@ -353,6 +414,27 @@ namespace DaemonConfig
         try
         {
             auto cli = options.parse(argc, argv);
+            const bool hasCliNetwork = cli.count("network") > 0;
+            const bool hasCliDataDir = cli.count("data-dir") > 0;
+            const bool hasCliP2pPort = cli.count("p2p-bind-port") > 0;
+            const bool hasCliRpcPort = cli.count("rpc-bind-port") > 0;
+            const bool hasCliZmqPub = cli.count("zmq-pub") > 0;
+            const bool hasCliSeedNodes = cli.count("seed-node") > 0;
+
+            if (hasCliNetwork)
+            {
+                const auto normalizedNetwork = normalizeNetworkName(cli["network"].as<std::string>());
+                CryptoNote::NetworkType networkType;
+                CryptoNote::parseNetworkType(normalizedNetwork, networkType);
+                config.networkType = networkType;
+                applyNetworkDefaults(
+                    config,
+                    !hasCliDataDir,
+                    !hasCliP2pPort,
+                    !hasCliRpcPort,
+                    !hasCliZmqPub,
+                    !hasCliSeedNodes);
+            }
 
             if (cli.count("config-file") > 0)
             {
@@ -746,6 +828,11 @@ namespace DaemonConfig
         std::vector<std::string> seedNodes;
         std::vector<std::string> peers;
         std::string cors;
+        bool hasConfigDataDir = false;
+        bool hasConfigP2pPort = false;
+        bool hasConfigRpcPort = false;
+        bool hasConfigZmqPub = false;
+        bool hasConfigSeedNodes = false;
         bool updated = false;
 
         for (std::string line; std::getline(data, line);)
@@ -768,6 +855,22 @@ namespace DaemonConfig
                 if (cfgKey.compare("data-dir") == 0)
                 {
                     config.dataDirectory = cfgValue;
+                    hasConfigDataDir = true;
+                    updated = true;
+                }
+                else if (cfgKey.compare("network") == 0)
+                {
+                    const auto normalizedNetwork = normalizeNetworkName(cfgValue);
+                    CryptoNote::NetworkType networkType;
+                    CryptoNote::parseNetworkType(normalizedNetwork, networkType);
+                    config.networkType = networkType;
+                    applyNetworkDefaults(
+                        config,
+                        !hasConfigDataDir,
+                        !hasConfigP2pPort,
+                        !hasConfigRpcPort,
+                        !hasConfigZmqPub,
+                        !hasConfigSeedNodes);
                     updated = true;
                 }
                 else if (cfgKey.compare("load-checkpoints") == 0)
@@ -875,6 +978,7 @@ namespace DaemonConfig
                     try
                     {
                         config.p2pPort = std::stoi(cfgValue);
+                        hasConfigP2pPort = true;
                         updated = true;
                     }
                     catch (std::exception &e)
@@ -928,6 +1032,7 @@ namespace DaemonConfig
                     try
                     {
                         config.rpcPort = std::stoi(cfgValue);
+                        hasConfigRpcPort = true;
                         updated = true;
                     }
                     catch (std::exception &e)
@@ -989,6 +1094,7 @@ namespace DaemonConfig
                 {
                     seedNodes.push_back(cfgValue);
                     config.seedNodes = seedNodes;
+                    hasConfigSeedNodes = true;
                     updated = true;
                 }
                 else if (cfgKey.compare("daemon-mode") == 0)
@@ -1097,6 +1203,7 @@ namespace DaemonConfig
                 else if (cfgKey.compare("zmq-pub") == 0)
                 {
                     config.zmqPub = cfgValue;
+                    hasConfigZmqPub = true;
                     updated = true;
                 }
                 else if (cfgKey.compare("no-zmq") == 0)
@@ -1285,6 +1392,21 @@ namespace DaemonConfig
             j = nlohmann::json::parse(data);
         } catch (const nlohmann::json::parse_error &) {
             throw std::runtime_error("Failed to parse the config file as JSON.");
+        }
+
+        if (j.contains("network"))
+        {
+            const auto normalizedNetwork = normalizeNetworkName(j["network"].get<std::string>());
+            CryptoNote::NetworkType networkType;
+            CryptoNote::parseNetworkType(normalizedNetwork, networkType);
+            config.networkType = networkType;
+            applyNetworkDefaults(
+                config,
+                !j.contains("data-dir"),
+                !j.contains("p2p-bind-port"),
+                !j.contains("rpc-bind-port"),
+                !j.contains("zmq-pub"),
+                !j.contains("seed-node"));
         }
 
         if (j.contains("data-dir"))
@@ -1592,6 +1714,7 @@ namespace DaemonConfig
         nlohmann::json j;
 
         j["data-dir"] = config.dataDirectory;
+        j["network"] = CryptoNote::networkTypeToString(config.networkType);
         j["load-checkpoints"] = config.checkPoints;
         j["log-file"] = config.logFile;
         j["log-level"] = config.logLevel;

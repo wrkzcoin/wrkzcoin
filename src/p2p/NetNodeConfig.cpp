@@ -87,7 +87,8 @@ namespace CryptoNote
         const std::vector<std::string> addSeedNodes,
         const bool p2pResetPeerState,
         const std::string p2pBindIpv6Address,
-        const int p2pBindPortIpv6)
+        const int p2pBindPortIpv6,
+        const std::string p2pStateFilenameOverride)
     {
         bindIp = interface;
         bindPort = port;
@@ -97,7 +98,8 @@ namespace CryptoNote
         allowLocalIp = localIp;
         hideMyPort = hidePort;
         configFolder = dataDir;
-        p2pStateFilename = CryptoNote::parameters::P2P_NET_DATA_FILENAME;
+        p2pStateFilename =
+            p2pStateFilenameOverride.empty() ? CryptoNote::parameters::P2P_NET_DATA_FILENAME : p2pStateFilenameOverride;
         p2pStateReset = p2pResetPeerState;
         m_bindIpv6Address = p2pBindIpv6Address;
         // If port is 0 or not specified, use the same port as IPv4
