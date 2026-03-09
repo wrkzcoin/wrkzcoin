@@ -467,6 +467,14 @@ void sweep(const std::shared_ptr<WalletBackend> walletBackend, const bool sweepA
 
     std::cout << "\n" << InformationMsg("Sending sweep transactions...\n\n");
 
+    /* Extract base address and payment ID from integrated address before sweeping */
+    if (Utilities::isIntegratedAddress(address))
+    {
+        const auto [extractedAddress, extractedPaymentID] = Utilities::extractIntegratedAddressData(address);
+        address = extractedAddress;
+        paymentID = extractedPaymentID;
+    }
+
     const auto results = walletBackend->sweepToAddress(address, paymentID, amountToSweep);
 
     uint64_t successCount = 0;
