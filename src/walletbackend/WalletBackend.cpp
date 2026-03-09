@@ -1029,9 +1029,32 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             batchSum += inp.input.amount;
         }
 
-        /* Estimate minimum fee for this batch (1 destination output, no change) */
-        const size_t estimatedSize = Utilities::estimateTransactionSize(mixin, batch.size(), 1, paymentID != "", 0);
-        const uint64_t estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+        /* Iteratively estimate fee: the destination amount is decomposed into canonical
+           denominations, so the output count depends on the fee, which depends on the
+           output count.  Also add 9 bytes for the Tx PoW nonce (identifier + 8-byte nonce)
+           that makeTransaction appends to tx.extra whenever the fee is below
+           TRANSACTION_POW_PASS_WITH_FEE (sweep fees are always below that threshold). */
+        const size_t POW_NONCE_OVERHEAD = 9;
+        size_t numOutputs = 1;
+        uint64_t estimatedFee = 0;
+
+        for (int iter = 0; iter < 3; iter++)
+        {
+            const size_t estimatedSize = Utilities::estimateTransactionSize(
+                mixin, batch.size(), numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+            estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+            if (estimatedFee >= batchSum)
+                break;
+
+            const size_t newNumOutputs =
+                SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+
+            if (newNumOutputs == numOutputs)
+                break;
+
+            numOutputs = newNumOutputs;
+        }
 
         if (estimatedFee >= batchSum)
         {
@@ -1169,8 +1192,27 @@ std::tuple<size_t, uint64_t> WalletBackend::estimateSweep(
             batchSum += allInputs[j].input.amount;
         }
 
-        const size_t estimatedSize = Utilities::estimateTransactionSize(mixin, batchSize, 1, paymentID != "", 0);
-        const uint64_t estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+        const size_t POW_NONCE_OVERHEAD = 9;
+        size_t numOutputs = 1;
+        uint64_t estimatedFee = 0;
+
+        for (int iter = 0; iter < 3; iter++)
+        {
+            const size_t estimatedSize = Utilities::estimateTransactionSize(
+                mixin, batchSize, numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+            estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+            if (estimatedFee >= batchSum)
+                break;
+
+            const size_t newNumOutputs =
+                SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+
+            if (newNumOutputs == numOutputs)
+                break;
+
+            numOutputs = newNumOutputs;
+        }
 
         if (estimatedFee >= batchSum)
         {
