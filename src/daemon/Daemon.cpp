@@ -698,9 +698,27 @@ int main(int argc, char *argv[])
             }
             else
             {
+                // Parse optional payout key for automated heartbeat.
+                Crypto::SecretKey mnPayoutPrivKey {};
+                Crypto::PublicKey mnPayoutPubKey {};
+                bool hasPayoutKey = false;
+                if (!config.mnPayoutKey.empty())
+                {
+                    if (!parseMnSigningKey(config.mnPayoutKey, mnPayoutPrivKey, mnPayoutPubKey))
+                    {
+                        logger(WARNING) << "--mn-payout-key is invalid (must be 64 hex chars). Automated heartbeat disabled.";
+                    }
+                    else
+                    {
+                        hasPayoutKey = true;
+                        logger(INFO) << "Automated heartbeat enabled (payout key loaded).";
+                    }
+                }
+
                 logger(INFO) << "Starting masternode signer for MN " << Common::podToHex(myMasternodeId);
                 masternodeSigner = std::make_unique<MasternodeSigner>(
-                    *ccore, *cprotocol, mnSigningPrivKey, mnSigningPubKey, myMasternodeId);
+                    *ccore, *cprotocol, mnSigningPrivKey, mnSigningPubKey, myMasternodeId,
+                    mnPayoutPrivKey, mnPayoutPubKey, hasPayoutKey);
                 masternodeSigner->start();
 
                 // Wire Core event callbacks so the signer is notified of new blocks and mempool TXs.

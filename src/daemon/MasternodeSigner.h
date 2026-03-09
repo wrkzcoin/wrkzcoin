@@ -16,14 +16,17 @@ namespace CryptoNote
     class ICryptoNoteProtocolHandler;
 }
 
-// MasternodeSigner runs two background threads:
+// MasternodeSigner runs up to three background threads:
 //   - A ChainLock signing thread: woken on every new block tip, signs and broadcasts
 //     NOTIFY_CHAINLOCK_VOTE if this node's registered MN is in the CL quorum.
 //   - An InstantSend signing thread: woken on every new mempool TX, signs and broadcasts
 //     NOTIFY_INSTANTSEND_VOTE if this node's MN is in the IS quorum for that TX.
+//   - A heartbeat thread (optional): woken on every new block, submits a zero-input
+//     heartbeat transaction every MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL blocks.
+//     Requires --mn-payout-key to be configured; the payout key signs the heartbeat.
 //
-// It requires a signing private key configured via --mn-signing-key.
-// The corresponding public key must have been registered on-chain in the MN Register tx.
+// ChainLock/InstantSend require --mn-signing-key.
+// Automated heartbeat requires --mn-payout-key.
 class MasternodeSigner
 {
   public:
@@ -32,7 +35,10 @@ class MasternodeSigner
         CryptoNote::ICryptoNoteProtocolHandler &protocol,
         const Crypto::SecretKey &signingPrivateKey,
         const Crypto::PublicKey &signingPublicKey,
-        const Crypto::Hash &masternodeId);
+        const Crypto::Hash &masternodeId,
+        const Crypto::SecretKey &payoutPrivateKey,
+        const Crypto::PublicKey &payoutPublicKey,
+        bool hasPayoutKey);
 
     ~MasternodeSigner();
 
@@ -51,12 +57,18 @@ class MasternodeSigner
   private:
     void chainLockLoop();
     void instantSendLoop();
+    void heartbeatLoop();
 
     CryptoNote::Core &m_core;
     CryptoNote::ICryptoNoteProtocolHandler &m_protocol;
     Crypto::SecretKey m_signingPrivateKey;
     Crypto::PublicKey m_signingPublicKey;
     Crypto::Hash m_masternodeId;
+
+    // Payout key for automated heartbeat signing.
+    Crypto::SecretKey m_payoutPrivateKey;
+    Crypto::PublicKey m_payoutPublicKey;
+    bool m_hasPayoutKey {false};
 
     std::atomic<bool> m_running {false};
 
@@ -75,8 +87,15 @@ class MasternodeSigner
     std::mutex m_txMutex;
     std::condition_variable m_txCv;
 
+    // Heartbeat: latest block height + notification CV.
+    std::atomic<uint32_t> m_latestBlockHeight {0};
+    std::mutex m_heartbeatMutex;
+    std::condition_variable m_heartbeatCv;
+    bool m_heartbeatNewBlock {false};
+
     std::thread m_clThread;
     std::thread m_isThread;
+    std::thread m_heartbeatThread;
 };
 
 // Parse a hex-encoded signing key and return the keypair.

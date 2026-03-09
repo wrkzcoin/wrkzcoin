@@ -312,6 +312,10 @@ namespace DaemonConfig
             "Masternode signing private key (64 hex chars). Enables ChainLock/InstantSend signing.",
             cxxopts::value<std::string>()->default_value(""),
             "<hex>")(
+            "mn-payout-key",
+            "Masternode payout private key (64 hex chars). Enables automated heartbeat submission.",
+            cxxopts::value<std::string>()->default_value(""),
+            "<hex>")(
             "rpc-bind-ip",
             "Interface IP address for the RPC service",
             cxxopts::value<std::string>()->default_value(config.rpcInterface),
@@ -641,6 +645,11 @@ namespace DaemonConfig
             if (cli.count("mn-signing-key") > 0)
             {
                 config.mnSigningKey = cli["mn-signing-key"].as<std::string>();
+            }
+
+            if (cli.count("mn-payout-key") > 0)
+            {
+                config.mnPayoutKey = cli["mn-payout-key"].as<std::string>();
             }
 
             if (cli.count("rpc-bind-ip") > 0)
@@ -1084,6 +1093,11 @@ namespace DaemonConfig
                 else if (cfgKey.compare("mn-signing-key") == 0)
                 {
                     config.mnSigningKey = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("mn-payout-key") == 0)
+                {
+                    config.mnPayoutKey = cfgValue;
                     updated = true;
                 }
                 else if (cfgKey.compare("add-exclusive-node") == 0)
@@ -1548,6 +1562,11 @@ namespace DaemonConfig
             config.mnSigningKey = j["mn-signing-key"].get<std::string>();
         }
 
+        if (j.contains("mn-payout-key"))
+        {
+            config.mnPayoutKey = j["mn-payout-key"].get<std::string>();
+        }
+
         if (j.contains("rpc-bind-ip"))
         {
             config.rpcInterface = j["rpc-bind-ip"].get<std::string>();
@@ -1757,6 +1776,7 @@ namespace DaemonConfig
         j["rpc-bind-ipv6-address"] = config.rpcBindIpv6Address;
         j["rpc-use-ipv6"] = config.rpcUseIpv6;
         j["mn-signing-key"] = config.mnSigningKey;
+        j["mn-payout-key"] = config.mnPayoutKey;
         j["rpc-bind-ip"] = config.rpcInterface;
         j["rpc-bind-port"] = config.rpcPort;
         j["add-exclusive-node"] = config.exclusiveNodes;

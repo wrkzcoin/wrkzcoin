@@ -10,10 +10,12 @@
 #include <common/CheckDifficulty.h>
 #include <common/StringTools.h>
 #include <cryptonotecore/Mixins.h>
+#include <cryptonotecore/MasternodeTx.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
 #include <logger/Logger.h>
 #include <serialization/SerializationTools.h>
+#include <utilities/ParseExtra.h>
 #include <utilities/Utilities.h>
 
 #include <chrono>
@@ -49,6 +51,23 @@ TransactionValidationResult ValidateTransaction::validate()
     /* Validate transaction isn't too big */
     if (!validateTransactionSize())
     {
+        return m_validationResult;
+    }
+
+    /* Zero-input masternode heartbeat transactions bypass normal input/fee/PoW
+     * validation. They carry their authorization cryptographically in the extra
+     * field (MN01 payload with payout-key signature) which is checked by
+     * validateMasternodeTransactionEvent in Core. */
+    if (isZeroInputMasternodeHeartbeat())
+    {
+        if (!validateTransactionExtra())
+        {
+            return m_validationResult;
+        }
+        m_validationResult.valid = true;
+        setTransactionValidationResult(
+            CryptoNote::error::TransactionValidationError::VALIDATION_SUCCESS
+        );
         return m_validationResult;
     }
 
@@ -124,6 +143,20 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
         return m_validationResult;
     }
 
+    /* Zero-input masternode heartbeat transactions are still valid after height changes. */
+    if (isZeroInputMasternodeHeartbeat())
+    {
+        if (!validateTransactionExtra())
+        {
+            return m_validationResult;
+        }
+        m_validationResult.valid = true;
+        setTransactionValidationResult(
+            CryptoNote::error::TransactionValidationError::VALIDATION_SUCCESS
+        );
+        return m_validationResult;
+    }
+
     /* Validate the transaction extra is still a reasonable size. */
     if (!validateTransactionExtra())
     {
@@ -178,6 +211,32 @@ TransactionValidationResult ValidateTransaction::revalidateAfterHeightChange()
     return m_validationResult;
 }
 
+
+bool ValidateTransaction::isZeroInputMasternodeHeartbeat() const
+{
+    if (!m_transaction.inputs.empty() || !m_transaction.outputs.empty())
+    {
+        return false;
+    }
+
+    // Quick structural check: extra must contain a valid MN01 Heartbeat payload.
+    // MN_BASE_PAYLOAD_SIZE = 4 (MN01) + 1 (type) + 32 (mnId) = 37 bytes.
+    // MN_HEARTBEAT_PAYLOAD_SIZE = 37 + 1 (flag) + 64 (sig) = 102 bytes.
+    const auto extraData = Utilities::getExtraDataFromExtra(m_transaction.extra);
+    if (extraData.size() != 102)
+    {
+        return false;
+    }
+    if (extraData[0] != 'M' || extraData[1] != 'N' || extraData[2] != '0' || extraData[3] != '1')
+    {
+        return false;
+    }
+    if (extraData[4] != static_cast<uint8_t>(CryptoNote::MasternodeTxType::Heartbeat))
+    {
+        return false;
+    }
+    return true;
+}
 
 bool ValidateTransaction::validateTransactionSize()
 {

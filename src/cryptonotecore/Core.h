@@ -408,6 +408,10 @@ namespace CryptoNote
             const Crypto::Hash &endpointCommitment,
             const Crypto::Hash &excludeTransactionHash) const;
 
+        bool hasMasternodeHeartbeatInPool(
+            const Crypto::Hash &masternodeId,
+            const Crypto::Hash &excludeTransactionHash) const;
+
         fs::path getMasternodeStateSnapshotPath() const;
 
         bool saveMasternodeStateSnapshot() const;

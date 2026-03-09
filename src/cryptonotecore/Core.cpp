@@ -1615,6 +1615,12 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
+                if (checkPoolTokenReplay
+                    && hasMasternodeHeartbeatInPool(
+                        payload.masternodeId, cachedTransaction.getTransactionHash()))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
                 {
                     Crypto::PublicKey ownerKey;
                     if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
@@ -1809,6 +1815,45 @@ namespace CryptoNote
             }
 
             if (payload.endpointCommitment == endpointCommitment)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool Core::hasMasternodeHeartbeatInPool(
+        const Crypto::Hash &masternodeId,
+        const Crypto::Hash &excludeTransactionHash) const
+    {
+        if (transactionPool == nullptr)
+        {
+            return false;
+        }
+
+        const auto poolTransactions = transactionPool->getPoolTransactions();
+        for (const auto &poolTx : poolTransactions)
+        {
+            if (poolTx.getTransactionHash() == excludeTransactionHash)
+            {
+                continue;
+            }
+
+            MasternodeTxPayload payload;
+            std::string error;
+            const auto parseResult = parseMasternodeTxPayload(poolTx.getTransaction(), payload, error);
+            if (parseResult != MasternodeTxParseResult::Valid)
+            {
+                continue;
+            }
+
+            if (payload.type != MasternodeTxType::Heartbeat)
+            {
+                continue;
+            }
+
+            if (payload.masternodeId == masternodeId)
             {
                 return true;
             }
@@ -3037,8 +3082,14 @@ namespace CryptoNote
         const auto transactionHash = cachedTransaction.getTransactionHash();
 
         /* If there are already a certain number of fusion transactions in
-           the pool, then do not try to add another */
-        if (cachedTransaction.getTransactionFee() == 0
+           the pool, then do not try to add another.
+           Zero-input/zero-output masternode heartbeat transactions are exempt
+           from this limit — they are not fusion transactions. */
+        const auto &poolTxRef = cachedTransaction.getTransaction();
+        const bool isZeroInputOutput =
+            poolTxRef.inputs.empty() && poolTxRef.outputs.empty();
+        if (!isZeroInputOutput
+            && cachedTransaction.getTransactionFee() == 0
             && transactionPool->getFusionTransactionCount() >= CryptoNote::parameters::FUSION_TX_MAX_POOL_COUNT)
         {
             return {false, "Pool already contains the maximum amount of fusion transactions"};

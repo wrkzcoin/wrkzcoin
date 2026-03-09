@@ -230,6 +230,11 @@ namespace DaemonConfig
         // Masternode signing private key (hex-encoded) for ChainLock/InstantSend participation.
         // Generate during mn_register (printed by zedwallet++). Leave empty to disable signing.
         std::string mnSigningKey;
+
+        // Masternode payout private key (hex-encoded) for automated heartbeat signing.
+        // This is the spend key of the wallet address used as the payout key during mn_register.
+        // Leave empty to disable automated heartbeat submission.
+        std::string mnPayoutKey;
     };
 
     DaemonConfiguration initConfiguration(const char *path);

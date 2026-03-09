@@ -84,6 +84,10 @@ class ValidateTransaction
 
         bool validateTransactionUnlockTime();
 
+        // Returns true if this is a zero-input/zero-output masternode heartbeat transaction.
+        // Such transactions bypass normal input/fee/PoW checks but still pass size and extra validation.
+        bool isZeroInputMasternodeHeartbeat() const;
+
         void setTransactionValidationResult(const std::error_code &error_code, const std::string &error_message = "");
 
         /////////////////////////

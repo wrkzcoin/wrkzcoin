@@ -306,10 +306,23 @@ The commitment uniqueness is enforced on-chain — no two active or pending mast
 
 ### Heartbeat Transactions
 
-A masternode operator sends a **Heartbeat** tx (type `0x06`) at most once per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks. The tx includes:
+A masternode daemon **automatically** submits a **Heartbeat** tx (type `0x06`) at most once per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks when `--mn-payout-key` is configured. No manual action or wallet is required. The tx includes:
 - Masternode ID (32 bytes)
 - `healthy` flag (1 byte: `0x01` = healthy, `0x00` = unhealthy)
 - Signature over the unsigned payload using the payout key
+
+### Zero-Input Heartbeat Format
+
+Heartbeat transactions are **zero-input, zero-output** by design — they carry no funds, pay no fee, and consume negligible block space (~110 bytes). Normal input/fee/PoW validation is bypassed for this tx type; authorization is cryptographically enforced via the payout-key signature in the `extra` field.
+
+**Spam prevention layers** (enforced in consensus):
+1. Structural parse gate — extra must match exact MN01 type `0x06` format (102 bytes)
+2. Payout-key signature — only the registered payout-key holder can produce a valid heartbeat
+3. Active status check — the MN must be in `Active` status at the time of the heartbeat
+4. Rate limiting — at most one heartbeat per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks per MN ID
+5. Mempool deduplication — a second heartbeat for the same MN ID is rejected if one is already in the pool
+
+The 2B WRKZ collateral requirement makes spam attacks economically irrational even if all five layers were bypassed.
 
 ### Health Calculation
 
@@ -328,20 +341,20 @@ A node must maintain ≥ **95%** health to be reward-eligible.
 
 ### Block Space Impact
 
-Each heartbeat is a full CryptoNote transaction. With a fee-bearing input/output structure the tx is roughly **500–1,000 bytes**; a zero-input transaction-PoW heartbeat is roughly **110 bytes** but requires computational work from the operator.
+Each heartbeat is a **zero-input, zero-output** transaction (~110 bytes). There is no fee and no computational PoW required from the operator. The `MasternodeSigner` heartbeat thread handles submission automatically.
 
-With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5`, each masternode submits at most 1 heartbeat per 5 blocks. The health window (10,080 blocks) provides 2,016 opportunities per masternode; meeting the 95% threshold requires 1,916 healthy samples, allowing up to 100 missed heartbeats (~500 blocks ≈ 8 hours) per window. The block granted full reward zone is **100,000 bytes**.
+With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5`, each masternode submits at most 1 heartbeat per 5 blocks. The health window (10,080 blocks) provides 2,016 opportunities per masternode; meeting the 95% threshold requires 1,916 healthy samples, allowing up to 100 missed heartbeats (~500 blocks ≈ 8 hours) per window.
 
-**Fee-bearing heartbeat txs (~500 bytes each):**
+**Zero-input heartbeat txs (~110 bytes each):**
 
 | Active masternodes | Heartbeat txs/block | Block space consumed |
 |---|---|---|
-| 10 | 2 | ~1 KB (1%) |
-| 50 | 10 | ~5 KB (5%) |
-| 100 | 20 | ~10 KB (10%) |
-| 200 | 40 | ~20 KB (20%) |
-| 500 | 100 | ~50 KB (50%) |
-| 1,000 | 200 | ~100 KB (100% — user txs squeezed out) |
+| 10 | 2 | ~220 B (<1%) |
+| 50 | 10 | ~1.1 KB (1%) |
+| 100 | 20 | ~2.2 KB (2%) |
+| 500 | 100 | ~11 KB (11%) |
+| 1,000 | 200 | ~22 KB (22%) |
+| 4,000 | 800 | ~88 KB (88% — approaching limit) |
 
 ---
 
@@ -422,17 +435,19 @@ Or add it to your daemon configuration file:
 mn-signing-key=<64-hex-chars>
 ```
 
-The daemon derives the public key from the private key at startup, looks up the matching masternode registration on-chain, and starts `MasternodeSigner` background threads for ChainLock and InstantSend signing.
+The daemon derives the public key from the private key at startup, looks up the matching masternode registration on-chain, and starts `MasternodeSigner` background threads for ChainLock, InstantSend signing, and (optionally) automated heartbeat.
 
 ### MasternodeSigner
 
-`MasternodeSigner` runs two background threads:
+`MasternodeSigner` runs up to three background threads:
 
 1. **ChainLock loop** — Monitors new blocks. For each new block tip, checks whether this masternode is in the 20-node quorum (selected deterministically from the active set using the block hash as seed). If in quorum, signs a `CLV1` vote and broadcasts it via P2P.
 
 2. **InstantSend loop** — Monitors the transaction mempool. For each qualifying transaction (≤ 10 inputs), checks whether this masternode is in the 10-node quorum (selected using the tx hash as seed). If in quorum, signs an `ISV1` vote and broadcasts it via P2P.
 
-If `--mn-signing-key` is not provided, `MasternodeSigner` does not start. The node still syncs and validates ChainLock / InstantSend data received from peers, but does not actively vote.
+3. **Heartbeat loop** *(requires `--mn-payout-key`)* — Monitors new blocks. Every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` (5) blocks, if the masternode is Active, builds and submits a zero-input heartbeat transaction signed with the payout private key. The transaction bypasses normal fee/PoW validation; signature and rate-limit checks ensure only legitimate operators can submit.
+
+If `--mn-signing-key` is not provided, `MasternodeSigner` does not start. If `--mn-payout-key` is not provided, the heartbeat loop does not run (the node participates in quorums but does not auto-heartbeat).
 
 ---
 
@@ -674,25 +689,39 @@ The wallet will:
 
 ### Step 3 — Configure the Daemon
 
-Add the signing key to your daemon configuration so it can participate in ChainLock and InstantSend quorums:
+Add the signing key and payout key to your daemon configuration:
 
-```
+```ini
 mn-signing-key=<64-hex-chars printed at registration>
+mn-payout-key=<64-hex-chars of wallet spend private key>
 ```
 
-Or pass it on the command line:
+Or pass on the command line:
 
 ```bash
-wrkzd --mn-signing-key=<64-hex-chars>
+wrkzd --mn-signing-key=<64-hex-chars> \
+      --mn-payout-key=<64-hex-chars>
 ```
+
+- **`mn-signing-key`** — Enables ChainLock/InstantSend quorum participation. The public key was embedded in the Register tx.
+- **`mn-payout-key`** — Enables automated heartbeat submission. This is the spend private key of the wallet address used as the payout address during `mn_register`. You can export it from `zedwallet++` with `keys` (shows spend key).
 
 ### Step 4 — Activate (pending implementation)
 
 After the Register tx is confirmed, an **Activate** transaction must be submitted to move the masternode from `Registered` → `Active` status. This step is currently a governance operation; a wallet command (`mn_activate`) is planned.
 
-### Step 5 — Maintain
+### Step 5 — Automated Heartbeat
 
-Once active, the operator daemon must submit **Heartbeat** transactions regularly (at least every `1/0.95` ≈ every block to maintain 95% health). A wallet command (`mn_heartbeat`) for this is planned.
+Once active, the daemon **automatically** submits heartbeat transactions. To enable automated heartbeat, add `--mn-payout-key` to your daemon startup:
+
+```bash
+wrkzd --mn-signing-key=<signing-private-key-hex> \
+      --mn-payout-key=<payout-private-key-hex>
+```
+
+The `--mn-payout-key` is the spend private key of the wallet address registered as the payout address during `mn_register`. With this key configured, the daemon's `MasternodeSigner` thread automatically submits a zero-input, zero-fee heartbeat every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks (every ~5 minutes at 1-minute block time).
+
+> **Security note:** The payout private key gives the ability to sign heartbeats and lifecycle transactions for your masternode. Keep it secure and do not share it. It does **not** by itself allow spending the collateral UTXO (which requires the separate key pair embedded in the collateral output).
 
 ---
 
@@ -723,7 +752,7 @@ wrkzd --p2p-bind-ipv6-address :: --p2p-bind-port-ipv6 17855
 ### Health Maintenance
 
 - Keep your masternode online continuously.
-- Ensure heartbeat transactions are submitted every block.
+- Configure `--mn-payout-key` so the daemon auto-submits heartbeats every 5 blocks.
 - Monitor `health_percent` via `masternodes` console command or `GET /masternodes` RPC.
 - A node falling below 95% health is excluded from reward selection until health recovers.
 - A node deactivated after poor health incurs a 21-day spend-lock on its collateral.
@@ -973,12 +1002,12 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 | Limitation | Impact | Planned fix |
 |-----------|--------|-------------|
 | **Collateral UTXO not verified at mempool acceptance** | The output key is verified against the UTXO set during block validation (`extractKeyOutputKeys`), but mempool acceptance does not perform this check — a register tx referencing a non-existent output can enter the mempool and will only be rejected at block inclusion | Add UTXO set lookup during `validateMasternodeTransactionEvent` when `checkPoolTokenReplay=true` |
-| **No wallet `mn_activate` / `mn_deactivate` / `mn_heartbeat` / `mn_revoke` / `mn_update_endpoint` commands** | Governance/maintenance operations require external tooling to build transactions | Add wallet commands |
+| **No wallet `mn_activate` / `mn_deactivate` / `mn_revoke` / `mn_update_endpoint` commands** | Governance/maintenance operations require external tooling to build transactions | Add wallet commands (heartbeat is now automated via daemon) |
 | **Verifier allowlist is disabled** | Any key can attest; permissioned verifier governance not yet enforced | Enable via config before mainnet if required |
 | **Masternode set hash not committed in block header** | Set hash is advisory-only; not consensus-enforced per block | Consider adding to coinbase extra or block header in future fork |
 | **No dedicated P2P gossip for MN heartbeat/attest messages** | Heartbeats and attestations use normal tx pool propagation | Acceptable for current design; revisit at scale |
 | **ChainLock not P2P-relayed on startup** | Nodes that join after a ChainLock is assembled do not re-request historical locks | Add historical ChainLock sync to handshake |
-| **Heartbeat block space scaling** | With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL=5`, 100 fee-bearing masternodes consume ~10% of the 100 KB block reward zone per block; saturation requires ~1,000 masternodes | Monitor as masternode count grows; raise interval further if needed |
+| **Heartbeat block space scaling** | With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL=5`, 4,000 zero-input masternodes consume ~88 KB per block (saturation); the zero-input format reduces per-heartbeat cost from ~500 B to ~110 B compared to fee-bearing txs | Monitor as masternode count grows; raise interval further if needed |
 
 ---
 
