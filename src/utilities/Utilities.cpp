@@ -328,7 +328,7 @@ namespace Utilities
         const size_t TRANSACTION_VERSION_SIZE = sizeof(uint8_t);
         const size_t TRANSACTION_UNLOCK_TIME_SIZE = sizeof(uint64_t) + 2; // varint
         const size_t EXTRA_DATA_SIZE = extraDataSize > 0 ? extraDataSize + 4 : 0;
-        const size_t PAYMENT_ID_SIZE = havePaymentID ? 34 : 0;
+        const size_t PAYMENT_ID_SIZE = havePaymentID ? 35 : 0;
 
         /* The size of the transaction preamble */
         const size_t headerSize = TRANSACTION_VERSION_SIZE
