@@ -12,6 +12,7 @@
 ///////////////////////////////
 
 #include "ITransaction.h"
+#include "JsonHelper.h"
 
 #include <algorithm>
 #include <cassert>
@@ -4827,229 +4828,142 @@ namespace CryptoNote
 
     std::string WalletGreen::toNewFormatJSON() const
     {
-        rapidjson::StringBuffer sb;
-        rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
         const bool isViewWallet = getTrackingMode() == WalletTrackingMode::TRACKING;
 
         std::unordered_map<Crypto::Hash, std::vector<std::tuple<int64_t, Crypto::PublicKey>>> transfers;
 
-        writer.StartObject();
+        /* The public spend keys of all the subwallets */
+        nlohmann::json publicSpendKeysArr = nlohmann::json::array();
+        for (const auto key : getPublicSpendKeys())
         {
-            /* File format */
-            writer.Key("walletFileFormatVersion");
-            writer.Uint(Constants::WALLET_FILE_FORMAT_VERSION);
+            publicSpendKeysArr.push_back(Common::podToHex(key.data));
+        }
 
-            /* Subwallets */
-            writer.Key("subWallets");
-            writer.StartObject();
+        /* Each subwallet */
+        const std::string primaryAddress = getPrimaryAddress();
+        auto &walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
+
+        nlohmann::json subWalletArr = nlohmann::json::array();
+        for (const auto subWallet : walletsIndex)
+        {
+            const std::string address =
+                m_currency.accountAddressAsString({subWallet.spendPublicKey, m_viewPublicKey});
+
+            /* Inputs that have been received and not spent */
+            nlohmann::json unspentInputsArr = nlohmann::json::array();
+            for (const auto &[input, spendingTransactionHash] : getInputs(subWallet, isViewWallet, true))
             {
-                /* The public spend keys of all the subwallets */
-                writer.Key("publicSpendKeys");
-                writer.StartArray();
+                transfers[input.parentTransactionHash].push_back({input.amount, subWallet.spendPublicKey});
+                unspentInputsArr.push_back(input.toJSON());
+            }
+
+            /* Inputs that have been spent */
+            nlohmann::json spentInputsArr = nlohmann::json::array();
+            for (const auto &[input, spendingTransactionHash] : getInputs(subWallet, isViewWallet, false))
+            {
+                transfers[input.parentTransactionHash].push_back({input.amount, subWallet.spendPublicKey});
+                transfers[spendingTransactionHash].push_back({-input.amount, subWallet.spendPublicKey});
+                spentInputsArr.push_back(input.toJSON());
+            }
+
+            subWalletArr.push_back({
+                /* Subwallet public spend key */
+                {"publicSpendKey", Common::podToHex(subWallet.spendPublicKey.data)},
+                /* Subwallet private spend key */
+                {"privateSpendKey", Common::podToHex(subWallet.spendSecretKey.data)},
+                /* Subwallet address, comprised of public spend key and shared public view key */
+                {"address", address},
+                /* Timestamp to begin syncing at */
+                {"syncStartTimestamp", uint64_t(0)},
+                {"unspentInputs", unspentInputsArr},
+                /* Inputs that have been sent but not confirmed in a block */
+                /* We could probably fill this in, but it's simpler to
+                   not do so - it will be resolved auomatically as the
+                   transactions get confirmed, and it's likely we treat
+                   locked inputs differently between the two formats. */
+                {"lockedInputs", nlohmann::json::array()},
+                {"spentInputs", spentInputsArr},
+                /* Height to begin syncing at - Always stored as timestamp
+                   in WalletGreen so static at 0 */
+                {"syncStartHeight", Utilities::timestampToScanHeight(subWallet.creationTimestamp)},
+                {"isPrimaryAddress", address == primaryAddress},
+                {"unconfirmedIncomingAmounts", nlohmann::json::array()},
+            });
+        }
+
+        /* Transactions in a block */
+        nlohmann::json transactionsArr = nlohmann::json::array();
+        {
+            const size_t numTransactions = getTransactionCount();
+
+            for (size_t i = 0; i < numTransactions; i++)
+            {
+                const auto tx = getTransaction(i);
+
+                WalletTypes::Transaction newTX;
+
+                for (const auto [amount, publicSpendKey] : transfers[tx.hash])
                 {
-                    for (const auto key : getPublicSpendKeys())
-                    {
-                        key.toJSON(writer);
-                    }
+                    newTX.transfers[publicSpendKey] += amount;
                 }
-                writer.EndArray();
 
-                /* Each subwallet */
-                writer.Key("subWallet");
-                writer.StartArray();
-                {
-                    const std::string primaryAddress = getPrimaryAddress();
+                newTX.hash = tx.hash;
+                newTX.fee = tx.fee;
+                newTX.blockHeight = tx.blockHeight;
+                newTX.timestamp = tx.timestamp;
+                newTX.paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(tx.extra));
+                newTX.unlockTime = tx.unlockTime;
+                newTX.isCoinbaseTransaction = tx.isBase;
 
-                    auto &walletsIndex = m_walletsContainer.get<RandomAccessIndex>();
+                transactionsArr.push_back(newTX.toJSON());
+            }
+        }
 
-                    for (const auto subWallet : walletsIndex)
-                    {
-                        const std::string address =
-                            m_currency.accountAddressAsString({subWallet.spendPublicKey, m_viewPublicKey});
+        /* Hashes for sync history */
+        nlohmann::json lastKnownBlockHashesArr = nlohmann::json::array();
+        for (const auto hash : m_blockchainSynchronizer.getLastKnownBlockHashes())
+        {
+            lastKnownBlockHashesArr.push_back(Common::podToHex(hash.data));
+        }
 
-                        writer.StartObject();
-                        {
-                            /* Subwallet public spend key */
-                            writer.Key("publicSpendKey");
-                            subWallet.spendPublicKey.toJSON(writer);
-
-                            /* Subwallet private spend key */
-                            writer.Key("privateSpendKey");
-                            subWallet.spendSecretKey.toJSON(writer);
-
-                            /* Subwallet address, comprised of public spend key and shared public view key */
-                            writer.Key("address");
-                            writer.String(address);
-
-                            /* Timestamp to begin syncing at */
-                            writer.Key("syncStartTimestamp");
-                            writer.Uint64(0);
-
-                            /* Inputs that have been received and not spent */
-                            writer.Key("unspentInputs");
-                            writer.StartArray();
-                            {
-                                for (const auto &[input, spendingTransactionHash] :
-                                     getInputs(subWallet, isViewWallet, true))
-                                {
-                                    transfers[input.parentTransactionHash].push_back(
-                                        {input.amount, subWallet.spendPublicKey});
-                                    input.toJSON(writer);
-                                }
-                            }
-                            writer.EndArray();
-
-                            /* Inputs that have been sent but not confirmed in a block */
-                            /* We could probably fill this in, but it's simpler to
-                           not do so - it will be resolved auomatically as the
-                           transactions get confirmed, and it's likely we treat
-                           locked inputs differently between the two formats. */
-                            writer.Key("lockedInputs");
-                            writer.StartArray();
-                            {
-                            }
-                            writer.EndArray();
-
-                            /* Input that have been spent */
-                            writer.Key("spentInputs");
-                            writer.StartArray();
-                            {
-                                for (const auto &[input, spendingTransactionHash] :
-                                     getInputs(subWallet, isViewWallet, false))
-                                {
-                                    transfers[input.parentTransactionHash].push_back(
-                                        {input.amount, subWallet.spendPublicKey});
-                                    transfers[spendingTransactionHash].push_back(
-                                        {-input.amount, subWallet.spendPublicKey});
-                                    input.toJSON(writer);
-                                }
-                            }
-                            writer.EndArray();
-
-                            /* Height to begin syncing at - Always stored as timestamp
-                           in WalletGreen so static at 0 */
-                            writer.Key("syncStartHeight");
-                            writer.Uint64(Utilities::timestampToScanHeight(subWallet.creationTimestamp));
-
-                            writer.Key("isPrimaryAddress");
-                            writer.Bool(address == primaryAddress);
-
-                            writer.Key("unconfirmedIncomingAmounts");
-                            writer.StartArray();
-                            {
-                            }
-                            writer.EndArray();
-                        }
-                        writer.EndObject();
-                    }
-                }
-                writer.EndArray();
-
-                /* Transactions in a block */
-                writer.Key("transactions");
-                writer.StartArray();
-                {
-                    const size_t numTransactions = getTransactionCount();
-
-                    for (size_t i = 0; i < numTransactions; i++)
-                    {
-                        const auto tx = getTransaction(i);
-
-                        WalletTypes::Transaction newTX;
-
-                        for (const auto [amount, publicSpendKey] : transfers[tx.hash])
-                        {
-                            newTX.transfers[publicSpendKey] += amount;
-                        }
-
-                        newTX.hash = tx.hash;
-                        newTX.fee = tx.fee;
-                        newTX.blockHeight = tx.blockHeight;
-                        newTX.timestamp = tx.timestamp;
-                        newTX.paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(tx.extra));
-                        newTX.unlockTime = tx.unlockTime;
-                        newTX.isCoinbaseTransaction = tx.isBase;
-
-                        newTX.toJSON(writer);
-                    }
-                }
-                writer.EndArray();
-
+        nlohmann::json j = {
+            /* File format */
+            {"walletFileFormatVersion", Constants::WALLET_FILE_FORMAT_VERSION},
+            /* Subwallets */
+            {"subWallets", {
+                {"publicSpendKeys", publicSpendKeysArr},
+                {"subWallet", subWalletArr},
+                {"transactions", transactionsArr},
                 /* Outgoing transactions not in a block yet */
                 /* Not going to fill in, as with locked inputs */
-                writer.Key("lockedTransactions");
-                writer.StartArray();
-                {
-                }
-                writer.EndArray();
-
+                {"lockedTransactions", nlohmann::json::array()},
                 /* The shared private view key */
-                writer.Key("privateViewKey");
-                m_viewSecretKey.toJSON(writer);
-
+                {"privateViewKey", Common::podToHex(m_viewSecretKey.data)},
                 /* Whether this is a view only wallet */
-                writer.Key("isViewWallet");
-                writer.Bool(isViewWallet);
-
+                {"isViewWallet", isViewWallet},
                 /* Private keys of each transaction. Not stored in walletgreen. */
-                writer.Key("txPrivateKeys");
-                writer.StartArray();
-                {
-                }
-                writer.EndArray();
-            }
-            writer.EndObject();
-
+                {"txPrivateKeys", nlohmann::json::array()},
+            }},
             /* Sync status */
-            writer.Key("walletSynchronizer");
-            writer.StartObject();
-            {
+            {"walletSynchronizer", {
                 /* Sync history */
-                writer.Key("transactionSynchronizerStatus");
-                writer.StartObject();
-                {
+                {"transactionSynchronizerStatus", {
                     /* Lets not bother with this - it's all handed by lastKnownBlockHashes */
-                    writer.Key("blockHashCheckpoints");
-                    writer.StartArray();
-                    {
-                    }
-                    writer.EndArray();
-
-                    /* Hashes for sync history */
-                    writer.Key("lastKnownBlockHashes");
-                    writer.StartArray();
-                    {
-                        for (const auto hash : m_blockchainSynchronizer.getLastKnownBlockHashes())
-                        {
-                            hash.toJSON(writer);
-                        }
-                    }
-                    writer.EndArray();
-
+                    {"blockHashCheckpoints", nlohmann::json::array()},
+                    {"lastKnownBlockHashes", lastKnownBlockHashesArr},
                     /* We could get the height of the largest hash above... but it
-                   doesn't really matter */
-                    writer.Key("lastKnownBlockHeight");
-                    writer.Uint64(0);
-                }
-                writer.EndObject();
-
+                       doesn't really matter */
+                    {"lastKnownBlockHeight", uint64_t(0)},
+                }},
                 /* Timestamp to start syncing from */
-                writer.Key("startTimestamp");
-                writer.Uint64(0);
-
-                writer.Key("startHeight");
-                writer.Uint64(Utilities::timestampToScanHeight(getMinTimestamp()));
-
+                {"startTimestamp", uint64_t(0)},
+                {"startHeight", Utilities::timestampToScanHeight(getMinTimestamp())},
                 /* The private view key */
-                writer.Key("privateViewKey");
-                m_viewSecretKey.toJSON(writer);
-            }
-            writer.EndObject();
-        }
-        writer.EndObject();
+                {"privateViewKey", Common::podToHex(m_viewSecretKey.data)},
+            }},
+        };
 
-        return sb.GetString();
+        return j.dump();
     }
 
 } // namespace CryptoNote

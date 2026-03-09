@@ -7,7 +7,6 @@
 
 #include "CryptoTypes.h"
 #include "WalletTypes.h"
-#include "rapidjson/document.h"
 
 #include <crypto/crypto.h>
 #include <errors/Errors.h>
@@ -44,10 +43,10 @@ class SubWallet
     /////////////////////////////
 
     /* Converts the class to a json object */
-    void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const;
+    nlohmann::json toJSON() const;
 
     /* Initializes the class from a json string */
-    void fromJSON(const JSONValue &j);
+    void fromJSON(const nlohmann::json &j);
 
     /* Generates a key image from the derivation, and stores the
        transaction input along with the key image filled in */

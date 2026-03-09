@@ -56,7 +56,7 @@ class BlockDownloader
 
     void fromJSON(const JSONObject &j, const uint64_t startHeight, const uint64_t startTimestamp);
 
-    void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const;
+    nlohmann::json toJSON() const;
 
     void setSubWallets(const std::shared_ptr<SubWallets> subWallets);
 

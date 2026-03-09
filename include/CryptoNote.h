@@ -8,10 +8,7 @@
 
 #include "CryptoTypes.h"
 #include "json.hpp"
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
 
-#include <JsonHelper.h>
 #include <boost/variant.hpp>
 #include <cstdint>
 #include <common/StringTools.h>
@@ -117,30 +114,6 @@ namespace CryptoNote
         BinaryArray block; // BlockTemplate
         std::vector<BinaryArray> transactions;
 
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.StartObject();
-            writer.Key("block");
-            writer.String(Common::toHex(block));
-
-            writer.Key("transactions");
-            writer.StartArray();
-            for (const auto &transaction : transactions)
-            {
-                writer.String(Common::toHex(transaction));
-            }
-            writer.EndArray();
-            writer.EndObject();
-        }
-
-        void fromJSON(const JSONValue &j)
-        {
-            block = Common::fromHex(getStringFromJSON(j, "block"));
-            for (const auto &tx : getArrayFromJSON(j, "transactions"))
-            {
-                transactions.push_back(Common::fromHex(tx.GetString()));
-            }
-        }
     };
 
     inline void to_json(nlohmann::json &j, const CryptoNote::KeyInput &k)

@@ -6,7 +6,7 @@
 #pragma once
 
 #include "CryptoTypes.h"
-#include "rapidjson/document.h"
+#include "JsonHelper.h"
 
 #include <errors/Errors.h>
 #include <nigel/Nigel.h>
@@ -130,12 +130,12 @@ class WalletBackend
     std::string toJSON() const;
 
     /* Initializes the class from a json string */
-    Error fromJSON(const rapidjson::Document &j);
+    Error fromJSON(const nlohmann::json &j);
 
     /* Initializes the class from a json string, and inits the stuff we
        can't init from the json */
     Error fromJSON(
-        const rapidjson::Document &j,
+        const nlohmann::json &j,
         const std::string filename,
         const std::string password,
         const std::string daemonHost,

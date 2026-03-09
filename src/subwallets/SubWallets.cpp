@@ -7,6 +7,7 @@
 #include <subwallets/SubWallets.h>
 //////////////////////////////////
 
+#include <common/StringTools.h>
 #include <config/CryptoNoteConfig.h>
 #include <ctime>
 #include <mutex>
@@ -1006,7 +1007,7 @@ void SubWallets::pruneSpentInputs(const uint64_t pruneHeight)
     }
 }
 
-void SubWallets::fromJSON(const JSONObject &j)
+void SubWallets::fromJSON(const nlohmann::json &j)
 {
     for (const auto &x : getArrayFromJSON(j, "publicSpendKeys"))
     {
@@ -1015,7 +1016,7 @@ void SubWallets::fromJSON(const JSONObject &j)
         m_publicSpendKeys.push_back(key);
     }
 
-    if (j.HasMember("subWalletIndexCounter"))
+    if (j.contains("subWalletIndexCounter"))
     {
         m_subWalletIndexCounter = getUint64FromJSON(j, "subWalletIndexCounter");
     }
@@ -1069,66 +1070,53 @@ void SubWallets::fromJSON(const JSONObject &j)
     }
 }
 
-void SubWallets::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+nlohmann::json SubWallets::toJSON() const
 {
-    writer.StartObject();
+    nlohmann::json j;
 
-    writer.Key("publicSpendKeys");
-    writer.StartArray();
+    nlohmann::json publicSpendKeys = nlohmann::json::array();
     for (const auto &key : m_publicSpendKeys)
     {
-        key.toJSON(writer);
+        publicSpendKeys.push_back(Common::podToHex(key.data));
     }
-    writer.EndArray();
+    j["publicSpendKeys"] = publicSpendKeys;
 
-    writer.Key("subWalletIndexCounter");
-    writer.Uint64(m_subWalletIndexCounter);
+    j["subWalletIndexCounter"] = m_subWalletIndexCounter;
 
-    writer.Key("subWallet");
-    writer.StartArray();
+    nlohmann::json subWalletArr = nlohmann::json::array();
     for (const auto &[publicKey, subWallet] : m_subWallets)
     {
-        subWallet.toJSON(writer);
+        subWalletArr.push_back(subWallet.toJSON());
     }
-    writer.EndArray();
+    j["subWallet"] = subWalletArr;
 
-    writer.Key("transactions");
-    writer.StartArray();
+    nlohmann::json transactions = nlohmann::json::array();
     for (const auto &tx : m_transactions)
     {
-        tx.toJSON(writer);
+        transactions.push_back(tx.toJSON());
     }
-    writer.EndArray();
+    j["transactions"] = transactions;
 
-    writer.Key("lockedTransactions");
-    writer.StartArray();
+    nlohmann::json lockedTransactions = nlohmann::json::array();
     for (const auto &tx : m_lockedTransactions)
     {
-        tx.toJSON(writer);
+        lockedTransactions.push_back(tx.toJSON());
     }
-    writer.EndArray();
+    j["lockedTransactions"] = lockedTransactions;
 
-    writer.Key("privateViewKey");
-    m_privateViewKey.toJSON(writer);
+    j["privateViewKey"] = Common::podToHex(m_privateViewKey.data);
 
-    writer.Key("isViewWallet");
-    writer.Bool(m_isViewWallet);
+    j["isViewWallet"] = m_isViewWallet;
 
-    writer.Key("txPrivateKeys");
-    writer.StartArray();
-    for (const auto [txHash, txPrivateKey] : m_transactionPrivateKeys)
+    nlohmann::json txPrivateKeys = nlohmann::json::array();
+    for (const auto &[txHash, txPrivateKey] : m_transactionPrivateKeys)
     {
-        writer.StartObject();
-
-        writer.Key("transactionHash");
-        txHash.toJSON(writer);
-
-        writer.Key("txPrivateKey");
-        txPrivateKey.toJSON(writer);
-
-        writer.EndObject();
+        nlohmann::json entry;
+        entry["transactionHash"] = Common::podToHex(txHash.data);
+        entry["txPrivateKey"]    = Common::podToHex(txPrivateKey.data);
+        txPrivateKeys.push_back(entry);
     }
-    writer.EndArray();
+    j["txPrivateKeys"] = txPrivateKeys;
 
-    writer.EndObject();
+    return j;
 }

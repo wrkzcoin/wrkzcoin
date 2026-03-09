@@ -7,6 +7,7 @@
 #include <walletbackend/SynchronizationStatus.h>
 ////////////////////////////////////////////////
 
+#include <common/StringTools.h>
 #include <walletbackend/Constants.h>
 
 /////////////////////
@@ -74,28 +75,25 @@ void SynchronizationStatus::fromJSON(const JSONObject &j)
     m_lastKnownBlockHeight = getUint64FromJSON(j, "lastKnownBlockHeight");
 }
 
-void SynchronizationStatus::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+nlohmann::json SynchronizationStatus::toJSON() const
 {
-    writer.StartObject();
+    nlohmann::json j;
 
-    writer.Key("blockHashCheckpoints");
-    writer.StartArray();
+    nlohmann::json checkpoints = nlohmann::json::array();
     for (const auto hash : m_blockHashCheckpoints)
     {
-        hash.toJSON(writer);
+        checkpoints.push_back(Common::podToHex(hash.data));
     }
-    writer.EndArray();
+    j["blockHashCheckpoints"] = checkpoints;
 
-    writer.Key("lastKnownBlockHashes");
-    writer.StartArray();
+    nlohmann::json lastHashes = nlohmann::json::array();
     for (const auto hash : m_lastKnownBlockHashes)
     {
-        hash.toJSON(writer);
+        lastHashes.push_back(Common::podToHex(hash.data));
     }
-    writer.EndArray();
+    j["lastKnownBlockHashes"] = lastHashes;
 
-    writer.Key("lastKnownBlockHeight");
-    writer.Uint64(m_lastKnownBlockHeight);
+    j["lastKnownBlockHeight"] = m_lastKnownBlockHeight;
 
-    writer.EndObject();
+    return j;
 }

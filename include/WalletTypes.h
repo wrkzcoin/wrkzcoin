@@ -5,12 +5,10 @@
 
 #pragma once
 
-#include "rapidjson/document.h"
-#include "rapidjson/writer.h"
+#include "json.hpp"
 
 #include <CryptoNote.h>
 #include <errors/Errors.h>
-#include <JsonHelper.h>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -152,67 +150,44 @@ namespace WalletTypes
         }
 
         /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+        nlohmann::json toJSON() const
         {
-            writer.StartObject();
+            nlohmann::json j;
+            j["keyImage"] = Common::podToHex(keyImage.data);
+            j["amount"] = amount;
+            j["blockHeight"] = blockHeight;
+            j["transactionPublicKey"] = Common::podToHex(transactionPublicKey.data);
+            j["transactionIndex"] = transactionIndex;
+            j["globalOutputIndex"] = globalOutputIndex.value_or(0);
+            j["key"] = Common::podToHex(key.data);
+            j["spendHeight"] = spendHeight;
+            j["unlockTime"] = unlockTime;
+            j["parentTransactionHash"] = Common::podToHex(parentTransactionHash.data);
+            if (privateEphemeral)
             {
-                writer.Key("keyImage");
-                keyImage.toJSON(writer);
-
-                writer.Key("amount");
-                writer.Uint64(amount);
-
-                writer.Key("blockHeight");
-                writer.Uint64(blockHeight);
-
-                writer.Key("transactionPublicKey");
-                transactionPublicKey.toJSON(writer);
-
-                writer.Key("transactionIndex");
-                writer.Uint64(transactionIndex);
-
-                writer.Key("globalOutputIndex");
-                writer.Uint64(globalOutputIndex.value_or(0));
-
-                writer.Key("key");
-                key.toJSON(writer);
-
-                writer.Key("spendHeight");
-                writer.Uint64(spendHeight);
-
-                writer.Key("unlockTime");
-                writer.Uint64(unlockTime);
-
-                writer.Key("parentTransactionHash");
-                parentTransactionHash.toJSON(writer);
-
-                if (privateEphemeral)
-                {
-                    writer.Key("privateEphemeral");
-                    privateEphemeral->toJSON(writer);
-                }
+                j["privateEphemeral"] = Common::podToHex(privateEphemeral->data);
             }
-            writer.EndObject();
+            return j;
         }
 
         /* Initializes the class from a json string */
-        void fromJSON(const JSONValue &j)
+        void fromJSON(const nlohmann::json &j)
         {
-            keyImage.fromString(getStringFromJSON(j, "keyImage"));
-            amount = getUint64FromJSON(j, "amount");
-            blockHeight = getUint64FromJSON(j, "blockHeight");
-            transactionPublicKey.fromString(getStringFromJSON(j, "transactionPublicKey"));
-            transactionIndex = getUint64FromJSON(j, "transactionIndex");
-            globalOutputIndex = getUint64FromJSON(j, "globalOutputIndex");
-            key.fromString(getStringFromJSON(j, "key"));
-            spendHeight = getUint64FromJSON(j, "spendHeight");
-            unlockTime = getUint64FromJSON(j, "unlockTime");
-            parentTransactionHash.fromString(getStringFromJSON(j, "parentTransactionHash"));
+            keyImage.fromString(j.at("keyImage").get<std::string>());
+            amount = j.at("amount").get<uint64_t>();
+            blockHeight = j.at("blockHeight").get<uint64_t>();
+            transactionPublicKey.fromString(j.at("transactionPublicKey").get<std::string>());
+            transactionIndex = j.at("transactionIndex").get<uint64_t>();
+            globalOutputIndex = j.at("globalOutputIndex").get<uint64_t>();
+            key.fromString(j.at("key").get<std::string>());
+            spendHeight = j.at("spendHeight").get<uint64_t>();
+            unlockTime = j.at("unlockTime").get<uint64_t>();
+            parentTransactionHash.fromString(j.at("parentTransactionHash").get<std::string>());
 
-            if (j.HasMember("privateEphemeral"))
+            if (j.contains("privateEphemeral"))
             {
                 Crypto::SecretKey tmp;
-                tmp.fromString(getStringFromJSON(j, "privateEphemeral"));
+                tmp.fromString(j.at("privateEphemeral").get<std::string>());
                 privateEphemeral = tmp;
             }
         }
@@ -374,54 +349,41 @@ namespace WalletTypes
         bool isCoinbaseTransaction;
 
         /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+        nlohmann::json toJSON() const
         {
-            writer.StartObject();
-            writer.Key("transfers");
-            writer.StartArray();
+            nlohmann::json j;
+            nlohmann::json transferArr = nlohmann::json::array();
             for (const auto &[publicKey, amount] : transfers)
             {
-                writer.StartObject();
-                writer.Key("publicKey");
-                publicKey.toJSON(writer);
-                writer.Key("amount");
-                writer.Int64(amount);
-                writer.EndObject();
+                transferArr.push_back({{"publicKey", Common::podToHex(publicKey.data)}, {"amount", amount}});
             }
-            writer.EndArray();
-            writer.Key("hash");
-            hash.toJSON(writer);
-            writer.Key("fee");
-            writer.Uint64(fee);
-            writer.Key("blockHeight");
-            writer.Uint64(blockHeight);
-            writer.Key("timestamp");
-            writer.Uint64(timestamp);
-            writer.Key("paymentID");
-            writer.String(paymentID);
-            writer.Key("unlockTime");
-            writer.Uint64(unlockTime);
-            writer.Key("isCoinbaseTransaction");
-            writer.Bool(isCoinbaseTransaction);
-            writer.EndObject();
+            j["transfers"] = transferArr;
+            j["hash"] = Common::podToHex(hash.data);
+            j["fee"] = fee;
+            j["blockHeight"] = blockHeight;
+            j["timestamp"] = timestamp;
+            j["paymentID"] = paymentID;
+            j["unlockTime"] = unlockTime;
+            j["isCoinbaseTransaction"] = isCoinbaseTransaction;
+            return j;
         }
 
         /* Initializes the class from a json string */
-        void fromJSON(const JSONValue &j)
+        void fromJSON(const nlohmann::json &j)
         {
-            for (const auto &x : getArrayFromJSON(j, "transfers"))
+            for (const auto &x : j.at("transfers"))
             {
                 Crypto::PublicKey publicKey;
-                publicKey.fromString(getStringFromJSON(x, "publicKey"));
-                transfers[publicKey] = getInt64FromJSON(x, "amount");
+                publicKey.fromString(x.at("publicKey").get<std::string>());
+                transfers[publicKey] = x.at("amount").get<int64_t>();
             }
-            hash.fromString(getStringFromJSON(j, "hash"));
-            fee = getUint64FromJSON(j, "fee");
-            blockHeight = getUint64FromJSON(j, "blockHeight");
-            timestamp = getUint64FromJSON(j, "timestamp");
-            paymentID = getStringFromJSON(j, "paymentID");
-            unlockTime = getUint64FromJSON(j, "unlockTime");
-            isCoinbaseTransaction = getBoolFromJSON(j, "isCoinbaseTransaction");
+            hash.fromString(j.at("hash").get<std::string>());
+            fee = j.at("fee").get<uint64_t>();
+            blockHeight = j.at("blockHeight").get<uint64_t>();
+            timestamp = j.at("timestamp").get<uint64_t>();
+            paymentID = j.at("paymentID").get<std::string>();
+            unlockTime = j.at("unlockTime").get<uint64_t>();
+            isCoinbaseTransaction = j.at("isCoinbaseTransaction").get<bool>();
         }
     };
 
@@ -454,24 +416,19 @@ namespace WalletTypes
         Crypto::Hash parentTransactionHash;
 
         /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+        nlohmann::json toJSON() const
         {
-            writer.StartObject();
-            writer.Key("amount");
-            writer.Uint64(amount);
-            writer.Key("key");
-            key.toJSON(writer);
-            writer.Key("parentTransactionHash");
-            parentTransactionHash.toJSON(writer);
-            writer.EndObject();
+            return {{"amount", amount},
+                    {"key", Common::podToHex(key.data)},
+                    {"parentTransactionHash", Common::podToHex(parentTransactionHash.data)}};
         }
 
         /* Initializes the class from a json string */
-        void fromJSON(const JSONValue &j)
+        void fromJSON(const nlohmann::json &j)
         {
-            amount = getUint64FromJSON(j, "amount");
-            key.fromString(getStringFromJSON(j, "key"));
-            parentTransactionHash.fromString(getStringFromJSON(j, "parentTransactionHash"));
+            amount = j.at("amount").get<uint64_t>();
+            key.fromString(j.at("key").get<std::string>());
+            parentTransactionHash.fromString(j.at("parentTransactionHash").get<std::string>());
         }
     };
 

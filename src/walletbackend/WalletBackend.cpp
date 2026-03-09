@@ -8,8 +8,6 @@
 ////////////////////////////////////////
 
 #include "JsonHelper.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 
 #include <common/Base58.h>
 #include <common/FileSystemShim.h>
@@ -37,7 +35,6 @@
 #include <walletbackend/Constants.h>
 #include <walletbackend/Transfer.h>
 
-using namespace rapidjson;
 
 //////////////////////////
 /* NON MEMBER FUNCTIONS */
@@ -601,9 +598,12 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
             o << decryptedData << std::endl;
         }
 
-        rapidjson::Document walletJson;
-
-        if (walletJson.Parse(decryptedData.c_str()).HasParseError())
+        nlohmann::json walletJson;
+        try
+        {
+            walletJson = nlohmann::json::parse(decryptedData);
+        }
+        catch (const nlohmann::json::parse_error &)
         {
             return {WALLET_FILE_CORRUPTED, nullptr};
         }
@@ -1622,26 +1622,14 @@ std::string WalletBackend::toJSON() const
 
 std::string WalletBackend::unsafeToJSON() const
 {
-    StringBuffer sb;
-    Writer<StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("walletFileFormatVersion");
-    writer.Uint(Constants::WALLET_FILE_FORMAT_VERSION);
-
-    writer.Key("subWallets");
-    m_subWallets->toJSON(writer);
-
-    writer.Key("walletSynchronizer");
-    m_walletSynchronizer->toJSON(writer);
-
-    writer.EndObject();
-
-    return sb.GetString();
+    nlohmann::json j;
+    j["walletFileFormatVersion"] = Constants::WALLET_FILE_FORMAT_VERSION;
+    j["subWallets"] = m_subWallets->toJSON();
+    j["walletSynchronizer"] = m_walletSynchronizer->toJSON();
+    return j.dump();
 }
 
-Error WalletBackend::fromJSON(const rapidjson::Document &j)
+Error WalletBackend::fromJSON(const nlohmann::json &j)
 {
     uint64_t version = getUint64FromJSON(j, "walletFileFormatVersion");
 
@@ -1660,7 +1648,7 @@ Error WalletBackend::fromJSON(const rapidjson::Document &j)
 }
 
 Error WalletBackend::fromJSON(
-    const rapidjson::Document &j,
+    const nlohmann::json &j,
     const std::string filename,
     const std::string password,
     const std::string daemonHost,

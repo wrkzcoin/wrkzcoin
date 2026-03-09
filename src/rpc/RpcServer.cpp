@@ -261,22 +261,21 @@ std::tuple<std::string, uint16_t> RpcServer::getConnectionInfo()
     return {m_host, m_port};
 }
 
-std::optional<rapidjson::Document> RpcServer::getJsonBody(
+std::optional<nlohmann::json> RpcServer::getJsonBody(
     const httplib::Request &req,
     httplib::Response &res,
     const bool bodyRequired)
 {
-    rapidjson::Document jsonBody;
-
     if (!bodyRequired)
     {
-        /* Some compilers are stupid and can't figure out just `return jsonBody`
-         * and we can't construct a std::optional(jsonBody) since the copy
-         * constructor is deleted, so we need to std::move */
-        return std::optional<rapidjson::Document>(std::move(jsonBody));
+        return nlohmann::json{};
     }
 
-    if (jsonBody.Parse(req.body.c_str()).HasParseError())
+    try
+    {
+        return nlohmann::json::parse(req.body);
+    }
+    catch (const nlohmann::json::parse_error &)
     {
         std::stringstream stream;
 
@@ -299,8 +298,6 @@ std::optional<rapidjson::Document> RpcServer::getJsonBody(
 
         return std::nullopt;
     }
-
-    return std::optional<rapidjson::Document>(std::move(jsonBody));
 }
 
 void RpcServer::middleware(
@@ -312,7 +309,7 @@ void RpcServer::middleware(
     std::function<std::tuple<Error, uint16_t>(
         const httplib::Request &req,
         httplib::Response &res,
-        const rapidjson::Document &body)> handler)
+        const nlohmann::json &body)> handler)
 {
     const std::string clientIp = getClientIp(req);
 
@@ -403,20 +400,10 @@ void RpcServer::middleware(
 
         if (error)
         {
-            rapidjson::StringBuffer sb;
-            rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-            writer.StartObject();
-
-            writer.Key("errorCode");
-            writer.Uint(error.getErrorCode());
-
-            writer.Key("errorMessage");
-            writer.String(error.getErrorMessage());
-
-            writer.EndObject();
-
-            res.body = sb.GetString();
+            nlohmann::json j;
+            j["errorCode"] = error.getErrorCode();
+            j["errorMessage"] = error.getErrorMessage();
+            res.body = j.dump();
             res.status = statusCode;
         }
         else
@@ -521,20 +508,10 @@ bool RpcServer::isRateLimited(const std::string &clientIp)
 
 void RpcServer::failRequest(uint16_t statusCode, std::string body, httplib::Response &res)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("status");
-    writer.String("Failed");
-
-    writer.Key("error");
-    writer.String(body);
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["status"] = "Failed";
+    j["error"] = body;
+    res.body = j.dump();
     res.status = statusCode;
 }
 
@@ -543,28 +520,13 @@ void RpcServer::failJsonRpcRequest(
     const std::string errorMessage,
     httplib::Response &res)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-    {
-        writer.Key("jsonrpc");
-        writer.String("2.0");
-
-        writer.Key("error");
-        writer.StartObject();
-        {
-            writer.Key("message");
-            writer.String(errorMessage);
-
-            writer.Key("code");
-            writer.Int64(errorCode);
-        }
-        writer.EndObject();
-    }
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["error"] = {
+        {"message", errorMessage},
+        {"code", errorCode}
+    };
+    res.body = j.dump();
     res.status = 200;
 }
 
@@ -604,112 +566,54 @@ void RpcServer::handleOptions(const httplib::Request &req, httplib::Response &re
 std::tuple<Error, uint16_t> RpcServer::info(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     const uint64_t height = m_core->getTopBlockIndex() + 1;
     const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
     const auto blockDetails = m_core->getBlockDetails(height - 1);
     const uint64_t difficulty = m_core->getDifficultyForNextBlock();
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("height");
-    writer.Uint64(height);
-
-    writer.Key("difficulty");
-    writer.Uint64(difficulty);
-
-    writer.Key("tx_count");
-    /* Transaction count without coinbase transactions - one per block, so subtract height */
-    writer.Uint64(m_core->getBlockchainTransactionCount() - height);
-
-    writer.Key("tx_pool_size");
-    writer.Uint64(m_core->getPoolTransactionCount());
-
-    writer.Key("alt_blocks_count");
-    writer.Uint64(m_core->getAlternativeBlockCount());
-
     uint64_t total_conn = m_p2p->get_connections_count();
     uint64_t outgoing_connections_count = m_p2p->get_outgoing_connections_count();
 
-    writer.Key("outgoing_connections_count");
-    writer.Uint64(outgoing_connections_count);
-
-    writer.Key("incoming_connections_count");
-    writer.Uint64(total_conn - outgoing_connections_count);
-
-    writer.Key("white_peerlist_size");
-    writer.Uint64(m_p2p->getPeerlistManager().get_white_peers_count());
-
-    writer.Key("grey_peerlist_size");
-    writer.Uint64(m_p2p->getPeerlistManager().get_gray_peers_count());
-
-    writer.Key("last_known_block_index");
-    writer.Uint64(std::max(1u, m_syncManager->getObservedHeight()) - 1);
-
-    writer.Key("network_height");
-    writer.Uint64(networkHeight);
-
-    writer.Key("upgrade_heights");
-    writer.StartArray();
+    nlohmann::json upgradeHeights = nlohmann::json::array();
+    for (const uint64_t h : CryptoNote::parameters::FORK_HEIGHTS)
     {
-        for (const uint64_t height : CryptoNote::parameters::FORK_HEIGHTS)
-        {
-            writer.Uint64(height);
-        }
+        upgradeHeights.push_back(h);
     }
-    writer.EndArray();
 
-    writer.Key("supported_height");
-    writer.Uint64(CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
+    nlohmann::json j;
+    j["height"] = height;
+    j["difficulty"] = difficulty;
+    /* Transaction count without coinbase transactions - one per block, so subtract height */
+    j["tx_count"] = m_core->getBlockchainTransactionCount() - height;
+    j["tx_pool_size"] = m_core->getPoolTransactionCount();
+    j["alt_blocks_count"] = m_core->getAlternativeBlockCount();
+    j["outgoing_connections_count"] = outgoing_connections_count;
+    j["incoming_connections_count"] = total_conn - outgoing_connections_count;
+    j["white_peerlist_size"] = m_p2p->getPeerlistManager().get_white_peers_count();
+    j["grey_peerlist_size"] = m_p2p->getPeerlistManager().get_gray_peers_count();
+    j["last_known_block_index"] = std::max(1u, m_syncManager->getObservedHeight()) - 1;
+    j["network_height"] = networkHeight;
+    j["upgrade_heights"] = upgradeHeights;
+    j["supported_height"] = CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
         ? 0
-        : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX]);
+        : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX];
+    j["hashrate"] = static_cast<uint64_t>(round(difficulty / CryptoNote::parameters::DIFFICULTY_TARGET));
+    j["synced"] = (height == networkHeight);
+    j["pruned"] = m_syncManager->isPrunedNode();
+    j["prune_depth"] = m_syncManager->getPrunedNodeDepth();
+    j["prune_capability_active"] = m_syncManager->isPruneCapabilityActive();
+    j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
+    j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
+    j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
+    j["major_version"] = blockDetails.majorVersion;
+    j["minor_version"] = blockDetails.minorVersion;
+    j["version"] = PROJECT_VERSION;
+    j["status"] = "OK";
+    j["start_time"] = m_core->getStartTime();
 
-    writer.Key("hashrate");
-    writer.Uint64(round(difficulty / CryptoNote::parameters::DIFFICULTY_TARGET));
-
-    writer.Key("synced");
-    writer.Bool(height == networkHeight);
-
-    writer.Key("pruned");
-    writer.Bool(m_syncManager->isPrunedNode());
-
-    writer.Key("prune_depth");
-    writer.Uint64(m_syncManager->getPrunedNodeDepth());
-
-    writer.Key("prune_capability_active");
-    writer.Bool(m_syncManager->isPruneCapabilityActive());
-
-    writer.Key("sync_active_peers");
-    writer.Uint64(m_syncManager->getSyncActivePeers());
-
-    writer.Key("sync_avg_batch_size");
-    writer.Uint64(m_syncManager->getSyncAvgBatchSize());
-
-    writer.Key("sync_demoted_peers");
-    writer.Uint64(m_syncManager->getSyncDemotedPeers());
-
-    writer.Key("major_version");
-    writer.Uint64(blockDetails.majorVersion);
-
-    writer.Key("minor_version");
-    writer.Uint64(blockDetails.minorVersion);
-
-    writer.Key("version");
-    writer.String(PROJECT_VERSION);
-
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.Key("start_time");
-    writer.Uint64(m_core->getStartTime());
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -717,25 +621,13 @@ std::tuple<Error, uint16_t> RpcServer::info(
 std::tuple<Error, uint16_t> RpcServer::height(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("height");
-    writer.Uint64(m_core->getTopBlockIndex() + 1);
-
-    writer.Key("network_height");
-    writer.Uint64(std::max(1u, m_syncManager->getBlockchainHeight()));
-
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["height"] = m_core->getTopBlockIndex() + 1;
+    j["network_height"] = std::max(1u, m_syncManager->getBlockchainHeight());
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -743,48 +635,34 @@ std::tuple<Error, uint16_t> RpcServer::height(
 std::tuple<Error, uint16_t> RpcServer::peers(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
     std::list<PeerlistEntry> peers_white;
     std::list<PeerlistEntry> peers_gray;
 
     m_p2p->getPeerlistManager().get_peerlist_full(peers_gray, peers_white);
 
-    writer.Key("peers");
-    writer.StartArray();
+    nlohmann::json peersArr = nlohmann::json::array();
+    for (const auto &peer : peers_white)
     {
-        for (const auto &peer : peers_white)
-        {
-            std::stringstream stream;
-            stream << peer.adr;
-            writer.String(stream.str());
-        }
+        std::stringstream stream;
+        stream << peer.adr;
+        peersArr.push_back(stream.str());
     }
-    writer.EndArray();
 
-    writer.Key("peers_gray");
-    writer.StartArray();
+    nlohmann::json peersGrayArr = nlohmann::json::array();
+    for (const auto &peer : peers_gray)
     {
-        for (const auto &peer : peers_gray)
-        {
-            std::stringstream stream;
-            stream << peer.adr;
-            writer.String(stream.str());
-        }
+        std::stringstream stream;
+        stream << peer.adr;
+        peersGrayArr.push_back(stream.str());
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["peers"] = peersArr;
+    j["peers_gray"] = peersGrayArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -792,31 +670,24 @@ std::tuple<Error, uint16_t> RpcServer::peers(
 std::tuple<Error, uint16_t> RpcServer::sendTransaction(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     std::vector<uint8_t> transaction;
 
     const std::string rawData = getStringFromJSON(body, "tx_as_hex");
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
+    nlohmann::json j;
 
     if (!Common::fromHex(rawData, transaction))
     {
-        writer.Key("status");
-        writer.String("Failed");
-
-        writer.Key("error");
-        writer.String("Failed to parse transaction from hex buffer");
+        j["status"] = "Failed";
+        j["error"] = "Failed to parse transaction from hex buffer";
     }
     else
     {
         Crypto::Hash transactionHash = Crypto::cn_fast_hash(transaction.data(), transaction.size());
 
-        writer.Key("transactionHash");
-        writer.String(Common::podToHex(transactionHash));
+        j["transactionHash"] = Common::podToHex(transactionHash);
 
         std::stringstream stream;
 
@@ -843,28 +714,19 @@ std::tuple<Error, uint16_t> RpcServer::sendTransaction(
                 { Logger::DAEMON_RPC }
             );
 
-            writer.Key("status");
-            writer.String("Failed");
-
-            writer.Key("error");
-            writer.String(error);
+            j["status"] = "Failed";
+            j["error"] = error;
         }
         else
         {
             m_syncManager->relayTransactions({transaction});
 
-            writer.Key("status");
-            writer.String("OK");
-
-            writer.Key("error");
-            writer.String("");
-
+            j["status"] = "OK";
+            j["error"] = "";
         }
     }
 
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -872,84 +734,62 @@ std::tuple<Error, uint16_t> RpcServer::sendTransaction(
 std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     const uint64_t numOutputs = getUint64FromJSON(body, "outs_count");
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    nlohmann::json outsArr = nlohmann::json::array();
 
-    writer.StartObject();
-
-    writer.Key("outs");
-
-    writer.StartArray();
+    for (const auto &jsonAmount : getArrayFromJSON(body, "amounts"))
     {
-        for (const auto &jsonAmount : getArrayFromJSON(body, "amounts"))
+        const uint64_t amount = jsonAmount.get<uint64_t>();
+
+        std::vector<uint32_t> globalIndexes;
+        std::vector<Crypto::PublicKey> publicKeys;
+
+        const auto [success, error] = m_core->getRandomOutputs(
+            amount, static_cast<uint16_t>(numOutputs), globalIndexes, publicKeys
+        );
+
+        if (!success)
         {
-            writer.StartObject();
-
-            const uint64_t amount = jsonAmount.GetUint64();
-
-            std::vector<uint32_t> globalIndexes;
-            std::vector<Crypto::PublicKey> publicKeys;
-
-            const auto [success, error] = m_core->getRandomOutputs(
-                amount, static_cast<uint16_t>(numOutputs), globalIndexes, publicKeys
-            );
-
-            if (!success)
-            {
-                return {Error(CANT_GET_FAKE_OUTPUTS, error), 400};
-            }
-
-            if (globalIndexes.size() != numOutputs)
-            {
-                std::stringstream stream;
-
-                stream << "Failed to get enough matching outputs for amount " << amount << " ("
-                       << Utilities::formatAmount(amount) << "). Requested outputs: " << numOutputs
-                       << ", found outputs: " << globalIndexes.size()
-                       << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
-                       << std::endl
-                       << "Note: If you are a public node operator, you can safely ignore this message. "
-                       << "It is only relevant to the user sending the transaction.";
-
-                return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 400};
-            }
-
-            writer.Key("amount");
-            writer.Uint64(amount);
-
-            writer.Key("outs");
-            writer.StartArray();
-            {
-                for (size_t i = 0; i < globalIndexes.size(); i++)
-                {
-                    writer.StartObject();
-                    {
-                        writer.Key("global_amount_index");
-                        writer.Uint64(globalIndexes[i]);
-
-                        writer.Key("out_key");
-                        writer.String(Common::podToHex(publicKeys[i]));
-                    }
-                    writer.EndObject();
-                }
-            }
-            writer.EndArray();
-
-            writer.EndObject();
+            return {Error(CANT_GET_FAKE_OUTPUTS, error), 400};
         }
+
+        if (globalIndexes.size() != numOutputs)
+        {
+            std::stringstream stream;
+
+            stream << "Failed to get enough matching outputs for amount " << amount << " ("
+                   << Utilities::formatAmount(amount) << "). Requested outputs: " << numOutputs
+                   << ", found outputs: " << globalIndexes.size()
+                   << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
+                   << std::endl
+                   << "Note: If you are a public node operator, you can safely ignore this message. "
+                   << "It is only relevant to the user sending the transaction.";
+
+            return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 400};
+        }
+
+        nlohmann::json amountOuts = nlohmann::json::array();
+        for (size_t i = 0; i < globalIndexes.size(); i++)
+        {
+            nlohmann::json outEntry;
+            outEntry["global_amount_index"] = globalIndexes[i];
+            outEntry["out_key"] = Common::podToHex(publicKeys[i]);
+            amountOuts.push_back(outEntry);
+        }
+
+        nlohmann::json amountObj;
+        amountObj["amount"] = amount;
+        amountObj["outs"] = amountOuts;
+        outsArr.push_back(amountObj);
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["outs"] = outsArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -957,20 +797,15 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
 std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
     std::vector<Crypto::Hash> blockHashCheckpoints;
 
     if (hasMember(body, "blockHashCheckpoints"))
     {
         for (const auto &jsonHash : getArrayFromJSON(body, "blockHashCheckpoints"))
         {
-            std::string hashStr = jsonHash.GetString();
+            std::string hashStr = jsonHash.get<std::string>();
 
             Crypto::Hash hash;
             if (!Common::podFromHex(hashStr, hash))
@@ -1023,155 +858,87 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         return {SUCCESS, 500};
     }
 
-    writer.Key("items");
-    writer.StartArray();
+    nlohmann::json itemsArr = nlohmann::json::array();
+    for (const auto &block : walletBlocks)
     {
-        for (const auto &block : walletBlocks)
+        nlohmann::json blockObj;
+
+        if (block.coinbaseTransaction)
         {
-            writer.StartObject();
-
-            if (block.coinbaseTransaction)
+            nlohmann::json cbOutputs = nlohmann::json::array();
+            for (const auto &output : block.coinbaseTransaction->keyOutputs)
             {
-                writer.Key("coinbaseTX");
-                writer.StartObject();
-                {
-                    writer.Key("outputs");
-                    writer.StartArray();
-                    {
-                        for (const auto &output : block.coinbaseTransaction->keyOutputs)
-                        {
-                            writer.StartObject();
-                            {
-                                writer.Key("key");
-                                writer.String(Common::podToHex(output.key));
-
-                                writer.Key("amount");
-                                writer.Uint64(output.amount);
-                            }
-                            writer.EndObject();
-                        }
-                    }
-                    writer.EndArray();
-
-                    writer.Key("hash");
-                    writer.String(Common::podToHex(block.coinbaseTransaction->hash));
-
-                    writer.Key("txPublicKey");
-                    writer.String(Common::podToHex(block.coinbaseTransaction->transactionPublicKey));
-
-                    writer.Key("unlockTime");
-                    writer.Uint64(block.coinbaseTransaction->unlockTime);
-                }
-                writer.EndObject();
+                nlohmann::json outObj;
+                outObj["key"] = Common::podToHex(output.key);
+                outObj["amount"] = output.amount;
+                cbOutputs.push_back(outObj);
             }
-
-            writer.Key("transactions");
-            writer.StartArray();
-            {
-                for (const auto &transaction : block.transactions)
-                {
-                    writer.StartObject();
-                    {
-                        writer.Key("outputs");
-                        writer.StartArray();
-                        {
-                            for (const auto &output : transaction.keyOutputs)
-                            {
-                                writer.StartObject();
-                                {
-                                    writer.Key("key");
-                                    writer.String(Common::podToHex(output.key));
-
-                                    writer.Key("amount");
-                                    writer.Uint64(output.amount);
-                                }
-                                writer.EndObject();
-                            }
-                        }
-                        writer.EndArray();
-
-                        writer.Key("hash");
-                        writer.String(Common::podToHex(transaction.hash));
-
-                        writer.Key("txPublicKey");
-                        writer.String(Common::podToHex(transaction.transactionPublicKey));
-
-                        writer.Key("unlockTime");
-                        writer.Uint64(transaction.unlockTime);
-
-                        writer.Key("paymentID");
-                        writer.String(transaction.paymentID);
-
-                        writer.Key("inputs");
-                        writer.StartArray();
-                        {
-                            for (const auto &input : transaction.keyInputs)
-                            {
-                                writer.StartObject();
-                                {
-                                    writer.Key("amount");
-                                    writer.Uint64(input.amount);
-
-                                    writer.Key("key_offsets");
-                                    writer.StartArray();
-                                    {
-                                        for (const auto &offset : input.outputIndexes)
-                                        {
-                                            writer.Uint64(offset);
-                                        }
-                                    }
-                                    writer.EndArray();
-
-                                    writer.Key("k_image");
-                                    writer.String(Common::podToHex(input.keyImage));
-                                }
-                                writer.EndObject();
-                            }
-                        }
-                        writer.EndArray();
-                    }
-                    writer.EndObject();
-                }
-            }
-            writer.EndArray();
-
-            writer.Key("blockHeight");
-            writer.Uint64(block.blockHeight);
-
-            writer.Key("blockHash");
-            writer.String(Common::podToHex(block.blockHash));
-
-            writer.Key("blockTimestamp");
-            writer.Uint64(block.blockTimestamp);
-
-            writer.EndObject();
+            nlohmann::json cbTx;
+            cbTx["outputs"] = cbOutputs;
+            cbTx["hash"] = Common::podToHex(block.coinbaseTransaction->hash);
+            cbTx["txPublicKey"] = Common::podToHex(block.coinbaseTransaction->transactionPublicKey);
+            cbTx["unlockTime"] = block.coinbaseTransaction->unlockTime;
+            blockObj["coinbaseTX"] = cbTx;
         }
+
+        nlohmann::json txArr = nlohmann::json::array();
+        for (const auto &transaction : block.transactions)
+        {
+            nlohmann::json txOutputs = nlohmann::json::array();
+            for (const auto &output : transaction.keyOutputs)
+            {
+                nlohmann::json outObj;
+                outObj["key"] = Common::podToHex(output.key);
+                outObj["amount"] = output.amount;
+                txOutputs.push_back(outObj);
+            }
+
+            nlohmann::json txInputs = nlohmann::json::array();
+            for (const auto &input : transaction.keyInputs)
+            {
+                nlohmann::json offsets = nlohmann::json::array();
+                for (const auto &offset : input.outputIndexes)
+                {
+                    offsets.push_back(offset);
+                }
+                nlohmann::json inputObj;
+                inputObj["amount"] = input.amount;
+                inputObj["key_offsets"] = offsets;
+                inputObj["k_image"] = Common::podToHex(input.keyImage);
+                txInputs.push_back(inputObj);
+            }
+
+            nlohmann::json txObj;
+            txObj["outputs"] = txOutputs;
+            txObj["hash"] = Common::podToHex(transaction.hash);
+            txObj["txPublicKey"] = Common::podToHex(transaction.transactionPublicKey);
+            txObj["unlockTime"] = transaction.unlockTime;
+            txObj["paymentID"] = transaction.paymentID;
+            txObj["inputs"] = txInputs;
+            txArr.push_back(txObj);
+        }
+
+        blockObj["transactions"] = txArr;
+        blockObj["blockHeight"] = block.blockHeight;
+        blockObj["blockHash"] = Common::podToHex(block.blockHash);
+        blockObj["blockTimestamp"] = block.blockTimestamp;
+        itemsArr.push_back(blockObj);
     }
-    writer.EndArray();
+
+    nlohmann::json j;
+    j["items"] = itemsArr;
 
     if (topBlockInfo)
     {
-        writer.Key("topBlock");
-        writer.StartObject();
-        {
-            writer.Key("hash");
-            writer.String(Common::podToHex(topBlockInfo->hash));
-
-            writer.Key("height");
-            writer.Uint64(topBlockInfo->height);
-        }
-        writer.EndObject();
+        nlohmann::json topBlock;
+        topBlock["hash"] = Common::podToHex(topBlockInfo->hash);
+        topBlock["height"] = topBlockInfo->height;
+        j["topBlock"] = topBlock;
     }
 
-    writer.Key("synced");
-    writer.Bool(walletBlocks.empty());
-
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    j["synced"] = walletBlocks.empty();
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1179,11 +946,8 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
 std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const uint64_t startHeight = getUint64FromJSON(body, "startHeight");
     const uint64_t endHeight = getUint64FromJSON(body, "endHeight");
 
@@ -1204,50 +968,32 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
 
     const bool success = m_core->getGlobalIndexesForRange(startHeight, endHeight, indexes);
 
-    writer.StartObject();
-
     if (!success)
     {
-        writer.Key("status");
-        writer.String("Failed");
-
-        res.body = sb.GetString();
-
+        nlohmann::json j;
+        j["status"] = "Failed";
+        res.body = j.dump();
         return {SUCCESS, 500};
     }
 
-    writer.Key("indexes");
-
-    writer.StartArray();
+    nlohmann::json indexesArr = nlohmann::json::array();
+    for (const auto &[hash, globalIndexes] : indexes)
     {
-        for (const auto &[hash, globalIndexes] : indexes)
+        nlohmann::json valueArr = nlohmann::json::array();
+        for (const auto index : globalIndexes)
         {
-            writer.StartObject();
-
-            writer.Key("key");
-            writer.String(Common::podToHex(hash));
-
-            writer.Key("value");
-            writer.StartArray();
-            {
-                for (const auto index : globalIndexes)
-                {
-                    writer.Uint64(index);
-                }
-            }
-            writer.EndArray();
-
-            writer.EndObject();
+            valueArr.push_back(index);
         }
+        nlohmann::json entry;
+        entry["key"] = Common::podToHex(hash);
+        entry["value"] = valueArr;
+        indexesArr.push_back(entry);
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["indexes"] = indexesArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1255,14 +1001,9 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
 std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
-
-    writer.StartObject();
 
     const uint64_t reserveSize = getUint64FromJSON(params, "reserve_size");
 
@@ -1351,32 +1092,17 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
         }
     }
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
+    nlohmann::json result;
+    result["height"] = height;
+    result["difficulty"] = difficulty;
+    result["reserved_offset"] = reservedOffset;
+    result["blocktemplate_blob"] = Common::toHex(blockBlob);
+    result["status"] = "OK";
 
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("height");
-        writer.Uint(height);
-
-        writer.Key("difficulty");
-        writer.Uint64(difficulty);
-
-        writer.Key("reserved_offset");
-        writer.Uint64(reservedOffset);
-
-        writer.Key("blocktemplate_blob");
-        writer.String(Common::toHex(blockBlob));
-
-        writer.Key("status");
-        writer.String("OK");
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1384,18 +1110,15 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
 std::tuple<Error, uint16_t> RpcServer::submitBlock(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getArrayFromJSON(body, "params");
 
-    if (params.Size() != 1)
+    if (params.size() != 1)
     {
         failJsonRpcRequest(
             -1,
-            "You must submit one and only one block blob! (Found " + std::to_string(params.Size()) + ")",
+            "You must submit one and only one block blob! (Found " + std::to_string(params.size()) + ")",
             res
         );
 
@@ -1444,22 +1167,13 @@ std::tuple<Error, uint16_t> RpcServer::submitBlock(
         m_syncManager->relayBlock(newBlockMessage);
     }
 
-    writer.StartObject();
+    nlohmann::json result;
+    result["status"] = "OK";
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("status");
-        writer.String("OK");
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1467,30 +1181,16 @@ std::tuple<Error, uint16_t> RpcServer::submitBlock(
 std::tuple<Error, uint16_t> RpcServer::getBlockCount(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["count"] = m_core->getTopBlockIndex() + 1;
 
-    writer.StartObject();
-
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("count");
-        writer.Uint64(m_core->getTopBlockIndex() + 1);
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1498,11 +1198,8 @@ std::tuple<Error, uint16_t> RpcServer::getBlockCount(
 std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto height = m_core->getTopBlockIndex();
     const auto hash = m_core->getBlockHashByIndex(height);
     const auto topBlock = m_core->getBlockByHash(hash);
@@ -1515,66 +1212,29 @@ std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
         }
     );
 
-    writer.StartObject();
+    nlohmann::json blockHeader;
+    blockHeader["major_version"] = topBlock.majorVersion;
+    blockHeader["minor_version"] = topBlock.minorVersion;
+    blockHeader["timestamp"] = topBlock.timestamp;
+    blockHeader["prev_hash"] = Common::podToHex(topBlock.previousBlockHash);
+    blockHeader["nonce"] = topBlock.nonce;
+    blockHeader["orphan_status"] = extraDetails.isAlternative;
+    blockHeader["height"] = height;
+    blockHeader["depth"] = uint64_t(0);
+    blockHeader["hash"] = Common::podToHex(hash);
+    blockHeader["difficulty"] = m_core->getBlockDifficulty(height);
+    blockHeader["reward"] = reward;
+    blockHeader["num_txes"] = extraDetails.transactions.size();
+    blockHeader["block_size"] = extraDetails.blockSize;
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["block_header"] = blockHeader;
 
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("block_header");
-        writer.StartObject();
-        {
-            writer.Key("major_version");
-            writer.Uint64(topBlock.majorVersion);
-
-            writer.Key("minor_version");
-            writer.Uint64(topBlock.minorVersion);
-
-            writer.Key("timestamp");
-            writer.Uint64(topBlock.timestamp);
-
-            writer.Key("prev_hash");
-            writer.String(Common::podToHex(topBlock.previousBlockHash));
-
-            writer.Key("nonce");
-            writer.Uint64(topBlock.nonce);
-
-            writer.Key("orphan_status");
-            writer.Bool(extraDetails.isAlternative);
-
-            writer.Key("height");
-            writer.Uint64(height);
-
-            writer.Key("depth");
-            writer.Uint64(0);
-
-            writer.Key("hash");
-            writer.String(Common::podToHex(hash));
-
-            writer.Key("difficulty");
-            writer.Uint64(m_core->getBlockDifficulty(height));
-
-            writer.Key("reward");
-            writer.Uint64(reward);
-
-            writer.Key("num_txes");
-            writer.Uint64(extraDetails.transactions.size());
-
-            writer.Key("block_size");
-            writer.Uint64(extraDetails.blockSize);
-        }
-        writer.EndObject();
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1582,11 +1242,8 @@ std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
 std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHash(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
     const auto hashStr = getStringFromJSON(params, "hash");
     const auto topHeight = m_core->getTopBlockIndex();
@@ -1633,66 +1290,29 @@ std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHash(
         }
     );
 
-    writer.StartObject();
+    nlohmann::json blockHeader;
+    blockHeader["major_version"] = block.majorVersion;
+    blockHeader["minor_version"] = block.minorVersion;
+    blockHeader["timestamp"] = block.timestamp;
+    blockHeader["prev_hash"] = Common::podToHex(block.previousBlockHash);
+    blockHeader["nonce"] = block.nonce;
+    blockHeader["orphan_status"] = extraDetails.isAlternative;
+    blockHeader["height"] = height;
+    blockHeader["depth"] = topHeight - height;
+    blockHeader["hash"] = Common::podToHex(hash);
+    blockHeader["difficulty"] = m_core->getBlockDifficulty(height);
+    blockHeader["reward"] = reward;
+    blockHeader["num_txes"] = extraDetails.transactions.size();
+    blockHeader["block_size"] = extraDetails.blockSize;
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["block_header"] = blockHeader;
 
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("block_header");
-        writer.StartObject();
-        {
-            writer.Key("major_version");
-            writer.Uint64(block.majorVersion);
-
-            writer.Key("minor_version");
-            writer.Uint64(block.minorVersion);
-
-            writer.Key("timestamp");
-            writer.Uint64(block.timestamp);
-
-            writer.Key("prev_hash");
-            writer.String(Common::podToHex(block.previousBlockHash));
-
-            writer.Key("nonce");
-            writer.Uint64(block.nonce);
-
-            writer.Key("orphan_status");
-            writer.Bool(extraDetails.isAlternative);
-
-            writer.Key("height");
-            writer.Uint64(height);
-
-            writer.Key("depth");
-            writer.Uint64(topHeight - height);
-
-            writer.Key("hash");
-            writer.String(Common::podToHex(hash));
-
-            writer.Key("difficulty");
-            writer.Uint64(m_core->getBlockDifficulty(height));
-
-            writer.Key("reward");
-            writer.Uint64(reward);
-
-            writer.Key("num_txes");
-            writer.Uint64(extraDetails.transactions.size());
-
-            writer.Key("block_size");
-            writer.Uint64(extraDetails.blockSize);
-        }
-        writer.EndObject();
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1700,11 +1320,8 @@ std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHash(
 std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHeight(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
     const auto height = getUint64FromJSON(params, "height");
     const auto topHeight = m_core->getTopBlockIndex();
@@ -1733,66 +1350,29 @@ std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHeight(
         }
     );
 
-    writer.StartObject();
+    nlohmann::json blockHeader;
+    blockHeader["major_version"] = block.majorVersion;
+    blockHeader["minor_version"] = block.minorVersion;
+    blockHeader["timestamp"] = block.timestamp;
+    blockHeader["prev_hash"] = Common::podToHex(block.previousBlockHash);
+    blockHeader["nonce"] = block.nonce;
+    blockHeader["orphan_status"] = extraDetails.isAlternative;
+    blockHeader["height"] = height;
+    blockHeader["depth"] = topHeight - height;
+    blockHeader["hash"] = Common::podToHex(hash);
+    blockHeader["difficulty"] = m_core->getBlockDifficulty(height);
+    blockHeader["reward"] = reward;
+    blockHeader["num_txes"] = extraDetails.transactions.size();
+    blockHeader["block_size"] = extraDetails.blockSize;
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["block_header"] = blockHeader;
 
-    writer.Key("result");
-    writer.StartObject();
-    {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("block_header");
-        writer.StartObject();
-        {
-            writer.Key("major_version");
-            writer.Uint64(block.majorVersion);
-
-            writer.Key("minor_version");
-            writer.Uint64(block.minorVersion);
-
-            writer.Key("timestamp");
-            writer.Uint64(block.timestamp);
-
-            writer.Key("prev_hash");
-            writer.String(Common::podToHex(block.previousBlockHash));
-
-            writer.Key("nonce");
-            writer.Uint64(block.nonce);
-
-            writer.Key("orphan_status");
-            writer.Bool(extraDetails.isAlternative);
-
-            writer.Key("height");
-            writer.Uint64(height);
-
-            writer.Key("depth");
-            writer.Uint64(topHeight - height);
-
-            writer.Key("hash");
-            writer.String(Common::podToHex(hash));
-
-            writer.Key("difficulty");
-            writer.Uint64(m_core->getBlockDifficulty(height));
-
-            writer.Key("reward");
-            writer.Uint64(reward);
-
-            writer.Key("num_txes");
-            writer.Uint64(extraDetails.transactions.size());
-
-            writer.Key("block_size");
-            writer.Uint64(extraDetails.blockSize);
-        }
-        writer.EndObject();
-    }
-    writer.EndObject();
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1800,11 +1380,8 @@ std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHeight(
 std::tuple<Error, uint16_t> RpcServer::getBlocksByHeight(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
     const auto height = getUint64FromJSON(params, "height");
     const auto topHeight = m_core->getTopBlockIndex();
@@ -1821,60 +1398,35 @@ std::tuple<Error, uint16_t> RpcServer::getBlocksByHeight(
         return {SUCCESS, 200};
     }
 
-    writer.StartObject();
+    const uint64_t MAX_BLOCKS_COUNT = 30;
+    const uint64_t startHeight = height < MAX_BLOCKS_COUNT ? 0 : height - MAX_BLOCKS_COUNT;
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
+    nlohmann::json blocksArr = nlohmann::json::array();
+    for (uint64_t i = height; i >= startHeight; i--)
     {
-        writer.Key("status");
-        writer.String("OK");
+        const auto hash = m_core->getBlockHashByIndex(i);
+        const auto block = m_core->getBlockByHash(hash);
+        const auto extraDetails = m_core->getBlockDetails(hash);
 
-        const uint64_t MAX_BLOCKS_COUNT = 30;
-        const uint64_t startHeight = height < MAX_BLOCKS_COUNT ? 0 : height - MAX_BLOCKS_COUNT;
-
-        writer.Key("blocks");
-        writer.StartArray();
-        {
-            for (uint64_t i = height; i >= startHeight; i--)
-            {
-                writer.StartObject();
-
-                const auto hash = m_core->getBlockHashByIndex(i);
-                const auto block = m_core->getBlockByHash(hash);
-                const auto extraDetails = m_core->getBlockDetails(hash);
-
-                writer.Key("cumul_size");
-                writer.Uint64(extraDetails.blockSize);
-
-                writer.Key("difficulty");
-                writer.Uint64(extraDetails.difficulty);
-
-                writer.Key("hash");
-                writer.String(Common::podToHex(hash));
-
-                writer.Key("height");
-                writer.Uint64(i);
-
-                writer.Key("timestamp");
-                writer.Uint64(block.timestamp);
-
-                /* Plus one for coinbase tx */
-                writer.Key("tx_count");
-                writer.Uint64(block.transactionHashes.size() + 1);
-
-                writer.EndObject();
-            }
-        }
-        writer.EndArray();
+        nlohmann::json blockObj;
+        blockObj["cumul_size"] = extraDetails.blockSize;
+        blockObj["difficulty"] = extraDetails.difficulty;
+        blockObj["hash"] = Common::podToHex(hash);
+        blockObj["height"] = i;
+        blockObj["timestamp"] = block.timestamp;
+        /* Plus one for coinbase tx */
+        blockObj["tx_count"] = block.transactionHashes.size() + 1;
+        blocksArr.push_back(blockObj);
     }
-    writer.EndObject();
 
-    writer.EndObject();
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["blocks"] = blocksArr;
 
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -1882,11 +1434,8 @@ std::tuple<Error, uint16_t> RpcServer::getBlocksByHeight(
 std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
     const auto hashStr = getStringFromJSON(params, "hash");
     const auto topHeight = m_core->getTopBlockIndex();
@@ -1967,111 +1516,48 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
         )
     );
 
-    writer.StartObject();
-
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
+    nlohmann::json txArr = nlohmann::json::array();
+    for (const auto &transaction : extraDetails.transactions)
     {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("block");
-        writer.StartObject();
-        {
-            writer.Key("major_version");
-            writer.Uint64(block.majorVersion);
-
-            writer.Key("minor_version");
-            writer.Uint64(block.minorVersion);
-
-            writer.Key("timestamp");
-            writer.Uint64(block.timestamp);
-
-            writer.Key("prev_hash");
-            writer.String(Common::podToHex(block.previousBlockHash));
-
-            writer.Key("nonce");
-            writer.Uint64(block.nonce);
-
-            writer.Key("orphan_status");
-            writer.Bool(extraDetails.isAlternative);
-
-            writer.Key("height");
-            writer.Uint64(height);
-
-            writer.Key("depth");
-            writer.Uint64(topHeight - height);
-
-            writer.Key("hash");
-            writer.String(Common::podToHex(hash));
-
-            writer.Key("difficulty");
-            writer.Uint64(m_core->getBlockDifficulty(height));
-
-            writer.Key("reward");
-            writer.Uint64(reward);
-
-            writer.Key("blockSize");
-            writer.Uint64(extraDetails.blockSize);
-
-            writer.Key("transactionsCumulativeSize");
-            writer.Uint64(extraDetails.transactionsCumulativeSize);
-
-            writer.Key("alreadyGeneratedCoins");
-            writer.String(std::to_string(extraDetails.alreadyGeneratedCoins));
-
-            writer.Key("alreadyGeneratedTransactions");
-            writer.Uint64(extraDetails.alreadyGeneratedTransactions);
-
-            writer.Key("sizeMedian");
-            writer.Uint64(extraDetails.sizeMedian);
-
-            writer.Key("baseReward");
-            writer.Uint64(extraDetails.baseReward);
-
-            writer.Key("penalty");
-            writer.Double(extraDetails.penalty);
-
-            writer.Key("effectiveSizeMedian");
-            writer.Uint64(blockSizeMedian);
-
-            writer.Key("transactions");
-            writer.StartArray();
-            {
-                for (const auto &transaction : extraDetails.transactions)
-                {
-                    writer.StartObject();
-                    {
-                        writer.Key("hash");
-                        writer.String(Common::podToHex(transaction.hash));
-
-                        writer.Key("fee");
-                        writer.Uint64(transaction.fee);
-
-                        writer.Key("amount_out");
-                        writer.Uint64(transaction.totalOutputsAmount);
-
-                        writer.Key("size");
-                        writer.Uint64(transaction.size);
-                    }
-                    writer.EndObject();
-                }
-            }
-            writer.EndArray();
-
-            writer.Key("totalFeeAmount");
-            writer.Uint64(extraDetails.totalFeeAmount);
-        }
-        writer.EndObject();
+        nlohmann::json txObj;
+        txObj["hash"] = Common::podToHex(transaction.hash);
+        txObj["fee"] = transaction.fee;
+        txObj["amount_out"] = transaction.totalOutputsAmount;
+        txObj["size"] = transaction.size;
+        txArr.push_back(txObj);
     }
-    writer.EndObject();
 
-    writer.EndObject();
+    nlohmann::json blockObj;
+    blockObj["major_version"] = block.majorVersion;
+    blockObj["minor_version"] = block.minorVersion;
+    blockObj["timestamp"] = block.timestamp;
+    blockObj["prev_hash"] = Common::podToHex(block.previousBlockHash);
+    blockObj["nonce"] = block.nonce;
+    blockObj["orphan_status"] = extraDetails.isAlternative;
+    blockObj["height"] = height;
+    blockObj["depth"] = topHeight - height;
+    blockObj["hash"] = Common::podToHex(hash);
+    blockObj["difficulty"] = m_core->getBlockDifficulty(height);
+    blockObj["reward"] = reward;
+    blockObj["blockSize"] = extraDetails.blockSize;
+    blockObj["transactionsCumulativeSize"] = extraDetails.transactionsCumulativeSize;
+    blockObj["alreadyGeneratedCoins"] = std::to_string(extraDetails.alreadyGeneratedCoins);
+    blockObj["alreadyGeneratedTransactions"] = extraDetails.alreadyGeneratedTransactions;
+    blockObj["sizeMedian"] = extraDetails.sizeMedian;
+    blockObj["baseReward"] = extraDetails.baseReward;
+    blockObj["penalty"] = extraDetails.penalty;
+    blockObj["effectiveSizeMedian"] = blockSizeMedian;
+    blockObj["transactions"] = txArr;
+    blockObj["totalFeeAmount"] = extraDetails.totalFeeAmount;
 
-    res.body = sb.GetString();
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["block"] = blockObj;
+
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2079,11 +1565,8 @@ std::tuple<Error, uint16_t> RpcServer::getBlockDetailsByHash(
 std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     const auto params = getObjectFromJSON(body, "params");
     const auto hashStr = getStringFromJSON(params, "hash");
 
@@ -2127,170 +1610,87 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
 
     fromBinaryArray(transaction, rawTXs[0]);
 
-    writer.StartObject();
+    nlohmann::json blockObj;
+    blockObj["cumul_size"] = extraDetails.blockSize;
+    blockObj["difficulty"] = extraDetails.difficulty;
+    blockObj["hash"] = Common::podToHex(blockHash);
+    blockObj["height"] = blockHeight;
+    blockObj["timestamp"] = block.timestamp;
+    /* Plus one for coinbase tx */
+    blockObj["tx_count"] = block.transactionHashes.size() + 1;
 
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
+    nlohmann::json vinArr = nlohmann::json::array();
+    for (const auto &input : transaction.inputs)
     {
-        writer.Key("status");
-        writer.String("OK");
+        const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
 
-        writer.Key("block");
-        writer.StartObject();
+        nlohmann::json valueObj;
+        if (input.type() == typeid(CryptoNote::BaseInput))
         {
-            writer.Key("cumul_size");
-            writer.Uint64(extraDetails.blockSize);
-
-            writer.Key("difficulty");
-            writer.Uint64(extraDetails.difficulty);
-
-            writer.Key("hash");
-            writer.String(Common::podToHex(blockHash));
-
-            writer.Key("height");
-            writer.Uint64(blockHeight);
-
-            writer.Key("timestamp");
-            writer.Uint64(block.timestamp);
-
-            /* Plus one for coinbase tx */
-            writer.Key("tx_count");
-            writer.Uint64(block.transactionHashes.size() + 1);
+            valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
         }
-        writer.EndObject();
-
-        writer.Key("tx");
-        writer.StartObject();
+        else
         {
-            writer.Key("extra");
-            writer.String(Common::podToHex(transaction.extra));
-
-            writer.Key("publicKey");
-            writer.String(Common::podToHex(txDetails.extra.publicKey));
-
-            writer.Key("nonce");
-            writer.String(Common::toHex(txDetails.extra.nonce));
-
-            writer.Key("unlock_time");
-            writer.Uint64(transaction.unlockTime);
-
-            writer.Key("version");
-            writer.Uint64(transaction.version);
-
-            writer.Key("vin");
-            writer.StartArray();
+            const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+            nlohmann::json offsets = nlohmann::json::array();
+            for (const auto index : keyInput.outputIndexes)
             {
-                for (const auto &input : transaction.inputs)
-                {
-                    const auto type = input.type() == typeid(CryptoNote::BaseInput)
-                        ? "ff"
-                        : "02";
-
-                    writer.StartObject();
-                    {
-                        writer.Key("type");
-                        writer.String(type);
-
-                        writer.Key("value");
-                        writer.StartObject();
-                        {
-                            if (input.type() == typeid(CryptoNote::BaseInput))
-                            {
-                                writer.Key("height");
-                                writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
-                            }
-                            else
-                            {
-                                const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
-
-                                writer.Key("k_image");
-                                writer.String(Common::podToHex(keyInput.keyImage));
-
-                                writer.Key("amount");
-                                writer.Uint64(keyInput.amount);
-
-                                writer.Key("key_offsets");
-                                writer.StartArray();
-                                {
-                                    for (const auto index : keyInput.outputIndexes)
-                                    {
-                                        writer.Uint(index);
-                                    }
-                                }
-                                writer.EndArray();
-                            }
-                        }
-                        writer.EndObject();
-                    }
-                    writer.EndObject();
-                }
+                offsets.push_back(index);
             }
-            writer.EndArray();
-
-            writer.Key("vout");
-            writer.StartArray();
-            {
-                for (const auto &output : transaction.outputs)
-                {
-                    writer.StartObject();
-                    {
-                        writer.Key("amount");
-                        writer.Uint64(output.amount);
-
-                        writer.Key("target");
-                        writer.StartObject();
-                        {
-                            writer.Key("data");
-                            writer.StartObject();
-                            {
-                                writer.Key("key");
-                                writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
-                            }
-                            writer.EndObject();
-
-                            writer.Key("type");
-                            writer.String("02");
-                        }
-                        writer.EndObject();
-                    }
-                    writer.EndObject();
-                }
-            }
-            writer.EndArray();
+            valueObj["k_image"] = Common::podToHex(keyInput.keyImage);
+            valueObj["amount"] = keyInput.amount;
+            valueObj["key_offsets"] = offsets;
         }
-        writer.EndObject();
 
-        writer.Key("txDetails");
-        writer.StartObject();
-        {
-            writer.Key("hash");
-            writer.String(Common::podToHex(txDetails.hash));
-
-            writer.Key("amount_out");
-            writer.Uint64(txDetails.totalOutputsAmount);
-
-            writer.Key("fee");
-            writer.Uint64(txDetails.fee);
-
-            writer.Key("mixin");
-            writer.Uint64(txDetails.mixin);
-
-            writer.Key("paymentId");
-            writer.String(Utilities::getPaymentIDFromExtra(transaction.extra).c_str());
-
-            writer.Key("size");
-            writer.Uint64(txDetails.size);
-        }
-        writer.EndObject();
+        nlohmann::json inputObj;
+        inputObj["type"] = type;
+        inputObj["value"] = valueObj;
+        vinArr.push_back(inputObj);
     }
-    writer.EndObject();
 
-    writer.EndObject();
+    nlohmann::json voutArr = nlohmann::json::array();
+    for (const auto &output : transaction.outputs)
+    {
+        nlohmann::json dataObj;
+        dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
 
-    res.body = sb.GetString();
+        nlohmann::json targetObj;
+        targetObj["data"] = dataObj;
+        targetObj["type"] = "02";
+
+        nlohmann::json outObj;
+        outObj["amount"] = output.amount;
+        outObj["target"] = targetObj;
+        voutArr.push_back(outObj);
+    }
+
+    nlohmann::json txObj;
+    txObj["extra"] = Common::podToHex(transaction.extra);
+    txObj["publicKey"] = Common::podToHex(txDetails.extra.publicKey);
+    txObj["nonce"] = Common::toHex(txDetails.extra.nonce);
+    txObj["unlock_time"] = transaction.unlockTime;
+    txObj["version"] = transaction.version;
+    txObj["vin"] = vinArr;
+    txObj["vout"] = voutArr;
+
+    nlohmann::json txDetailsObj;
+    txDetailsObj["hash"] = Common::podToHex(txDetails.hash);
+    txDetailsObj["amount_out"] = txDetails.totalOutputsAmount;
+    txDetailsObj["fee"] = txDetails.fee;
+    txDetailsObj["mixin"] = txDetails.mixin;
+    txDetailsObj["paymentId"] = Utilities::getPaymentIDFromExtra(transaction.extra);
+    txDetailsObj["size"] = txDetails.size;
+
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["block"] = blockObj;
+    result["tx"] = txObj;
+    result["txDetails"] = txDetailsObj;
+
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2298,70 +1698,46 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
 std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("jsonrpc");
-    writer.String("2.0");
-
-    writer.Key("result");
-    writer.StartObject();
+    nlohmann::json txArr = nlohmann::json::array();
+    for (const auto &tx : m_core->getPoolTransactions())
     {
-        writer.Key("status");
-        writer.String("OK");
-
-        writer.Key("transactions");
-        writer.StartArray();
-        {
-            for (const auto &tx : m_core->getPoolTransactions())
-            {
-                writer.StartObject();
-
-                const uint64_t outputAmount = std::accumulate(tx.outputs.begin(), tx.outputs.end(), 0ull,
-                    [](const auto acc, const auto out) {
-                        return acc + out.amount;
-                    }
-                );
-
-                const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
-                    [](const auto acc, const auto in) {
-                        if (in.type() == typeid(CryptoNote::KeyInput))
-                        {
-                            return acc + boost::get<CryptoNote::KeyInput>(in).amount;
-                        }
-
-                        return acc;
-                    }
-                );
-
-                const uint64_t fee = inputAmount - outputAmount;
-
-                writer.Key("hash");
-                writer.String(Common::podToHex(getObjectHash(tx)));
-
-                writer.Key("fee");
-                writer.Uint64(fee);
-
-                writer.Key("amount_out");
-                writer.Uint64(outputAmount);
-
-                writer.Key("size");
-                writer.Uint64(getObjectBinarySize(tx));
-
-                writer.EndObject();
+        const uint64_t outputAmount = std::accumulate(tx.outputs.begin(), tx.outputs.end(), 0ull,
+            [](const auto acc, const auto out) {
+                return acc + out.amount;
             }
-        }
-        writer.EndArray();
+        );
+
+        const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
+            [](const auto acc, const auto in) {
+                if (in.type() == typeid(CryptoNote::KeyInput))
+                {
+                    return acc + boost::get<CryptoNote::KeyInput>(in).amount;
+                }
+
+                return acc;
+            }
+        );
+
+        const uint64_t fee = inputAmount - outputAmount;
+
+        nlohmann::json txObj;
+        txObj["hash"] = Common::podToHex(getObjectHash(tx));
+        txObj["fee"] = fee;
+        txObj["amount_out"] = outputAmount;
+        txObj["size"] = getObjectBinarySize(tx);
+        txArr.push_back(txObj);
     }
-    writer.EndObject();
 
-    writer.EndObject();
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["transactions"] = txArr;
 
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2369,11 +1745,8 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
 std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     uint64_t timestamp = 0;
 
     if (hasMember(body, "timestamp"))
@@ -2411,158 +1784,90 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
         return {SUCCESS, 500};
     }
 
-    writer.StartObject();
-
-    writer.Key("fullOffset");
-    writer.Uint64(fullOffset);
-
-    writer.Key("currentHeight");
-    writer.Uint64(currentHeight);
-
-    writer.Key("startHeight");
-    writer.Uint64(startHeight);
-
-    writer.Key("items");
-    writer.StartArray();
+    nlohmann::json itemsArr = nlohmann::json::array();
+    for (const auto &block : blocks)
     {
-        for (const auto &block : blocks)
+        nlohmann::json blockBytes = nlohmann::json::array();
+        for (const auto c : block.block)
         {
-            writer.StartObject();
-            {
-                writer.Key("blockShortInfo.block");
-                writer.StartArray();
-                {
-                    for (const auto c : block.block)
-                    {
-                        writer.Uint64(c);
-                    }
-                }
-                writer.EndArray();
-
-                writer.Key("blockShortInfo.blockId");
-                writer.String(Common::podToHex(block.blockId));
-
-                writer.Key("blockShortInfo.txPrefixes");
-                writer.StartArray();
-                {
-                    for (const auto &prefix : block.txPrefixes)
-                    {
-                        writer.StartObject();
-                        {
-                            writer.Key("transactionPrefixInfo.txHash");
-                            writer.String(Common::podToHex(prefix.txHash));
-
-                            writer.Key("transactionPrefixInfo.txPrefix");
-                            writer.StartObject();
-                            {
-                                writer.Key("extra");
-                                writer.String(Common::toHex(prefix.txPrefix.extra));
-
-                                writer.Key("unlock_time");
-                                writer.Uint64(prefix.txPrefix.unlockTime);
-
-                                writer.Key("version");
-                                writer.Uint64(prefix.txPrefix.version);
-
-                                writer.Key("vin");
-                                writer.StartArray();
-                                {
-                                    for (const auto &input : prefix.txPrefix.inputs)
-                                    {
-                                        const auto type = input.type() == typeid(CryptoNote::BaseInput)
-                                            ? "ff"
-                                            : "02";
-
-                                        writer.StartObject();
-                                        {
-                                            writer.Key("type");
-                                            writer.String(type);
-
-                                            writer.Key("value");
-                                            writer.StartObject();
-                                            {
-                                                if (input.type() == typeid(CryptoNote::BaseInput))
-                                                {
-                                                    writer.Key("height");
-                                                    writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
-                                                }
-                                                else
-                                                {
-                                                    const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
-
-                                                    writer.Key("k_image");
-                                                    writer.String(Common::podToHex(keyInput.keyImage));
-
-                                                    writer.Key("amount");
-                                                    writer.Uint64(keyInput.amount);
-
-                                                    writer.Key("key_offsets");
-                                                    writer.StartArray();
-                                                    {
-                                                        for (const auto index : keyInput.outputIndexes)
-                                                        {
-                                                            writer.Uint(index);
-                                                        }
-                                                    }
-                                                    writer.EndArray();
-                                                }
-                                            }
-                                            writer.EndObject();
-                                        }
-                                        writer.EndObject();
-                                    }
-                                }
-                                writer.EndArray();
-
-                                writer.Key("vout");
-                                writer.StartArray();
-                                {
-                                    for (const auto &output : prefix.txPrefix.outputs)
-                                    {
-                                        writer.StartObject();
-                                        {
-                                            writer.Key("amount");
-                                            writer.Uint64(output.amount);
-
-                                            writer.Key("target");
-                                            writer.StartObject();
-                                            {
-                                                writer.Key("data");
-                                                writer.StartObject();
-                                                {
-                                                    writer.Key("key");
-                                                    writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
-                                                }
-                                                writer.EndObject();
-
-                                                writer.Key("type");
-                                                writer.String("02");
-                                            }
-                                            writer.EndObject();
-                                        }
-                                        writer.EndObject();
-                                    }
-                                }
-                                writer.EndArray();
-                            }
-                            writer.EndObject();
-                        }
-                        writer.EndObject();
-                    }
-                }
-                writer.EndArray();
-            }
-            writer.EndObject();
+            blockBytes.push_back(c);
         }
+
+        nlohmann::json prefixesArr = nlohmann::json::array();
+        for (const auto &prefix : block.txPrefixes)
+        {
+            nlohmann::json vinArr = nlohmann::json::array();
+            for (const auto &input : prefix.txPrefix.inputs)
+            {
+                const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
+
+                nlohmann::json valueObj;
+                if (input.type() == typeid(CryptoNote::BaseInput))
+                {
+                    valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
+                }
+                else
+                {
+                    const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+                    nlohmann::json offsets = nlohmann::json::array();
+                    for (const auto index : keyInput.outputIndexes)
+                    {
+                        offsets.push_back(index);
+                    }
+                    valueObj["k_image"] = Common::podToHex(keyInput.keyImage);
+                    valueObj["amount"] = keyInput.amount;
+                    valueObj["key_offsets"] = offsets;
+                }
+
+                nlohmann::json inputObj;
+                inputObj["type"] = type;
+                inputObj["value"] = valueObj;
+                vinArr.push_back(inputObj);
+            }
+
+            nlohmann::json voutArr = nlohmann::json::array();
+            for (const auto &output : prefix.txPrefix.outputs)
+            {
+                nlohmann::json dataObj;
+                dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
+
+                nlohmann::json targetObj;
+                targetObj["data"] = dataObj;
+                targetObj["type"] = "02";
+
+                nlohmann::json outObj;
+                outObj["amount"] = output.amount;
+                outObj["target"] = targetObj;
+                voutArr.push_back(outObj);
+            }
+
+            nlohmann::json txPrefixObj;
+            txPrefixObj["extra"] = Common::toHex(prefix.txPrefix.extra);
+            txPrefixObj["unlock_time"] = prefix.txPrefix.unlockTime;
+            txPrefixObj["version"] = prefix.txPrefix.version;
+            txPrefixObj["vin"] = vinArr;
+            txPrefixObj["vout"] = voutArr;
+
+            nlohmann::json prefixEntry;
+            prefixEntry["transactionPrefixInfo.txHash"] = Common::podToHex(prefix.txHash);
+            prefixEntry["transactionPrefixInfo.txPrefix"] = txPrefixObj;
+            prefixesArr.push_back(prefixEntry);
+        }
+
+        nlohmann::json blockEntry;
+        blockEntry["blockShortInfo.block"] = blockBytes;
+        blockEntry["blockShortInfo.blockId"] = Common::podToHex(block.blockId);
+        blockEntry["blockShortInfo.txPrefixes"] = prefixesArr;
+        itemsArr.push_back(blockEntry);
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["fullOffset"] = fullOffset;
+    j["currentHeight"] = currentHeight;
+    j["startHeight"] = startHeight;
+    j["items"] = itemsArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2570,11 +1875,8 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
 std::tuple<Error, uint16_t> RpcServer::getTransactionsStatus(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     std::unordered_set<Crypto::Hash> transactionHashes;
 
     for (const auto &hashStr : getArrayFromJSON(body, "transactionHashes"))
@@ -2604,44 +1906,30 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsStatus(
         return {SUCCESS, 500};
     }
 
-    writer.StartObject();
-
-    writer.Key("transactionsInBlock");
-    writer.StartArray();
+    nlohmann::json inBlockArr = nlohmann::json::array();
+    for (const auto &hash : transactionsInBlock)
     {
-        for (const auto &hash : transactionsInBlock)
-        {
-            writer.String(Common::podToHex(hash));
-        }
+        inBlockArr.push_back(Common::podToHex(hash));
     }
-    writer.EndArray();
 
-    writer.Key("transactionsInPool");
-    writer.StartArray();
+    nlohmann::json inPoolArr = nlohmann::json::array();
+    for (const auto &hash : transactionsInPool)
     {
-        for (const auto &hash : transactionsInPool)
-        {
-            writer.String(Common::podToHex(hash));
-        }
+        inPoolArr.push_back(Common::podToHex(hash));
     }
-    writer.EndArray();
 
-    writer.Key("transactionsUnknown");
-    writer.StartArray();
+    nlohmann::json unknownArr = nlohmann::json::array();
+    for (const auto &hash : transactionsUnknown)
     {
-        for (const auto &hash : transactionsUnknown)
-        {
-            writer.String(Common::podToHex(hash));
-        }
+        unknownArr.push_back(Common::podToHex(hash));
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["transactionsInBlock"] = inBlockArr;
+    j["transactionsInPool"] = inPoolArr;
+    j["transactionsUnknown"] = unknownArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2649,11 +1937,8 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsStatus(
 std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     Crypto::Hash lastBlockHash;
 
     if (!Common::podFromHex(getStringFromJSON(body, "tailBlockId"), lastBlockHash))
@@ -2684,137 +1969,79 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
         lastBlockHash, knownHashes, addedTransactions, deletedTransactions
     );
 
-    writer.StartObject();
-
-    writer.Key("addedTxs");
-    writer.StartArray();
+    nlohmann::json addedTxsArr = nlohmann::json::array();
+    for (const auto &prefix : addedTransactions)
     {
-        for (const auto &prefix: addedTransactions)
+        nlohmann::json vinArr = nlohmann::json::array();
+        for (const auto &input : prefix.txPrefix.inputs)
         {
-            writer.StartObject();
+            const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
+
+            nlohmann::json valueObj;
+            if (input.type() == typeid(CryptoNote::BaseInput))
             {
-                writer.Key("transactionPrefixInfo.txHash");
-                writer.String(Common::podToHex(prefix.txHash));
-
-                writer.Key("transactionPrefixInfo.txPrefix");
-                writer.StartObject();
-                {
-                    writer.Key("extra");
-                    writer.String(Common::toHex(prefix.txPrefix.extra));
-
-                    writer.Key("unlock_time");
-                    writer.Uint64(prefix.txPrefix.unlockTime);
-
-                    writer.Key("version");
-                    writer.Uint64(prefix.txPrefix.version);
-
-                    writer.Key("vin");
-                    writer.StartArray();
-                    {
-                        for (const auto &input : prefix.txPrefix.inputs)
-                        {
-                            const auto type = input.type() == typeid(CryptoNote::BaseInput)
-                                ? "ff"
-                                : "02";
-
-                            writer.StartObject();
-                            {
-                                writer.Key("type");
-                                writer.String(type);
-
-                                writer.Key("value");
-                                writer.StartObject();
-                                {
-                                    if (input.type() == typeid(CryptoNote::BaseInput))
-                                    {
-                                        writer.Key("height");
-                                        writer.Uint64(boost::get<CryptoNote::BaseInput>(input).blockIndex);
-                                    }
-                                    else
-                                    {
-                                        const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
-
-                                        writer.Key("k_image");
-                                        writer.String(Common::podToHex(keyInput.keyImage));
-
-                                        writer.Key("amount");
-                                        writer.Uint64(keyInput.amount);
-
-                                        writer.Key("key_offsets");
-                                        writer.StartArray();
-                                        {
-                                            for (const auto &index : keyInput.outputIndexes)
-                                            {
-                                                writer.Uint(index);
-                                            }
-                                        }
-                                        writer.EndArray();
-                                    }
-                                }
-                                writer.EndObject();
-                            }
-                            writer.EndObject();
-                        }
-                    }
-                    writer.EndArray();
-
-                    writer.Key("vout");
-                    writer.StartArray();
-                    {
-                        for (const auto &output : prefix.txPrefix.outputs)
-                        {
-                            writer.StartObject();
-                            {
-                                writer.Key("amount");
-                                writer.Uint64(output.amount);
-
-                                writer.Key("target");
-                                writer.StartObject();
-                                {
-                                    writer.Key("data");
-                                    writer.StartObject();
-                                    {
-                                        writer.Key("key");
-                                        writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key));
-                                    }
-                                    writer.EndObject();
-
-                                    writer.Key("type");
-                                    writer.String("02");
-                                }
-                                writer.EndObject();
-                            }
-                            writer.EndObject();
-                        }
-                    }
-                    writer.EndArray();
-                }
-                writer.EndObject();
+                valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
             }
-            writer.EndObject();
-        }
-    }
-    writer.EndArray();
+            else
+            {
+                const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+                nlohmann::json offsets = nlohmann::json::array();
+                for (const auto &index : keyInput.outputIndexes)
+                {
+                    offsets.push_back(index);
+                }
+                valueObj["k_image"] = Common::podToHex(keyInput.keyImage);
+                valueObj["amount"] = keyInput.amount;
+                valueObj["key_offsets"] = offsets;
+            }
 
-    writer.Key("deletedTxsIds");
-    writer.StartArray();
-    {
-        for (const auto &hash : deletedTransactions)
+            nlohmann::json inputObj;
+            inputObj["type"] = type;
+            inputObj["value"] = valueObj;
+            vinArr.push_back(inputObj);
+        }
+
+        nlohmann::json voutArr = nlohmann::json::array();
+        for (const auto &output : prefix.txPrefix.outputs)
         {
-            writer.String(Common::podToHex(hash));
+            nlohmann::json dataObj;
+            dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
+
+            nlohmann::json targetObj;
+            targetObj["data"] = dataObj;
+            targetObj["type"] = "02";
+
+            nlohmann::json outObj;
+            outObj["amount"] = output.amount;
+            outObj["target"] = targetObj;
+            voutArr.push_back(outObj);
         }
+
+        nlohmann::json txPrefixObj;
+        txPrefixObj["extra"] = Common::toHex(prefix.txPrefix.extra);
+        txPrefixObj["unlock_time"] = prefix.txPrefix.unlockTime;
+        txPrefixObj["version"] = prefix.txPrefix.version;
+        txPrefixObj["vin"] = vinArr;
+        txPrefixObj["vout"] = voutArr;
+
+        nlohmann::json prefixEntry;
+        prefixEntry["transactionPrefixInfo.txHash"] = Common::podToHex(prefix.txHash);
+        prefixEntry["transactionPrefixInfo.txPrefix"] = txPrefixObj;
+        addedTxsArr.push_back(prefixEntry);
     }
-    writer.EndArray();
 
-    writer.Key("isTailBlockActual");
-    writer.Bool(atTopOfChain);
+    nlohmann::json deletedArr = nlohmann::json::array();
+    for (const auto &hash : deletedTransactions)
+    {
+        deletedArr.push_back(Common::podToHex(hash));
+    }
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["addedTxs"] = addedTxsArr;
+    j["deletedTxsIds"] = deletedArr;
+    j["isTailBlockActual"] = atTopOfChain;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -2822,11 +2049,8 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
 std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     uint64_t timestamp = 0;
 
     if (hasMember(body, "timestamp"))
@@ -2871,299 +2095,150 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
         return {SUCCESS, 500};
     }
 
-    writer.StartObject();
-
-    writer.Key("fullOffset");
-    writer.Uint64(fullOffset);
-
-    writer.Key("currentHeight");
-    writer.Uint64(currentHeight);
-
-    writer.Key("startHeight");
-    writer.Uint64(startHeight);
-
-    writer.Key("blocks");
-    writer.StartArray();
+    nlohmann::json blocksArr = nlohmann::json::array();
+    for (const auto &block : blocks)
     {
-        for (const auto &block : blocks)
+        nlohmann::json txsArr = nlohmann::json::array();
+        for (const auto &tx : block.transactions)
         {
-            writer.StartObject();
+            nlohmann::json nonceArr = nlohmann::json::array();
+            for (const auto &c : tx.extra.nonce)
             {
-                writer.Key("major_version");
-                writer.Uint64(block.majorVersion);
-
-                writer.Key("minor_version");
-                writer.Uint64(block.minorVersion);
-
-                writer.Key("timestamp");
-                writer.Uint64(block.timestamp);
-
-                writer.Key("prevBlockHash");
-                writer.String(Common::podToHex(block.prevBlockHash));
-
-                writer.Key("index");
-                writer.Uint64(block.index);
-
-                writer.Key("hash");
-                writer.String(Common::podToHex(block.hash));
-
-                writer.Key("difficulty");
-                writer.Uint64(block.difficulty);
-
-                writer.Key("reward");
-                writer.Uint64(block.reward);
-
-                writer.Key("blockSize");
-                writer.Uint64(block.blockSize);
-
-                writer.Key("alreadyGeneratedCoins");
-                writer.String(std::to_string(block.alreadyGeneratedCoins));
-
-                writer.Key("alreadyGeneratedTransactions");
-                writer.Uint64(block.alreadyGeneratedTransactions);
-
-                writer.Key("sizeMedian");
-                writer.Uint64(block.sizeMedian);
-
-                writer.Key("baseReward");
-                writer.Uint64(block.baseReward);
-
-                writer.Key("nonce");
-                writer.Uint64(block.nonce);
-
-                writer.Key("totalFeeAmount");
-                writer.Uint64(block.totalFeeAmount);
-
-                writer.Key("transactionsCumulativeSize");
-                writer.Uint64(block.transactionsCumulativeSize);
-
-                writer.Key("transactions");
-                writer.StartArray();
-                {
-                    for (const auto &tx : block.transactions)
-                    {
-                        writer.StartObject();
-                        {
-                            writer.Key("blockHash");
-                            writer.String(Common::podToHex(block.hash));
-
-                            writer.Key("blockIndex");
-                            writer.Uint64(block.index);
-
-                            writer.Key("extra");
-                            writer.StartObject();
-                            {
-                                writer.Key("nonce");
-                                writer.StartArray();
-                                {
-                                    for (const auto &c : tx.extra.nonce)
-                                    {
-                                        writer.Uint64(c);
-                                    }
-                                }
-                                writer.EndArray();
-
-                                writer.Key("publicKey");
-                                writer.String(Common::podToHex(tx.extra.publicKey));
-
-                                writer.Key("raw");
-                                writer.String(Common::toHex(tx.extra.raw));
-                            }
-                            writer.EndObject();
-
-                            writer.Key("fee");
-                            writer.Uint64(tx.fee);
-
-                            writer.Key("hash");
-                            writer.String(Common::podToHex(tx.hash));
-
-                            writer.Key("inBlockchain");
-                            writer.Bool(tx.inBlockchain);
-
-                            writer.Key("inputs");
-                            writer.StartArray();
-                            {
-                                for (const auto &input : tx.inputs)
-                                {
-                                    const auto type = input.type() == typeid(CryptoNote::BaseInputDetails)
-                                        ? "ff"
-                                        : "02";
-
-                                    writer.StartObject();
-                                    {
-                                        writer.Key("type");
-                                        writer.String(type);
-
-                                        writer.Key("data");
-                                        writer.StartObject();
-                                        {
-                                            if (input.type() == typeid(CryptoNote::BaseInputDetails))
-                                            {
-                                                const auto in = boost::get<CryptoNote::BaseInputDetails>(input);
-
-                                                writer.Key("amount");
-                                                writer.Uint64(in.amount);
-
-                                                writer.Key("input");
-                                                writer.StartObject();
-                                                {
-                                                    writer.Key("height");
-                                                    writer.Uint64(in.input.blockIndex);
-                                                }
-                                                writer.EndObject();
-                                            }
-                                            else
-                                            {
-                                                const auto in = boost::get<CryptoNote::KeyInputDetails>(input);
-
-                                                writer.Key("input");
-                                                writer.StartObject();
-                                                {
-                                                    writer.Key("amount");
-                                                    writer.Uint64(in.input.amount);
-
-                                                    writer.Key("k_image");
-                                                    writer.String(Common::podToHex(in.input.keyImage));
-
-                                                    writer.Key("key_offsets");
-                                                    writer.StartArray();
-                                                    {
-                                                        for (const auto &index : in.input.outputIndexes)
-                                                        {
-                                                            writer.Uint(index);
-                                                        }
-                                                    }
-                                                    writer.EndArray();
-
-                                                }
-                                                writer.EndObject();
-
-                                                writer.Key("mixin");
-                                                writer.Uint64(in.mixin);
-
-                                                writer.Key("output");
-                                                writer.StartObject();
-                                                {
-                                                    writer.Key("transactionHash");
-                                                    writer.String(Common::podToHex(in.output.transactionHash));
-
-                                                    writer.Key("number");
-                                                    writer.Uint64(in.output.number);
-                                                }
-                                                writer.EndObject();
-                                            }
-                                        }
-                                        writer.EndObject();
-                                    }
-                                    writer.EndObject();
-                                }
-                            }
-                            writer.EndArray();
-
-                            writer.Key("mixin");
-                            writer.Uint64(tx.mixin);
-
-                            writer.Key("outputs");
-                            writer.StartArray();
-                            {
-                                for (const auto &output : tx.outputs)
-                                {
-                                    writer.StartObject();
-                                    {
-                                        writer.Key("globalIndex");
-                                        writer.Uint64(output.globalIndex);
-
-                                        writer.Key("output");
-                                        writer.StartObject();
-                                        {
-                                            writer.Key("amount");
-                                            writer.Uint64(output.output.amount);
-
-                                            writer.Key("target");
-                                            writer.StartObject();
-                                            {
-                                                writer.Key("data");
-                                                writer.StartObject();
-                                                {
-                                                    writer.Key("key");
-                                                    writer.String(Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.output.target).key));
-                                                }
-                                                writer.EndObject();
-
-                                                writer.Key("type");
-                                                writer.String("02");
-                                            }
-                                            writer.EndObject();
-                                        }
-                                        writer.EndObject();
-                                    }
-                                    writer.EndObject();
-                                }
-                            }
-                            writer.EndArray();
-
-                            writer.Key("paymentId");
-                            writer.String(Common::podToHex(tx.paymentId));
-
-                            writer.Key("signatures");
-                            writer.StartArray();
-                            {
-                                int i = 0;
-
-                                for (const auto &sigs : tx.signatures)
-                                {
-                                    for (const auto &sig : sigs)
-                                    {
-                                        writer.StartObject();
-                                        {
-                                            writer.Key("first");
-                                            writer.Uint64(i);
-
-                                            writer.Key("second");
-                                            writer.String(Common::podToHex(sig));
-                                        }
-                                        writer.EndObject();
-                                    }
-
-                                    i++;
-                                }
-                            }
-                            writer.EndArray();
-
-                            writer.Key("signaturesSize");
-                            writer.Uint64(tx.signatures.size());
-
-                            writer.Key("size");
-                            writer.Uint64(tx.size);
-
-                            writer.Key("timestamp");
-                            writer.Uint64(tx.timestamp);
-
-                            writer.Key("totalInputsAmount");
-                            writer.Uint64(tx.totalInputsAmount);
-
-                            writer.Key("totalOutputsAmount");
-                            writer.Uint64(tx.totalOutputsAmount);
-
-                            writer.Key("unlockTime");
-                            writer.Uint64(tx.unlockTime);
-                        }
-                        writer.EndObject();
-                    }
-                }
-                writer.EndArray();
+                nonceArr.push_back(c);
             }
-            writer.EndObject();
+
+            nlohmann::json extraObj;
+            extraObj["nonce"] = nonceArr;
+            extraObj["publicKey"] = Common::podToHex(tx.extra.publicKey);
+            extraObj["raw"] = Common::toHex(tx.extra.raw);
+
+            nlohmann::json inputsArr = nlohmann::json::array();
+            for (const auto &input : tx.inputs)
+            {
+                const auto type = input.type() == typeid(CryptoNote::BaseInputDetails) ? "ff" : "02";
+
+                nlohmann::json dataObj;
+                if (input.type() == typeid(CryptoNote::BaseInputDetails))
+                {
+                    const auto in = boost::get<CryptoNote::BaseInputDetails>(input);
+                    nlohmann::json inputSubObj;
+                    inputSubObj["height"] = in.input.blockIndex;
+                    dataObj["amount"] = in.amount;
+                    dataObj["input"] = inputSubObj;
+                }
+                else
+                {
+                    const auto in = boost::get<CryptoNote::KeyInputDetails>(input);
+                    nlohmann::json offsets = nlohmann::json::array();
+                    for (const auto &index : in.input.outputIndexes)
+                    {
+                        offsets.push_back(index);
+                    }
+                    nlohmann::json inputSubObj;
+                    inputSubObj["amount"] = in.input.amount;
+                    inputSubObj["k_image"] = Common::podToHex(in.input.keyImage);
+                    inputSubObj["key_offsets"] = offsets;
+
+                    nlohmann::json outputRef;
+                    outputRef["transactionHash"] = Common::podToHex(in.output.transactionHash);
+                    outputRef["number"] = in.output.number;
+
+                    dataObj["input"] = inputSubObj;
+                    dataObj["mixin"] = in.mixin;
+                    dataObj["output"] = outputRef;
+                }
+
+                nlohmann::json inputEntry;
+                inputEntry["type"] = type;
+                inputEntry["data"] = dataObj;
+                inputsArr.push_back(inputEntry);
+            }
+
+            nlohmann::json outputsArr = nlohmann::json::array();
+            for (const auto &output : tx.outputs)
+            {
+                nlohmann::json dataObj;
+                dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.output.target).key);
+
+                nlohmann::json targetObj;
+                targetObj["data"] = dataObj;
+                targetObj["type"] = "02";
+
+                nlohmann::json outputInner;
+                outputInner["amount"] = output.output.amount;
+                outputInner["target"] = targetObj;
+
+                nlohmann::json outEntry;
+                outEntry["globalIndex"] = output.globalIndex;
+                outEntry["output"] = outputInner;
+                outputsArr.push_back(outEntry);
+            }
+
+            nlohmann::json sigsArr = nlohmann::json::array();
+            {
+                int i = 0;
+                for (const auto &sigs : tx.signatures)
+                {
+                    for (const auto &sig : sigs)
+                    {
+                        nlohmann::json sigObj;
+                        sigObj["first"] = i;
+                        sigObj["second"] = Common::podToHex(sig);
+                        sigsArr.push_back(sigObj);
+                    }
+                    i++;
+                }
+            }
+
+            nlohmann::json txObj;
+            txObj["blockHash"] = Common::podToHex(block.hash);
+            txObj["blockIndex"] = block.index;
+            txObj["extra"] = extraObj;
+            txObj["fee"] = tx.fee;
+            txObj["hash"] = Common::podToHex(tx.hash);
+            txObj["inBlockchain"] = tx.inBlockchain;
+            txObj["inputs"] = inputsArr;
+            txObj["mixin"] = tx.mixin;
+            txObj["outputs"] = outputsArr;
+            txObj["paymentId"] = Common::podToHex(tx.paymentId);
+            txObj["signatures"] = sigsArr;
+            txObj["signaturesSize"] = tx.signatures.size();
+            txObj["size"] = tx.size;
+            txObj["timestamp"] = tx.timestamp;
+            txObj["totalInputsAmount"] = tx.totalInputsAmount;
+            txObj["totalOutputsAmount"] = tx.totalOutputsAmount;
+            txObj["unlockTime"] = tx.unlockTime;
+            txsArr.push_back(txObj);
         }
+
+        nlohmann::json blockObj;
+        blockObj["major_version"] = block.majorVersion;
+        blockObj["minor_version"] = block.minorVersion;
+        blockObj["timestamp"] = block.timestamp;
+        blockObj["prevBlockHash"] = Common::podToHex(block.prevBlockHash);
+        blockObj["index"] = block.index;
+        blockObj["hash"] = Common::podToHex(block.hash);
+        blockObj["difficulty"] = block.difficulty;
+        blockObj["reward"] = block.reward;
+        blockObj["blockSize"] = block.blockSize;
+        blockObj["alreadyGeneratedCoins"] = std::to_string(block.alreadyGeneratedCoins);
+        blockObj["alreadyGeneratedTransactions"] = block.alreadyGeneratedTransactions;
+        blockObj["sizeMedian"] = block.sizeMedian;
+        blockObj["baseReward"] = block.baseReward;
+        blockObj["nonce"] = block.nonce;
+        blockObj["totalFeeAmount"] = block.totalFeeAmount;
+        blockObj["transactionsCumulativeSize"] = block.transactionsCumulativeSize;
+        blockObj["transactions"] = txsArr;
+        blocksArr.push_back(blockObj);
     }
-    writer.EndArray();
 
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["fullOffset"] = fullOffset;
+    j["currentHeight"] = currentHeight;
+    j["startHeight"] = startHeight;
+    j["blocks"] = blocksArr;
+    j["status"] = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -3172,11 +2247,8 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
 std::tuple<Error, uint16_t> RpcServer::getGlobalIndexesDeprecated(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
     Crypto::Hash hash;
 
     if (!Common::podFromHex(getStringFromJSON(body, "txid"), hash))
@@ -3195,25 +2267,14 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexesDeprecated(
         return {SUCCESS, 500};
     }
 
-    writer.StartObject();
+    nlohmann::json indexesArr = nlohmann::json::array();
+    for (const auto &index : indexes)
+        indexesArr.push_back(index);
 
-    writer.Key("o_indexes");
-
-    writer.StartArray();
-    {
-        for (const auto &index : indexes)
-        {
-            writer.Uint64(index);
-        }
-    }
-    writer.EndArray();
-
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["o_indexes"] = indexesArr;
+    j["status"]    = "OK";
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }
@@ -3221,20 +2282,15 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexesDeprecated(
 std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-
-    writer.StartObject();
-
     std::vector<Crypto::Hash> blockHashCheckpoints;
 
     if (hasMember(body, "blockHashCheckpoints"))
     {
         for (const auto &jsonHash : getArrayFromJSON(body, "blockHashCheckpoints"))
         {
-            std::string hashStr = jsonHash.GetString();
+            const std::string hashStr = getStringFromJSONString(jsonHash);
 
             Crypto::Hash hash;
             if (!Common::podFromHex(hashStr, hash))
@@ -3287,52 +2343,33 @@ std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
         return {SUCCESS, 500};
     }
 
-    writer.Key("items");
-    writer.StartArray();
+    nlohmann::json itemsArr = nlohmann::json::array();
+    for (const auto &block : blocks)
     {
-        for (const auto &block : blocks)
-        {
-            writer.StartObject();
+        nlohmann::json txArr = nlohmann::json::array();
+        for (const auto &transaction : block.transactions)
+            txArr.push_back(Common::toHex(transaction));
 
-            writer.Key("block");
-            writer.String(Common::toHex(block.block));
-
-            writer.Key("transactions");
-            writer.StartArray();
-            for (const auto &transaction : block.transactions)
-            {
-                writer.String(Common::toHex(transaction));
-            }
-            writer.EndArray();
-
-            writer.EndObject();
-        }
+        itemsArr.push_back({
+            {"block",        Common::toHex(block.block)},
+            {"transactions", txArr}
+        });
     }
-    writer.EndArray();
+
+    nlohmann::json j;
+    j["items"]  = itemsArr;
+    j["synced"] = blocks.empty();
+    j["status"] = "OK";
 
     if (topBlockInfo)
     {
-        writer.Key("topBlock");
-        writer.StartObject();
-        {
-            writer.Key("hash");
-            writer.String(Common::podToHex(topBlockInfo->hash));
-
-            writer.Key("height");
-            writer.Uint64(topBlockInfo->height);
-        }
-        writer.EndObject();
+        j["topBlock"] = {
+            {"hash",   Common::podToHex(topBlockInfo->hash)},
+            {"height", topBlockInfo->height}
+        };
     }
 
-    writer.Key("synced");
-    writer.Bool(blocks.empty());
-
-    writer.Key("status");
-    writer.String("OK");
-
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    res.body = j.dump();
 
     return {SUCCESS, 200};
 }

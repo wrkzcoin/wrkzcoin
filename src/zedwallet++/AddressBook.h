@@ -36,27 +36,16 @@ struct AddressBookEntry
         return rhs.friendlyName == friendlyName;
     }
 
-    template<typename Writer> void toJSON(Writer &writer) const
+    nlohmann::json toJSON() const
     {
-        writer.StartObject();
-
-        writer.Key("friendlyName");
-        writer.String(friendlyName);
-
-        writer.Key("address");
-        writer.String(address);
-
-        writer.Key("paymentID");
-        writer.String(paymentID);
-
-        writer.EndObject();
+        return {{"friendlyName", friendlyName}, {"address", address}, {"paymentID", paymentID}};
     }
 
-    void fromJSON(const JSONValue &j)
+    void fromJSON(const nlohmann::json &j)
     {
-        friendlyName = getStringFromJSON(j, "friendlyName");
-        address = getStringFromJSON(j, "address");
-        paymentID = getStringFromJSON(j, "paymentID");
+        friendlyName = j.at("friendlyName").get<std::string>();
+        address = j.at("address").get<std::string>();
+        paymentID = j.at("paymentID").get<std::string>();
     }
 };
 

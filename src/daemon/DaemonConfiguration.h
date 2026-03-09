@@ -11,10 +11,8 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
-#include <rapidjson/document.h>
+#include "json.hpp"
 #include <thread>
-
-using namespace rapidjson;
 
 namespace DaemonConfig
 {
@@ -237,5 +235,5 @@ namespace DaemonConfig
 
     std::string asString(const DaemonConfiguration &config);
 
-    Document asJSON(const DaemonConfiguration &config);
+    nlohmann::json asJSON(const DaemonConfiguration &config);
 } // namespace DaemonConfig

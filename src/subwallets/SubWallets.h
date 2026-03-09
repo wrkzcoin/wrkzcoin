@@ -59,10 +59,10 @@ class SubWallets
     std::tuple<uint64_t, uint64_t> getMinInitialSyncStart() const;
 
     /* Converts the class to a json object */
-    void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const;
+    nlohmann::json toJSON() const;
 
     /* Initializes the class from a json string */
-    void fromJSON(const JSONObject &j);
+    void fromJSON(const nlohmann::json &j);
 
     /* Store a transaction */
     void addTransaction(const WalletTypes::Transaction tx);

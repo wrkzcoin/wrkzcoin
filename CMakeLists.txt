@@ -163,8 +163,6 @@ set(STATIC ${WRKZ_FORCE_STATIC_INTERNALS} CACHE BOOL "Link libraries statically?
 ## This section helps us tag our builds with the git commit information
 set(COMMIT_ID_IN_VERSION ON CACHE BOOL "Include commit ID in version")
 
-# So we can use std::string with rapidjson
-add_definitions(-DRAPIDJSON_HAS_STDSTRING)
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/version")
 
