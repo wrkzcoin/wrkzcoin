@@ -128,6 +128,12 @@ class RpcServer
     std::tuple<Error, uint16_t>
         peers(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
+    std::tuple<Error, uint16_t>
+        masternodeCount(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+
+    std::tuple<Error, uint16_t>
+        masternodes(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+
     ///////////////////
     /* POST REQUESTS */
     ///////////////////

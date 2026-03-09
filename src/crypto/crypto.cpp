@@ -459,6 +459,141 @@ namespace Crypto
         ge_tobytes(reinterpret_cast<unsigned char *>(&image), &point2);
     }
 
+    struct dleq_comm
+    {
+        Hash h;
+        EllipticCurvePoint key;
+        EllipticCurvePoint image;
+        EllipticCurvePoint comm1;
+        EllipticCurvePoint comm2;
+    };
+
+    bool crypto_ops::generate_key_image_dleq_proof(
+        const Hash &context,
+        const PublicKey &pub,
+        const SecretKey &sec,
+        Signature &proof)
+    {
+        if (sc_check(reinterpret_cast<const unsigned char *>(&sec)) != 0)
+        {
+            return false;
+        }
+
+        ge_p3 pubPoint;
+        if (ge_frombytes_vartime(&pubPoint, reinterpret_cast<const unsigned char *>(&pub)) != 0)
+        {
+            return false;
+        }
+
+        PublicKey expectedPub;
+        ge_scalarmult_base(&pubPoint, reinterpret_cast<const unsigned char *>(&sec));
+        ge_p3_tobytes(reinterpret_cast<unsigned char *>(&expectedPub), &pubPoint);
+        if (expectedPub != pub)
+        {
+            return false;
+        }
+
+        dleq_comm buf;
+        buf.h = context;
+        buf.key = reinterpret_cast<const EllipticCurvePoint &>(pub);
+
+        KeyImage image;
+        generate_key_image(pub, sec, image);
+        buf.image = reinterpret_cast<const EllipticCurvePoint &>(image);
+
+        EllipticCurveScalar w;
+        random_scalar(w);
+
+        ge_p3 comm1;
+        ge_scalarmult_base(&comm1, reinterpret_cast<const unsigned char *>(&w));
+        ge_p3_tobytes(reinterpret_cast<unsigned char *>(&buf.comm1), &comm1);
+
+        ge_p3 hpPoint;
+        ge_p2 comm2;
+        hash_to_ec(pub, hpPoint);
+        ge_scalarmult(&comm2, reinterpret_cast<const unsigned char *>(&w), &hpPoint);
+        ge_tobytes(reinterpret_cast<unsigned char *>(&buf.comm2), &comm2);
+
+        hash_to_scalar(&buf, sizeof(buf), reinterpret_cast<EllipticCurveScalar &>(proof));
+        sc_mulsub(
+            reinterpret_cast<unsigned char *>(&proof) + 32,
+            reinterpret_cast<unsigned char *>(&proof),
+            reinterpret_cast<const unsigned char *>(&sec),
+            reinterpret_cast<unsigned char *>(&w));
+
+        return true;
+    }
+
+    bool crypto_ops::check_key_image_dleq_proof(
+        const Hash &context,
+        const PublicKey &pub,
+        const KeyImage &image,
+        const Signature &proof)
+    {
+        if (!check_key(pub))
+        {
+            return false;
+        }
+
+        if (
+            sc_check(reinterpret_cast<const unsigned char *>(&proof)) != 0
+            || sc_check(reinterpret_cast<const unsigned char *>(&proof) + 32) != 0)
+        {
+            return false;
+        }
+
+        ge_p3 pubPoint;
+        if (ge_frombytes_vartime(&pubPoint, reinterpret_cast<const unsigned char *>(&pub)) != 0)
+        {
+            return false;
+        }
+
+        ge_p3 imagePoint;
+        ge_dsmp imagePrecomp;
+        if (ge_frombytes_vartime(&imagePoint, reinterpret_cast<const unsigned char *>(&image)) != 0)
+        {
+            return false;
+        }
+        ge_dsm_precomp(imagePrecomp, &imagePoint);
+        if (ge_check_subgroup_precomp_vartime(imagePrecomp) != 0)
+        {
+            return false;
+        }
+
+        dleq_comm buf;
+        buf.h = context;
+        buf.key = reinterpret_cast<const EllipticCurvePoint &>(pub);
+        buf.image = reinterpret_cast<const EllipticCurvePoint &>(image);
+
+        ge_p2 comm1;
+        ge_double_scalarmult_base_vartime(
+            &comm1,
+            reinterpret_cast<const unsigned char *>(&proof),
+            &pubPoint,
+            reinterpret_cast<const unsigned char *>(&proof) + 32);
+        ge_tobytes(reinterpret_cast<unsigned char *>(&buf.comm1), &comm1);
+
+        ge_p3 hpPoint;
+        ge_p2 comm2;
+        hash_to_ec(pub, hpPoint);
+        ge_double_scalarmult_precomp_vartime(
+            &comm2,
+            reinterpret_cast<const unsigned char *>(&proof) + 32,
+            &hpPoint,
+            reinterpret_cast<const unsigned char *>(&proof),
+            imagePrecomp);
+        ge_tobytes(reinterpret_cast<unsigned char *>(&buf.comm2), &comm2);
+
+        EllipticCurveScalar c;
+        hash_to_scalar(&buf, sizeof(buf), c);
+        sc_sub(
+            reinterpret_cast<unsigned char *>(&c),
+            reinterpret_cast<unsigned char *>(&c),
+            reinterpret_cast<const unsigned char *>(&proof));
+
+        return sc_isnonzero(reinterpret_cast<unsigned char *>(&c)) == 0;
+    }
+
 #ifdef _MSC_VER
 #pragma warning(disable : 4200)
 #endif

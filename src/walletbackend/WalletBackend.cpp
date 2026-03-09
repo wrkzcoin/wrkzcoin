@@ -1535,6 +1535,38 @@ std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey, uint64_t> WalletBackend:
     return {success, publicSpendKey, privateSpendKey, walletIndex};
 }
 
+std::tuple<Error, std::vector<WalletTypes::TransactionInput>>
+    WalletBackend::getSpendableInputs(const std::string &address) const
+{
+    if (isViewWallet())
+    {
+        return {ILLEGAL_VIEW_WALLET_OPERATION, {}};
+    }
+
+    const bool allowIntegratedAddresses = false;
+    if (Error error = validateAddresses({address}, allowIntegratedAddresses); error != SUCCESS)
+    {
+        return {error, {}};
+    }
+
+    const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
+    (void)publicViewKey;
+
+    auto inputs = m_subWallets->getSpendableTransactionInputs(
+        false,
+        {publicSpendKey},
+        m_daemon->networkBlockCount());
+
+    std::vector<WalletTypes::TransactionInput> result;
+    result.reserve(inputs.size());
+    for (const auto &entry : inputs)
+    {
+        result.push_back(entry.input);
+    }
+
+    return {SUCCESS, std::move(result)};
+}
+
 Crypto::SecretKey WalletBackend::getPrivateViewKey() const
 {
     return m_subWallets->getPrivateViewKey();

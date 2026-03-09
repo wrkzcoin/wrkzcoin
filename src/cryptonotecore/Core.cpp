@@ -13,6 +13,7 @@
 #include <common/Math.h>
 #include <common/MemoryInputStream.h>
 #include <common/ShuffleGenerator.h>
+#include <common/StringTools.h>
 #include <common/TransactionExtra.h>
 #include <config/Constants.h>
 #include <cryptonotecore/BlockchainCache.h>
@@ -31,6 +32,8 @@
 #include <cryptonotecore/TransactionPoolCleaner.h>
 #include <cryptonotecore/UpgradeManager.h>
 #include <cryptonotecore/ValidateTransaction.h>
+#include <crypto/hash.h>
+#include <crypto/crypto.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
 #include <fstream>
 #include <numeric>
@@ -42,6 +45,7 @@
 #include <utilities/LicenseCanary.h>
 #include <utilities/ParseExtra.h>
 #include <utilities/ThreadSafeQueue.h>
+#include <json.hpp>
 
 using namespace Crypto;
 
@@ -49,6 +53,49 @@ namespace CryptoNote
 {
     namespace
     {
+        bool isValidKeyImageInMainSubgroup(const Crypto::KeyImage &keyImage)
+        {
+            static const Crypto::KeyImage I = {{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}};
+            static const Crypto::KeyImage L = {{0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7,
+                                                0xa2, 0xde, 0xf9, 0xde, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10}};
+
+            return scalarmultKey(keyImage, L) == I;
+        }
+
+        bool isZeroHash(const Crypto::Hash &h)
+        {
+            return std::all_of(std::begin(h.data), std::end(h.data), [](const uint8_t b) {
+                return b == 0;
+            });
+        }
+
+        bool isAuthorizedMasternodeVerifier(const Crypto::PublicKey &verifierKey)
+        {
+            if (!parameters::MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST)
+            {
+                return true;
+            }
+
+            for (const auto &hexKey : parameters::MASTERNODE_VERIFIER_PUBKEY_ALLOWLIST)
+            {
+                Crypto::PublicKey parsed;
+                if (!Common::podFromHex(hexKey, parsed))
+                {
+                    continue;
+                }
+
+                if (parsed == verifierKey)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         template<class T> std::vector<T> preallocateVector(size_t elements)
         {
             std::vector<T> vect;
@@ -203,13 +250,15 @@ namespace CryptoNote
         Checkpoints &&checkpoints,
         System::Dispatcher &dispatcher,
         std::unique_ptr<IBlockchainCacheFactory> &&blockchainCacheFactory,
-        const uint32_t transactionValidationThreads):
+        const uint32_t transactionValidationThreads,
+        std::string dataDirectory):
         currency(currency),
         dispatcher(dispatcher),
         contextGroup(dispatcher),
         logger(logger, "Core"),
         checkpoints(std::move(checkpoints)),
         upgradeManager(new UpgradeManager()),
+        dataFolder(std::move(dataDirectory)),
         blockchainCacheFactory(std::move(blockchainCacheFactory)),
         initialized(false),
         m_transactionValidationThreadPool(transactionValidationThreads)
@@ -1140,6 +1189,718 @@ namespace CryptoNote
         return currency.getNextDifficulty(nextBlockMajorVersion, topBlockIndex, timestamps, difficulties);
     }
 
+    bool Core::isMasternodeFeatureForkActive(uint32_t height) const
+    {
+        return parameters::MASTERNODE_FEATURE_FORK_HEIGHT > 0 && height >= parameters::MASTERNODE_FEATURE_FORK_HEIGHT;
+    }
+
+    bool Core::isMasternodeRewardForkActive(uint32_t height) const
+    {
+        return parameters::MASTERNODE_REWARD_FORK_HEIGHT > 0 && height >= parameters::MASTERNODE_REWARD_FORK_HEIGHT;
+    }
+
+    std::vector<Crypto::Hash> Core::getMasternodeRewardCandidates(uint32_t height) const
+    {
+        if (!isMasternodeFeatureForkActive(height))
+        {
+            return {};
+        }
+
+        return masternodeStateTracker.getTrackedMasternodeIds();
+    }
+
+    std::vector<Crypto::Hash>
+        Core::getMasternodeRewardCandidatesForTracker(uint32_t height, const MasternodeStateTracker &tracker) const
+    {
+        if (!isMasternodeFeatureForkActive(height))
+        {
+            return {};
+        }
+
+        return tracker.getTrackedMasternodeIds();
+    }
+
+    MasternodeStateTracker::RewardDistribution Core::getMasternodeRewardDistribution(
+        uint64_t totalReward,
+        uint32_t height) const
+    {
+        MasternodeStateTracker::RewardDistribution distribution;
+        distribution.powReward = totalReward;
+
+        if (!isMasternodeRewardForkActive(height))
+        {
+            return distribution;
+        }
+
+        const auto candidates = getMasternodeRewardCandidates(height);
+        return masternodeStateTracker.calculateRewardDistribution(
+            totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    }
+
+    MasternodeStateTracker::RewardDistribution Core::getMasternodeRewardDistributionForTracker(
+        uint64_t totalReward,
+        uint32_t height,
+        const MasternodeStateTracker &tracker) const
+    {
+        MasternodeStateTracker::RewardDistribution distribution;
+        distribution.powReward = totalReward;
+
+        if (!isMasternodeRewardForkActive(height))
+        {
+            return distribution;
+        }
+
+        const auto candidates = getMasternodeRewardCandidatesForTracker(height, tracker);
+        return tracker.calculateRewardDistribution(totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    }
+
+    void Core::applyMasternodeEventFromTransaction(const Transaction &transaction, uint64_t txFee, uint32_t height)
+    {
+        applyMasternodeEventFromTransactionToTracker(transaction, txFee, height, masternodeStateTracker);
+    }
+
+    void Core::applyMasternodeEventFromTransactionToTracker(
+        const Transaction &transaction,
+        uint64_t txFee,
+        uint32_t height,
+        MasternodeStateTracker &tracker) const
+    {
+        MasternodeTxPayload payload;
+        std::string error;
+        const auto parseResult = parseMasternodeTxPayload(transaction, payload, error);
+        if (parseResult != MasternodeTxParseResult::Valid)
+        {
+            return;
+        }
+
+        switch (payload.type)
+        {
+            case MasternodeTxType::Register:
+                if (payload.hasPayoutKey)
+                {
+                    const bool bonded = payload.hasCollateral
+                        && payload.collateralAmount >= parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT;
+                    tracker.registerMasternode(
+                        payload.masternodeId,
+                        payload.payoutKey,
+                        bonded,
+                        payload.collateralAmount,
+                        payload.registrationTokenId,
+                        payload.registrationExpiresAtHeight,
+                        payload.collateralAmount,
+                        payload.collateralGlobalOutputIndex,
+                        payload.collateralKeyImage,
+                        payload.collateralOutputKey,
+                        payload.endpointCommitment);
+                }
+                return;
+            case MasternodeTxType::Activate:
+                tracker.activateMasternode(payload.masternodeId);
+                return;
+            case MasternodeTxType::Deactivate:
+                tracker.deactivateMasternode(payload.masternodeId, height);
+                return;
+            case MasternodeTxType::Penalize:
+                tracker.penalizeMasternode(payload.masternodeId, height);
+                return;
+            case MasternodeTxType::Revoke:
+                tracker.revokeMasternode(payload.masternodeId, height);
+                return;
+            case MasternodeTxType::Heartbeat:
+                tracker.recordHealthSample(payload.masternodeId, height, payload.healthy);
+                return;
+            case MasternodeTxType::Attest:
+                if (payload.hasVerifierKey)
+                {
+                    tracker.recordAttestationSample(
+                        payload.masternodeId,
+                        height,
+                        payload.verifierKey,
+                        payload.healthy);
+                }
+                return;
+            default:
+                return;
+        }
+    }
+
+    void Core::applyMasternodeEventsFromBlock(
+        const CachedBlock &cachedBlock,
+        const std::vector<CachedTransaction> &transactions,
+        uint32_t height)
+    {
+        if (!isMasternodeFeatureForkActive(height))
+        {
+            return;
+        }
+
+        for (const auto &transaction : transactions)
+        {
+            applyMasternodeEventFromTransaction(transaction.getTransaction(), transaction.getTransactionFee(), height);
+        }
+    }
+
+    std::error_code Core::validateMasternodeTransactionEvent(
+        const CachedTransaction &cachedTransaction,
+        uint64_t transactionFee,
+        uint32_t nextBlockHeight,
+        IBlockchainCache *validationCache,
+        bool checkPoolTokenReplay) const
+    {
+        return validateMasternodeTransactionEventWithTracker(
+            cachedTransaction,
+            transactionFee,
+            nextBlockHeight,
+            validationCache,
+            masternodeStateTracker,
+            checkPoolTokenReplay);
+    }
+
+    std::error_code Core::validateMasternodeTransactionEventWithTracker(
+        const CachedTransaction &cachedTransaction,
+        uint64_t transactionFee,
+        uint32_t nextBlockHeight,
+        IBlockchainCache *validationCache,
+        const MasternodeStateTracker &tracker,
+        bool checkPoolTokenReplay) const
+    {
+        (void)transactionFee;
+        MasternodeTxPayload payload;
+        std::string error;
+        const auto parseResult = parseMasternodeTxPayload(cachedTransaction.getTransaction(), payload, error);
+        if (parseResult == MasternodeTxParseResult::NotFound)
+        {
+            return error::TransactionValidationError::VALIDATION_SUCCESS;
+        }
+
+        if (!isMasternodeFeatureForkActive(nextBlockHeight))
+        {
+            logger(Logging::DEBUGGING) << "Masternode payload encountered before feature fork height";
+            return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
+        if (parseResult == MasternodeTxParseResult::Invalid)
+        {
+            logger(Logging::DEBUGGING) << "Malformed masternode payload: " << error;
+            return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
+        if (!payload.hasSignature)
+        {
+            return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
+        Crypto::Hash signingHash;
+        if (!getMasternodeTxSigningHash(payload, signingHash))
+        {
+            return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
+        const bool exists = tracker.hasMasternode(payload.masternodeId);
+        const auto status = tracker.getStatus(payload.masternodeId);
+        switch (payload.type)
+        {
+            case MasternodeTxType::Register:
+                if (!payload.hasPayoutKey || !check_key(payload.payoutKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (!payload.hasRegistrationToken)
+                {
+                    return error::TransactionValidationError::EXTRA_TOO_LARGE;
+                }
+                if (!payload.hasCollateral || !payload.hasCollateralSignature)
+                {
+                    return error::TransactionValidationError::EXTRA_TOO_LARGE;
+                }
+                if (!payload.hasEndpointCommitment || isZeroHash(payload.endpointCommitment))
+                {
+                    return error::TransactionValidationError::EXTRA_TOO_LARGE;
+                }
+                if (!isValidKeyImageInMainSubgroup(payload.collateralKeyImage))
+                {
+                    return error::TransactionValidationError::INPUT_INVALID_DOMAIN_KEYIMAGES;
+                }
+                if (!check_signature(signingHash, payload.payoutKey, payload.signature))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (!check_key(payload.collateralOutputKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (
+                    !check_key_image_dleq_proof(
+                        signingHash,
+                        payload.collateralOutputKey,
+                        payload.collateralKeyImage,
+                        payload.collateralSignature))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (payload.registrationExpiresAtHeight < nextBlockHeight)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (
+                    payload.registrationExpiresAtHeight - nextBlockHeight
+                    > parameters::MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (payload.collateralAmount < parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (tracker.hasUsedRegistrationToken(payload.registrationTokenId))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (tracker.hasEndpointCommitment(payload.endpointCommitment, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (tracker.hasCollateralKeyImage(payload.collateralKeyImage, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (
+                    tracker.hasCollateralOutpoint(
+                        payload.collateralAmount,
+                        payload.collateralGlobalOutputIndex,
+                        nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (validationCache == nullptr)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                const uint32_t referenceHeight = nextBlockHeight == 0 ? 0 : nextBlockHeight - 1;
+                if (validationCache->checkIfSpent(payload.collateralKeyImage, referenceHeight))
+                {
+                    return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                }
+                std::vector<uint32_t> globalIndexes {payload.collateralGlobalOutputIndex};
+                std::vector<Crypto::PublicKey> keys;
+                const auto extractResult = validationCache->extractKeyOutputKeys(
+                    payload.collateralAmount,
+                    referenceHeight,
+                    {globalIndexes.data(), globalIndexes.size()},
+                    keys);
+                if (extractResult != ExtractOutputKeysResult::SUCCESS || keys.size() != 1)
+                {
+                    return error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
+                }
+                if (keys[0] != payload.collateralOutputKey)
+                {
+                    return error::TransactionValidationError::INPUT_INVALID_GLOBAL_INDEX;
+                }
+                if (
+                    checkPoolTokenReplay
+                    && hasMasternodeEndpointCommitmentInPool(
+                        payload.endpointCommitment, cachedTransaction.getTransactionHash()))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (
+                    checkPoolTokenReplay
+                    && hasMasternodeRegistrationTokenInPool(payload.registrationTokenId, cachedTransaction.getTransactionHash()))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (
+                    checkPoolTokenReplay
+                    && hasMasternodeCollateralInPool(
+                        payload.collateralAmount,
+                        payload.collateralGlobalOutputIndex,
+                        payload.collateralKeyImage,
+                        cachedTransaction.getTransactionHash()))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (exists && status != MasternodeStateTracker::Status::Revoked)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                break;
+            case MasternodeTxType::Activate:
+                if (!exists)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (status == MasternodeStateTracker::Status::Revoked)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!tracker.isBonded(payload.masternodeId) || !tracker.hasCollateralBinding(payload.masternodeId))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                {
+                    Crypto::PublicKey ownerKey;
+                    if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
+                    {
+                        return error::TransactionValidationError::WRONG_FEE;
+                    }
+
+                    if (!check_signature(signingHash, ownerKey, payload.signature))
+                    {
+                        return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                    }
+                }
+                break;
+            case MasternodeTxType::Deactivate:
+            case MasternodeTxType::Penalize:
+            case MasternodeTxType::Revoke:
+                if (!exists || status == MasternodeStateTracker::Status::Registered || status == MasternodeStateTracker::Status::Revoked)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                {
+                    Crypto::PublicKey ownerKey;
+                    if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
+                    {
+                        return error::TransactionValidationError::WRONG_FEE;
+                    }
+
+                    if (!check_signature(signingHash, ownerKey, payload.signature))
+                    {
+                        return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                    }
+                }
+                break;
+            case MasternodeTxType::Heartbeat:
+                if (!exists || status != MasternodeStateTracker::Status::Active)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!tracker.canAcceptHeartbeat(payload.masternodeId, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                {
+                    Crypto::PublicKey ownerKey;
+                    if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
+                    {
+                        return error::TransactionValidationError::WRONG_FEE;
+                    }
+
+                    if (!check_signature(signingHash, ownerKey, payload.signature))
+                    {
+                        return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                    }
+                }
+                break;
+            case MasternodeTxType::Attest:
+                if (!exists || status != MasternodeStateTracker::Status::Active)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!payload.hasVerifierKey || !check_key(payload.verifierKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (!isAuthorizedMasternodeVerifier(payload.verifierKey))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!tracker.canAcceptAttestation(payload.masternodeId, payload.verifierKey, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!check_signature(signingHash, payload.verifierKey, payload.signature))
+                {
+                    return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                }
+                break;
+            default:
+                return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
+        return error::TransactionValidationError::VALIDATION_SUCCESS;
+    }
+
+    bool Core::hasMasternodePayload(const Transaction &transaction) const
+    {
+        MasternodeTxPayload payload;
+        std::string error;
+        const auto parseResult = parseMasternodeTxPayload(transaction, payload, error);
+        return parseResult != MasternodeTxParseResult::NotFound;
+    }
+
+    bool Core::hasMasternodeRegistrationTokenInPool(
+        const Crypto::Hash &tokenId,
+        const Crypto::Hash &excludeTransactionHash) const
+    {
+        if (transactionPool == nullptr)
+        {
+            return false;
+        }
+
+        const auto poolTransactions = transactionPool->getPoolTransactions();
+        for (const auto &poolTx : poolTransactions)
+        {
+            if (poolTx.getTransactionHash() == excludeTransactionHash)
+            {
+                continue;
+            }
+
+            MasternodeTxPayload payload;
+            std::string error;
+            const auto parseResult = parseMasternodeTxPayload(poolTx.getTransaction(), payload, error);
+            if (parseResult != MasternodeTxParseResult::Valid)
+            {
+                continue;
+            }
+
+            if (payload.type != MasternodeTxType::Register || !payload.hasRegistrationToken)
+            {
+                continue;
+            }
+
+            if (payload.registrationTokenId == tokenId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool Core::hasMasternodeCollateralInPool(
+        uint64_t collateralAmount,
+        uint32_t collateralGlobalOutputIndex,
+        const Crypto::KeyImage &collateralKeyImage,
+        const Crypto::Hash &excludeTransactionHash) const
+    {
+        if (transactionPool == nullptr)
+        {
+            return false;
+        }
+
+        const auto poolTransactions = transactionPool->getPoolTransactions();
+        for (const auto &poolTx : poolTransactions)
+        {
+            if (poolTx.getTransactionHash() == excludeTransactionHash)
+            {
+                continue;
+            }
+
+            MasternodeTxPayload payload;
+            std::string error;
+            const auto parseResult = parseMasternodeTxPayload(poolTx.getTransaction(), payload, error);
+            if (parseResult != MasternodeTxParseResult::Valid)
+            {
+                continue;
+            }
+
+            if (payload.type != MasternodeTxType::Register || !payload.hasCollateral)
+            {
+                continue;
+            }
+
+            if (
+                payload.collateralKeyImage == collateralKeyImage
+                || (payload.collateralAmount == collateralAmount
+                    && payload.collateralGlobalOutputIndex == collateralGlobalOutputIndex))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool Core::hasMasternodeEndpointCommitmentInPool(
+        const Crypto::Hash &endpointCommitment,
+        const Crypto::Hash &excludeTransactionHash) const
+    {
+        if (transactionPool == nullptr)
+        {
+            return false;
+        }
+
+        const auto poolTransactions = transactionPool->getPoolTransactions();
+        for (const auto &poolTx : poolTransactions)
+        {
+            if (poolTx.getTransactionHash() == excludeTransactionHash)
+            {
+                continue;
+            }
+
+            MasternodeTxPayload payload;
+            std::string error;
+            const auto parseResult = parseMasternodeTxPayload(poolTx.getTransaction(), payload, error);
+            if (parseResult != MasternodeTxParseResult::Valid)
+            {
+                continue;
+            }
+
+            if (payload.type != MasternodeTxType::Register || !payload.hasEndpointCommitment)
+            {
+                continue;
+            }
+
+            if (payload.endpointCommitment == endpointCommitment)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool Core::buildMasternodeStateForChain(
+        IBlockchainCache *cache,
+        uint32_t topHeight,
+        MasternodeStateTracker &tracker) const
+    {
+        tracker.clear();
+
+        for (uint32_t height = 0; height <= topHeight; ++height)
+        {
+            const auto rawBlock = cache->getBlockByIndex(height);
+            BlockTemplate blockTemplate;
+            if (!fromBinaryArray(blockTemplate, rawBlock.block))
+            {
+                return false;
+            }
+
+            std::vector<CachedTransaction> transactions;
+            transactions.reserve(rawBlock.transactions.size());
+            for (const auto &txBlob : rawBlock.transactions)
+            {
+                Transaction tx;
+                if (!fromBinaryArray(tx, txBlob))
+                {
+                    return false;
+                }
+
+                transactions.emplace_back(CachedTransaction(std::move(tx)));
+            }
+
+            uint64_t blockReward = 0;
+            for (const auto &output : blockTemplate.baseTransaction.outputs)
+            {
+                blockReward += output.amount;
+            }
+
+            const auto rewardDistribution = getMasternodeRewardDistributionForTracker(blockReward, height, tracker);
+            if (
+                rewardDistribution.hasMasternodeWinner && rewardDistribution.masternodeWinner.has_value()
+                && rewardDistribution.masternodeReward > 0)
+            {
+                tracker.recordReward(
+                    *rewardDistribution.masternodeWinner, height, rewardDistribution.masternodeReward);
+            }
+
+            if (!isMasternodeFeatureForkActive(height))
+            {
+                continue;
+            }
+
+            for (const auto &transaction : transactions)
+            {
+                applyMasternodeEventFromTransactionToTracker(
+                    transaction.getTransaction(), transaction.getTransactionFee(), height, tracker);
+            }
+        }
+
+        return true;
+    }
+
+    void Core::rebuildMasternodeStateFromMainChain()
+    {
+        if (chainsLeaves.empty())
+        {
+            masternodeStateTracker.clear();
+            return;
+        }
+
+        auto *mainChain = chainsLeaves[0];
+        const uint32_t top = mainChain->getTopBlockIndex();
+        if (!buildMasternodeStateForChain(mainChain, top, masternodeStateTracker))
+        {
+            masternodeStateTracker.clear();
+        }
+    }
+
+    size_t Core::getMasternodeCount() const
+    {
+        throwIfNotInitialized();
+        return masternodeStateTracker.getTrackedMasternodeIds().size();
+    }
+
+    std::vector<MasternodeStateTracker::Snapshot> Core::getMasternodeSnapshots(size_t offset, size_t limit) const
+    {
+        throwIfNotInitialized();
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        return masternodeStateTracker.getSnapshots(currentHeight, offset, limit);
+    }
+
+    size_t Core::getMasternodeEligibleCount(uint32_t height) const
+    {
+        throwIfNotInitialized();
+        const auto candidates = getMasternodeRewardCandidates(height);
+        return masternodeStateTracker.filterRewardEligible(candidates, height).size();
+    }
+
+    Crypto::Hash Core::getMasternodeSetHash(uint32_t height) const
+    {
+        throwIfNotInitialized();
+        const auto candidates = getMasternodeRewardCandidates(height);
+        const auto eligible = masternodeStateTracker.filterRewardEligible(candidates, height);
+        if (eligible.empty())
+        {
+            return Constants::NULL_HASH;
+        }
+
+        BinaryArray blob;
+        blob.reserve(sizeof(height) + eligible.size() * sizeof(Crypto::Hash));
+        for (size_t i = 0; i < sizeof(height); ++i)
+        {
+            blob.push_back(static_cast<uint8_t>((height >> (i * 8)) & 0xff));
+        }
+        for (const auto &id : eligible)
+        {
+            blob.insert(blob.end(), id.data, id.data + sizeof(id.data));
+        }
+
+        return Crypto::cn_fast_hash(blob.data(), blob.size());
+    }
+
+    std::optional<Crypto::Hash> Core::getMasternodeRewardWinner(uint32_t height) const
+    {
+        throwIfNotInitialized();
+        if (!isMasternodeRewardForkActive(height))
+        {
+            return std::nullopt;
+        }
+
+        const auto candidates = getMasternodeRewardCandidates(height);
+        return masternodeStateTracker.selectFairRewardWinner(candidates, height);
+    }
+
+    const char *Core::masternodeStatusToString(MasternodeStateTracker::Status status)
+    {
+        switch (status)
+        {
+            case MasternodeStateTracker::Status::Registered:
+                return "registered";
+            case MasternodeStateTracker::Status::Active:
+                return "active";
+            case MasternodeStateTracker::Status::Inactive:
+                return "inactive";
+            case MasternodeStateTracker::Status::Penalized:
+                return "penalized";
+            case MasternodeStateTracker::Status::Revoked:
+                return "revoked";
+            default:
+                return "unknown";
+        }
+    }
+
     std::vector<Crypto::Hash> Core::findBlockchainSupplement(
         const std::vector<Crypto::Hash> &remoteBlockIds,
         size_t maxCount,
@@ -1224,6 +1985,21 @@ namespace CryptoNote
             return error::BlockValidationError::DIFFICULTY_OVERHEAD;
         }
 
+        MasternodeStateTracker validationMasternodeTracker;
+        MasternodeStateTracker rewardMasternodeTracker;
+        const bool useValidationMasternodeTracker =
+            isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()) || isMasternodeRewardForkActive(cachedBlock.getBlockIndex());
+        if (useValidationMasternodeTracker)
+        {
+            if (!buildMasternodeStateForChain(cache, previousBlockIndex, rewardMasternodeTracker))
+            {
+                logger(Logging::DEBUGGING) << "Failed to build branch-local masternode state for block " << blockStr;
+                return error::AddBlockErrorCode::DESERIALIZATION_FAILED;
+            }
+
+            validationMasternodeTracker = rewardMasternodeTracker;
+        }
+
         // Copyright (c) 2018-2019, The Galaxia Project Developers
         // See https://github.com/turtlecoin/turtlecoin/issues/748 for more information
         if (blockIndex >= CryptoNote::parameters::BLOCK_BLOB_SHUFFLE_CHECK_HEIGHT)
@@ -1276,7 +2052,16 @@ namespace CryptoNote
         {
             uint64_t fee = 0;
             auto transactionValidationResult =
-                validateTransaction(transaction, validatorState, cache, m_transactionValidationThreadPool, fee, previousBlockIndex, timestamp, false);
+                validateTransaction(
+                    transaction,
+                    validatorState,
+                    cache,
+                    m_transactionValidationThreadPool,
+                    fee,
+                    previousBlockIndex,
+                    timestamp,
+                    false,
+                    useValidationMasternodeTracker ? &validationMasternodeTracker : nullptr);
 
             if (transactionValidationResult)
             {
@@ -1293,6 +2078,15 @@ namespace CryptoNote
                 }
 
                 return transactionValidationResult;
+            }
+
+            if (useValidationMasternodeTracker)
+            {
+                applyMasternodeEventFromTransactionToTracker(
+                    transaction.getTransaction(),
+                    fee,
+                    cachedBlock.getBlockIndex(),
+                    validationMasternodeTracker);
             }
 
             cumulativeFee += fee;
@@ -1317,6 +2111,58 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << "Block " << blockStr << " has too big cumulative size";
             return error::BlockValidationError::CUMULATIVE_BLOCK_SIZE_TOO_BIG;
+        }
+
+        const auto rewardDistribution = useValidationMasternodeTracker
+                                            ? getMasternodeRewardDistributionForTracker(
+                                                  reward, cachedBlock.getBlockIndex(), rewardMasternodeTracker)
+                                            : getMasternodeRewardDistribution(reward, cachedBlock.getBlockIndex());
+        if (rewardDistribution.masternodeReward + rewardDistribution.powReward != reward)
+        {
+            logger(Logging::DEBUGGING) << "Masternode reward distribution mismatch for block " << blockStr;
+            return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+        }
+
+        if (isMasternodeRewardForkActive(cachedBlock.getBlockIndex()) && rewardDistribution.hasMasternodeWinner)
+        {
+            const auto &coinbaseOutputs = cachedBlock.getBlock().baseTransaction.outputs;
+            if (coinbaseOutputs.size() < 2)
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " has insufficient coinbase outputs for reward split";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            if (
+                coinbaseOutputs[0].amount != rewardDistribution.powReward
+                || coinbaseOutputs[1].amount != rewardDistribution.masternodeReward)
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " has invalid coinbase split amounts";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            if (coinbaseOutputs[1].target.type() != typeid(KeyOutput))
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode reward output has invalid type";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            Crypto::PublicKey expectedPayoutKey;
+            if (
+                !rewardDistribution.masternodeWinner.has_value()
+                || !(useValidationMasternodeTracker
+                         ? rewardMasternodeTracker.getPayoutKey(*rewardDistribution.masternodeWinner, expectedPayoutKey)
+                         : masternodeStateTracker.getPayoutKey(*rewardDistribution.masternodeWinner, expectedPayoutKey)))
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " winner payout key is missing";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            const auto &actualPayoutKey = boost::get<KeyOutput>(coinbaseOutputs[1].target).key;
+            if (actualPayoutKey != expectedPayoutKey)
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode payout key mismatch";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
         }
 
         if (minerReward != reward)
@@ -1375,6 +2221,16 @@ namespace CryptoNote
                         logger(Logging::DEBUGGING) << "Block " << blockStr << " added to main chain";
                     }
 
+                        if (
+                            rewardDistribution.hasMasternodeWinner && rewardDistribution.masternodeWinner.has_value()
+                            && rewardDistribution.masternodeReward > 0)
+                    {
+                        masternodeStateTracker.recordReward(
+                            *rewardDistribution.masternodeWinner, cachedBlock.getBlockIndex(), rewardDistribution.masternodeReward);
+                    }
+
+                    applyMasternodeEventsFromBlock(cachedBlock, transactions, cachedBlock.getBlockIndex());
+
                     notifyObservers(
                         makeDelTransactionMessage(std::move(hashes), Messages::DeleteTransaction::Reason::InBlock));
 
@@ -1422,6 +2278,8 @@ namespace CryptoNote
                         }
 
                         ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED;
+
+                        rebuildMasternodeStateFromMainChain();
 
                         logger(Logging::INFO) << "Resolved: " << blockStr
                                               << ", Previous: " << chainsLeaves[endpointIndex]->getTopBlockIndex()
@@ -1890,7 +2748,15 @@ namespace CryptoNote
         const uint64_t lastTimestamp = chainsLeaves[0]->getLastTimestamps(1)[0];
 
         if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true, lastTimestamp))
+                validateTransaction(
+                    cachedTransaction,
+                    validatorState,
+                    chainsLeaves[0],
+                    m_transactionValidationThreadPool,
+                    fee,
+                    getTopBlockIndex(),
+                    lastTimestamp,
+                    true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
@@ -2084,6 +2950,7 @@ namespace CryptoNote
         size_t transactionsSize;
         uint64_t fee;
         fillBlockTemplate(b, medianSize, currency.maxBlockCumulativeSize(height), height, transactionsSize, fee);
+        const size_t coinbaseMaxOuts = isMasternodeRewardForkActive(height) ? 2 : 11;
 
         /*
            two-phase miner transaction generation: we don't know exact block size until we prepare block, but we don't know
@@ -2103,7 +2970,7 @@ namespace CryptoNote
             publicSpendKey,
             b.baseTransaction,
             extraNonce,
-            11);
+            coinbaseMaxOuts);
 
         if (!r)
         {
@@ -2129,7 +2996,7 @@ namespace CryptoNote
                 publicSpendKey,
                 b.baseTransaction,
                 extraNonce,
-                11);
+                coinbaseMaxOuts);
 
             if (!r)
             {
@@ -2199,6 +3066,57 @@ namespace CryptoNote
                 logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
 
                 return {false, error};
+            }
+
+            if (isMasternodeRewardForkActive(height))
+            {
+                uint64_t totalReward = 0;
+                for (const auto &output : b.baseTransaction.outputs)
+                {
+                    totalReward += output.amount;
+                }
+
+                const auto rewardDistribution = getMasternodeRewardDistribution(totalReward, height);
+                if (rewardDistribution.hasMasternodeWinner)
+                {
+                    if (b.baseTransaction.outputs.size() < 2)
+                    {
+                        std::string error = "Failed to construct split miner transaction outputs";
+                        logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
+                        return {false, error};
+                    }
+
+                    Crypto::PublicKey payoutKey;
+                    if (
+                        !rewardDistribution.masternodeWinner.has_value()
+                        || !masternodeStateTracker.getPayoutKey(*rewardDistribution.masternodeWinner, payoutKey))
+                    {
+                        std::string error = "Failed to resolve masternode payout key for reward winner";
+                        logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
+                        return {false, error};
+                    }
+
+                    b.baseTransaction.outputs[0].amount = rewardDistribution.powReward;
+                    b.baseTransaction.outputs[1].amount = rewardDistribution.masternodeReward;
+                    b.baseTransaction.outputs[1].target = KeyOutput {payoutKey};
+
+                    for (size_t i = 2; i < b.baseTransaction.outputs.size(); ++i)
+                    {
+                        b.baseTransaction.outputs[0].amount += b.baseTransaction.outputs[i].amount;
+                    }
+
+                    if (b.baseTransaction.outputs.size() > 2)
+                    {
+                        b.baseTransaction.outputs.resize(2);
+                    }
+
+                    const size_t splitBlobSize = getObjectBinarySize(b.baseTransaction);
+                    if (splitBlobSize != cumulativeSize - transactionsSize)
+                    {
+                        cumulativeSize = transactionsSize + splitBlobSize;
+                        continue;
+                    }
+                }
             }
 
             return {true, std::string()};
@@ -2293,7 +3211,8 @@ namespace CryptoNote
         uint64_t &fee,
         uint32_t blockIndex,
         uint64_t blockTimestamp,
-        const bool isPoolTransaction)
+        const bool isPoolTransaction,
+        const MasternodeStateTracker *masternodeTrackerOverride)
     {
         ValidateTransaction txValidator(
             cachedTransaction,
@@ -2312,7 +3231,40 @@ namespace CryptoNote
 
         fee = result.fee;
 
-        return result.errorCode;
+        if (result.errorCode)
+        {
+            return result.errorCode;
+        }
+
+        const uint32_t nextBlockHeight = blockIndex + 1;
+        const MasternodeStateTracker &validationTracker =
+            masternodeTrackerOverride != nullptr ? *masternodeTrackerOverride : masternodeStateTracker;
+        for (const auto &input : cachedTransaction.getTransaction().inputs)
+        {
+            if (input.type() != typeid(KeyInput))
+            {
+                continue;
+            }
+
+            const auto &keyInput = boost::get<KeyInput>(input);
+            if (validationTracker.isCollateralKeyImageSpendLocked(keyInput.keyImage, nextBlockHeight))
+            {
+                return error::TransactionValidationError::WRONG_FEE;
+            }
+        }
+
+        if (masternodeTrackerOverride != nullptr)
+        {
+            return validateMasternodeTransactionEventWithTracker(
+                cachedTransaction,
+                fee,
+                nextBlockHeight,
+                cache,
+                *masternodeTrackerOverride,
+                isPoolTransaction);
+        }
+
+        return validateMasternodeTransactionEvent(cachedTransaction, fee, nextBlockHeight, cache, isPoolTransaction);
     }
 
     uint32_t Core::findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const
@@ -2414,6 +3366,12 @@ namespace CryptoNote
             return error::TransactionValidationError::BASE_INVALID_SIGNATURES_COUNT;
         }
 
+        if (isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()) && hasMasternodePayload(block.baseTransaction))
+        {
+            logger(Logging::DEBUGGING) << "Coinbase transaction contains forbidden masternode payload";
+            return error::TransactionValidationError::EXTRA_TOO_LARGE;
+        }
+
         for (const auto &output : block.baseTransaction.outputs)
         {
             if (output.amount == 0)
@@ -2461,11 +3419,19 @@ namespace CryptoNote
         deleteAlternativeChains();
         mergeMainChainSegments();
         chainsLeaves[0]->save();
+        if (!saveMasternodeStateSnapshot())
+        {
+            logger(Logging::WARNING) << "Failed to persist masternode state snapshot";
+        }
     }
 
     void Core::load()
     {
         initRootSegment();
+        if (!loadMasternodeStateSnapshot())
+        {
+            rebuildMasternodeStateFromMainChain();
+        }
 
         start_time = std::time(nullptr);
 
@@ -2933,6 +3899,8 @@ namespace CryptoNote
         }
 
         mainChain->rewind(blockIndex);
+        rebuildMasternodeStateFromMainChain();
+        saveMasternodeStateSnapshot();
 
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
     }
@@ -2945,6 +3913,110 @@ namespace CryptoNote
                                      << " (hash " << hash << "). "
                                      << "Consider --resync to repair local database.";
         }
+    }
+
+    fs::path Core::getMasternodeStateSnapshotPath() const
+    {
+        return fs::path(dataFolder) / "DB" / "masternode_state.json";
+    }
+
+    bool Core::saveMasternodeStateSnapshot() const
+    {
+        nlohmann::json root;
+        root["top_height"] = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        root["state"] = masternodeStateTracker.toJson();
+        const std::string blob = root.dump();
+
+        if (!chainsLeaves.empty())
+        {
+            if (auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]); dbCache != nullptr)
+            {
+                if (dbCache->writeMasternodeStateBlob(blob))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (dataFolder.empty())
+        {
+            return false;
+        }
+
+        const auto path = getMasternodeStateSnapshotPath();
+        std::error_code ec;
+        fs::create_directories(path.parent_path(), ec);
+        if (ec)
+        {
+            return false;
+        }
+
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out.is_open())
+        {
+            return false;
+        }
+        out << blob;
+        return out.good();
+    }
+
+    bool Core::loadMasternodeStateSnapshot()
+    {
+        if (dataFolder.empty() || chainsLeaves.empty())
+        {
+            if (chainsLeaves.empty())
+            {
+                return false;
+            }
+        }
+
+        std::string content;
+        bool loaded = false;
+
+        if (auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]); dbCache != nullptr)
+        {
+            loaded = dbCache->readMasternodeStateBlob(content);
+        }
+
+        if (!loaded && !dataFolder.empty())
+        {
+            const auto path = getMasternodeStateSnapshotPath();
+            std::ifstream in(path, std::ios::binary);
+            if (in.is_open())
+            {
+                content.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                loaded = !content.empty();
+            }
+        }
+
+        if (!loaded)
+        {
+            return false;
+        }
+
+        nlohmann::json root;
+        try
+        {
+            root = nlohmann::json::parse(content);
+        }
+        catch (const std::exception &)
+        {
+            return false;
+        }
+
+        if (!root.is_object() || !root.contains("top_height") || !root.contains("state"))
+        {
+            return false;
+        }
+
+        const uint32_t currentTop = chainsLeaves[0]->getTopBlockIndex();
+        const uint32_t snapTop = root.at("top_height").get<uint32_t>();
+        if (snapTop != currentTop)
+        {
+            return false;
+        }
+
+        return masternodeStateTracker.fromJson(root.at("state"));
     }
 
     size_t Core::pruneRawBlocks(uint32_t pruneDepth)

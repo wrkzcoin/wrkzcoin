@@ -6,6 +6,7 @@
 #include <rpc/RpcServer.h>
 //////////////////////////
 
+#include <algorithm>
 #include <iostream>
 #include <ctime>
 
@@ -131,7 +132,7 @@ void RpcServer::setupRoutes(httplib::Server &srv)
 
         if (method == "getblocktemplate")
         {
-            router(&RpcServer::getBlockTemplate, RpcMode::Standard, bodyRequired, syncNotRequired)(req, res);
+            router(&RpcServer::getBlockTemplate, RpcMode::Standard, bodyRequired, syncRequired)(req, res);
         }
         else if (method == "submitblock")
         {
@@ -176,10 +177,12 @@ void RpcServer::setupRoutes(httplib::Server &srv)
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
-    srv.Get("/json_rpc", jsonRpc)
-       .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-       .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
-       .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+    m_server.Get("/json_rpc", jsonRpc)
+            .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/masternodes/count", router(&RpcServer::masternodeCount, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+            .Get("/masternodes", router(&RpcServer::masternodes, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
        .Post("/json_rpc", jsonRpc)
        .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
@@ -615,6 +618,19 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["status"] = "OK";
         j["start_time"] = m_core->getStartTime();
 
+        j["masternode_feature_fork_active"] =
+            CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT > 0
+            && height >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT;
+        j["masternode_reward_fork_active"] =
+            CryptoNote::parameters::MASTERNODE_REWARD_FORK_HEIGHT > 0
+            && height >= CryptoNote::parameters::MASTERNODE_REWARD_FORK_HEIGHT;
+        j["masternode_eligible_count"] = m_core->getMasternodeEligibleCount(static_cast<uint32_t>(height));
+        j["masternode_set_hash"] = Common::podToHex(m_core->getMasternodeSetHash(static_cast<uint32_t>(height)));
+        {
+            const auto winner = m_core->getMasternodeRewardWinner(static_cast<uint32_t>(height));
+            j["masternode_reward_winner"] = winner.has_value() ? Common::podToHex(*winner) : "";
+        }
+
         res.body = j.dump();
 
         return {SUCCESS, 200};
@@ -675,6 +691,115 @@ std::tuple<Error, uint16_t> RpcServer::peers(
     j["status"] = "OK";
     res.body = j.dump();
 
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::masternodeCount(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+    writer.Key("count");
+    writer.Uint64(m_core->getMasternodeCount());
+    writer.Key("status");
+    writer.String("OK");
+    writer.EndObject();
+
+    res.body = sb.GetString();
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::masternodes(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const rapidjson::Document &body)
+{
+    size_t offset = 0;
+    size_t limit = 100;
+
+    if (req.has_param("offset"))
+    {
+        try
+        {
+            offset = static_cast<size_t>(std::stoull(req.get_param_value("offset")));
+        }
+        catch (const std::exception &)
+        {
+            return {Error(UNKNOWN_ERROR, "Invalid 'offset' query parameter"), 400};
+        }
+    }
+
+    if (req.has_param("limit"))
+    {
+        try
+        {
+            limit = static_cast<size_t>(std::stoull(req.get_param_value("limit")));
+        }
+        catch (const std::exception &)
+        {
+            return {Error(UNKNOWN_ERROR, "Invalid 'limit' query parameter"), 400};
+        }
+    }
+
+    limit = std::min<size_t>(limit, 1000);
+
+    const auto snapshots = m_core->getMasternodeSnapshots(offset, limit);
+
+    rapidjson::StringBuffer sb;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+
+    writer.StartObject();
+    writer.Key("offset");
+    writer.Uint64(offset);
+    writer.Key("limit");
+    writer.Uint64(limit);
+    writer.Key("count");
+    writer.Uint64(snapshots.size());
+    writer.Key("total");
+    writer.Uint64(m_core->getMasternodeCount());
+    writer.Key("masternodes");
+    writer.StartArray();
+    for (const auto &snapshot : snapshots)
+    {
+        writer.StartObject();
+        writer.Key("mn_id");
+        writer.String(Common::podToHex(snapshot.masternodeId));
+        writer.Key("state");
+        writer.String(CryptoNote::Core::masternodeStatusToString(snapshot.status));
+        writer.Key("bonded");
+        writer.Bool(snapshot.bonded);
+        writer.Key("bond_amount");
+        writer.Uint64(snapshot.bondAmount);
+        writer.Key("has_collateral");
+        writer.Bool(snapshot.hasCollateral);
+        writer.Key("collateral_amount");
+        writer.Uint64(snapshot.collateralAmount);
+        writer.Key("collateral_global_output_index");
+        writer.Uint64(snapshot.collateralGlobalOutputIndex);
+        writer.Key("has_endpoint_commitment");
+        writer.Bool(snapshot.hasEndpointCommitment);
+        writer.Key("endpoint_commitment");
+        writer.String(snapshot.hasEndpointCommitment ? Common::podToHex(snapshot.endpointCommitment) : "");
+        writer.Key("health_percent");
+        writer.Uint64(snapshot.healthPercent);
+        writer.Key("spend_locked");
+        writer.Bool(snapshot.spendLocked);
+        writer.Key("last_paid_height");
+        writer.Uint64(snapshot.lastPaidHeight);
+        writer.Key("reward_in_fairness_window");
+        writer.Uint64(snapshot.rewardInFairnessWindow);
+        writer.EndObject();
+    }
+    writer.EndArray();
+    writer.Key("status");
+    writer.String("OK");
+    writer.EndObject();
+
+    res.body = sb.GetString();
     return {SUCCESS, 200};
 }
 
@@ -1030,6 +1155,11 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
     }
 
     const std::string address = getStringFromJSON(params, "wallet_address");
+    std::string expectedMasternodeSetHash;
+    if (hasMember(params, "expected_masternode_set_hash"))
+    {
+        expectedMasternodeSetHash = getStringFromJSON(params, "expected_masternode_set_hash");
+    }
 
     Error addressError = validateAddresses({address}, false);
 
@@ -1066,6 +1196,18 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
             res
         );
 
+        return {SUCCESS, 200};
+    }
+
+    const auto localSetHash = m_core->getMasternodeSetHash(height);
+    const auto localSetHashHex = Common::podToHex(localSetHash);
+    if (!expectedMasternodeSetHash.empty() && expectedMasternodeSetHash != localSetHashHex)
+    {
+        failJsonRpcRequest(
+            -6,
+            "Masternode set hash mismatch. expected=" + expectedMasternodeSetHash + ", local=" + localSetHashHex,
+            res
+        );
         return {SUCCESS, 200};
     }
 
@@ -1110,6 +1252,12 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
     result["blocktemplate_blob"] = Common::toHex(blockBlob);
     result["status"] = "OK";
 
+    result["masternode_eligible_count"] = m_core->getMasternodeEligibleCount(height);
+    result["masternode_set_hash"] = localSetHashHex;
+    {
+        const auto winner = m_core->getMasternodeRewardWinner(height);
+        result["masternode_reward_winner"] = winner.has_value() ? Common::podToHex(*winner) : "";
+    }
     nlohmann::json j;
     j["jsonrpc"] = "2.0";
     j["result"] = result;

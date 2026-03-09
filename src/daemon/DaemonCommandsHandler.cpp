@@ -12,6 +12,7 @@
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
 #include <cryptonotecore/Currency.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandler.h>
+#include <algorithm>
 #include <ctime>
 #include <daemon/DaemonCommandsHandler.h>
 #include <p2p/NetNode.h>
@@ -21,12 +22,16 @@
 #include <utilities/FormatTools.h>
 #include <utilities/Utilities.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <common/FileSystemShim.h>
+#include <config/CryptoNoteConfig.h>
+#include <crypto/hash.h>
 #include <map>
 #include <chrono>
 #include <thread>
 #include <fstream>
 #include <limits>
+#include <random>
 #include <system/IpAddress.h>
 #include <system/Ipv4Address.h>
 #include <p2p/P2pProtocolTypes.h>
@@ -211,6 +216,14 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         "status",
         std::bind(&DaemonCommandsHandler::status, this, std::placeholders::_1),
         "Show daemon status");
+    m_consoleHandler.setHandler(
+        "masternodes",
+        std::bind(&DaemonCommandsHandler::masternodes, this, std::placeholders::_1),
+        "Show masternode count/list: masternodes [limit] [offset]");
+    m_consoleHandler.setHandler(
+        "mn_registration_string",
+        std::bind(&DaemonCommandsHandler::mn_registration_string, this, std::placeholders::_1),
+        "Generate masternode registration token: mn_registration_string [optional_mn_id_hex]");
     m_consoleHandler.setHandler(
         "prune_status",
         std::bind(&DaemonCommandsHandler::prune_status, this, std::placeholders::_1),
@@ -739,6 +752,171 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     {
         std::cout << WarningMsg(Utilities::get_upgrade_info(supportedHeight, upgradeHeights)) << std::endl;
     }
+
+    return true;
+}
+
+bool DaemonCommandsHandler::masternodes(const std::vector<std::string> &args)
+{
+    size_t limit = 20;
+    size_t offset = 0;
+
+    if (args.size() > 1)
+    {
+        try
+        {
+            limit = static_cast<size_t>(std::stoull(args[1]));
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid limit value. Usage: masternodes [limit] [offset]") << std::endl;
+            return false;
+        }
+    }
+
+    if (args.size() > 2)
+    {
+        try
+        {
+            offset = static_cast<size_t>(std::stoull(args[2]));
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid offset value. Usage: masternodes [limit] [offset]") << std::endl;
+            return false;
+        }
+    }
+
+    const auto countRes = rpc_get("/masternodes/count");
+    if (!countRes || countRes->status != 200)
+    {
+        std::cout << WarningMsg("Failed to query /masternodes/count") << std::endl;
+        return false;
+    }
+
+    rapidjson::Document countDoc;
+    if (countDoc.Parse(countRes->body.c_str()).HasParseError() || !countDoc.IsObject())
+    {
+        std::cout << WarningMsg("Invalid response from /masternodes/count") << std::endl;
+        return false;
+    }
+
+    const uint64_t total = getUint64FromJSON(countDoc, "count");
+    std::cout << InformationMsg("Masternodes total: ") << SuccessMsg(std::to_string(total)) << std::endl;
+
+    const std::string path =
+        "/masternodes?limit=" + std::to_string(limit) + "&offset=" + std::to_string(offset);
+    const auto listRes = rpc_get(path);
+    if (!listRes || listRes->status != 200)
+    {
+        std::cout << WarningMsg("Failed to query " + path) << std::endl;
+        return false;
+    }
+
+    rapidjson::Document listDoc;
+    if (listDoc.Parse(listRes->body.c_str()).HasParseError() || !listDoc.IsObject())
+    {
+        std::cout << WarningMsg("Invalid response from /masternodes list") << std::endl;
+        return false;
+    }
+
+    if (!hasMember(listDoc, "masternodes"))
+    {
+        std::cout << WarningMsg("Missing 'masternodes' field in RPC response") << std::endl;
+        return false;
+    }
+
+    const auto &mnArray = getArrayFromJSON(listDoc, "masternodes");
+    if (mnArray.empty())
+    {
+        std::cout << InformationMsg("No masternodes in requested page.") << std::endl;
+        return true;
+    }
+
+    for (const auto &entry : mnArray)
+    {
+        const auto id = getStringFromJSON(entry, "mn_id");
+        const auto state = getStringFromJSON(entry, "state");
+        const auto bonded = getBoolFromJSON(entry, "bonded");
+        const auto bondAmount = getUint64FromJSON(entry, "bond_amount");
+        const auto hasCollateral = getBoolFromJSON(entry, "has_collateral");
+        const auto collateralAmount = getUint64FromJSON(entry, "collateral_amount");
+        const auto collateralIndex = getUint64FromJSON(entry, "collateral_global_output_index");
+        const auto hasEndpointCommitment = getBoolFromJSON(entry, "has_endpoint_commitment");
+        const auto endpointCommitment = getStringFromJSON(entry, "endpoint_commitment");
+        const auto health = getUint64FromJSON(entry, "health_percent");
+        const auto spendLocked = getBoolFromJSON(entry, "spend_locked");
+        const auto lastPaid = getUint64FromJSON(entry, "last_paid_height");
+
+        std::cout << InformationMsg(id.substr(0, std::min<size_t>(16, id.size())) + "...")
+                  << " state=" << state
+                  << " bonded=" << (bonded ? "yes" : "no")
+                  << " bond_amount=" << bondAmount
+                  << " has_collateral=" << (hasCollateral ? "yes" : "no")
+                  << " collateral_amount=" << collateralAmount
+                  << " collateral_index=" << collateralIndex
+                  << " endpoint_commitment="
+                  << (hasEndpointCommitment ? endpointCommitment.substr(0, std::min<size_t>(16, endpointCommitment.size())) + "..." : "none")
+                  << " health=" << health << "%"
+                  << " spend_locked=" << (spendLocked ? "yes" : "no")
+                  << " last_paid_height=" << lastPaid << std::endl;
+    }
+
+    return true;
+}
+
+bool DaemonCommandsHandler::mn_registration_string(const std::vector<std::string> &args)
+{
+    Crypto::Hash masternodeId;
+    Crypto::Hash tokenId;
+
+    if (args.size() > 1)
+    {
+        if (!Common::podFromHex(args[1], masternodeId))
+        {
+            std::cout << WarningMsg("Invalid masternode id hex. Usage: mn_registration_string [optional_mn_id_hex]")
+                      << std::endl;
+            return false;
+        }
+    }
+    else
+    {
+        std::random_device rd;
+        for (auto &b : masternodeId.data)
+        {
+            b = static_cast<uint8_t>(rd() & 0xff);
+        }
+    }
+
+    {
+        std::random_device rd;
+        for (auto &b : tokenId.data)
+        {
+            b = static_cast<uint8_t>(rd() & 0xff);
+        }
+    }
+
+    const uint32_t currentHeight = m_core.getTopBlockIndex();
+    const uint32_t expiresAtHeight =
+        currentHeight + static_cast<uint32_t>(CryptoNote::parameters::MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS);
+
+    const std::string token = "MNREG2:" + Common::podToHex(masternodeId) + ":" + Common::podToHex(tokenId) + ":"
+                              + std::to_string(expiresAtHeight);
+    const uint64_t bondAmount = CryptoNote::parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT;
+
+    std::cout << InformationMsg("Masternode registration token:") << std::endl;
+    std::cout << SuccessMsg(token) << std::endl;
+    std::cout << InformationMsg("Token expires at height: ")
+              << SuccessMsg(std::to_string(expiresAtHeight))
+              << InformationMsg(" (current: ")
+              << SuccessMsg(std::to_string(currentHeight))
+              << InformationMsg(")")
+              << std::endl;
+    std::cout << InformationMsg("Required collateral minimum: ")
+              << SuccessMsg(Utilities::formatAmount(bondAmount))
+              << " (" << bondAmount << " atomic units)" << std::endl;
+    std::cout << InformationMsg("Wallet CLI command: ")
+              << SuccessMsg("mn_register " + token + " <public_ipv4:port>") << std::endl;
 
     return true;
 }

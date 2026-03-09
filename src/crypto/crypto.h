@@ -138,6 +138,30 @@ namespace Crypto
 
         friend void generate_key_image(const PublicKey &, const SecretKey &, KeyImage &);
 
+        static bool generate_key_image_dleq_proof(
+            const Hash &context,
+            const PublicKey &pub,
+            const SecretKey &sec,
+            Signature &proof);
+
+        friend bool generate_key_image_dleq_proof(
+            const Hash &context,
+            const PublicKey &pub,
+            const SecretKey &sec,
+            Signature &proof);
+
+        static bool check_key_image_dleq_proof(
+            const Hash &context,
+            const PublicKey &pub,
+            const KeyImage &image,
+            const Signature &proof);
+
+        friend bool check_key_image_dleq_proof(
+            const Hash &context,
+            const PublicKey &pub,
+            const KeyImage &image,
+            const Signature &proof);
+
         static KeyImage scalarmultKey(const KeyImage &P, const KeyImage &a);
 
         friend KeyImage scalarmultKey(const KeyImage &P, const KeyImage &a);
@@ -385,6 +409,24 @@ namespace Crypto
     inline void generate_key_image(const PublicKey &pub, const SecretKey &sec, KeyImage &image)
     {
         crypto_ops::generate_key_image(pub, sec, image);
+    }
+
+    inline bool generate_key_image_dleq_proof(
+        const Hash &context,
+        const PublicKey &pub,
+        const SecretKey &sec,
+        Signature &proof)
+    {
+        return crypto_ops::generate_key_image_dleq_proof(context, pub, sec, proof);
+    }
+
+    inline bool check_key_image_dleq_proof(
+        const Hash &context,
+        const PublicKey &pub,
+        const KeyImage &image,
+        const Signature &proof)
+    {
+        return crypto_ops::check_key_image_dleq_proof(context, pub, image, proof);
     }
 
     inline KeyImage scalarmultKey(const KeyImage &P, const KeyImage &a)

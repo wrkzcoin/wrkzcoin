@@ -99,6 +99,10 @@ class DaemonCommandsHandler
 
     bool status(const std::vector<std::string> &args);
 
+    bool masternodes(const std::vector<std::string> &args);
+
+    bool mn_registration_string(const std::vector<std::string> &args);
+
     bool prune_status(const std::vector<std::string> &args);
 
     bool sync_info(const std::vector<std::string> &args);

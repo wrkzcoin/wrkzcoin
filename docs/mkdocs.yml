@@ -36,6 +36,7 @@ nav:
       - Running Daemon RPC: guides/running-daemon.md
       - Running Wallet API: guides/running-wallet-api.md
       - Using Wallet CLI: guides/wallet-cli.md
+      - Masternode Consensus Rollout: guides/masternode-consensus-rollout.md
       - Security Hardening: guides/security-hardening.md
       - Wallet API Cookbook: guides/wallet-api-cookbook.md
       - Daemon RPC Cookbook: guides/daemon-rpc-cookbook.md

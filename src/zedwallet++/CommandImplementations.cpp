@@ -10,16 +10,21 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
+#include <crypto/crypto.h>
+#include <crypto/hash.h>
 #include <crypto/random.h>
 #include <common/StringTools.h>
+#include <array>
 #include <errors/ValidateParameters.h>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <logger/Logger.h>
 #include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Input.h>
+#include <utilities/Mixins.h>
 #include <utilities/String.h>
 #include <zedwallet++/Commands.h>
 #include <zedwallet++/GetInput.h>
@@ -938,6 +943,560 @@ void decodeIntegrated(const std::shared_ptr<WalletBackend> walletBackend, const 
     {
         std::cout << SuccessMsg("This integrated address maps to your primary wallet address.") << std::endl;
     }
+}
+
+void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    if (walletBackend->isViewWallet())
+    {
+        std::cout << WarningMsg("Masternode registration is not available for view wallets.") << std::endl;
+        return;
+    }
+
+    std::string token;
+    std::string endpointInput;
+    if (commandInput.rfind("mn_register ", 0) == 0)
+    {
+        const auto args = Utilities::split(commandInput.substr(std::string("mn_register ").size()), ' ');
+        if (!args.empty())
+        {
+            token = args[0];
+        }
+        if (args.size() > 1)
+        {
+            endpointInput = args[1];
+        }
+        Utilities::trim(token);
+        Utilities::trim(endpointInput);
+    }
+
+    if (token.empty())
+    {
+        std::cout << InformationMsg("Enter daemon token string (or cancel): ");
+        std::getline(std::cin, token);
+        Utilities::trim(token);
+    }
+
+    if (token == "cancel")
+    {
+        return;
+    }
+
+    if (endpointInput.empty())
+    {
+        std::cout << InformationMsg("Enter public endpoint IPv4:port for one-IP commitment (or cancel): ");
+        std::getline(std::cin, endpointInput);
+        Utilities::trim(endpointInput);
+    }
+
+    if (endpointInput == "cancel")
+    {
+        return;
+    }
+
+    auto canonicalizeEndpoint = [](const std::string &raw, std::string &canonical) -> bool {
+        const auto colonPos = raw.find(':');
+        if (colonPos == std::string::npos || colonPos == 0 || colonPos + 1 >= raw.size())
+        {
+            return false;
+        }
+
+        const std::string ip = raw.substr(0, colonPos);
+        const std::string portStr = raw.substr(colonPos + 1);
+        uint64_t port = 0;
+        try
+        {
+            port = std::stoull(portStr);
+        }
+        catch (const std::exception &)
+        {
+            return false;
+        }
+        if (port == 0 || port > 65535)
+        {
+            return false;
+        }
+
+        const auto octets = Utilities::split(ip, '.');
+        if (octets.size() != 4)
+        {
+            return false;
+        }
+
+        std::array<uint64_t, 4> nums {{0, 0, 0, 0}};
+        for (size_t i = 0; i < octets.size(); ++i)
+        {
+            try
+            {
+                if (octets[i].empty() || octets[i].size() > 3)
+                {
+                    return false;
+                }
+                nums[i] = std::stoull(octets[i]);
+            }
+            catch (const std::exception &)
+            {
+                return false;
+            }
+
+            if (nums[i] > 255)
+            {
+                return false;
+            }
+        }
+
+        canonical = std::to_string(nums[0]) + "." + std::to_string(nums[1]) + "." + std::to_string(nums[2]) + "."
+            + std::to_string(nums[3]) + ":" + std::to_string(port);
+        return true;
+    };
+
+    std::string canonicalEndpoint;
+    if (!canonicalizeEndpoint(endpointInput, canonicalEndpoint))
+    {
+        std::cout << WarningMsg("Invalid endpoint format. Expected IPv4:port") << std::endl;
+        return;
+    }
+
+    const std::string endpointCommitmentPreimage = "MNIP1|" + canonicalEndpoint;
+    Crypto::Hash endpointCommitment =
+        Crypto::cn_fast_hash(endpointCommitmentPreimage.data(), endpointCommitmentPreimage.size());
+
+    Crypto::Hash masternodeId;
+    Crypto::Hash registrationTokenId;
+    uint32_t expiresAtHeight = 0;
+
+    if (token.rfind("MNREG2:", 0) == 0)
+    {
+        const auto parts = Utilities::split(token, ':');
+        if (parts.size() != 4)
+        {
+            std::cout << WarningMsg("Invalid MNREG2 token format.") << std::endl;
+            return;
+        }
+
+        if (!Common::podFromHex(parts[1], masternodeId) || !Common::podFromHex(parts[2], registrationTokenId))
+        {
+            std::cout << WarningMsg("Invalid masternode id or registration token id in token string.") << std::endl;
+            return;
+        }
+
+        try
+        {
+            expiresAtHeight = static_cast<uint32_t>(std::stoul(parts[3]));
+        }
+        catch (const std::exception &)
+        {
+            std::cout << WarningMsg("Invalid token expiry height in token string.") << std::endl;
+            return;
+        }
+    }
+    else if (token.rfind("MNREG1:", 0) == 0)
+    {
+        token = token.substr(std::string("MNREG1:").size());
+        Utilities::trim(token);
+        if (!Common::podFromHex(token, masternodeId))
+        {
+            std::cout << WarningMsg("Invalid legacy masternode registration token.") << std::endl;
+            return;
+        }
+
+        Random::randomBytes(sizeof(registrationTokenId), registrationTokenId.data);
+        expiresAtHeight = static_cast<uint32_t>(
+            walletBackend->getStatus().networkBlockCount + CryptoNote::parameters::MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS);
+    }
+    else
+    {
+        std::cout << WarningMsg("Invalid masternode registration token.") << std::endl;
+        return;
+    }
+
+    const uint64_t networkHeight = walletBackend->getStatus().networkBlockCount;
+    if (expiresAtHeight <= networkHeight)
+    {
+        std::cout << WarningMsg("Registration token is already expired at current network height.") << std::endl;
+        return;
+    }
+
+    const auto primaryAddress = walletBackend->getPrimaryAddress();
+    const auto [keysError, publicSpendKey, privateSpendKey, walletIndex] = walletBackend->getSpendKeys(primaryAddress);
+    (void)walletIndex;
+    if (keysError)
+    {
+        std::cout << WarningMsg("Failed to read wallet spend keys: ") << WarningMsg(keysError) << std::endl;
+        return;
+    }
+
+    const uint64_t minCollateralAmount = CryptoNote::parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT;
+    const auto [inputsError, spendableInputs] = walletBackend->getSpendableInputs(primaryAddress);
+    if (inputsError)
+    {
+        std::cout << WarningMsg("Failed to read spendable inputs: ") << WarningMsg(inputsError) << std::endl;
+        return;
+    }
+
+    std::optional<WalletTypes::TransactionInput> collateralInput;
+    for (const auto &input : spendableInputs)
+    {
+        if (input.amount < minCollateralAmount)
+        {
+            continue;
+        }
+
+        if (!input.globalOutputIndex.has_value())
+        {
+            continue;
+        }
+
+        if (!input.privateEphemeral.has_value())
+        {
+            continue;
+        }
+
+        if (!collateralInput.has_value() || input.amount < collateralInput->amount)
+        {
+            collateralInput = input;
+        }
+    }
+
+    if (!collateralInput.has_value())
+    {
+        std::cout << WarningMsg("No spendable collateral output found in this wallet.") << std::endl;
+        std::cout << InformationMsg("Requirement: unlocked output >= ")
+                  << SuccessMsg(Utilities::formatAmount(minCollateralAmount))
+                  << std::endl;
+        return;
+    }
+
+    if (*collateralInput->globalOutputIndex > std::numeric_limits<uint32_t>::max())
+    {
+        std::cout << WarningMsg("Collateral global output index exceeds supported range.") << std::endl;
+        return;
+    }
+
+    const uint64_t collateralAmount = collateralInput->amount;
+    const uint32_t collateralGlobalOutputIndex = static_cast<uint32_t>(*collateralInput->globalOutputIndex);
+    const Crypto::KeyImage collateralKeyImage = collateralInput->keyImage;
+    const Crypto::PublicKey collateralOutputKey = collateralInput->key;
+    const Crypto::SecretKey collateralOutputSecret = *collateralInput->privateEphemeral;
+    Crypto::KeyImage recomputedCollateralKeyImage;
+    Crypto::generate_key_image(collateralOutputKey, collateralOutputSecret, recomputedCollateralKeyImage);
+    if (recomputedCollateralKeyImage != collateralKeyImage)
+    {
+        std::cout << WarningMsg("Selected collateral input key image consistency check failed.") << std::endl;
+        return;
+    }
+
+    std::vector<uint8_t> unsignedPayload;
+    unsignedPayload.reserve(
+        4 + 1 + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
+        + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash));
+    unsignedPayload.push_back('M');
+    unsignedPayload.push_back('N');
+    unsignedPayload.push_back('0');
+    unsignedPayload.push_back('1');
+    unsignedPayload.push_back(static_cast<uint8_t>(1)); // Register
+    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        publicSpendKey.data,
+        publicSpendKey.data + sizeof(publicSpendKey.data));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        registrationTokenId.data,
+        registrationTokenId.data + sizeof(registrationTokenId.data));
+    unsignedPayload.push_back(static_cast<uint8_t>(expiresAtHeight & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 8) & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 16) & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 24) & 0xff));
+    for (size_t i = 0; i < sizeof(uint64_t); ++i)
+    {
+        unsignedPayload.push_back(static_cast<uint8_t>((collateralAmount >> (8 * i)) & 0xff));
+    }
+    unsignedPayload.push_back(static_cast<uint8_t>(collateralGlobalOutputIndex & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 8) & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 16) & 0xff));
+    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 24) & 0xff));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        collateralKeyImage.data,
+        collateralKeyImage.data + sizeof(collateralKeyImage.data));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        collateralOutputKey.data,
+        collateralOutputKey.data + sizeof(collateralOutputKey.data));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        endpointCommitment.data,
+        endpointCommitment.data + sizeof(endpointCommitment.data));
+
+    Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
+    Crypto::Signature signature;
+    Crypto::generate_signature(signingHash, publicSpendKey, privateSpendKey, signature);
+    Crypto::Signature collateralSignature;
+    if (
+        !Crypto::generate_key_image_dleq_proof(
+            signingHash,
+            collateralOutputKey,
+            collateralOutputSecret,
+            collateralSignature))
+    {
+        std::cout << WarningMsg("Failed to generate collateral linkage proof.") << std::endl;
+        return;
+    }
+
+    std::vector<uint8_t> extraData = unsignedPayload;
+    extraData.insert(extraData.end(), signature.data, signature.data + sizeof(signature.data));
+    extraData.insert(
+        extraData.end(),
+        collateralSignature.data,
+        collateralSignature.data + sizeof(collateralSignature.data));
+
+    const uint64_t registrationOutputAmount = WalletConfig::minimumSend;
+    const uint64_t unlockedBalance = walletBackend->getTotalUnlockedBalance();
+
+    if (unlockedBalance < registrationOutputAmount)
+    {
+        std::cout << WarningMsg("Insufficient unlocked balance for masternode registration.") << std::endl;
+        std::cout << InformationMsg("Required at least: ")
+                  << SuccessMsg(Utilities::formatAmount(registrationOutputAmount))
+                  << std::endl;
+        std::cout << InformationMsg("Unlocked balance: ")
+                  << WarningMsg(Utilities::formatAmount(unlockedBalance))
+                  << std::endl;
+        return;
+    }
+
+    const auto [minMixin, maxMixin, defaultMixin] =
+        Utilities::getMixinAllowableRange(walletBackend->getStatus().networkBlockCount);
+    (void)minMixin;
+    (void)maxMixin;
+
+    Error error;
+    WalletTypes::PreparedTransactionInfo preparedTransaction;
+    std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionAdvanced(
+        {{primaryAddress, registrationOutputAmount}},
+        defaultMixin,
+        WalletTypes::FeeType::MinimumFee(),
+        "",
+        {},
+        primaryAddress,
+        0,
+        extraData,
+        false,
+        false /* prepare only */
+    );
+
+    if (error)
+    {
+        if (error == TOO_MANY_INPUTS_TO_FIT_IN_BLOCK)
+        {
+            std::cout << WarningMsg("Registration transaction is too large due to input fragmentation.") << std::endl;
+            std::cout << InformationMsg("Run ") << SuccessMsg("optimize")
+                      << InformationMsg(" in wallet, wait confirmations, then run ")
+                      << SuccessMsg("mn_register")
+                      << InformationMsg(" again.") << std::endl;
+            return;
+        }
+
+        std::cout << WarningMsg("Failed to prepare masternode registration transaction: ") << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    std::cout << InformationMsg("Masternode ID: ") << SuccessMsg(Common::podToHex(masternodeId)) << std::endl;
+    std::cout << InformationMsg("Registration token ID: ") << SuccessMsg(Common::podToHex(registrationTokenId))
+              << std::endl;
+    std::cout << InformationMsg("Token expires at height: ") << SuccessMsg(std::to_string(expiresAtHeight))
+              << std::endl;
+    std::cout << InformationMsg("Collateral amount locked: ")
+              << SuccessMsg(Utilities::formatAmount(collateralAmount)) << std::endl;
+    std::cout << InformationMsg("Collateral global index: ")
+              << SuccessMsg(std::to_string(collateralGlobalOutputIndex)) << std::endl;
+    std::cout << InformationMsg("Collateral key image: ")
+              << SuccessMsg(Common::podToHex(collateralKeyImage)) << std::endl;
+    std::cout << InformationMsg("Endpoint commitment: ")
+              << SuccessMsg(Common::podToHex(endpointCommitment)) << std::endl;
+    std::cout << InformationMsg("This operation binds and locks the selected collateral output in consensus.")
+              << std::endl;
+    std::cout << WarningMsg("Recommendation: use a dedicated wallet for masternode registration.")
+              << std::endl;
+
+    if (!Utilities::confirm("Submit masternode registration transaction to blockchain?"))
+    {
+        std::cout << WarningMsg("Masternode registration cancelled.") << std::endl;
+        return;
+    }
+
+    ZedUtilities::confirmPassword(walletBackend, "Confirm your password: ");
+
+    Crypto::Hash txHash;
+    std::tie(error, txHash) = walletBackend->sendPreparedTransaction(preparedTransaction.transactionHash);
+    if (error)
+    {
+        std::cout << WarningMsg("Failed to submit masternode registration transaction: ") << WarningMsg(error)
+                  << std::endl;
+        return;
+    }
+
+    std::cout << SuccessMsg("Masternode registration transaction submitted.") << std::endl;
+    std::cout << InformationMsg("Hash: ") << SuccessMsg(txHash) << std::endl;
+}
+
+void masternodeAttest(const std::shared_ptr<WalletBackend> walletBackend, const std::string commandInput)
+{
+    if (walletBackend->isViewWallet())
+    {
+        std::cout << WarningMsg("Masternode attestation is not available for view wallets.") << std::endl;
+        return;
+    }
+
+    std::string mnIdHex;
+    std::string healthyFlagStr;
+    if (commandInput.rfind("mn_attest ", 0) == 0)
+    {
+        const auto args = Utilities::split(commandInput.substr(std::string("mn_attest ").size()), ' ');
+        if (args.size() >= 2)
+        {
+            mnIdHex = args[0];
+            healthyFlagStr = args[1];
+        }
+    }
+
+    if (mnIdHex.empty())
+    {
+        std::cout << InformationMsg("Enter masternode id hex (or cancel): ");
+        std::getline(std::cin, mnIdHex);
+        Utilities::trim(mnIdHex);
+    }
+
+    if (mnIdHex == "cancel")
+    {
+        return;
+    }
+
+    if (healthyFlagStr.empty())
+    {
+        std::cout << InformationMsg("Healthy flag (1 healthy, 0 unhealthy): ");
+        std::getline(std::cin, healthyFlagStr);
+        Utilities::trim(healthyFlagStr);
+    }
+
+    bool healthy = false;
+    if (healthyFlagStr == "1")
+    {
+        healthy = true;
+    }
+    else if (healthyFlagStr == "0")
+    {
+        healthy = false;
+    }
+    else
+    {
+        std::cout << WarningMsg("Invalid healthy flag. Use 1 or 0.") << std::endl;
+        return;
+    }
+
+    Crypto::Hash masternodeId;
+    if (!Common::podFromHex(mnIdHex, masternodeId))
+    {
+        std::cout << WarningMsg("Invalid masternode id hex.") << std::endl;
+        return;
+    }
+
+    const auto verifierAddress = walletBackend->getPrimaryAddress();
+    const auto [keysError, verifierPublicKey, verifierPrivateKey, walletIndex] = walletBackend->getSpendKeys(verifierAddress);
+    (void)walletIndex;
+    if (keysError)
+    {
+        std::cout << WarningMsg("Failed to read verifier spend keys: ") << WarningMsg(keysError) << std::endl;
+        return;
+    }
+
+    std::vector<uint8_t> unsignedPayload;
+    unsignedPayload.reserve(4 + 1 + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + 1);
+    unsignedPayload.push_back('M');
+    unsignedPayload.push_back('N');
+    unsignedPayload.push_back('0');
+    unsignedPayload.push_back('1');
+    unsignedPayload.push_back(static_cast<uint8_t>(7)); // Attest
+    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
+    unsignedPayload.insert(
+        unsignedPayload.end(),
+        verifierPublicKey.data,
+        verifierPublicKey.data + sizeof(verifierPublicKey.data));
+    unsignedPayload.push_back(healthy ? 1 : 0);
+
+    Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
+    Crypto::Signature signature;
+    Crypto::generate_signature(signingHash, verifierPublicKey, verifierPrivateKey, signature);
+
+    std::vector<uint8_t> extraData = unsignedPayload;
+    extraData.insert(extraData.end(), signature.data, signature.data + sizeof(signature.data));
+
+    const uint64_t attestationOutputAmount = WalletConfig::minimumSend;
+    if (walletBackend->getTotalUnlockedBalance() < attestationOutputAmount)
+    {
+        std::cout << WarningMsg("Insufficient unlocked balance for attestation transaction.") << std::endl;
+        return;
+    }
+
+    const auto [minMixin, maxMixin, defaultMixin] =
+        Utilities::getMixinAllowableRange(walletBackend->getStatus().networkBlockCount);
+    (void)minMixin;
+    (void)maxMixin;
+
+    Error error;
+    WalletTypes::PreparedTransactionInfo preparedTransaction;
+    std::tie(error, std::ignore, preparedTransaction) = walletBackend->sendTransactionAdvanced(
+        {{verifierAddress, attestationOutputAmount}},
+        defaultMixin,
+        WalletTypes::FeeType::MinimumFee(),
+        "",
+        {},
+        verifierAddress,
+        0,
+        extraData,
+        false,
+        false);
+
+    if (error)
+    {
+        if (error == TOO_MANY_INPUTS_TO_FIT_IN_BLOCK)
+        {
+            std::cout << WarningMsg("Attestation transaction is too large.") << std::endl;
+            std::cout << InformationMsg("Run ") << SuccessMsg("optimize")
+                      << InformationMsg(" and retry.") << std::endl;
+            return;
+        }
+
+        std::cout << WarningMsg("Failed to prepare masternode attestation transaction: ")
+                  << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    std::cout << InformationMsg("Masternode ID: ") << SuccessMsg(Common::podToHex(masternodeId)) << std::endl;
+    std::cout << InformationMsg("Verifier key: ") << SuccessMsg(Common::podToHex(verifierPublicKey)) << std::endl;
+    std::cout << InformationMsg("Attestation verdict: ") << SuccessMsg(healthy ? "healthy" : "unhealthy")
+              << std::endl;
+
+    if (!Utilities::confirm("Submit masternode attestation transaction to blockchain?"))
+    {
+        std::cout << WarningMsg("Masternode attestation cancelled.") << std::endl;
+        return;
+    }
+
+    ZedUtilities::confirmPassword(walletBackend, "Confirm your password: ");
+
+    Crypto::Hash txHash;
+    std::tie(error, txHash) = walletBackend->sendPreparedTransaction(preparedTransaction.transactionHash);
+    if (error)
+    {
+        std::cout << WarningMsg("Failed to submit masternode attestation transaction: ")
+                  << WarningMsg(error) << std::endl;
+        return;
+    }
+
+    std::cout << SuccessMsg("Masternode attestation transaction submitted.") << std::endl;
+    std::cout << InformationMsg("Hash: ") << SuccessMsg(txHash) << std::endl;
 }
 
 void setLogLevel()

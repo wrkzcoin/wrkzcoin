@@ -24,6 +24,55 @@ namespace CryptoNote
 {
     namespace
     {
+        class RawWriteBatch final : public IWriteBatch
+        {
+          public:
+            explicit RawWriteBatch(std::vector<std::pair<std::string, std::string>> values): values(std::move(values)) {}
+
+            std::vector<std::pair<std::string, std::string>> extractRawDataToInsert() override
+            {
+                return std::move(values);
+            }
+
+            std::vector<std::string> extractRawKeysToRemove() override
+            {
+                return {};
+            }
+
+          private:
+            std::vector<std::pair<std::string, std::string>> values;
+        };
+
+        class RawReadBatch final : public IReadBatch
+        {
+          public:
+            explicit RawReadBatch(std::string key): key(std::move(key)) {}
+
+            std::vector<std::string> getRawKeys() const override
+            {
+                return {key};
+            }
+
+            void submitRawResult(const std::vector<std::string> &values, const std::vector<bool> &resultStates) override
+            {
+                if (values.empty() || resultStates.empty() || !resultStates[0])
+                {
+                    found = false;
+                    value.clear();
+                    return;
+                }
+
+                found = true;
+                value = values[0];
+            }
+
+            bool found = false;
+            std::string value;
+
+          private:
+            std::string key;
+        };
+
         const uint32_t ONE_DAY_SECONDS = 60 * 60 * 24;
 
         const CachedBlockInfo NULL_CACHED_BLOCK_INFO {Constants::NULL_HASH, 0, 0, 0, 0, 0};
@@ -2494,6 +2543,30 @@ namespace CryptoNote
     std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed()
     {
         return database.compactDetailed();
+    }
+
+    bool DatabaseBlockchainCache::writeMasternodeStateBlob(const std::string &blob)
+    {
+        RawWriteBatch batch(
+            {{DB::serializeKey(DB::MASTERNODE_STATE_PREFIX, DB::MASTERNODE_STATE_KEY), blob}});
+        return !database.write(batch);
+    }
+
+    bool DatabaseBlockchainCache::readMasternodeStateBlob(std::string &blob) const
+    {
+        RawReadBatch batch(DB::serializeKey(DB::MASTERNODE_STATE_PREFIX, DB::MASTERNODE_STATE_KEY));
+        if (database.read(batch))
+        {
+            return false;
+        }
+
+        if (!batch.found)
+        {
+            return false;
+        }
+
+        blob = std::move(batch.value);
+        return true;
     }
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>

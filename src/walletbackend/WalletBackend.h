@@ -244,6 +244,9 @@ class WalletBackend
     /* Gets the public and private spend key for the given address */
     std::tuple<Error, Crypto::PublicKey, Crypto::SecretKey, uint64_t> getSpendKeys(const std::string &address) const;
 
+    std::tuple<Error, std::vector<WalletTypes::TransactionInput>>
+        getSpendableInputs(const std::string &address) const;
+
     /* Get the private spend and private view for the primary address */
     std::tuple<Crypto::SecretKey, Crypto::SecretKey> getPrimaryAddressPrivateKeys() const;
 

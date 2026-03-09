@@ -101,6 +101,14 @@ bool handleCommand(
     {
         decodeIntegrated(walletBackend, command);
     }
+    else if (command == "mn_register" || command.rfind("mn_register ", 0) == 0)
+    {
+        masternodeRegister(walletBackend, command);
+    }
+    else if (command == "mn_attest" || command.rfind("mn_attest ", 0) == 0)
+    {
+        masternodeAttest(walletBackend, command);
+    }
     else if (command == "make_integrated_address")
     {
         createIntegratedAddress(walletBackend);

@@ -19,10 +19,13 @@
 #include "ITransactionPool.h"
 #include "ITransactionPoolCleaner.h"
 #include "IUpgradeManager.h"
+#include "MasternodeStateTracker.h"
+#include "MasternodeTx.h"
 #include "MessageQueue.h"
 #include "TransactionValidatiorState.h"
 
 #include <WalletTypes.h>
+#include <common/FileSystemShim.h>
 #include <ctime>
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
@@ -44,7 +47,8 @@ namespace CryptoNote
             Checkpoints &&checkpoints,
             System::Dispatcher &dispatcher,
             std::unique_ptr<IBlockchainCacheFactory> &&blockchainCacheFactory,
-            uint32_t transactionValidationThreads);
+            uint32_t transactionValidationThreads,
+            std::string dataDirectory);
 
         virtual ~Core();
 
@@ -192,6 +196,18 @@ namespace CryptoNote
 
         virtual CoreStatistics getCoreStatistics() const override;
 
+        size_t getMasternodeCount() const;
+
+        std::vector<MasternodeStateTracker::Snapshot> getMasternodeSnapshots(size_t offset, size_t limit) const;
+
+        size_t getMasternodeEligibleCount(uint32_t height) const;
+
+        Crypto::Hash getMasternodeSetHash(uint32_t height) const;
+
+        std::optional<Crypto::Hash> getMasternodeRewardWinner(uint32_t height) const;
+
+        static const char *masternodeStatusToString(MasternodeStateTracker::Status status);
+
         virtual std::time_t getStartTime() const;
 
         // ICoreInformation
@@ -283,6 +299,84 @@ namespace CryptoNote
 
         size_t blockMedianSize;
 
+        /* Tracks masternode health, fairness accounting, and spend-lock states. */
+        MasternodeStateTracker masternodeStateTracker;
+
+        bool isMasternodeFeatureForkActive(uint32_t height) const;
+
+        bool isMasternodeRewardForkActive(uint32_t height) const;
+
+        std::vector<Crypto::Hash> getMasternodeRewardCandidates(uint32_t height) const;
+
+        std::vector<Crypto::Hash>
+            getMasternodeRewardCandidatesForTracker(uint32_t height, const MasternodeStateTracker &tracker) const;
+
+        MasternodeStateTracker::RewardDistribution getMasternodeRewardDistribution(
+            uint64_t totalReward,
+            uint32_t height) const;
+
+        MasternodeStateTracker::RewardDistribution getMasternodeRewardDistributionForTracker(
+            uint64_t totalReward,
+            uint32_t height,
+            const MasternodeStateTracker &tracker) const;
+
+        void applyMasternodeEventFromTransaction(const Transaction &transaction, uint64_t txFee, uint32_t height);
+
+        void applyMasternodeEventFromTransactionToTracker(
+            const Transaction &transaction,
+            uint64_t txFee,
+            uint32_t height,
+            MasternodeStateTracker &tracker) const;
+
+        void applyMasternodeEventsFromBlock(
+            const CachedBlock &cachedBlock,
+            const std::vector<CachedTransaction> &transactions,
+            uint32_t height);
+
+        bool buildMasternodeStateForChain(
+            IBlockchainCache *cache,
+            uint32_t topHeight,
+            MasternodeStateTracker &tracker) const;
+
+        void rebuildMasternodeStateFromMainChain();
+
+        std::error_code validateMasternodeTransactionEvent(
+            const CachedTransaction &cachedTransaction,
+            uint64_t transactionFee,
+            uint32_t nextBlockHeight,
+            IBlockchainCache *validationCache,
+            bool checkPoolTokenReplay) const;
+
+        std::error_code validateMasternodeTransactionEventWithTracker(
+            const CachedTransaction &cachedTransaction,
+            uint64_t transactionFee,
+            uint32_t nextBlockHeight,
+            IBlockchainCache *validationCache,
+            const MasternodeStateTracker &tracker,
+            bool checkPoolTokenReplay) const;
+
+        bool hasMasternodePayload(const Transaction &transaction) const;
+
+        bool hasMasternodeRegistrationTokenInPool(
+            const Crypto::Hash &tokenId,
+            const Crypto::Hash &excludeTransactionHash) const;
+
+        bool hasMasternodeCollateralInPool(
+            uint64_t collateralAmount,
+            uint32_t collateralGlobalOutputIndex,
+            const Crypto::KeyImage &collateralKeyImage,
+            const Crypto::Hash &excludeTransactionHash) const;
+
+        bool hasMasternodeEndpointCommitmentInPool(
+            const Crypto::Hash &endpointCommitment,
+            const Crypto::Hash &excludeTransactionHash) const;
+
+        fs::path getMasternodeStateSnapshotPath() const;
+
+        bool saveMasternodeStateSnapshot() const;
+
+        bool loadMasternodeStateSnapshot();
+
         void throwIfNotInitialized() const;
 
         bool extractTransactions(
@@ -298,7 +392,8 @@ namespace CryptoNote
             uint64_t &fee,
             uint32_t blockIndex,
             uint64_t blockTimestamp,
-            const bool isPoolTransaction);
+            const bool isPoolTransaction,
+            const MasternodeStateTracker *masternodeTrackerOverride = nullptr);
 
         uint32_t findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const;
 

@@ -57,6 +57,10 @@ namespace CryptoNote
 
         const std::string KEY_OUTPUT_KEY_PREFIX = "j";
 
+        const std::string MASTERNODE_STATE_PREFIX = "m";
+
+        const std::string MASTERNODE_STATE_KEY = "state";
+
         template<class Value> std::string serialize(const Value &value, const std::string &name)
         {
             CryptoNote::KVBinaryOutputStreamSerializer serializer;

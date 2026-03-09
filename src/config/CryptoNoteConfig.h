@@ -14,6 +14,7 @@
 #include <initializer_list>
 #include <limits>
 #include <string>
+#include <vector>
 
 namespace CryptoNote
 {
@@ -257,6 +258,54 @@ namespace CryptoNote
         
         /* Multiplier diff */
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_PER_IO_V1 = 1000;
+
+        /* Masternode reward health gate: trailing 7-day health window. */
+        const uint64_t MASTERNODE_HEALTH_WINDOW_BLOCKS = 7 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
+
+        /* Masternode must be healthy for at least this percentage over the health window. */
+        const uint64_t MASTERNODE_MIN_HEALTH_PERCENT = 95;
+
+        /* Fairness accounting window for deterministic winner selection. */
+        const uint64_t MASTERNODE_FAIRNESS_WINDOW_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
+
+        /* Collateral spend lock after deactivation/revocation: 21 days. */
+        const uint64_t MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS = 21 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
+
+        /* Masternode rollout fork heights. Set to 0 to keep feature disabled until configured. */
+        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 0;
+        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = 0;
+
+        /* Reward split percent for masternode winner after reward fork activates. */
+        const uint64_t MASTERNODE_REWARD_PERCENT = 70;
+
+        /* Registration bond amount (atomic units). Set > 0 to enforce economic commitment for MN registration. */
+        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 100000;
+
+        /* Minimum collateral output amount (atomic units) required for masternode registration. */
+        const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT = MASTERNODE_REGISTRATION_BOND_AMOUNT;
+
+        /* Registration token TTL in blocks. */
+        const uint64_t MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
+
+        /* Minimum spacing between accepted heartbeat events for the same masternode. */
+        const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 1;
+
+        /* External attestation controls (verifier-signed liveness checks). */
+        const bool MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true;
+        const uint64_t MASTERNODE_ATTESTATION_WINDOW_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
+        const uint64_t MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW = 24;
+        const uint64_t MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT = 80;
+        const uint64_t MASTERNODE_ATTESTATION_MIN_BLOCK_INTERVAL_PER_VERIFIER = 60;
+
+        /* Optional verifier allowlist. If enabled and list is empty, all attestations are rejected. */
+        const bool MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST = false;
+        const std::vector<std::string> MASTERNODE_VERIFIER_PUBKEY_ALLOWLIST = {};
+
+        static_assert(MASTERNODE_MIN_HEALTH_PERCENT <= 100, "Invalid MASTERNODE_MIN_HEALTH_PERCENT");
+        static_assert(MASTERNODE_REWARD_PERCENT <= 100, "Invalid MASTERNODE_REWARD_PERCENT");
+        static_assert(
+            MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT <= 100,
+            "Invalid MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT");
         
         /* Output / Input factor: how many times we factor Output diff. Assuming input is 1 */
         const uint64_t MULTIPLIER_TRANSACTION_POW_DIFFICULTY_FACTORED_OUT_V1 = 4;
