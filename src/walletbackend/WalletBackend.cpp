@@ -1047,8 +1047,23 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             if (estimatedFee >= batchSum)
                 break;
 
-            const size_t newNumOutputs =
-                SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            size_t newNumOutputs;
+            if (amountToSweep > 0)
+            {
+                /* Specific-amount sweep: destination gets amountToSweep, change returns to self */
+                const uint64_t available = batchSum - estimatedFee;
+                const uint64_t destAmt   = std::min(amountToSweep, available);
+                const uint64_t changeAmt = available > amountToSweep ? available - amountToSweep : 0;
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(destAmt).size() +
+                    (changeAmt > 0 ? SendTransaction::splitAmountIntoDenominations(changeAmt).size() : 0);
+            }
+            else
+            {
+                /* Sweep-all: entire batch goes to destination, no change */
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            }
 
             if (newNumOutputs == numOutputs)
                 break;
@@ -1063,12 +1078,16 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             continue;
         }
 
-        /* Amount to destination = all inputs minus fee, zero change */
-        const uint64_t destinationAmount = batchSum - estimatedFee;
+        /* Compute destination amount and change */
+        const uint64_t available = batchSum - estimatedFee;
+        const uint64_t destinationAmount = (amountToSweep > 0) ? std::min(amountToSweep, available) : available;
+        const uint64_t changeRequired    = (amountToSweep > 0 && available > amountToSweep)
+                                               ? available - amountToSweep
+                                               : 0;
 
         auto destinations = SendTransaction::setupDestinations(
             {{destination, destinationAmount}},
-            0 /* changeRequired */,
+            changeRequired,
             changeAddress
         );
 
@@ -1113,7 +1132,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
 
         SendTransaction::storeSentTransaction(
             txHash, actualFee, paymentID, batch, changeAddress,
-            0 /* changeRequired */, m_subWallets
+            changeRequired, m_subWallets
         );
 
         SendTransaction::storeUnconfirmedIncomingInputs(
@@ -1205,8 +1224,21 @@ std::tuple<size_t, uint64_t> WalletBackend::estimateSweep(
             if (estimatedFee >= batchSum)
                 break;
 
-            const size_t newNumOutputs =
-                SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            size_t newNumOutputs;
+            if (amountToSweep > 0)
+            {
+                const uint64_t available = batchSum - estimatedFee;
+                const uint64_t destAmt   = std::min(amountToSweep, available);
+                const uint64_t changeAmt = available > amountToSweep ? available - amountToSweep : 0;
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(destAmt).size() +
+                    (changeAmt > 0 ? SendTransaction::splitAmountIntoDenominations(changeAmt).size() : 0);
+            }
+            else
+            {
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            }
 
             if (newNumOutputs == numOutputs)
                 break;
