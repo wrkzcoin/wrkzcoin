@@ -646,9 +646,9 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document resp;
-
-    if (resp.Parse(res->body.c_str()).HasParseError())
+    nlohmann::json resp;
+    try { resp = nlohmann::json::parse(res->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Problem retrieving information from RPC server.") << std::endl;
         return false;
@@ -673,7 +673,7 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
 
     for (const auto &height : getArrayFromJSON(resp, "upgrade_heights"))
     {
-        upgradeHeights.push_back(height.GetUint64());
+        upgradeHeights.push_back(height.get<uint64_t>());
     }
 
     const auto forkStatus = Utilities::get_fork_status(networkHeight, upgradeHeights, supportedHeight);
@@ -754,9 +754,9 @@ bool DaemonCommandsHandler::prune_status(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document resp;
-
-    if (resp.Parse(res->body.c_str()).HasParseError())
+    nlohmann::json resp;
+    try { resp = nlohmann::json::parse(res->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Problem parsing prune status response.") << std::endl;
         return false;
@@ -788,9 +788,9 @@ bool DaemonCommandsHandler::sync_info(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document resp;
-
-    if (resp.Parse(res->body.c_str()).HasParseError())
+    nlohmann::json resp;
+    try { resp = nlohmann::json::parse(res->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Problem parsing sync information response.") << std::endl;
         return false;
@@ -826,9 +826,9 @@ bool DaemonCommandsHandler::sync_tune(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document resp;
-
-    if (resp.Parse(res->body.c_str()).HasParseError())
+    nlohmann::json resp;
+    try { resp = nlohmann::json::parse(res->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Problem parsing sync tuning response.") << std::endl;
         return false;
@@ -869,9 +869,9 @@ bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document resp;
-
-    if (resp.Parse(res->body.c_str()).HasParseError())
+    nlohmann::json resp;
+    try { resp = nlohmann::json::parse(res->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Problem parsing sync peer diagnostics response.") << std::endl;
         return false;
@@ -1111,8 +1111,10 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
             auto res = rpc_get("/info");
             if (res && res->status == 200)
             {
-                rapidjson::Document resp;
-                if (!resp.Parse(res->body.c_str()).HasParseError())
+                nlohmann::json resp;
+                bool parseOk = true;
+                try { resp = nlohmann::json::parse(res->body); } catch (...) { parseOk = false; }
+                if (parseOk)
                 {
                     const uint64_t localHeight = getUint64FromJSON(resp, "height");
                     const uint64_t networkHeight = getUint64FromJSON(resp, "network_height");

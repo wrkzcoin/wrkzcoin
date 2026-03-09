@@ -11,9 +11,7 @@
 #include <errors/ValidateParameters.h>
 #include <fstream>
 #include <iostream>
-#include <rapidjson/istreamwrapper.h>
-#include <rapidjson/ostreamwrapper.h>
-#include <rapidjson/prettywriter.h>
+#include <iomanip>
 #include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/Input.h>
@@ -349,23 +347,26 @@ std::vector<AddressBookEntry> getAddressBook()
     /* If file exists, read current values */
     if (input)
     {
-        rapidjson::IStreamWrapper isw(input);
-        rapidjson::Document j;
-        if (j.ParseStream(isw).HasParseError())
+        nlohmann::json j;
+        try
+        {
+            j = nlohmann::json::parse(input);
+        }
+        catch (const nlohmann::json::parse_error &)
         {
             std::cout << WarningMsg("Failed to parse address book JSON. Using empty address book.") << std::endl;
             return addressBook;
         }
 
-        if (!j.IsArray())
+        if (!j.is_array())
         {
             std::cout << WarningMsg("Address book file has invalid format. Using empty address book.") << std::endl;
             return addressBook;
         }
 
-        for (auto &v : j.GetArray())
+        for (auto &v : j)
         {
-            if (!v.IsObject())
+            if (!v.is_object())
             {
                 std::cout << WarningMsg("Skipping invalid address book entry (expected JSON object).") << std::endl;
                 continue;
@@ -393,15 +394,12 @@ bool saveAddressBook(const std::vector<AddressBookEntry> addressBook)
 
     if (output)
     {
-        rapidjson::OStreamWrapper osw(output);
-        rapidjson::PrettyWriter<rapidjson::OStreamWrapper> writer(osw);
-        writer.StartArray();
+        nlohmann::json arr = nlohmann::json::array();
         for (auto &entry : addressBook)
         {
-            entry.toJSON(writer);
+            arr.push_back(entry.toJSON());
         }
-        writer.EndArray();
-        writer.Flush();
+        output << std::setw(2) << arr;
     }
     else
     {

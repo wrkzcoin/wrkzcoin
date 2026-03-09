@@ -8,6 +8,7 @@
 /////////////////////////////////////////////
 
 #include <algorithm>
+#include <JsonHelper.h>
 #include <common/StringTools.h>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
@@ -817,23 +818,14 @@ void WalletSynchronizer::fromJSON(const JSONObject &j)
     m_blockDownloader.fromJSON(getObjectFromJSON(j, "transactionSynchronizerStatus"), m_startHeight, m_startTimestamp);
 }
 
-void WalletSynchronizer::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+nlohmann::json WalletSynchronizer::toJSON() const
 {
-    writer.StartObject();
-
-    writer.Key("transactionSynchronizerStatus");
-    m_blockDownloader.toJSON(writer);
-
-    writer.Key("startTimestamp");
-    writer.Uint64(m_startTimestamp);
-
-    writer.Key("startHeight");
-    writer.Uint64(m_startHeight);
-
-    writer.Key("privateViewKey");
-    m_privateViewKey.toJSON(writer);
-
-    writer.EndObject();
+    nlohmann::json j;
+    j["transactionSynchronizerStatus"] = m_blockDownloader.toJSON();
+    j["startTimestamp"] = m_startTimestamp;
+    j["startHeight"] = m_startHeight;
+    j["privateViewKey"] = m_privateViewKey;
+    return j;
 }
 
 void WalletSynchronizer::setSubWallets(const std::shared_ptr<SubWallets> subWallets)

@@ -30,7 +30,7 @@ class SynchronizationStatus
     std::deque<Crypto::Hash> getRecentBlockHashes() const;
 
     /* Converts the class to a json object */
-    void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const;
+    nlohmann::json toJSON() const;
 
     /* Initializes the class from a json string */
     void fromJSON(const JSONObject &j);

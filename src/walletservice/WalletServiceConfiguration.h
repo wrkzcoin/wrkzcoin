@@ -7,10 +7,8 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
-#include <rapidjson/document.h>
 #include <string>
-
-using namespace rapidjson;
+#include "json.hpp"
 
 namespace PaymentService
 {
@@ -104,7 +102,7 @@ namespace PaymentService
 
     void handleSettings(const std::string configFile, WalletServiceConfiguration &config);
 
-    Document asJSON(const WalletServiceConfiguration &config);
+    nlohmann::json asJSON(const WalletServiceConfiguration &config);
 
     std::string asString(const WalletServiceConfiguration &config);
 

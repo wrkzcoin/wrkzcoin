@@ -8,8 +8,6 @@
 ////////////////////////////////////////
 
 #include "JsonHelper.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 
 #include <common/Base58.h>
 #include <common/FileSystemShim.h>
@@ -32,11 +30,11 @@
 #include <mnemonics/Mnemonics.h>
 #include <noderpcproxy/NodeRpcProxy.h>
 #include <utilities/Addresses.h>
+#include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/Constants.h>
 #include <walletbackend/Transfer.h>
 
-using namespace rapidjson;
 
 //////////////////////////
 /* NON MEMBER FUNCTIONS */
@@ -600,9 +598,12 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
             o << decryptedData << std::endl;
         }
 
-        rapidjson::Document walletJson;
-
-        if (walletJson.Parse(decryptedData.c_str()).HasParseError())
+        nlohmann::json walletJson;
+        try
+        {
+            walletJson = nlohmann::json::parse(decryptedData);
+        }
+        catch (const nlohmann::json::parse_error &)
         {
             return {WALLET_FILE_CORRUPTED, nullptr};
         }
@@ -921,31 +922,313 @@ std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> WalletBack
     return {error, hash, preparedTransaction};
 }
 
-std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionBasic()
+std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
+    const std::string destination,
+    const std::string paymentID,
+    const uint64_t amountToSweep)
 {
     std::scoped_lock lock(m_transactionMutex);
 
-    return SendTransaction::sendFusionTransactionBasic(m_daemon, m_subWallets);
+    if (isViewWallet())
+    {
+        return {{ILLEGAL_VIEW_WALLET_OPERATION, Crypto::Hash()}};
+    }
+
+    const uint64_t height = m_daemon->networkBlockCount();
+    const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
+    const uint64_t mixin = defaultMixin;
+
+    /* Compute unlock time */
+    uint64_t unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW;
+    if (height > CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V2)
+    {
+        unlock_blocks = CryptoNote::parameters::UNLOCK_TIME_TRANSACTION_POOL_WINDOW_V2;
+    }
+    const uint64_t unlockTime = height + unlock_blocks + CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
+
+    const std::string changeAddress = m_subWallets->getPrimaryAddress();
+
+    /* All spendable inputs across all subwallets */
+    auto allInputs = m_subWallets->getSpendableTransactionInputs(true, {}, height);
+
+    if (allInputs.empty())
+    {
+        return {{NOT_ENOUGH_BALANCE, Crypto::Hash()}};
+    }
+
+    /* Maximum inputs that fit in one tx (leave room for 2 outputs: dest + change) */
+    const size_t maxTxSize = static_cast<size_t>(Utilities::getMaxTxSize(height));
+    const size_t maxInputsPerTx = Utilities::getApproximateMaximumInputCount(maxTxSize, 2, mixin);
+
+    if (maxInputsPerTx == 0)
+    {
+        return {{TOO_MANY_INPUTS_TO_FIT_IN_BLOCK, Crypto::Hash()}};
+    }
+
+    /* If sweeping a specific amount, collect only enough inputs to cover it */
+    if (amountToSweep > 0)
+    {
+        /* Worst-case fee per batch (full batch, 1 destination output) */
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
+
+        uint64_t sum = 0;
+        std::vector<WalletTypes::TxInputAndOwner> needed;
+
+        for (const auto &inp : allInputs)
+        {
+            needed.push_back(inp);
+            sum += inp.input.amount;
+            const size_t batchCount = (needed.size() + maxInputsPerTx - 1) / maxInputsPerTx;
+            if (sum >= amountToSweep + batchCount * feePerBatch)
+            {
+                break;
+            }
+        }
+
+        allInputs = std::move(needed);
+    }
+
+    std::vector<std::tuple<Error, Crypto::Hash>> results;
+
+    for (size_t i = 0; i < allInputs.size(); i += maxInputsPerTx)
+    {
+        const size_t end = std::min(i + maxInputsPerTx, allInputs.size());
+        const std::vector<WalletTypes::TxInputAndOwner> batch(allInputs.begin() + i, allInputs.begin() + end);
+
+        uint64_t batchSum = 0;
+        for (const auto &inp : batch)
+        {
+            batchSum += inp.input.amount;
+        }
+
+        /* Iteratively estimate fee: the destination amount is decomposed into canonical
+           denominations, so the output count depends on the fee, which depends on the
+           output count.  Also add 9 bytes for the Tx PoW nonce (identifier + 8-byte nonce)
+           that makeTransaction appends to tx.extra whenever the fee is below
+           TRANSACTION_POW_PASS_WITH_FEE (sweep fees are always below that threshold). */
+        const size_t POW_NONCE_OVERHEAD = 9;
+        size_t numOutputs = 1;
+        uint64_t estimatedFee = 0;
+
+        for (int iter = 0; iter < 3; iter++)
+        {
+            const size_t estimatedSize = Utilities::estimateTransactionSize(
+                mixin, batch.size(), numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+            estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+            if (estimatedFee >= batchSum)
+                break;
+
+            size_t newNumOutputs;
+            if (amountToSweep > 0)
+            {
+                /* Specific-amount sweep: destination gets amountToSweep, change returns to self */
+                const uint64_t available = batchSum - estimatedFee;
+                const uint64_t destAmt   = std::min(amountToSweep, available);
+                const uint64_t changeAmt = available > amountToSweep ? available - amountToSweep : 0;
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(destAmt).size() +
+                    (changeAmt > 0 ? SendTransaction::splitAmountIntoDenominations(changeAmt).size() : 0);
+            }
+            else
+            {
+                /* Sweep-all: entire batch goes to destination, no change */
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            }
+
+            if (newNumOutputs == numOutputs)
+                break;
+
+            numOutputs = newNumOutputs;
+        }
+
+        if (estimatedFee >= batchSum)
+        {
+            /* Fee would consume the entire batch — skip it */
+            results.push_back({NOT_ENOUGH_BALANCE, Crypto::Hash()});
+            continue;
+        }
+
+        /* Compute destination amount and change */
+        const uint64_t available = batchSum - estimatedFee;
+        const uint64_t destinationAmount = (amountToSweep > 0) ? std::min(amountToSweep, available) : available;
+        const uint64_t changeRequired    = (amountToSweep > 0 && available > amountToSweep)
+                                               ? available - amountToSweep
+                                               : 0;
+
+        auto destinations = SendTransaction::setupDestinations(
+            {{destination, destinationAmount}},
+            changeRequired,
+            changeAddress
+        );
+
+        auto txResult = SendTransaction::makeTransaction(
+            mixin,
+            m_daemon,
+            batch,
+            paymentID,
+            destinations,
+            m_subWallets,
+            unlockTime,
+            {} /* extraData */
+        );
+
+        if (txResult.error)
+        {
+            results.push_back({txResult.error, Crypto::Hash()});
+            continue;
+        }
+
+        Error sizeError = SendTransaction::isTransactionPayloadTooBig(txResult.transaction, height);
+        if (sizeError)
+        {
+            results.push_back({sizeError, Crypto::Hash()});
+            continue;
+        }
+
+        if (!SendTransaction::verifyAmounts(txResult.transaction))
+        {
+            results.push_back({AMOUNTS_NOT_PRETTY, Crypto::Hash()});
+            continue;
+        }
+
+        const uint64_t actualFee = SendTransaction::sumTransactionFee(txResult.transaction);
+
+        const auto [sendError, txHash] = SendTransaction::relayTransaction(txResult.transaction, m_daemon);
+        if (sendError)
+        {
+            results.push_back({sendError, Crypto::Hash()});
+            continue;
+        }
+
+        SendTransaction::storeSentTransaction(
+            txHash, actualFee, paymentID, batch, changeAddress,
+            changeRequired, m_subWallets
+        );
+
+        SendTransaction::storeUnconfirmedIncomingInputs(
+            m_subWallets, txResult.outputs, txResult.txKeyPair.publicKey, txHash
+        );
+
+        m_subWallets->storeTxPrivateKey(txResult.txKeyPair.secretKey, txHash);
+
+        for (const auto &inp : batch)
+        {
+            m_subWallets->markInputAsLocked(inp.input.keyImage, inp.publicSpendKey);
+        }
+
+        results.push_back({SUCCESS, txHash});
+    }
+
+    return results;
 }
 
-std::tuple<Error, Crypto::Hash> WalletBackend::sendFusionTransactionAdvanced(
-    const uint64_t mixin,
-    const std::vector<std::string> subWalletsToTakeFrom,
-    const std::string destination,
-    const std::vector<uint8_t> extraData,
-    const std::optional<uint64_t> optimizeTarget)
+std::tuple<size_t, uint64_t> WalletBackend::estimateSweep(
+    const std::string paymentID,
+    const uint64_t amountToSweep) const
 {
-    std::scoped_lock lock(m_transactionMutex);
+    const uint64_t height = m_daemon->networkBlockCount();
+    const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
+    const uint64_t mixin = defaultMixin;
 
-    return SendTransaction::sendFusionTransactionAdvanced(
-        mixin,
-        subWalletsToTakeFrom,
-        destination,
-        m_daemon,
-        m_subWallets,
-        extraData,
-        optimizeTarget
-    );
+    const size_t maxTxSize = static_cast<size_t>(Utilities::getMaxTxSize(height));
+    const size_t maxInputsPerTx = Utilities::getApproximateMaximumInputCount(maxTxSize, 2, mixin);
+
+    if (maxInputsPerTx == 0)
+    {
+        return {0, 0};
+    }
+
+    auto allInputs = m_subWallets->getSpendableTransactionInputs(true, {}, height);
+
+    if (allInputs.empty())
+    {
+        return {0, 0};
+    }
+
+    if (amountToSweep > 0)
+    {
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
+
+        uint64_t sum = 0;
+        std::vector<WalletTypes::TxInputAndOwner> needed;
+
+        for (const auto &inp : allInputs)
+        {
+            needed.push_back(inp);
+            sum += inp.input.amount;
+            const size_t batchCount = (needed.size() + maxInputsPerTx - 1) / maxInputsPerTx;
+            if (sum >= amountToSweep + batchCount * feePerBatch)
+            {
+                break;
+            }
+        }
+
+        allInputs = std::move(needed);
+    }
+
+    size_t txCount = 0;
+    uint64_t totalFee = 0;
+
+    for (size_t i = 0; i < allInputs.size(); i += maxInputsPerTx)
+    {
+        const size_t end = std::min(i + maxInputsPerTx, allInputs.size());
+        const size_t batchSize = end - i;
+
+        uint64_t batchSum = 0;
+        for (size_t j = i; j < end; j++)
+        {
+            batchSum += allInputs[j].input.amount;
+        }
+
+        const size_t POW_NONCE_OVERHEAD = 9;
+        size_t numOutputs = 1;
+        uint64_t estimatedFee = 0;
+
+        for (int iter = 0; iter < 3; iter++)
+        {
+            const size_t estimatedSize = Utilities::estimateTransactionSize(
+                mixin, batchSize, numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+            estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+
+            if (estimatedFee >= batchSum)
+                break;
+
+            size_t newNumOutputs;
+            if (amountToSweep > 0)
+            {
+                const uint64_t available = batchSum - estimatedFee;
+                const uint64_t destAmt   = std::min(amountToSweep, available);
+                const uint64_t changeAmt = available > amountToSweep ? available - amountToSweep : 0;
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(destAmt).size() +
+                    (changeAmt > 0 ? SendTransaction::splitAmountIntoDenominations(changeAmt).size() : 0);
+            }
+            else
+            {
+                newNumOutputs =
+                    SendTransaction::splitAmountIntoDenominations(batchSum - estimatedFee).size();
+            }
+
+            if (newNumOutputs == numOutputs)
+                break;
+
+            numOutputs = newNumOutputs;
+        }
+
+        if (estimatedFee >= batchSum)
+        {
+            continue; /* would be skipped in actual sweep */
+        }
+
+        txCount++;
+        totalFee += estimatedFee;
+    }
+
+    return {txCount, totalFee};
 }
 
 void WalletBackend::reset(uint64_t scanHeight, uint64_t timestamp)
@@ -1339,26 +1622,14 @@ std::string WalletBackend::toJSON() const
 
 std::string WalletBackend::unsafeToJSON() const
 {
-    StringBuffer sb;
-    Writer<StringBuffer> writer(sb);
-
-    writer.StartObject();
-
-    writer.Key("walletFileFormatVersion");
-    writer.Uint(Constants::WALLET_FILE_FORMAT_VERSION);
-
-    writer.Key("subWallets");
-    m_subWallets->toJSON(writer);
-
-    writer.Key("walletSynchronizer");
-    m_walletSynchronizer->toJSON(writer);
-
-    writer.EndObject();
-
-    return sb.GetString();
+    nlohmann::json j;
+    j["walletFileFormatVersion"] = Constants::WALLET_FILE_FORMAT_VERSION;
+    j["subWallets"] = m_subWallets->toJSON();
+    j["walletSynchronizer"] = m_walletSynchronizer->toJSON();
+    return j.dump();
 }
 
-Error WalletBackend::fromJSON(const rapidjson::Document &j)
+Error WalletBackend::fromJSON(const nlohmann::json &j)
 {
     uint64_t version = getUint64FromJSON(j, "walletFileFormatVersion");
 
@@ -1377,7 +1648,7 @@ Error WalletBackend::fromJSON(const rapidjson::Document &j)
 }
 
 Error WalletBackend::fromJSON(
-    const rapidjson::Document &j,
+    const nlohmann::json &j,
     const std::string filename,
     const std::string password,
     const std::string daemonHost,

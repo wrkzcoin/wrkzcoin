@@ -6,9 +6,6 @@
 #pragma once
 
 #include "json.hpp"
-#include "rapidjson/document.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
 
 #include <algorithm>
 #include <common/StringTools.h>
@@ -56,12 +53,6 @@ namespace Crypto
             return !(*this == other);
         }
 
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
-        }
-
         /* Initializes the class from a json string */
         void fromString(const std::string &s)
         {
@@ -103,12 +94,6 @@ namespace Crypto
             return !(*this == other);
         }
 
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
-        }
-
         /* Initializes the class from a json string */
         void fromString(const std::string &s)
         {
@@ -136,12 +121,6 @@ namespace Crypto
         }
 
         uint8_t data[32];
-
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
-        }
 
         /* Initializes the class from a json string */
         void fromString(const std::string &s)
@@ -180,12 +159,6 @@ namespace Crypto
         bool operator!=(const PublicKey &other) const
         {
             return !(*this == other);
-        }
-
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
         }
 
         /* Initializes the class from a json string */
@@ -229,12 +202,6 @@ namespace Crypto
             return !(*this == other);
         }
 
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
-        }
-
         /* Initializes the class from a json string */
         void fromString(const std::string &s)
         {
@@ -274,12 +241,6 @@ namespace Crypto
         bool operator!=(const KeyDerivation &other) const
         {
             return !(*this == other);
-        }
-
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
         }
 
         /* Initializes the class from a json string */
@@ -323,12 +284,6 @@ namespace Crypto
             return !(*this == other);
         }
 
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
-        }
-
         /* Initializes the class from a json string */
         void fromString(const std::string &s)
         {
@@ -368,12 +323,6 @@ namespace Crypto
         bool operator!=(const Signature &other) const
         {
             return !(*this == other);
-        }
-
-        /* Converts the class to a json object */
-        void toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
-        {
-            writer.String(Common::podToHex(data));
         }
 
         /* Initializes the class from a json string */

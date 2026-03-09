@@ -8,7 +8,7 @@
 
 #include "common/PathTools.h"
 #include "common/Util.h"
-#include "rapidjson/stringbuffer.h"
+#include "json.hpp"
 
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
@@ -16,14 +16,8 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
+#include <iomanip>
 #include <logging/ILogger.h>
-#include <rapidjson/document.h>
-#include <rapidjson/istreamwrapper.h>
-#include <rapidjson/ostreamwrapper.h>
-#include <rapidjson/prettywriter.h>
-#include <rapidjson/writer.h>
-
-using namespace rapidjson;
 
 namespace DaemonConfig
 {
@@ -1286,29 +1280,31 @@ namespace DaemonConfig
                 "The --config-file you specified does not exist, please check the filename and try again.");
         }
 
-        IStreamWrapper isw(data);
-
-        Document j;
-        j.ParseStream(isw);
-
-        if (j.HasMember("data-dir"))
-        {
-            config.dataDirectory = j["data-dir"].GetString();
+        nlohmann::json j;
+        try {
+            j = nlohmann::json::parse(data);
+        } catch (const nlohmann::json::parse_error &) {
+            throw std::runtime_error("Failed to parse the config file as JSON.");
         }
 
-        if (j.HasMember("load-checkpoints"))
+        if (j.contains("data-dir"))
         {
-            config.checkPoints = j["load-checkpoints"].GetString();
+            config.dataDirectory = j["data-dir"].get<std::string>();
         }
 
-        if (j.HasMember("log-file"))
+        if (j.contains("load-checkpoints"))
         {
-            config.logFile = j["log-file"].GetString();
+            config.checkPoints = j["load-checkpoints"].get<std::string>();
         }
 
-        if (j.HasMember("log-level"))
+        if (j.contains("log-file"))
         {
-            config.logLevel = j["log-level"].GetInt();
+            config.logFile = j["log-file"].get<std::string>();
+        }
+
+        if (j.contains("log-level"))
+        {
+            config.logLevel = j["log-level"].get<int>();
         }
 
         config.dbMaxOpenFiles = CryptoNote::ROCKSDB_MAX_OPEN_FILES;
@@ -1316,400 +1312,353 @@ namespace DaemonConfig
         config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
         config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
-        if (j.HasMember("db-enable-compression"))
+        if (j.contains("db-enable-compression"))
         {
-            config.enableDbCompression = j["db-enable-compression"].GetBool();
+            config.enableDbCompression = j["db-enable-compression"].get<bool>();
         }
 
-        if (j.HasMember("no-console"))
+        if (j.contains("no-console"))
         {
-            config.noConsole = j["no-console"].GetBool();
+            config.noConsole = j["no-console"].get<bool>();
         }
 
-        if (j.HasMember("skip-boot-compaction"))
+        if (j.contains("skip-boot-compaction"))
         {
-            config.skipBootCompaction = j["skip-boot-compaction"].GetBool();
+            config.skipBootCompaction = j["skip-boot-compaction"].get<bool>();
         }
 
-        if (j.HasMember("db-max-open-files"))
+        if (j.contains("db-max-open-files"))
         {
-            config.dbMaxOpenFiles = j["db-max-open-files"].GetInt();
+            config.dbMaxOpenFiles = j["db-max-open-files"].get<int>();
         }
 
-        if (j.HasMember("db-read-buffer-size"))
+        if (j.contains("db-read-buffer-size"))
         {
-            config.dbReadCacheSizeMB = j["db-read-buffer-size"].GetInt();
+            config.dbReadCacheSizeMB = j["db-read-buffer-size"].get<int>();
         }
 
-        if (j.HasMember("db-threads"))
+        if (j.contains("db-threads"))
         {
-            config.dbThreads = j["db-threads"].GetInt();
+            config.dbThreads = j["db-threads"].get<int>();
         }
 
-        if (j.HasMember("db-write-buffer-size"))
+        if (j.contains("db-write-buffer-size"))
         {
-            config.dbWriteBufferSizeMB = j["db-write-buffer-size"].GetInt();
+            config.dbWriteBufferSizeMB = j["db-write-buffer-size"].get<int>();
         }
 
-        if (j.HasMember("allow-local-ip"))
+        if (j.contains("allow-local-ip"))
         {
-            config.localIp = j["allow-local-ip"].GetBool();
+            config.localIp = j["allow-local-ip"].get<bool>();
         }
 
-        if (j.HasMember("hide-my-port"))
+        if (j.contains("hide-my-port"))
         {
-            config.hideMyPort = j["hide-my-port"].GetBool();
+            config.hideMyPort = j["hide-my-port"].get<bool>();
         }
 
-        if (j.HasMember("p2p-bind-ip"))
+        if (j.contains("p2p-bind-ip"))
         {
-            config.p2pInterface = j["p2p-bind-ip"].GetString();
+            config.p2pInterface = j["p2p-bind-ip"].get<std::string>();
         }
 
-        if (j.HasMember("p2p-bind-port"))
+        if (j.contains("p2p-bind-port"))
         {
-            config.p2pPort = j["p2p-bind-port"].GetInt();
+            config.p2pPort = j["p2p-bind-port"].get<int>();
         }
 
-        if (j.HasMember("p2p-external-port"))
+        if (j.contains("p2p-external-port"))
         {
-            config.p2pExternalPort = j["p2p-external-port"].GetInt();
+            config.p2pExternalPort = j["p2p-external-port"].get<int>();
         }
 
-        if (j.HasMember("out-peers"))
+        if (j.contains("out-peers"))
         {
-            config.p2pOutPeers = std::max<uint32_t>(1, j["out-peers"].GetUint());
+            config.p2pOutPeers = std::max<uint32_t>(1, j["out-peers"].get<uint32_t>());
         }
 
-        if (j.HasMember("in-peers"))
+        if (j.contains("in-peers"))
         {
-            config.p2pInPeers = j["in-peers"].GetUint();
+            config.p2pInPeers = j["in-peers"].get<uint32_t>();
         }
 
-        if (j.HasMember("p2p-reset-peerstate"))
+        if (j.contains("p2p-reset-peerstate"))
         {
-            config.p2pResetPeerstate = j["p2p-reset-peerstate"].GetBool();
+            config.p2pResetPeerstate = j["p2p-reset-peerstate"].get<bool>();
         }
 
-        if (j.HasMember("p2p-bind-ipv6-address"))
+        if (j.contains("p2p-bind-ipv6-address"))
         {
-            config.p2pBindIpv6Address = j["p2p-bind-ipv6-address"].GetString();
+            config.p2pBindIpv6Address = j["p2p-bind-ipv6-address"].get<std::string>();
         }
 
-        if (j.HasMember("p2p-bind-port-ipv6"))
+        if (j.contains("p2p-bind-port-ipv6"))
         {
-            config.p2pBindPortIpv6 = j["p2p-bind-port-ipv6"].GetInt();
+            config.p2pBindPortIpv6 = j["p2p-bind-port-ipv6"].get<int>();
         }
 
-        if (j.HasMember("rpc-bind-ipv6-address"))
+        if (j.contains("rpc-bind-ipv6-address"))
         {
-            config.rpcBindIpv6Address = j["rpc-bind-ipv6-address"].GetString();
+            config.rpcBindIpv6Address = j["rpc-bind-ipv6-address"].get<std::string>();
         }
 
-        if (j.HasMember("rpc-use-ipv6"))
+        if (j.contains("rpc-use-ipv6"))
         {
-            config.rpcUseIpv6 = j["rpc-use-ipv6"].GetBool();
+            config.rpcUseIpv6 = j["rpc-use-ipv6"].get<bool>();
         }
 
-        if (j.HasMember("rpc-bind-ip"))
+        if (j.contains("rpc-bind-ip"))
         {
-            config.rpcInterface = j["rpc-bind-ip"].GetString();
+            config.rpcInterface = j["rpc-bind-ip"].get<std::string>();
         }
 
-        if (j.HasMember("rpc-bind-port"))
+        if (j.contains("rpc-bind-port"))
         {
-            config.rpcPort = j["rpc-bind-port"].GetInt();
+            config.rpcPort = j["rpc-bind-port"].get<int>();
         }
 
-        if (j.HasMember("add-exclusive-node"))
+        if (j.contains("add-exclusive-node") && j["add-exclusive-node"].is_array())
         {
-            const Value &va = j["add-exclusive-node"];
-            for (auto &v : va.GetArray())
+            for (const auto &v : j["add-exclusive-node"])
             {
-                config.exclusiveNodes.push_back(v.GetString());
+                config.exclusiveNodes.push_back(v.get<std::string>());
             }
         }
 
-        if (j.HasMember("add-peer"))
+        if (j.contains("add-peer") && j["add-peer"].is_array())
         {
-            const Value &va = j["add-peer"];
-            for (auto &v : va.GetArray())
+            for (const auto &v : j["add-peer"])
             {
-                config.peers.push_back(v.GetString());
+                config.peers.push_back(v.get<std::string>());
             }
         }
 
-        if (j.HasMember("add-priority-node"))
+        if (j.contains("add-priority-node") && j["add-priority-node"].is_array())
         {
-            const Value &va = j["add-priority-node"];
-            for (auto &v : va.GetArray())
+            for (const auto &v : j["add-priority-node"])
             {
-                config.priorityNodes.push_back(v.GetString());
+                config.priorityNodes.push_back(v.get<std::string>());
             }
         }
 
-        if (j.HasMember("seed-node"))
+        if (j.contains("seed-node") && j["seed-node"].is_array())
         {
-            const Value &va = j["seed-node"];
-            for (auto &v : va.GetArray())
+            for (const auto &v : j["seed-node"])
             {
-                config.seedNodes.push_back(v.GetString());
+                config.seedNodes.push_back(v.get<std::string>());
             }
         }
 
-        if (j.HasMember("daemon-mode"))
+        if (j.contains("daemon-mode"))
         {
-            config.daemonMode = normalizeDaemonMode(j["daemon-mode"].GetString());
+            config.daemonMode = normalizeDaemonMode(j["daemon-mode"].get<std::string>());
         }
 
-        if (j.HasMember("enable-cors"))
+        if (j.contains("enable-cors"))
         {
-            config.enableCors = j["enable-cors"].GetString();
+            config.enableCors = j["enable-cors"].get<std::string>();
         }
 
-        if (j.HasMember("fee-address"))
+        if (j.contains("fee-address"))
         {
             /* Deprecated: accepted for backward compatibility, ignored. */
         }
 
-        if (j.HasMember("fee-amount"))
+        if (j.contains("fee-amount"))
         {
             /* Deprecated: accepted for backward compatibility, ignored. */
         }
 
-        if (j.HasMember("rpc-access-token"))
+        if (j.contains("rpc-access-token"))
         {
-            config.rpcAccessToken = j["rpc-access-token"].GetString();
+            config.rpcAccessToken = j["rpc-access-token"].get<std::string>();
         }
 
-        if (j.HasMember("rpc-read-timeout"))
+        if (j.contains("rpc-read-timeout"))
         {
-            config.rpcReadTimeout = std::max<uint32_t>(1, j["rpc-read-timeout"].GetUint());
+            config.rpcReadTimeout = std::max<uint32_t>(1, j["rpc-read-timeout"].get<uint32_t>());
         }
 
-        if (j.HasMember("rpc-write-timeout"))
+        if (j.contains("rpc-write-timeout"))
         {
-            config.rpcWriteTimeout = std::max<uint32_t>(1, j["rpc-write-timeout"].GetUint());
+            config.rpcWriteTimeout = std::max<uint32_t>(1, j["rpc-write-timeout"].get<uint32_t>());
         }
 
-        if (j.HasMember("rpc-max-body-bytes"))
+        if (j.contains("rpc-max-body-bytes"))
         {
-            config.rpcMaxRequestBodyBytes = std::max<uint64_t>(1024, j["rpc-max-body-bytes"].GetUint64());
+            config.rpcMaxRequestBodyBytes = std::max<uint64_t>(1024, j["rpc-max-body-bytes"].get<uint64_t>());
         }
 
-        if (j.HasMember("rpc-max-rpm"))
+        if (j.contains("rpc-max-rpm"))
         {
-            config.rpcMaxRequestsPerMinute = j["rpc-max-rpm"].GetUint();
+            config.rpcMaxRequestsPerMinute = j["rpc-max-rpm"].get<uint32_t>();
         }
 
-        if (j.HasMember("rpc-max-global-index-range"))
+        if (j.contains("rpc-max-global-index-range"))
         {
-            config.rpcMaxGlobalIndexesRange = std::max<uint32_t>(100, j["rpc-max-global-index-range"].GetUint());
+            config.rpcMaxGlobalIndexesRange = std::max<uint32_t>(100, j["rpc-max-global-index-range"].get<uint32_t>());
         }
 
-        if (j.HasMember("rpc-max-block-count"))
+        if (j.contains("rpc-max-block-count"))
         {
-            config.rpcMaxBlockCount = std::max<uint32_t>(1, j["rpc-max-block-count"].GetUint());
+            config.rpcMaxBlockCount = std::max<uint32_t>(1, j["rpc-max-block-count"].get<uint32_t>());
         }
 
-        if (j.HasMember("rpc-trust-proxy"))
+        if (j.contains("rpc-trust-proxy"))
         {
-            config.rpcTrustProxy = j["rpc-trust-proxy"].GetBool();
+            config.rpcTrustProxy = j["rpc-trust-proxy"].get<bool>();
         }
 
-        if (j.HasMember("zmq-pub"))
+        if (j.contains("zmq-pub"))
         {
-            config.zmqPub = j["zmq-pub"].GetString();
+            config.zmqPub = j["zmq-pub"].get<std::string>();
         }
 
-        if (j.HasMember("no-zmq"))
+        if (j.contains("no-zmq"))
         {
-            config.noZmq = j["no-zmq"].GetBool();
+            config.noZmq = j["no-zmq"].get<bool>();
         }
 
-        if (j.HasMember("transaction-validation-threads"))
+        if (j.contains("transaction-validation-threads"))
         {
-            config.transactionValidationThreads = j["transaction-validation-threads"].GetInt();
+            config.transactionValidationThreads = j["transaction-validation-threads"].get<int>();
         }
 
-        if (j.HasMember("sync-max-peers"))
+        if (j.contains("sync-max-peers"))
         {
-            config.syncMaxPeers = std::max<uint32_t>(1, j["sync-max-peers"].GetUint());
+            config.syncMaxPeers = std::max<uint32_t>(1, j["sync-max-peers"].get<uint32_t>());
         }
 
-        if (j.HasMember("sync-peer-failure-threshold"))
+        if (j.contains("sync-peer-failure-threshold"))
         {
-            config.syncPeerFailureThreshold = std::max<uint32_t>(1, j["sync-peer-failure-threshold"].GetUint());
+            config.syncPeerFailureThreshold = std::max<uint32_t>(1, j["sync-peer-failure-threshold"].get<uint32_t>());
         }
 
-        if (j.HasMember("sync-batch-min"))
+        if (j.contains("sync-batch-min"))
         {
-            config.syncBatchMin = std::max<uint32_t>(1, j["sync-batch-min"].GetUint());
+            config.syncBatchMin = std::max<uint32_t>(1, j["sync-batch-min"].get<uint32_t>());
         }
 
-        if (j.HasMember("sync-batch-max"))
+        if (j.contains("sync-batch-max"))
         {
-            config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, j["sync-batch-max"].GetUint());
+            config.syncBatchMax = std::max<uint32_t>(config.syncBatchMin, j["sync-batch-max"].get<uint32_t>());
         }
 
-        if (j.HasMember("block-sync-size"))
+        if (j.contains("block-sync-size"))
         {
-            config.blockSyncSize = std::max<uint32_t>(1, j["block-sync-size"].GetUint());
+            config.blockSyncSize = std::max<uint32_t>(1, j["block-sync-size"].get<uint32_t>());
         }
 
-        if (j.HasMember("block-sync-bytes"))
+        if (j.contains("block-sync-bytes"))
         {
-            config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, j["block-sync-bytes"].GetUint64());
+            config.blockSyncBytes = std::max<uint64_t>(2 * 1024 * 1024, j["block-sync-bytes"].get<uint64_t>());
         }
 
-        if (j.HasMember("auto-prune-min-gap-blocks"))
+        if (j.contains("auto-prune-min-gap-blocks"))
         {
-            config.autoPruneMinGapBlocks = j["auto-prune-min-gap-blocks"].GetUint();
+            config.autoPruneMinGapBlocks = j["auto-prune-min-gap-blocks"].get<uint32_t>();
         }
 
-        if (j.HasMember("auto-compaction-min-gap-blocks"))
+        if (j.contains("auto-compaction-min-gap-blocks"))
         {
-            config.autoCompactionMinGapBlocks = j["auto-compaction-min-gap-blocks"].GetUint();
+            config.autoCompactionMinGapBlocks = j["auto-compaction-min-gap-blocks"].get<uint32_t>();
         }
 
-        if (j.HasMember("auto-prune-min-free-bytes"))
+        if (j.contains("auto-prune-min-free-bytes"))
         {
-            config.autoPruneMinFreeBytes = j["auto-prune-min-free-bytes"].GetUint64();
+            config.autoPruneMinFreeBytes = j["auto-prune-min-free-bytes"].get<uint64_t>();
         }
 
-        if (j.HasMember("auto-compaction-min-free-bytes"))
+        if (j.contains("auto-compaction-min-free-bytes"))
         {
-            config.autoCompactionMinFreeBytes = j["auto-compaction-min-free-bytes"].GetUint64();
+            config.autoCompactionMinFreeBytes = j["auto-compaction-min-free-bytes"].get<uint64_t>();
         }
 
-        if (j.HasMember("prune"))
+        if (j.contains("prune"))
         {
-            config.prune = j["prune"].GetBool();
+            config.prune = j["prune"].get<bool>();
         }
 
-        if (j.HasMember("prune-depth"))
+        if (j.contains("prune-depth"))
         {
-            config.pruneDepth = clampPruneDepth(j["prune-depth"].GetUint(), "config file");
+            config.pruneDepth = clampPruneDepth(j["prune-depth"].get<uint32_t>(), "config file");
         }
 
         config.syncMaxPeers = clampSyncMaxPeersToOutPeers(config.syncMaxPeers, config.p2pOutPeers, "config file");
     }
 
-    Document asJSON(const DaemonConfiguration &config)
+    nlohmann::json asJSON(const DaemonConfiguration &config)
     {
-        Document j;
-        j.SetObject();
-        Document::AllocatorType &alloc = j.GetAllocator();
+        nlohmann::json j;
 
-        j.AddMember("data-dir", config.dataDirectory, alloc);
-        j.AddMember("load-checkpoints", config.checkPoints, alloc);
-        j.AddMember("log-file", config.logFile, alloc);
-        j.AddMember("log-level", config.logLevel, alloc);
-        j.AddMember("no-console", config.noConsole, alloc);
-        j.AddMember("skip-boot-compaction", config.skipBootCompaction, alloc);
-        j.AddMember("db-enable-compression", config.enableDbCompression, alloc);
-        j.AddMember("db-max-open-files", config.dbMaxOpenFiles, alloc);
-        j.AddMember("db-read-buffer-size", config.dbReadCacheSizeMB, alloc);
-        j.AddMember("db-threads", config.dbThreads, alloc);
-        j.AddMember("db-write-buffer-size", config.dbWriteBufferSizeMB, alloc);
-        j.AddMember("allow-local-ip", config.localIp, alloc);
-        j.AddMember("hide-my-port", config.hideMyPort, alloc);
-        j.AddMember("p2p-bind-ip", config.p2pInterface, alloc);
-        j.AddMember("p2p-bind-port", config.p2pPort, alloc);
-        j.AddMember("p2p-external-port", config.p2pExternalPort, alloc);
-        j.AddMember("out-peers", config.p2pOutPeers, alloc);
-        j.AddMember("in-peers", config.p2pInPeers, alloc);
-        j.AddMember("p2p-reset-peerstate", config.p2pResetPeerstate, alloc);
-        j.AddMember("p2p-bind-ipv6-address", config.p2pBindIpv6Address, alloc);
-        j.AddMember("p2p-bind-port-ipv6", config.p2pBindPortIpv6, alloc);
-        j.AddMember("rpc-bind-ipv6-address", config.rpcBindIpv6Address, alloc);
-        j.AddMember("rpc-use-ipv6", config.rpcUseIpv6, alloc);
-        j.AddMember("rpc-bind-ip", config.rpcInterface, alloc);
-        j.AddMember("rpc-bind-port", config.rpcPort, alloc);
-
-        {
-            Value arr(rapidjson::kArrayType);
-            for (auto v : config.exclusiveNodes)
-            {
-                arr.PushBack(Value().SetString(StringRef(v.c_str())), alloc);
-            }
-            j.AddMember("add-exclusive-node", arr, alloc);
-        }
-
-        {
-            Value arr(rapidjson::kArrayType);
-            for (auto v : config.peers)
-            {
-                arr.PushBack(Value().SetString(StringRef(v.c_str())), alloc);
-            }
-            j.AddMember("add-peer", arr, alloc);
-        }
-
-        {
-            Value arr(rapidjson::kArrayType);
-            for (auto v : config.priorityNodes)
-            {
-                arr.PushBack(Value().SetString(StringRef(v.c_str())), alloc);
-            }
-            j.AddMember("add-priority-node", arr, alloc);
-        }
-
-        {
-            Value arr(rapidjson::kArrayType);
-            for (auto v : config.seedNodes)
-            {
-                arr.PushBack(Value().SetString(StringRef(v.c_str())), alloc);
-            }
-            j.AddMember("seed-node", arr, alloc);
-        }
-
-        j.AddMember("enable-cors", config.enableCors, alloc);
-        j.AddMember("daemon-mode", Value().SetString(StringRef(config.daemonMode.c_str())), alloc);
-        j.AddMember("rpc-access-token", config.rpcAccessToken, alloc);
-        j.AddMember("rpc-read-timeout", config.rpcReadTimeout, alloc);
-        j.AddMember("rpc-write-timeout", config.rpcWriteTimeout, alloc);
-        j.AddMember("rpc-max-body-bytes", config.rpcMaxRequestBodyBytes, alloc);
-        j.AddMember("rpc-max-rpm", config.rpcMaxRequestsPerMinute, alloc);
-        j.AddMember("rpc-max-global-index-range", config.rpcMaxGlobalIndexesRange, alloc);
-        j.AddMember("rpc-max-block-count", config.rpcMaxBlockCount, alloc);
-        j.AddMember("rpc-trust-proxy", config.rpcTrustProxy, alloc);
-        j.AddMember("zmq-pub", config.zmqPub, alloc);
-        j.AddMember("no-zmq", config.noZmq, alloc);
-        j.AddMember("transaction-validation-threads", config.transactionValidationThreads, alloc);
-        j.AddMember("prune", config.prune, alloc);
-        j.AddMember("prune-depth", config.pruneDepth, alloc);
-        j.AddMember("sync-max-peers", config.syncMaxPeers, alloc);
-        j.AddMember("sync-peer-failure-threshold", config.syncPeerFailureThreshold, alloc);
-        j.AddMember("sync-batch-min", config.syncBatchMin, alloc);
-        j.AddMember("sync-batch-max", config.syncBatchMax, alloc);
-        j.AddMember("block-sync-size", config.blockSyncSize, alloc);
-        j.AddMember("block-sync-bytes", config.blockSyncBytes, alloc);
-        j.AddMember("auto-prune-min-gap-blocks", config.autoPruneMinGapBlocks, alloc);
-        j.AddMember("auto-compaction-min-gap-blocks", config.autoCompactionMinGapBlocks, alloc);
-        j.AddMember("auto-prune-min-free-bytes", config.autoPruneMinFreeBytes, alloc);
-        j.AddMember("auto-compaction-min-free-bytes", config.autoCompactionMinFreeBytes, alloc);
+        j["data-dir"] = config.dataDirectory;
+        j["load-checkpoints"] = config.checkPoints;
+        j["log-file"] = config.logFile;
+        j["log-level"] = config.logLevel;
+        j["no-console"] = config.noConsole;
+        j["skip-boot-compaction"] = config.skipBootCompaction;
+        j["db-enable-compression"] = config.enableDbCompression;
+        j["db-max-open-files"] = config.dbMaxOpenFiles;
+        j["db-read-buffer-size"] = config.dbReadCacheSizeMB;
+        j["db-threads"] = config.dbThreads;
+        j["db-write-buffer-size"] = config.dbWriteBufferSizeMB;
+        j["allow-local-ip"] = config.localIp;
+        j["hide-my-port"] = config.hideMyPort;
+        j["p2p-bind-ip"] = config.p2pInterface;
+        j["p2p-bind-port"] = config.p2pPort;
+        j["p2p-external-port"] = config.p2pExternalPort;
+        j["out-peers"] = config.p2pOutPeers;
+        j["in-peers"] = config.p2pInPeers;
+        j["p2p-reset-peerstate"] = config.p2pResetPeerstate;
+        j["p2p-bind-ipv6-address"] = config.p2pBindIpv6Address;
+        j["p2p-bind-port-ipv6"] = config.p2pBindPortIpv6;
+        j["rpc-bind-ipv6-address"] = config.rpcBindIpv6Address;
+        j["rpc-use-ipv6"] = config.rpcUseIpv6;
+        j["rpc-bind-ip"] = config.rpcInterface;
+        j["rpc-bind-port"] = config.rpcPort;
+        j["add-exclusive-node"] = config.exclusiveNodes;
+        j["add-peer"] = config.peers;
+        j["add-priority-node"] = config.priorityNodes;
+        j["seed-node"] = config.seedNodes;
+        j["enable-cors"] = config.enableCors;
+        j["daemon-mode"] = config.daemonMode;
+        j["rpc-access-token"] = config.rpcAccessToken;
+        j["rpc-read-timeout"] = config.rpcReadTimeout;
+        j["rpc-write-timeout"] = config.rpcWriteTimeout;
+        j["rpc-max-body-bytes"] = config.rpcMaxRequestBodyBytes;
+        j["rpc-max-rpm"] = config.rpcMaxRequestsPerMinute;
+        j["rpc-max-global-index-range"] = config.rpcMaxGlobalIndexesRange;
+        j["rpc-max-block-count"] = config.rpcMaxBlockCount;
+        j["rpc-trust-proxy"] = config.rpcTrustProxy;
+        j["zmq-pub"] = config.zmqPub;
+        j["no-zmq"] = config.noZmq;
+        j["transaction-validation-threads"] = config.transactionValidationThreads;
+        j["prune"] = config.prune;
+        j["prune-depth"] = config.pruneDepth;
+        j["sync-max-peers"] = config.syncMaxPeers;
+        j["sync-peer-failure-threshold"] = config.syncPeerFailureThreshold;
+        j["sync-batch-min"] = config.syncBatchMin;
+        j["sync-batch-max"] = config.syncBatchMax;
+        j["block-sync-size"] = config.blockSyncSize;
+        j["block-sync-bytes"] = config.blockSyncBytes;
+        j["auto-prune-min-gap-blocks"] = config.autoPruneMinGapBlocks;
+        j["auto-compaction-min-gap-blocks"] = config.autoCompactionMinGapBlocks;
+        j["auto-prune-min-free-bytes"] = config.autoPruneMinFreeBytes;
+        j["auto-compaction-min-free-bytes"] = config.autoCompactionMinFreeBytes;
 
         return j;
     }
 
     std::string asString(const DaemonConfiguration &config)
     {
-        StringBuffer stringBuffer;
-        PrettyWriter<StringBuffer> writer(stringBuffer);
-
-        Document j = asJSON(config);
-        j.Accept(writer);
-
-        return stringBuffer.GetString();
+        nlohmann::json j = asJSON(config);
+        return j.dump(2);
     }
 
     void asFile(const DaemonConfiguration &config, const std::string &filename)
     {
-        Document j = asJSON(config);
+        nlohmann::json j = asJSON(config);
         std::ofstream data(filename);
-        OStreamWrapper osw(data);
-
-        PrettyWriter<OStreamWrapper> writer(osw);
-        j.Accept(writer);
+        data << std::setw(2) << j;
     }
 } // namespace DaemonConfig

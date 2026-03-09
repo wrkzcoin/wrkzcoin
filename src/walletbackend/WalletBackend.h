@@ -6,7 +6,7 @@
 #pragma once
 
 #include "CryptoTypes.h"
-#include "rapidjson/document.h"
+#include "JsonHelper.h"
 
 #include <errors/Errors.h>
 #include <nigel/Nigel.h>
@@ -130,12 +130,12 @@ class WalletBackend
     std::string toJSON() const;
 
     /* Initializes the class from a json string */
-    Error fromJSON(const rapidjson::Document &j);
+    Error fromJSON(const nlohmann::json &j);
 
     /* Initializes the class from a json string, and inits the stuff we
        can't init from the json */
     Error fromJSON(
-        const rapidjson::Document &j,
+        const nlohmann::json &j,
         const std::string filename,
         const std::string password,
         const std::string daemonHost,
@@ -171,17 +171,19 @@ class WalletBackend
         const bool sendAll = false,
         const bool sendTransaction = true);
 
-    /* Send a fusion using default mixin, default destination, and
-       taking from all subwallets */
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionBasic();
+    /* Sweep all (or a specific amount) to destination in multiple transactions.
+       amountToSweep = 0 sweeps the entire unlocked balance.
+       Returns one (Error, Hash) tuple per transaction sent. */
+    std::vector<std::tuple<Error, Crypto::Hash>> sweepToAddress(
+        const std::string destination,
+        const std::string paymentID,
+        const uint64_t amountToSweep = 0);
 
-    /* Send a fusion with advanced options */
-    std::tuple<Error, Crypto::Hash> sendFusionTransactionAdvanced(
-        const uint64_t mixin,
-        const std::vector<std::string> subWalletsToTakeFrom,
-        const std::string destinationAddress,
-        const std::vector<uint8_t> extraData,
-        const std::optional<uint64_t> optimizeTarget);
+    /* Estimate how many transactions sweep would produce and the total fee.
+       Returns {txCount, totalEstimatedFee}. Does not send anything. */
+    std::tuple<size_t, uint64_t> estimateSweep(
+        const std::string paymentID,
+        const uint64_t amountToSweep = 0) const;
 
     /* Get the balance for one subwallet (error, unlocked, locked) */
     std::tuple<Error, uint64_t, uint64_t> getBalance(const std::string address) const;

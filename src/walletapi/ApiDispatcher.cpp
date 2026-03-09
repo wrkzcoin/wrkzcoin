@@ -75,8 +75,10 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
     using namespace std::placeholders;
 
     /* Route the request through our middleware function, before forwarding
-       to the specified function */
-    const auto router = [this](const auto function, const WalletState walletState, const bool viewWalletPermitted) {
+       to the specified function.
+       isWriteOperation=true: exclusive lock (reassigns m_walletBackend).
+       isWriteOperation=false (default): shared lock (concurrent reads/sends). */
+    const auto router = [this](const auto function, const WalletState walletState, const bool viewWalletPermitted, const bool isWriteOperation = false) {
         return [=](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
@@ -85,28 +87,32 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
                 res,
                 walletState,
                 viewWalletPermitted,
+                isWriteOperation,
                 std::bind(function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
         };
     };
+
+    const bool writeOp = true;
 
     const bool viewWalletsAllowed = true;
     const bool viewWalletsBanned = false;
 
     /* POST */
     srv
-        .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed))
+        /* Wallet lifecycle — reassign m_walletBackend, need exclusive lock */
+        .Post("/wallet/open", router(&ApiDispatcher::openWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import wallet with keys */
-        .Post("/wallet/import/key", router(&ApiDispatcher::keyImportWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/key", router(&ApiDispatcher::keyImportWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import wallet with seed */
-        .Post("/wallet/import/seed", router(&ApiDispatcher::seedImportWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/seed", router(&ApiDispatcher::seedImportWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Import view wallet */
-        .Post("/wallet/import/view", router(&ApiDispatcher::importViewWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/import/view", router(&ApiDispatcher::importViewWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Create wallet */
-        .Post("/wallet/create", router(&ApiDispatcher::createWallet, WalletMustBeClosed, viewWalletsAllowed))
+        .Post("/wallet/create", router(&ApiDispatcher::createWallet, WalletMustBeClosed, viewWalletsAllowed, writeOp))
 
         /* Create a random address */
         .Post("/addresses/create", router(&ApiDispatcher::createAddress, WalletMustBeOpen, viewWalletsBanned))
@@ -148,24 +154,25 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
             "/transactions/send/advanced",
             router(&ApiDispatcher::sendAdvancedTransaction, WalletMustBeOpen, viewWalletsBanned))
 
-        /* Send a fusion transaction */
+        /* Sweep a specific amount across multiple transactions */
         .Post(
-            "/transactions/send/fusion/basic",
-            router(&ApiDispatcher::sendBasicFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
+            "/transactions/send/sweep",
+            router(&ApiDispatcher::sendSweepTransaction, WalletMustBeOpen, viewWalletsBanned))
 
-        /* Send a fusion transaction, more parameters specified */
+        /* Sweep entire balance across multiple transactions */
         .Post(
-            "/transactions/send/fusion/advanced",
-            router(&ApiDispatcher::sendAdvancedFusionTransaction, WalletMustBeOpen, viewWalletsBanned))
+            "/transactions/send/sweep/all",
+            router(&ApiDispatcher::sendSweepAllTransaction, WalletMustBeOpen, viewWalletsBanned))
 
+        /* File export — concurrent calls would race writing the same file */
         .Post(
             "/export/json",
-            router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed))
+            router(&ApiDispatcher::exportToJSON, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* DELETE */
 
-        /* Close the current wallet */
-        .Delete("/wallet", router(&ApiDispatcher::closeWallet, WalletMustBeOpen, viewWalletsAllowed))
+        /* Close the current wallet — sets m_walletBackend=nullptr, need exclusive lock */
+        .Delete("/wallet", router(&ApiDispatcher::closeWallet, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* Delete the given address */
         .Delete(
@@ -185,11 +192,11 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
         /* Reset the wallet from zero, or given scan height */
         .Put("/reset", router(&ApiDispatcher::resetWallet, WalletMustBeOpen, viewWalletsAllowed))
 
-        /* Swap node details */
-        .Put("/node", router(&ApiDispatcher::setNodeInfo, WalletMustBeOpen, viewWalletsAllowed))
+        /* Swap node details — modifies daemon connection, need exclusive lock */
+        .Put("/node", router(&ApiDispatcher::setNodeInfo, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
-        /* Force wallet sync reconnect */
-        .Put("/sync/refresh", router(&ApiDispatcher::refreshSync, WalletMustBeOpen, viewWalletsAllowed))
+        /* Force wallet sync reconnect — modifies sync state, need exclusive lock */
+        .Put("/sync/refresh", router(&ApiDispatcher::refreshSync, WalletMustBeOpen, viewWalletsAllowed, writeOp))
 
         /* GET */
 
@@ -335,9 +342,24 @@ void ApiDispatcher::middleware(
     httplib::Response &res,
     const WalletState walletState,
     const bool viewWalletPermitted,
+    const bool isWriteOperation,
     std::function<std::tuple<Error, uint16_t>(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)> handler)
 {
-    std::scoped_lock lock(m_mutex);
+    /* Write operations (open/create/close wallet) take an exclusive lock so
+       that m_walletBackend can be safely reassigned. Everything else — reads,
+       address ops, tx sends — takes a shared lock, allowing concurrency.
+       Transaction sends are further serialized by WalletBackend's own mutex. */
+    std::unique_lock<std::shared_mutex> writeLock(m_mutex, std::defer_lock);
+    std::shared_lock<std::shared_mutex> readLock(m_mutex, std::defer_lock);
+
+    if (isWriteOperation)
+    {
+        writeLock.lock();
+    }
+    else
+    {
+        readLock.lock();
+    }
 
     std::cout << "Incoming " << req.method << " request: " << req.path << std::endl;
 
@@ -916,93 +938,92 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
 }
 
 std::tuple<Error, uint16_t>
-    ApiDispatcher::sendBasicFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+    ApiDispatcher::sendSweepTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    auto [error, hash] = m_walletBackend->sendFusionTransactionBasic();
+    const std::string destination = getJsonValue<std::string>(body, "destination");
 
-    if (error)
+    std::string paymentID;
+    if (body.find("paymentID") != body.end())
     {
-        return {error, 400};
+        paymentID = getJsonValue<std::string>(body, "paymentID");
     }
 
-    nlohmann::json j {{"transactionHash", hash}};
-
-    res.set_content(j.dump(4) + "\n", "application/json");
-
-    return {SUCCESS, 201};
-}
-
-std::tuple<Error, uint16_t>
-    ApiDispatcher::sendAdvancedFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
-{
-    std::string destination;
-
-    if (body.find("destination") != body.end())
+    uint64_t amount = 0;
+    if (body.find("amount") != body.end())
     {
-        destination = getJsonValue<std::string>(body, "destination");
-    }
-    else
-    {
-        destination = m_walletBackend->getPrimaryAddress();
+        amount = getJsonValue<uint64_t>(body, "amount");
     }
 
-    uint64_t mixin;
+    const auto results = m_walletBackend->sweepToAddress(destination, paymentID, amount);
 
-    if (body.find("mixin") != body.end())
+    nlohmann::json txArray = nlohmann::json::array();
+
+    for (const auto &[error, hash] : results)
     {
-        mixin = getJsonValue<uint64_t>(body, "mixin");
-    }
-    else
-    {
-        /* Get the default mixin */
-        std::tie(std::ignore, std::ignore, mixin) =
-            Utilities::getMixinAllowableRange(m_walletBackend->getStatus().networkBlockCount);
-    }
-
-    std::vector<std::string> subWalletsToTakeFrom;
-
-    if (body.find("sourceAddresses") != body.end())
-    {
-        subWalletsToTakeFrom = getJsonValue<std::vector<std::string>>(body, "sourceAddresses");
-    }
-
-    std::vector<uint8_t> extraData;
-
-    if (body.find("extra") != body.end())
-    {
-        std::string extra = getJsonValue<std::string>(body, "extra");
-
-        if (!Common::fromHex(extra, extraData))
+        if (error)
         {
-            return {INVALID_EXTRA_DATA, 400};
+            txArray.push_back({
+                {"success", false},
+                {"errorCode", error.getErrorCode()},
+                {"errorMessage", error.getErrorMessage()}
+            });
+        }
+        else
+        {
+            txArray.push_back({
+                {"success", true},
+                {"transactionHash", hash}
+            });
         }
     }
 
-    std::optional<uint64_t> optimizeTarget;
-
-    if (body.find("optimizeTarget") != body.end())
-    {
-        optimizeTarget = getJsonValue<uint64_t>(body, "optimizeTarget");
-    }
-
-    auto [error, hash] = m_walletBackend->sendFusionTransactionAdvanced(
-        mixin,
-        subWalletsToTakeFrom,
-        destination,
-        extraData,
-        optimizeTarget
-    );
-
-    if (error)
-    {
-        return {error, 400};
-    }
-
-    nlohmann::json j {{"transactionHash", hash}};
+    nlohmann::json j {{"transactions", txArray}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 
-    return {SUCCESS, 201};
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t>
+    ApiDispatcher::sendSweepAllTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
+{
+    const std::string destination = getJsonValue<std::string>(body, "destination");
+
+    std::string paymentID;
+    if (body.find("paymentID") != body.end())
+    {
+        paymentID = getJsonValue<std::string>(body, "paymentID");
+    }
+
+    /* amountToSweep = 0 means sweep entire balance */
+    const auto results = m_walletBackend->sweepToAddress(destination, paymentID, 0);
+
+    nlohmann::json txArray = nlohmann::json::array();
+
+    for (const auto &[error, hash] : results)
+    {
+        if (error)
+        {
+            txArray.push_back({
+                {"success", false},
+                {"errorCode", error.getErrorCode()},
+                {"errorMessage", error.getErrorMessage()}
+            });
+        }
+        else
+        {
+            txArray.push_back({
+                {"success", true},
+                {"transactionHash", hash}
+            });
+        }
+    }
+
+    nlohmann::json j {{"transactions", txArray}};
+
+    res.set_content(j.dump(4) + "\n", "application/json");
+
+    return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t>

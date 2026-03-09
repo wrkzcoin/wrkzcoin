@@ -13,8 +13,7 @@
 
 #include "httplib.h"
 #include "JsonHelper.h"
-#include "rapidjson/stringbuffer.h"
-#include "rapidjson/writer.h"
+#include "json.hpp"
 
 #include <cryptonotecore/Core.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
@@ -82,7 +81,7 @@ class RpcServer
     /* Registers all HTTP routes on the given server instance */
     void setupRoutes(httplib::Server &srv);
 
-    std::optional<rapidjson::Document> getJsonBody(
+    std::optional<nlohmann::json> getJsonBody(
         const httplib::Request &req,
         httplib::Response &res,
         const bool bodyRequired);
@@ -97,7 +96,7 @@ class RpcServer
         std::function<std::tuple<Error, uint16_t>(
             const httplib::Request &req,
             httplib::Response &res,
-            const rapidjson::Document &body)> handler);
+            const nlohmann::json &body)> handler);
 
     void failRequest(uint16_t statusCode, std::string body, httplib::Response &res);
 
@@ -121,85 +120,85 @@ class RpcServer
     //////////////////
 
     std::tuple<Error, uint16_t>
-        info(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        info(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        height(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        height(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        peers(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        peers(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     ///////////////////
     /* POST REQUESTS */
     ///////////////////
 
     std::tuple<Error, uint16_t>
-        sendTransaction(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        sendTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getRandomOuts(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getRandomOuts(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getWalletSyncData(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getWalletSyncData(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getGlobalIndexes(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getGlobalIndexes(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        queryBlocksLite(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        queryBlocksLite(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getTransactionsStatus(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getTransactionsStatus(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getPoolChanges(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getPoolChanges(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        queryBlocksDetailed(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        queryBlocksDetailed(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     /* Deprecated. Use getGlobalIndexes instead. */
     std::tuple<Error, uint16_t>
-        getGlobalIndexesDeprecated(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getGlobalIndexesDeprecated(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getRawBlocks(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getRawBlocks(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     ///////////////////////
     /* JSON RPC REQUESTS */
     ///////////////////////
 
     std::tuple<Error, uint16_t>
-        getBlockTemplate(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockTemplate(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        submitBlock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        submitBlock(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlockCount(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockCount(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlockHashForHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockHashForHeight(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getLastBlockHeader(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getLastBlockHeader(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlockHeaderByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockHeaderByHash(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlockHeaderByHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockHeaderByHeight(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlocksByHeight(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlocksByHeight(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getBlockDetailsByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getBlockDetailsByHash(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getTransactionDetailsByHash(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getTransactionDetailsByHash(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        getTransactionsInPool(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        getTransactionsInPool(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     //////////////////////////////
     /* Private member variables */

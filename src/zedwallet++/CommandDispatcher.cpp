@@ -12,7 +12,6 @@
 #include <utilities/Input.h>
 #include <zedwallet++/AddressBook.h>
 #include <zedwallet++/CommandImplementations.h>
-#include <zedwallet++/Fusion.h>
 #include <zedwallet++/Open.h>
 #include <zedwallet++/Transfer.h>
 #include <zedwallet++/Utilities.h>
@@ -141,21 +140,6 @@ bool handleCommand(
 
         listTransfersVerbose(printIncoming, printOutgoing, walletBackend);
     }
-    else if (command == "optimize")
-    {
-        std::cout << "Attempting to optimize your wallet to allow you to "
-                     "send large amounts at once.\n"
-                  << WarningMsg("This may take a very long time!\n");
-
-        if (!Utilities::confirm("Do you want to proceed?"))
-        {
-            std::cout << WarningMsg("Cancelling optimization.") << std::endl;
-        }
-        else
-        {
-            optimize(walletBackend);
-        }
-    }
     else if (command == "outgoing_transfers")
     {
         const bool printIncoming = false;
@@ -187,6 +171,18 @@ bool handleCommand(
         const bool sendAll = true;
 
         transfer(walletBackend, sendAll);
+    }
+    else if (command == "sweep")
+    {
+        const bool sweepAll = false;
+
+        sweep(walletBackend, sweepAll);
+    }
+    else if (command == "sweep_all")
+    {
+        const bool sweepAll = true;
+
+        sweep(walletBackend, sweepAll);
     }
     else if (command == "set_log_level")
     {

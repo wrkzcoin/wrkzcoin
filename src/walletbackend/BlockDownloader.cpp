@@ -6,6 +6,7 @@
 #include <walletbackend/BlockDownloader.h>
 //////////////////////////////////////////
 
+#include <JsonHelper.h>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
 #include <logger/Logger.h>
@@ -318,9 +319,9 @@ void BlockDownloader::fromJSON(const JSONObject &j, const uint64_t startHeight, 
     m_startTimestamp = startTimestamp;
 }
 
-void BlockDownloader::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+nlohmann::json BlockDownloader::toJSON() const
 {
-    m_synchronizationStatus.toJSON(writer);
+    return m_synchronizationStatus.toJSON();
 }
 
 void BlockDownloader::setSubWallets(const std::shared_ptr<SubWallets> subWallets)

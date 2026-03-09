@@ -7,6 +7,8 @@
 #include <subwallets/SubWallet.h>
 /////////////////////////////////
 
+#include <JsonHelper.h>
+#include <common/StringTools.h>
 #include <config/Constants.h>
 #include <logger/Logger.h>
 #include <utilities/Utilities.h>
@@ -533,9 +535,9 @@ std::vector<Crypto::KeyImage> SubWallet::getKeyImages() const
     return result;
 }
 
-void SubWallet::fromJSON(const JSONValue &j)
+void SubWallet::fromJSON(const nlohmann::json &j)
 {
-    if (j.HasMember("walletIndex"))
+    if (j.contains("walletIndex"))
     {
         m_walletIndex = getUint64FromJSON(j, "walletIndex");
     }
@@ -572,50 +574,46 @@ void SubWallet::fromJSON(const JSONValue &j)
     }
 }
 
-void SubWallet::toJSON(rapidjson::Writer<rapidjson::StringBuffer> &writer) const
+nlohmann::json SubWallet::toJSON() const
 {
-    writer.StartObject();
-    writer.Key("walletIndex");
-    writer.Uint64(m_walletIndex);
-    writer.Key("publicSpendKey");
-    m_publicSpendKey.toJSON(writer);
-    writer.Key("privateSpendKey");
-    m_privateSpendKey.toJSON(writer);
-    writer.Key("address");
-    writer.String(m_address);
-    writer.Key("syncStartTimestamp");
-    writer.Uint64(m_syncStartTimestamp);
-    writer.Key("unspentInputs");
-    writer.StartArray();
+    nlohmann::json j;
+
+    j["walletIndex"]        = m_walletIndex;
+    j["publicSpendKey"]     = Common::podToHex(m_publicSpendKey.data);
+    j["privateSpendKey"]    = Common::podToHex(m_privateSpendKey.data);
+    j["address"]            = m_address;
+    j["syncStartTimestamp"] = m_syncStartTimestamp;
+
+    nlohmann::json unspent = nlohmann::json::array();
     for (const auto &input : m_unspentInputs)
     {
-        input.toJSON(writer);
+        unspent.push_back(input.toJSON());
     }
-    writer.EndArray();
-    writer.Key("lockedInputs");
-    writer.StartArray();
+    j["unspentInputs"] = unspent;
+
+    nlohmann::json locked = nlohmann::json::array();
     for (const auto &input : m_lockedInputs)
     {
-        input.toJSON(writer);
+        locked.push_back(input.toJSON());
     }
-    writer.EndArray();
-    writer.Key("spentInputs");
-    writer.StartArray();
+    j["lockedInputs"] = locked;
+
+    nlohmann::json spent = nlohmann::json::array();
     for (const auto &input : m_spentInputs)
     {
-        input.toJSON(writer);
+        spent.push_back(input.toJSON());
     }
-    writer.EndArray();
-    writer.Key("syncStartHeight");
-    writer.Uint64(m_syncStartHeight);
-    writer.Key("isPrimaryAddress");
-    writer.Bool(m_isPrimaryAddress);
-    writer.Key("unconfirmedIncomingAmounts");
-    writer.StartArray();
+    j["spentInputs"] = spent;
+
+    j["syncStartHeight"]  = m_syncStartHeight;
+    j["isPrimaryAddress"] = m_isPrimaryAddress;
+
+    nlohmann::json unconfirmed = nlohmann::json::array();
     for (const auto &amount : m_unconfirmedIncomingAmounts)
     {
-        amount.toJSON(writer);
+        unconfirmed.push_back(amount.toJSON());
     }
-    writer.EndArray();
-    writer.EndObject();
+    j["unconfirmedIncomingAmounts"] = unconfirmed;
+
+    return j;
 }

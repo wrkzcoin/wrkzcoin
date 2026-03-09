@@ -55,6 +55,8 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("transfer", "[Transactions] Send " + WalletConfig::ticker + " to someone", false, false),
         AdvancedCommand("ab_send", "[Transactions / Address Book] Send " + WalletConfig::ticker + " to someone in your address book", false, true),
         AdvancedCommand("send_all", "[Transactions] Send all your balance to someone", false, true),
+        AdvancedCommand("sweep", "[Transactions] Sweep a specific amount to an address in multiple transactions (no fusion)", false, true),
+        AdvancedCommand("sweep_all", "[Transactions] Sweep entire balance to an address in multiple transactions (no fusion)", false, true),
         AdvancedCommand("get_tx_private_key", "[Transactions] Get the private key of a transaction", true, true),
         AdvancedCommand("check_tx", "[Transactions] Check wallet + node status for a tx hash (use: check_tx <hash>)", true, true),
         AdvancedCommand("decode_integrated", "[Transactions] Decode integrated address to standard address + payment ID", true, true),
@@ -66,7 +68,6 @@ std::vector<AdvancedCommand> allCommands()
         AdvancedCommand("change_password", "[Security] Change your wallet password", true, true),
         AdvancedCommand("save", "[Maintenance] Save your wallet state", true, true),
         AdvancedCommand("save_csv", "[Export] Save all wallet transactions to a CSV file", true, true),
-        AdvancedCommand("optimize", "[Maintenance] Optimize your wallet to send large amounts", false, true),
         AdvancedCommand("reset", "[Maintenance] Recheck the chain from zero for transactions", true, true),
         AdvancedCommand("set_log_level", "[Maintenance] Alter the logging level", true, true),
     };

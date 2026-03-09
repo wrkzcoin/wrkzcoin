@@ -8,6 +8,8 @@
 #include "httplib.h"
 
 #include <cryptopp/modes.h>
+#include <mutex>
+#include <shared_mutex>
 #include <walletbackend/WalletBackend.h>
 
 enum WalletState
@@ -76,12 +78,15 @@ class ApiDispatcher
     //////////////////////////////
 
     /* Check authentication and log, then forward on to the handler if
-       applicable */
+       applicable. isWriteOperation=true takes an exclusive lock (used only
+       for handlers that reassign m_walletBackend, i.e. open/create/close).
+       All other handlers use a shared lock, allowing concurrent reads. */
     void middleware(
         const httplib::Request &req,
         httplib::Response &res,
         const WalletState walletState,
         const bool viewWalletsPermitted,
+        const bool isWriteOperation,
         std::function<std::tuple<Error, uint16_t>(
             const httplib::Request &req,
             httplib::Response &res,
@@ -163,13 +168,13 @@ class ApiDispatcher
     std::tuple<Error, uint16_t>
         makeAdvancedTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body, const bool sendTransaction);
 
-    /* Send a basic fusion transaction */
+    /* Sweep a specific amount to an address in multiple transactions */
     std::tuple<Error, uint16_t>
-        sendBasicFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+        sendSweepTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
-    /* Send a more customizable fusion transaction */
+    /* Sweep the entire balance to an address in multiple transactions */
     std::tuple<Error, uint16_t>
-        sendAdvancedFusionTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+        sendSweepAllTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     /* Export wallet to file in JSON format */
     std::tuple<Error, uint16_t>
@@ -353,9 +358,11 @@ class ApiDispatcher
     /* The rpc password - only stored to help indicate invalid passwords */
     std::string m_rpcPassword;
 
-    /* Need a mutex for some actions, mainly mutating actions, like opening
-       wallets, sending transfers, etc */
-    mutable std::recursive_mutex m_mutex;
+    /* Shared mutex: concurrent readers hold shared_lock; handlers that
+       reassign m_walletBackend (open/create/close) hold unique_lock.
+       Transaction sends are serialized internally by WalletBackend's own
+       m_transactionMutex, so they only need a shared_lock here. */
+    mutable std::shared_mutex m_mutex;
 
     /* The server host (IPv4) */
     std::string m_host;
