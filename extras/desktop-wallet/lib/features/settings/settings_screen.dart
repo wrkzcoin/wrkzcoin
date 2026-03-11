@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/auth/wallet_auth.dart';
@@ -431,36 +433,47 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               _SectionHeader(title: 'Debug & Logs', icon: Icons.bug_report_outlined),
               const SizedBox(height: 12),
               Card(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.tune_outlined, size: 20, color: kTextSecondary),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Log Level', style: TextStyle(color: kTextPrimary, fontSize: 14)),
-                            Text('Controls wallet library verbosity', style: TextStyle(color: kTextSecondary, fontSize: 12)),
-                          ],
-                        ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.tune_outlined, size: 20, color: kTextSecondary),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Log Level', style: TextStyle(color: kTextPrimary, fontSize: 14)),
+                                Text('Controls wallet library verbosity', style: TextStyle(color: kTextSecondary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          DropdownButton<WalletLogLevel>(
+                            value: logLevel,
+                            underline: const SizedBox.shrink(),
+                            items: WalletLogLevel.values
+                                .map((l) => DropdownMenuItem(value: l, child: Text(l.label, style: const TextStyle(fontSize: 13))))
+                                .toList(),
+                            onChanged: (l) {
+                              if (l != null) {
+                                ref.read(logLevelProvider.notifier).set(l);
+                                ref.read(walletCApiProvider).setLogLevel(l.value.toString());
+                              }
+                            },
+                          ),
+                        ],
                       ),
-                      DropdownButton<WalletLogLevel>(
-                        value: logLevel,
-                        underline: const SizedBox.shrink(),
-                        items: WalletLogLevel.values
-                            .map((l) => DropdownMenuItem(value: l, child: Text(l.label, style: const TextStyle(fontSize: 13))))
-                            .toList(),
-                        onChanged: (l) {
-                          if (l != null) {
-                            ref.read(logLevelProvider.notifier).set(l);
-                            ref.read(walletCApiProvider).setLogLevel(l.value.toString());
-                          }
-                        },
-                      ),
-                    ],
-                  ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.article_outlined,
+                      title: 'View Logs',
+                      subtitle: 'Live wallet library log output',
+                      onTap: () => _showLogViewer(context),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 24),
@@ -487,6 +500,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showLogViewer(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _LogViewerDialog(ffi: ref.read(walletCApiProvider)),
     );
   }
 
@@ -598,6 +618,172 @@ class _InlineError extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(child: Text(message, style: const TextStyle(color: kError, fontSize: 12))),
         ],
+      ),
+    );
+  }
+}
+
+// ── Log viewer dialog ─────────────────────────────────────────────────────────
+
+class _LogEntry {
+  final String pretty;
+  final String level;
+  final int ts;
+  const _LogEntry({required this.pretty, required this.level, required this.ts});
+
+  factory _LogEntry.fromJson(Map<String, dynamic> j) => _LogEntry(
+        pretty: j['pretty'] as String? ?? '',
+        level: j['level'] as String? ?? 'info',
+        ts: (j['ts'] as num? ?? 0).toInt(),
+      );
+}
+
+class _LogViewerDialog extends StatefulWidget {
+  final WalletCApi ffi;
+  const _LogViewerDialog({required this.ffi});
+
+  @override
+  State<_LogViewerDialog> createState() => _LogViewerDialogState();
+}
+
+class _LogViewerDialogState extends State<_LogViewerDialog> {
+  final List<_LogEntry> _entries = [];
+  final ScrollController _scroll = ScrollController();
+  Timer? _timer;
+  bool _autoScroll = true;
+
+  static const _levelColors = {
+    'fatal': kError,
+    'error': kError,
+    'warning': kWarning,
+    'info': kTextPrimary,
+    'debug': kTextSecondary,
+    'trace': kTextDisabled,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _poll() {
+    try {
+      final data = widget.ffi.takeLogs();
+      final list = (data['entries'] as List<dynamic>? ?? [])
+          .map((e) => _LogEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+      if (list.isEmpty) return;
+      setState(() => _entries.addAll(list));
+      if (_autoScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scroll.hasClients) {
+            _scroll.jumpTo(_scroll.position.maxScrollExtent);
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _clear() => setState(() => _entries.clear());
+
+  void _copyAll(BuildContext context) {
+    final text = _entries.map((e) => e.pretty).join('\n');
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Logs copied to clipboard'), duration: Duration(seconds: 2)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: SizedBox(
+        width: 800,
+        height: 560,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
+              child: Row(
+                children: [
+                  const Icon(Icons.article_outlined, size: 18, color: kTextSecondary),
+                  const SizedBox(width: 8),
+                  Text('Wallet Logs', style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  Text('${_entries.length} entries',
+                      style: const TextStyle(fontSize: 12, color: kTextDisabled)),
+                  const SizedBox(width: 12),
+                  // Auto-scroll toggle
+                  Row(
+                    children: [
+                      const Text('Auto-scroll', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                      const SizedBox(width: 4),
+                      Switch(
+                        value: _autoScroll,
+                        onChanged: (v) => setState(() => _autoScroll = v),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    tooltip: 'Copy all',
+                    onPressed: _entries.isEmpty ? null : () => _copyAll(context),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                    tooltip: 'Clear',
+                    onPressed: _entries.isEmpty ? null : _clear,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+            // Log list
+            Expanded(
+              child: _entries.isEmpty
+                  ? const Center(
+                      child: Text('No logs yet. Set a log level above Disabled to see output.',
+                          style: TextStyle(color: kTextDisabled, fontSize: 13)),
+                    )
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      itemCount: _entries.length,
+                      itemBuilder: (_, i) {
+                        final e = _entries[i];
+                        final color = _levelColors[e.level] ?? kTextPrimary;
+                        return SelectableText(
+                          e.pretty,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: color,
+                            height: 1.5,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
