@@ -42,14 +42,14 @@ final themeModeProvider =
 
 // ── Log level ─────────────────────────────────────────────────────────────────
 
-/// Maps to walletapi --log-level 0..5
+/// Maps to C++ Logger::LogLevel: DISABLED=0, FATAL=1, WARNING=2, INFO=3, DEBUG=4, TRACE=5
 enum WalletLogLevel {
   disabled(0, 'Disabled'),
   fatal(1, 'Fatal only'),
-  error(2, 'Errors'),
-  warning(3, 'Warnings'),
-  info(4, 'Info'),
-  debug(5, 'Debug');
+  warning(2, 'Warnings'),
+  info(3, 'Info'),
+  debug(4, 'Debug'),
+  trace(5, 'Trace');
 
   final int value;
   final String label;
@@ -65,7 +65,7 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
 
   Future<void> _load() async {
     final v = await _storage.read(key: _kLogLevelKey);
-    final n = int.tryParse(v ?? '') ?? 4;
+    final n = int.tryParse(v ?? '') ?? 3;
     state = WalletLogLevel.values.firstWhere(
       (l) => l.value == n,
       orElse: () => WalletLogLevel.info,
