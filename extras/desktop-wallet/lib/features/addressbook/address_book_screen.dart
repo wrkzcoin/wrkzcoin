@@ -23,7 +23,6 @@ class AddressBookScreen extends ConsumerWidget {
     final entries = ref.watch(addressBookProvider);
 
     return Scaffold(
-      backgroundColor: kBgDark,
       appBar: AppBar(
         title: const Text('Address Book'),
         actions: [
@@ -36,16 +35,18 @@ class AddressBookScreen extends ConsumerWidget {
         ],
       ),
       body: entries.isEmpty
-          ? const Center(
+          ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.contacts_outlined, size: 48, color: kTextDisabled),
-                  SizedBox(height: 12),
-                  Text('No saved addresses', style: TextStyle(color: kTextDisabled)),
-                  SizedBox(height: 4),
+                  Icon(Icons.contacts_outlined, size: 48,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(height: 12),
+                  Text('No saved addresses',
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 4),
                   Text('Tap Add to save a frequently used address.',
-                      style: TextStyle(color: kTextDisabled, fontSize: 12)),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                 ],
               ),
             )
@@ -147,11 +148,11 @@ class _EntryCard extends ConsumerWidget {
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500, fontSize: 14)),
                   const SizedBox(height: 2),
                   Text(entry.address,
-                      style: const TextStyle(color: kTextSecondary, fontSize: 11, fontFamily: 'monospace'),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11, fontFamily: 'monospace'),
                       maxLines: 1, overflow: TextOverflow.ellipsis),
                   if (entry.note != null) ...[
                     const SizedBox(height: 2),
-                    Text(entry.note!, style: const TextStyle(color: kTextDisabled, fontSize: 11)),
+                    Text(entry.note!, style: TextStyle(color: Theme.of(context).colorScheme.outline, fontSize: 11)),
                   ],
                 ],
               ),
