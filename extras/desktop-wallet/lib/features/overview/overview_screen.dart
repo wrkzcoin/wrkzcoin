@@ -40,41 +40,85 @@ class OverviewScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total Balance', style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(height: 8),
                         balanceAsync.when(
-                          data: (b) => Row(
-                            crossAxisAlignment: CrossAxisAlignment.baseline,
-                            textBaseline: TextBaseline.alphabetic,
+                          data: (b) => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                formatAmount(b.unlocked),
-                                style: const TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.bold,
-                                  color: kTextPrimary,
-                                ),
+                              // Available (unlocked)
+                              Text('Available Balance', style: Theme.of(context).textTheme.titleSmall),
+                              const SizedBox(height: 6),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  Text(
+                                    formatAmount(b.unlocked),
+                                    style: const TextStyle(
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.bold,
+                                      color: kTextPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(kCoinTicker, style: TextStyle(fontSize: 18, color: kTextSecondary)),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              const Text(kCoinTicker, style: TextStyle(fontSize: 18, color: kTextSecondary)),
-                            ],
-                          ),
-                          loading: () => const _SkeletonBox(width: 200, height: 40),
-                          error: (e, _) => Text('Error: $e', style: const TextStyle(color: kError)),
-                        ),
-                        const SizedBox(height: 12),
-                        balanceAsync.whenOrNull(
-                          data: (b) => b.locked > 0
-                              ? Row(children: [
+                              // Locked (unconfirmed)
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
                                   const Icon(Icons.lock_outline, size: 14, color: kTextSecondary),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${formatAmount(b.locked)} $kCoinTicker locked',
+                                    'Locked (unconfirmed): ${formatAmount(b.locked)} $kCoinTicker',
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: b.locked > 0 ? kWarning : kTextSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              // Total
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.account_balance_wallet_outlined, size: 14, color: kTextSecondary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Total: ${formatAmount(b.total)} $kCoinTicker',
                                     style: Theme.of(context).textTheme.bodyMedium,
                                   ),
-                                ])
-                              : null,
-                        ) ?? const SizedBox.shrink(),
+                                ],
+                              ),
+                            ],
+                          ),
+                          loading: () => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Available Balance', style: Theme.of(context).textTheme.titleSmall),
+                              const SizedBox(height: 6),
+                              const _SkeletonBox(width: 200, height: 40),
+                              const SizedBox(height: 10),
+                              const _SkeletonBox(width: 260, height: 16),
+                              const SizedBox(height: 6),
+                              const _SkeletonBox(width: 200, height: 16),
+                            ],
+                          ),
+                          error: (e, _) => Text('Error: $e', style: const TextStyle(color: kError)),
+                        ),
+                        // Show a warning when balance may be incomplete due to sync
+                        if (statusAsync.valueOrNull?.isWalletSynced == false) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.sync, size: 13, color: kWarning),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Balance may be incomplete while syncing',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kWarning),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         Row(
                           children: [
