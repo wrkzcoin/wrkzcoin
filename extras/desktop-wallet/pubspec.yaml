@@ -1,0 +1,70 @@
+name: pluton_wallet
+description: "PLUTON v2 — WRKZ Desktop Wallet powered by wallet_capi FFI"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Secure local storage (last wallet path, theme/log-level prefs)
+  flutter_secure_storage: ^9.2.4
+
+  # QR code display
+  qr_flutter: ^4.1.0
+
+  # Path utilities
+  path: ^1.9.1
+  path_provider: ^2.1.5
+
+  # File picker (open wallet file dialog)
+  file_picker: ^8.3.3
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # URL launcher (transaction explorer links)
+  url_launcher: ^6.3.1
+
+  # Intl (number/date formatting)
+  intl: ^0.20.2
+
+  # Window manager (desktop window title, min size)
+  window_manager: ^0.4.3
+
+  # FFI utilities (Utf8, Arena, using()) for wallet_capi native binding
+  ffi: ^2.1.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  mocktail: ^1.0.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # ── wallet_capi.dll ───────────────────────────────────────────────────────
+    # Build wallet_capi and place it next to the Flutter executable before
+    # running `flutter run` or `flutter build`:
+    #
+    #   Windows : cmake -S . -B build -DWRKZ_BUILD_WALLET_CAPI=ON
+    #             cmake --build build --target wallet_capi --config Release
+    #             copy build\Release\wallet_capi.dll <app>\wallet_capi.dll
+    #
+    #   Linux   : cmake -S . -B build -DWRKZ_BUILD_WALLET_CAPI=ON
+    #             cmake --build build --target wallet_capi
+    #             cp build/libwallet_capi.so <app>/libwallet_capi.so
+    #
+    - assets/images/

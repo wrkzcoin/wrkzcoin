@@ -172,17 +172,6 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_send_prepared(
     char **out_tx_hash,
     size_t *out_len);
 
-WALLET_CAPI_EXPORT wallet_status_t wallet_send_fusion_basic(
-    wallet_handle_t *wallet,
-    char **out_tx_hash,
-    size_t *out_len);
-
-WALLET_CAPI_EXPORT wallet_status_t wallet_send_fusion_advanced_json(
-    wallet_handle_t *wallet,
-    const char *request_json,
-    char **out_tx_hash,
-    size_t *out_len);
-
 WALLET_CAPI_EXPORT wallet_status_t wallet_send_advanced_json(
     wallet_handle_t *wallet,
     const char *request_json,
@@ -232,6 +221,14 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_change_password(
     wallet_handle_t *wallet,
     const char *new_password);
 
+/* Export the full wallet state as a JSON string.
+   The caller is responsible for writing the string to a file if needed.
+   Free the returned buffer with wallet_string_free(). */
+WALLET_CAPI_EXPORT wallet_status_t wallet_export_json(
+    wallet_handle_t *wallet,
+    char **out_json,
+    size_t *out_len);
+
 WALLET_CAPI_EXPORT wallet_status_t wallet_add_subwallet_json(
     wallet_handle_t *wallet,
     char **out_result_json,
@@ -260,6 +257,24 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_create_integrated_address(
     const char *payment_id,
     char **out_integrated_address,
     size_t *out_len);
+
+/* Sweep amount_to_sweep (0 = all unlocked) to destination in multiple txs.
+   out_result_json: {"results":[{"txHash":"..."} | {"error":N,"errorMessage":"..."},...]} */
+WALLET_CAPI_EXPORT wallet_status_t wallet_sweep_to_address(
+    wallet_handle_t *wallet,
+    const char *destination,
+    const char *payment_id,   /* nullable / empty = no payment ID */
+    uint64_t amount_to_sweep, /* 0 = sweep entire unlocked balance */
+    char **out_result_json,
+    size_t *out_len);
+
+/* Estimate how many transactions a sweep would produce and the total fee.
+   Does NOT send anything. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_estimate_sweep(
+    wallet_handle_t *wallet,
+    uint64_t amount_to_sweep, /* 0 = sweep all */
+    uint64_t *out_tx_count,
+    uint64_t *out_total_fee);
 
 WALLET_CAPI_EXPORT void wallet_string_free(char *p);
 

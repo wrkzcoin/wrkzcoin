@@ -491,8 +491,14 @@ else ()
         message(STATUS "Boost headers for Emscripten wallet_wasm: ${Boost_INCLUDE_DIRS}")
         set(WRKZ_BOOST_LINK_LIBS "")
     else ()
-        find_package(Boost REQUIRED COMPONENTS date_time)
-        set(WRKZ_BOOST_LINK_LIBS ${Boost_LIBRARIES})
+        # Only Boost headers are needed — boost::posix_time::ptime and
+        # microsec_clock::local_time() are fully header-only (they use
+        # Windows/POSIX APIs directly).  The compiled date_time library is
+        # only required for locale-based I/O which this codebase does not use.
+        find_package(Boost REQUIRED)
+        set(WRKZ_BOOST_LINK_LIBS "")
+        # Suppress MSVC #pragma comment(lib, "boost_date_time-...") auto-link.
+        add_compile_definitions(BOOST_DATE_TIME_NO_LIB BOOST_ALL_NO_LIB)
     endif ()
 endif ()
 if ((NOT Boost_INCLUDE_DIRS OR Boost_INCLUDE_DIRS STREQUAL "") AND DEFINED Boost_INCLUDE_DIR)
