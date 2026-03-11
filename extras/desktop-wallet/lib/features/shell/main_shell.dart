@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -33,6 +35,7 @@ class _MainShellState extends ConsumerState<MainShell>
 
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
+  Timer? _trayClickTimer;
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   void dispose() {
+    _trayClickTimer?.cancel();
     trayManager.removeListener(this);
     windowManager.removeListener(this);
     super.dispose();
@@ -51,7 +55,21 @@ class _MainShellState extends ConsumerState<MainShell>
   // ── Tray events ──────────────────────────────────────────────────────────────
 
   @override
-  void onTrayIconMouseUp() => windowManager.show();
+  void onTrayIconMouseUp() {
+    if (_trayClickTimer?.isActive ?? false) {
+      // Second click within threshold → double-click: show + maximize
+      _trayClickTimer!.cancel();
+      _trayClickTimer = null;
+      windowManager.show();
+      windowManager.maximize();
+    } else {
+      // First click: wait to distinguish from double-click
+      _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
+        windowManager.show();
+        _trayClickTimer = null;
+      });
+    }
+  }
 
   @override
   void onTrayIconRightMouseUp() => trayManager.popUpContextMenu();
