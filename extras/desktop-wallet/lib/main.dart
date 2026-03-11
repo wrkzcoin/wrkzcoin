@@ -11,7 +11,6 @@ void main() async {
   await windowManager.ensureInitialized();
   await windowManager.setMinimumSize(const Size(900, 600));
   await windowManager.setTitle('PLUTON v2');
-  await windowManager.setPreventClose(true);
 
   await localNotifier.setup(appName: 'PLUTON Wallet');
 

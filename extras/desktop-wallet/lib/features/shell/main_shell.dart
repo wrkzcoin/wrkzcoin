@@ -42,11 +42,13 @@ class _MainShellState extends ConsumerState<MainShell>
     super.initState();
     trayManager.addListener(this);
     windowManager.addListener(this);
+    windowManager.setPreventClose(true);
   }
 
   @override
   void dispose() {
     _trayClickTimer?.cancel();
+    windowManager.setPreventClose(false);
     trayManager.removeListener(this);
     windowManager.removeListener(this);
     super.dispose();
