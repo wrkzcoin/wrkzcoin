@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_notifier/local_notifier.dart';
-import 'package:tray_manager/tray_manager.dart';
+import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/api/models/wallet_status.dart';
@@ -24,7 +24,7 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell>
-    with TrayListener, WindowListener {
+    with WindowListener {
   static const _tabs = [
     _TabItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Overview', path: '/overview'),
     _TabItem(icon: Icons.qr_code_outlined, activeIcon: Icons.qr_code, label: 'Receive', path: '/receive'),
@@ -39,6 +39,9 @@ class _MainShellState extends ConsumerState<MainShell>
   bool _firstTxLoad = true;
   Timer? _trayClickTimer;
 
+  // ── System tray ──────────────────────────────────────────────────────────────
+  final _systemTray = SystemTray();
+
   // ── Autosave ────────────────────────────────────────────────────────────────
   static const _autosaveInterval = Duration(minutes: 5);
   Timer? _autosaveTimer;
@@ -47,9 +50,9 @@ class _MainShellState extends ConsumerState<MainShell>
   @override
   void initState() {
     super.initState();
-    trayManager.addListener(this);
     windowManager.addListener(this);
     windowManager.setPreventClose(true);
+    _initSystemTray();
   }
 
   @override
@@ -57,9 +60,50 @@ class _MainShellState extends ConsumerState<MainShell>
     _trayClickTimer?.cancel();
     _autosaveTimer?.cancel();
     windowManager.setPreventClose(false);
-    trayManager.removeListener(this);
     windowManager.removeListener(this);
     super.dispose();
+  }
+
+  Future<void> _initSystemTray() async {
+    try {
+      await _systemTray.initSystemTray(
+        title: 'PLUTON Wallet',
+        iconPath: 'assets/images/app_icon.ico',
+        toolTip: 'PLUTON Wallet',
+      );
+
+      final menu = Menu();
+      await menu.buildFrom([
+        MenuItemLabel(label: 'Show', onClicked: (_) => _showWindow()),
+        MenuSeparator(),
+        MenuItemLabel(label: 'Exit', onClicked: (_) {
+          windowManager.setPreventClose(false);
+          windowManager.close();
+        }),
+      ]);
+      await _systemTray.setContextMenu(menu);
+
+      _systemTray.registerSystemTrayEventHandler((eventName) {
+        if (eventName == kSystemTrayEventClick) {
+          // Single left click → show window
+          if (_trayClickTimer?.isActive ?? false) {
+            // Second click within threshold → double-click: maximize
+            _trayClickTimer!.cancel();
+            _trayClickTimer = null;
+            _showWindow(maximize: true);
+          } else {
+            _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
+              _showWindow();
+              _trayClickTimer = null;
+            });
+          }
+        } else if (eventName == kSystemTrayEventRightClick) {
+          _systemTray.popUpContextMenu();
+        }
+      });
+    } catch (e) {
+      debugPrint('[tray] init failed: $e');
+    }
   }
 
   // ── Autosave logic ──────────────────────────────────────────────────────────
@@ -97,7 +141,7 @@ class _MainShellState extends ConsumerState<MainShell>
     }
   }
 
-  // ── Tray events ──────────────────────────────────────────────────────────────
+  // ── Window helpers ─────────────────────────────────────────────────────────
 
   Future<void> _showWindow({bool maximize = false}) async {
     await windowManager.show();
@@ -107,35 +151,6 @@ class _MainShellState extends ConsumerState<MainShell>
     await windowManager.setAlwaysOnTop(true);
     await windowManager.focus();
     await windowManager.setAlwaysOnTop(false);
-  }
-
-  @override
-  void onTrayIconMouseUp() {
-    if (_trayClickTimer?.isActive ?? false) {
-      // Second click within threshold → double-click: show + maximize
-      _trayClickTimer!.cancel();
-      _trayClickTimer = null;
-      _showWindow(maximize: true);
-    } else {
-      // First click: wait to distinguish from double-click
-      _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
-        _showWindow();
-        _trayClickTimer = null;
-      });
-    }
-  }
-
-  @override
-  void onTrayIconRightMouseUp() => trayManager.popUpContextMenu();
-
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == 'show') {
-      _showWindow();
-    } else if (menuItem.key == 'exit') {
-      windowManager.setPreventClose(false);
-      windowManager.close();
-    }
   }
 
   // ── Window events ─────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import file_picker
 import flutter_secure_storage_macos
 import local_notifier
 import screen_retriever_macos
-import tray_manager
+import system_tray
 import url_launcher_macos
 import window_manager
 
@@ -18,7 +18,7 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FlutterSecureStoragePlugin.register(with: registry.registrar(forPlugin: "FlutterSecureStoragePlugin"))
   LocalNotifierPlugin.register(with: registry.registrar(forPlugin: "LocalNotifierPlugin"))
   ScreenRetrieverMacosPlugin.register(with: registry.registrar(forPlugin: "ScreenRetrieverMacosPlugin"))
-  TrayManagerPlugin.register(with: registry.registrar(forPlugin: "TrayManagerPlugin"))
+  SystemTrayPlugin.register(with: registry.registrar(forPlugin: "SystemTrayPlugin"))
   UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
   WindowManagerPlugin.register(with: registry.registrar(forPlugin: "WindowManagerPlugin"))
 }
