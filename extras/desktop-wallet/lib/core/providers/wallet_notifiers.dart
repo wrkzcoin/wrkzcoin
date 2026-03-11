@@ -87,8 +87,8 @@ class TransactionsNotifier extends AsyncNotifier<List<Transaction>> {
         (json['unconfirmedTransactions'] as List<dynamic>? ?? [])
             .map((t) => Transaction.fromJson(t as Map<String, dynamic>))
             .toList();
-    // Show unconfirmed (mempool) first, then confirmed descending
-    return [...unconfirmed, ...confirmed];
+    // Show unconfirmed (mempool) first, then confirmed most-recent-first
+    return [...unconfirmed, ...confirmed.reversed];
   }
 
   Future<void> _refresh() async {
