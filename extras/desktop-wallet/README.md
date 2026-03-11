@@ -33,7 +33,7 @@ From the repository root:
 cmake -S . -B build -G "Visual Studio 17 2022" -DWRKZ_BUILD_WALLET_CAPI=ON -DBOOST_ROOT=C:/local/boost_1_86_0
 cmake --build build --target wallet_capi --config Release
 ```
-Output: `build\Release\wallet_capi.dll`
+Output: `build\src\Release\wallet_capi.dll`
 
 > **Boost:** Only headers are required — no compiled Boost libraries.
 > Install the [Boost 1.86 Windows package](https://sourceforge.net/projects/boost/files/boost-binaries/) (header-only install is sufficient) and point `-DBOOST_ROOT` at the root folder.

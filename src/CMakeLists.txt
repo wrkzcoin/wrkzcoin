@@ -107,10 +107,17 @@ if (WRKZ_BUILD_WALLET_WASM)
 endif ()
 
 if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
+    # All static libs that end up linked into wallet_capi.so must be compiled
+    # with -fPIC.  This covers both internal libs and external deps that do not
+    # set POSITION_INDEPENDENT_CODE themselves.
     set(_WRKZ_WALLET_CAPI_DEPS
         Common Config Crypto CryptoNoteCore Errors Http JsonRpcServer Logging
         Logger Mnemonics Nigel NodeRpcProxy P2P Rpc Serialization SubWallets
         System Transfers Utilities Wallet WalletBackend
+        # external dep pulled in transitively:
+        argon2          # Crypto → argon2 (no PIC by default)
+        # rocksdb not needed: DatabaseBlockchainCache/RocksDBWrapper are
+        # daemon-only dead code that the lazy linker never pulls in.
     )
     foreach(_t IN LISTS _WRKZ_WALLET_CAPI_DEPS)
         if (TARGET ${_t})

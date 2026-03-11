@@ -5,8 +5,8 @@ import '../../shared/widgets/pluton_logo.dart';
 
 const _kVersion = '1.0.0';
 const _kGithubUrl = 'https://github.com/wrkzcoin/wrkzcoin';
-const _kDiscordUrl = 'https://discord.gg/wrkzcoin';
-const _kTwitterUrl = 'https://twitter.com/wrkzcoin';
+const _kDiscordUrl = 'https://chat.wrkz.work/';
+const _kTwitterUrl = 'https://x.com/wrkzcoin';
 const _kWebsiteUrl = 'https://wrkz.work';
 
 class AboutScreen extends StatelessWidget {

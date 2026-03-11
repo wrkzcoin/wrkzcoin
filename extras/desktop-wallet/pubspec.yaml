@@ -61,7 +61,7 @@ flutter:
     #
     #   Windows : cmake -S . -B build -DWRKZ_BUILD_WALLET_CAPI=ON
     #             cmake --build build --target wallet_capi --config Release
-    #             copy build\Release\wallet_capi.dll <app>\wallet_capi.dll
+    #             copy build\src\Release\wallet_capi.dll <app>\wallet_capi.dll
     #
     #   Linux   : cmake -S . -B build -DWRKZ_BUILD_WALLET_CAPI=ON
     #             cmake --build build --target wallet_capi

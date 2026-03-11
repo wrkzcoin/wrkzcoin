@@ -4,6 +4,17 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
 import 'address_book_provider.dart';
 
+// ── WRKZ address validation ───────────────────────────────────────────────────
+// Standard: 98 chars | Short integrated: 120 chars | Long integrated: 186 chars
+// All start with "Wrkz" and consist of base58 characters.
+bool _isValidWrkzAddress(String address) {
+  const validLengths = {98, 120, 186};
+  if (!validLengths.contains(address.length)) return false;
+  if (!address.startsWith('Wrkz')) return false;
+  return RegExp(r'^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$')
+      .hasMatch(address);
+}
+
 class AddressBookScreen extends ConsumerWidget {
   const AddressBookScreen({super.key});
 
@@ -79,13 +90,22 @@ class AddressBookScreen extends ConsumerWidget {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
             FilledButton(
               onPressed: () {
-                if (nameCtrl.text.trim().isEmpty || addrCtrl.text.trim().isEmpty) {
+                final name = nameCtrl.text.trim();
+                final addr = addrCtrl.text.trim();
+                if (name.isEmpty || addr.isEmpty) {
                   setState(() => error = 'Name and address are required');
                   return;
                 }
+                if (!_isValidWrkzAddress(addr)) {
+                  setState(() => error =
+                      'Invalid WRKZ address. Must be 98 (standard), '
+                      '120 (short integrated), or 186 (long integrated) '
+                      'characters starting with "Wrkz".');
+                  return;
+                }
                 ref.read(addressBookProvider.notifier).add(
-                      nameCtrl.text.trim(),
-                      addrCtrl.text.trim(),
+                      name,
+                      addr,
                       note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
                     );
                 Navigator.pop(ctx);

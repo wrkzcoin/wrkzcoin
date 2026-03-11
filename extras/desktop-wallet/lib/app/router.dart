@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/providers/providers.dart';
@@ -13,15 +14,37 @@ import '../features/settings/settings_screen.dart';
 import '../features/addressbook/address_book_screen.dart';
 import '../features/about/about_screen.dart';
 
+// Thin ChangeNotifier that holds auth state and triggers GoRouter's
+// refreshListenable when either walletOpen or walletLocked changes.
+// Using ref.listen (not ref.watch) keeps the routerProvider from being
+// recreated — which would cause "ref used after dependency changed" errors.
+class _AuthNotifier extends ChangeNotifier {
+  bool walletOpen = false;
+  bool walletLocked = false;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final walletOpen = ref.watch(walletOpenProvider);
-  ref.watch(walletLockedProvider); // rebuild router on lock/unlock
+  final auth = _AuthNotifier()
+    ..walletOpen = ref.read(walletOpenProvider)
+    ..walletLocked = ref.read(walletLockedProvider);
+
+  ref.listen<bool>(walletOpenProvider, (_, next) {
+    auth.walletOpen = next;
+    auth.notifyListeners();
+  });
+  ref.listen<bool>(walletLockedProvider, (_, next) {
+    auth.walletLocked = next;
+    auth.notifyListeners();
+  });
+
+  ref.onDispose(auth.dispose);
 
   return GoRouter(
-    initialLocation: walletOpen ? '/overview' : '/setup',
+    initialLocation: auth.walletOpen ? '/overview' : '/setup',
+    refreshListenable: auth,
     redirect: (context, state) {
-      final open = ref.read(walletOpenProvider);
-      final locked = ref.read(walletLockedProvider);
+      final open = auth.walletOpen;
+      final locked = auth.walletLocked;
       final loc = state.matchedLocation;
       if (!open && loc != '/setup') return '/setup';
       if (open && locked && loc != '/lock') return '/lock';

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -12,6 +13,14 @@ final _primaryAddressProvider = FutureProvider<String>((ref) async {
   return ffi.getPrimaryAddress();
 });
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+String _randomHex(int length) {
+  const chars = '0123456789abcdef';
+  final rng = Random.secure();
+  return List.generate(length, (_) => chars[rng.nextInt(16)]).join();
+}
+
 class ReceiveScreen extends ConsumerStatefulWidget {
   const ReceiveScreen({super.key});
 
@@ -21,9 +30,12 @@ class ReceiveScreen extends ConsumerStatefulWidget {
 
 class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   final _paymentIdCtrl = TextEditingController();
+
+  // result state
   String? _integratedAddress;
-  bool _generatingIntegrated = false;
-  String? _integrationError;
+  String? _usedPaymentId;
+  bool _generating = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -31,30 +43,43 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     super.dispose();
   }
 
-  Future<void> _generateIntegrated(String baseAddress) async {
-    final pid = _paymentIdCtrl.text.trim();
-    if (pid.isEmpty) {
-      setState(() => _integrationError = 'Enter a payment ID (16 or 64 hex chars)');
-      return;
+  Future<void> _generate(String baseAddress, {String? overridePid}) async {
+    String pid;
+    if (overridePid != null) {
+      pid = overridePid;
+    } else {
+      pid = _paymentIdCtrl.text.trim();
+      if (pid.isEmpty) {
+        setState(() => _error = 'Enter a payment ID (16 or 64 hex chars)');
+        return;
+      }
+      final validLen = pid.length == 16 || pid.length == 64;
+      final validHex = RegExp(r'^[0-9a-fA-F]+$').hasMatch(pid);
+      if (!validLen || !validHex) {
+        setState(() => _error = 'Payment ID must be 16 or 64 hex characters');
+        return;
+      }
     }
-    final validLen = pid.length == 16 || pid.length == 64;
-    final validHex = RegExp(r'^[0-9a-fA-F]+$').hasMatch(pid);
-    if (!validLen || !validHex) {
-      setState(() => _integrationError = 'Payment ID must be 16 or 64 hex characters');
-      return;
-    }
-    setState(() { _generatingIntegrated = true; _integrationError = null; });
+
+    setState(() { _generating = true; _error = null; });
     try {
       final integrated = await ref.read(walletCApiProvider)
           .createIntegratedAddress(baseAddress, pid);
-      setState(() => _integratedAddress = integrated);
+      setState(() {
+        _integratedAddress = integrated;
+        _usedPaymentId = pid;
+      });
     } on WalletCApiException catch (e) {
-      setState(() => _integrationError = e.message);
+      setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _integrationError = e.toString());
+      setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _generatingIntegrated = false);
+      if (mounted) setState(() => _generating = false);
     }
+  }
+
+  void _onCustomPidChanged() {
+    setState(() { _error = null; _integratedAddress = null; _usedPaymentId = null; });
   }
 
   @override
@@ -68,83 +93,176 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         children: [
           Text('Receive', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 6),
-          Text('Share your address to receive WRKZ', style: Theme.of(context).textTheme.bodyMedium),
+          Text('Share your address to receive WRKZ',
+              style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 24),
 
           addrAsync.when(
-            data: (address) => Row(
+            data: (address) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── QR code ─────────────────────────────────────────────
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: QrImageView(
-                      data: address,
-                      version: QrVersions.auto,
-                      size: 200,
-                      backgroundColor: Colors.white,
-                      eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-                      dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 24),
-
-                // ── Address details ──────────────────────────────────────
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Your Address', style: Theme.of(context).textTheme.titleSmall),
-                      const SizedBox(height: 8),
-                      _AddressBox(address: address),
-                      const SizedBox(height: 24),
-
-                      // ── Integrated address generator ─────────────────
-                      Text('Generate Integrated Address', style: Theme.of(context).textTheme.titleSmall),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Combine your address with a payment ID for exchanges or tracking.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
+                // ── Primary address row ──────────────────────────────────
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _QrCard(data: address),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _paymentIdCtrl,
-                              decoration: InputDecoration(
-                                labelText: 'Payment ID (16 or 64 hex chars)',
-                                errorText: _integrationError,
-                              ),
-                              onChanged: (_) => setState(() { _integrationError = null; _integratedAddress = null; }),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          FilledButton(
-                            onPressed: _generatingIntegrated ? null : () => _generateIntegrated(address),
-                            child: _generatingIntegrated
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                : const Text('Generate'),
-                          ),
+                          Text('Your Address',
+                              style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          _AddressBox(address: address),
                         ],
                       ),
-                      if (_integratedAddress != null) ...[
-                        const SizedBox(height: 12),
-                        Text('Integrated Address', style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(height: 8),
-                        _AddressBox(address: _integratedAddress!),
-                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 32),
+                const Divider(),
+                const SizedBox(height: 24),
+
+                // ── Integrated address generator ─────────────────────────
+                Text('Generate Integrated Address',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Combine your address with a payment ID. '
+                  'Use the random buttons for a new ID, or enter your own below.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+
+                // Random buttons
+                Row(
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _generating
+                          ? null
+                          : () => _generate(address,
+                              overridePid: _randomHex(16)),
+                      icon: const Icon(Icons.shuffle, size: 16),
+                      label: const Text('Random Short (16)'),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton.icon(
+                      onPressed: _generating
+                          ? null
+                          : () => _generate(address,
+                              overridePid: _randomHex(64)),
+                      icon: const Icon(Icons.shuffle, size: 16),
+                      label: const Text('Random Long (64)'),
+                    ),
+                    if (_generating) ...[
+                      const SizedBox(width: 16),
+                      const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2)),
+                    ],
+                  ],
+                ),
+
+                const SizedBox(height: 16),
+
+                // Custom payment ID field
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _paymentIdCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Custom payment ID (16 or 64 hex chars)',
+                          errorText: _error,
+                          suffixIcon: _paymentIdCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    _paymentIdCtrl.clear();
+                                    _onCustomPidChanged();
+                                  },
+                                )
+                              : null,
+                        ),
+                        onChanged: (_) => _onCustomPidChanged(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: OutlinedButton(
+                        onPressed:
+                            _generating ? null : () => _generate(address),
+                        child: const Text('Generate'),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // ── Result ──────────────────────────────────────────────
+                if (_integratedAddress != null && _usedPaymentId != null) ...[
+                  const SizedBox(height: 28),
+                  const Divider(),
+                  const SizedBox(height: 20),
+                  Text('Integrated Address',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  _PaymentIdBadge(paymentId: _usedPaymentId!),
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _QrCard(data: _integratedAddress!),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            _AddressBox(address: _integratedAddress!),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                ),
+                ],
               ],
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Text('Error: $e', style: const TextStyle(color: kError)),
+            error: (e, _) =>
+                Text('Error: $e', style: const TextStyle(color: kError)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── shared widgets ────────────────────────────────────────────────────────────
+
+class _QrCard extends StatelessWidget {
+  final String data;
+  const _QrCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: QrImageView(
+          data: data,
+          version: QrVersions.auto,
+          size: 200,
+          backgroundColor: Colors.white,
+          eyeStyle: const QrEyeStyle(
+              eyeShape: QrEyeShape.square, color: Colors.black),
+          dataModuleStyle: const QrDataModuleStyle(
+              dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+        ),
       ),
     );
   }
@@ -168,12 +286,56 @@ class _AddressBox extends StatelessWidget {
           Expanded(
             child: SelectableText(
               address,
-              style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: kTextPrimary, height: 1.5),
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  color: kTextPrimary,
+                  height: 1.5),
             ),
           ),
           CopyButton(text: address, tooltip: 'Copy address'),
         ],
       ),
+    );
+  }
+}
+
+class _PaymentIdBadge extends StatelessWidget {
+  final String paymentId;
+  const _PaymentIdBadge({required this.paymentId});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = paymentId.length == 16 ? 'Short (16)' : 'Long (64)';
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: kSurfaceVariant,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: kDivider),
+          ),
+          child: Text(
+            'Payment ID · $label',
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: kTextSecondary),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: SelectableText(
+            paymentId,
+            style: const TextStyle(
+                fontSize: 11,
+                fontFamily: 'monospace',
+                color: kTextPrimary),
+          ),
+        ),
+        CopyButton(text: paymentId, tooltip: 'Copy payment ID'),
+      ],
     );
   }
 }
