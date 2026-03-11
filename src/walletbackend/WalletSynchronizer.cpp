@@ -59,7 +59,11 @@ WalletSynchronizer::WalletSynchronizer(
 {
     if (threadCount == 0)
     {
-        threadCount = 1;
+        threadCount = std::thread::hardware_concurrency();
+        if (threadCount == 0)
+        {
+            threadCount = 1;
+        }
     }
 
     m_threadCount = threadCount;
@@ -793,7 +797,11 @@ void WalletSynchronizer::initializeAfterLoad(
 
     if (threadCount == 0)
     {
-        threadCount = 1;
+        threadCount = std::thread::hardware_concurrency();
+        if (threadCount == 0)
+        {
+            threadCount = 1;
+        }
     }
 
     m_threadCount = threadCount;
