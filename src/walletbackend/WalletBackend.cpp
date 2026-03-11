@@ -934,6 +934,26 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         return {{ILLEGAL_VIEW_WALLET_OPERATION, Crypto::Hash()}};
     }
 
+    /* Validate destination — integrated addresses (short or long payment ID) are allowed */
+    if (Error err = validateAddresses({destination}, /* allowIntegrated */ true); err != SUCCESS)
+    {
+        return {{err, Crypto::Hash()}};
+    }
+
+    /* Extract the base address and payment ID from an integrated address, mirroring
+       the same handling in SendTransaction::sendTransactionAdvanced (Transfer.cpp). */
+    std::string resolvedDest = destination;
+    std::string resolvedPaymentID = paymentID;
+    if (Utilities::isIntegratedAddress(destination))
+    {
+        auto [baseAddress, embeddedPaymentID] = Utilities::extractIntegratedAddressData(destination);
+        resolvedDest = baseAddress;
+        if (resolvedPaymentID.empty())
+        {
+            resolvedPaymentID = embeddedPaymentID;
+        }
+    }
+
     const uint64_t height = m_daemon->networkBlockCount();
     const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
     const uint64_t mixin = defaultMixin;
@@ -969,7 +989,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
     if (amountToSweep > 0)
     {
         /* Worst-case fee per batch (full batch, 1 destination output) */
-        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, resolvedPaymentID != "", 0);
         const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
 
         uint64_t sum = 0;
@@ -1014,7 +1034,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         for (int iter = 0; iter < 3; iter++)
         {
             const size_t estimatedSize = Utilities::estimateTransactionSize(
-                mixin, batch.size(), numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+                mixin, batch.size(), numOutputs, resolvedPaymentID != "", 0) + POW_NONCE_OVERHEAD;
             estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
 
             if (estimatedFee >= batchSum)
@@ -1059,7 +1079,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
                                                : 0;
 
         auto destinations = SendTransaction::setupDestinations(
-            {{destination, destinationAmount}},
+            {{resolvedDest, destinationAmount}},
             changeRequired,
             changeAddress
         );
@@ -1068,7 +1088,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             mixin,
             m_daemon,
             batch,
-            paymentID,
+            resolvedPaymentID,
             destinations,
             m_subWallets,
             unlockTime,
@@ -1104,7 +1124,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         }
 
         SendTransaction::storeSentTransaction(
-            txHash, actualFee, paymentID, batch, changeAddress,
+            txHash, actualFee, resolvedPaymentID, batch, changeAddress,
             changeRequired, m_subWallets
         );
 
