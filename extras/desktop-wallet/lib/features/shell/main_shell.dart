@@ -59,7 +59,11 @@ class _MainShellState extends ConsumerState<MainShell>
   Future<void> _showWindow({bool maximize = false}) async {
     await windowManager.show();
     if (maximize) await windowManager.maximize();
+    // Windows restricts SetForegroundWindow from background processes.
+    // Briefly setting alwaysOnTop forces the window to the front reliably.
+    await windowManager.setAlwaysOnTop(true);
     await windowManager.focus();
+    await windowManager.setAlwaysOnTop(false);
   }
 
   @override
