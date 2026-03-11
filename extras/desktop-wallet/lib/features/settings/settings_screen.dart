@@ -271,6 +271,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeProvider);
     final logLevel = ref.watch(logLevelProvider);
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
+    final autosaveEnabled = ref.watch(autosaveEnabledProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -389,6 +390,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: 'Reset Scan Height',
                       subtitle: 'Rescan blockchain from a specific height',
                       onTap: _resetScanHeight,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(Icons.autorenew_outlined, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Autosave', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text('Save wallet to disk after sync and every 5 minutes', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: autosaveEnabled,
+                            onChanged: (v) => ref.read(autosaveEnabledProvider.notifier).set(v),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -551,21 +575,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
-  final Color color;
+  final Color? color;
 
   const _SectionHeader({
     required this.title,
     required this.icon,
-    this.color = kTextPrimary,
+    this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.onSurface;
     return Row(
       children: [
-        Icon(icon, size: 16, color: color),
+        Icon(icon, size: 16, color: c),
         const SizedBox(width: 8),
-        Text(title, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text(title, style: TextStyle(color: c, fontSize: 14, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -590,11 +615,12 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ListTile(
-      leading: Icon(icon, size: 20, color: iconColor ?? kTextSecondary),
-      title: Text(title, style: TextStyle(color: titleColor ?? kTextPrimary, fontSize: 14)),
-      subtitle: Text(subtitle, style: const TextStyle(color: kTextSecondary, fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right, size: 16, color: kTextSecondary),
+      leading: Icon(icon, size: 20, color: iconColor ?? cs.onSurfaceVariant),
+      title: Text(title, style: TextStyle(color: titleColor ?? cs.onSurface, fontSize: 14)),
+      subtitle: Text(subtitle, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+      trailing: Icon(Icons.chevron_right, size: 16, color: cs.onSurfaceVariant),
       onTap: onTap,
     );
   }

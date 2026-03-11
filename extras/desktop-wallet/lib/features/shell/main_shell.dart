@@ -7,7 +7,9 @@ import 'package:local_notifier/local_notifier.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../core/api/models/transaction.dart';
+import '../../core/api/models/wallet_status.dart';
 import '../../core/providers/app_providers.dart';
+import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
@@ -37,6 +39,11 @@ class _MainShellState extends ConsumerState<MainShell>
   bool _firstTxLoad = true;
   Timer? _trayClickTimer;
 
+  // ── Autosave ────────────────────────────────────────────────────────────────
+  static const _autosaveInterval = Duration(minutes: 5);
+  Timer? _autosaveTimer;
+  bool _savedAfterSync = false;
+
   @override
   void initState() {
     super.initState();
@@ -48,10 +55,46 @@ class _MainShellState extends ConsumerState<MainShell>
   @override
   void dispose() {
     _trayClickTimer?.cancel();
+    _autosaveTimer?.cancel();
     windowManager.setPreventClose(false);
     trayManager.removeListener(this);
     windowManager.removeListener(this);
     super.dispose();
+  }
+
+  // ── Autosave logic ──────────────────────────────────────────────────────────
+
+  void _onSyncStatusChange(
+    AsyncValue<WalletStatus>? prev,
+    AsyncValue<WalletStatus> next,
+  ) {
+    final status = next.valueOrNull;
+    if (status == null) return;
+    final autosaveOn = ref.read(autosaveEnabledProvider);
+    if (!autosaveOn) {
+      _autosaveTimer?.cancel();
+      _autosaveTimer = null;
+      return;
+    }
+
+    if (status.isWalletSynced && !_savedAfterSync) {
+      // First save right after sync completes
+      _savedAfterSync = true;
+      _doAutosave();
+      // Start periodic timer
+      _autosaveTimer?.cancel();
+      _autosaveTimer = Timer.periodic(_autosaveInterval, (_) => _doAutosave());
+    }
+  }
+
+  Future<void> _doAutosave() async {
+    if (!ref.read(autosaveEnabledProvider)) return;
+    try {
+      await ref.read(walletCApiProvider).save();
+      debugPrint('[autosave] wallet saved');
+    } catch (e) {
+      debugPrint('[autosave] failed: $e');
+    }
   }
 
   // ── Tray events ──────────────────────────────────────────────────────────────
@@ -150,6 +193,7 @@ class _MainShellState extends ConsumerState<MainShell>
   @override
   Widget build(BuildContext context) {
     ref.listen(transactionsProvider, _onTxUpdate);
+    ref.listen(statusProvider, _onSyncStatusChange);
 
     final selected = _selectedIndex(context);
     final surface = Theme.of(context).brightness == Brightness.dark

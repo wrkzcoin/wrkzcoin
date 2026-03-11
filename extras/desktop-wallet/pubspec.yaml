@@ -1,8 +1,8 @@
 name: pluton_wallet
-description: "PLUTON v2 — WRKZ Desktop Wallet powered by wallet_capi FFI"
+description: "PLUTON v2 — WRKZ Desktop Wallet powered by WrkzCoin"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 2.0.0+1
 
 environment:
   sdk: ^3.10.7

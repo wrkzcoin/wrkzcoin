@@ -106,6 +106,32 @@ final notificationsEnabledProvider =
     NotifierProvider<NotificationsEnabledNotifier, bool>(
         NotificationsEnabledNotifier.new);
 
+// ── Autosave preference ──────────────────────────────────────────────────────
+
+const _kAutosaveKey = 'pluton_autosave_enabled';
+
+class AutosaveEnabledNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _load();
+    return true; // default: On
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kAutosaveKey);
+    state = v != 'false';
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled;
+    await _storage.write(key: _kAutosaveKey, value: enabled.toString());
+  }
+}
+
+final autosaveEnabledProvider =
+    NotifierProvider<AutosaveEnabledNotifier, bool>(
+        AutosaveEnabledNotifier.new);
+
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 
 /// When true, the wallet is open but the UI is locked — a login screen is shown.

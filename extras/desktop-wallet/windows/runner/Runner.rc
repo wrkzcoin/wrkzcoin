@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.wrkzcoin" "\0"
-            VALUE "FileDescription", "wrkz_wallet" "\0"
+            VALUE "CompanyName", "work.wrkz" "\0"
+            VALUE "FileDescription", "pluton_wallet" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "wrkz_wallet" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.wrkzcoin. All rights reserved." "\0"
-            VALUE "OriginalFilename", "wrkz_wallet.exe" "\0"
-            VALUE "ProductName", "wrkz_wallet" "\0"
+            VALUE "InternalName", "pluton_wallet" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 WrkzCoin. All rights reserved." "\0"
+            VALUE "OriginalFilename", "pluton_wallet.exe" "\0"
+            VALUE "ProductName", "pluton_wallet" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
