@@ -75,7 +75,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _mode = _SetupMode.backupSeed;
       });
     } on WalletCApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -97,7 +97,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -121,7 +121,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -146,7 +146,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -167,7 +167,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kBgDark,
       body: Center(
         child: SizedBox(
           width: _mode == _SetupMode.backupSeed ? 560 : 460,
@@ -423,7 +422,10 @@ class _ErrorBox extends StatelessWidget {
         children: [
           const Icon(Icons.error_outline, color: kError, size: 16),
           const SizedBox(width: 8),
-          Expanded(child: Text(message, style: const TextStyle(color: kError, fontSize: 13))),
+          Expanded(child: Text(
+            message.isNotEmpty ? message : 'An unknown error occurred.',
+            style: const TextStyle(color: kError, fontSize: 13),
+          )),
         ],
       ),
     );
