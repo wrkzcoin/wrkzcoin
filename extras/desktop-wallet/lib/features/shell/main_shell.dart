@@ -56,18 +56,23 @@ class _MainShellState extends ConsumerState<MainShell>
 
   // ── Tray events ──────────────────────────────────────────────────────────────
 
+  Future<void> _showWindow({bool maximize = false}) async {
+    await windowManager.show();
+    if (maximize) await windowManager.maximize();
+    await windowManager.focus();
+  }
+
   @override
   void onTrayIconMouseUp() {
     if (_trayClickTimer?.isActive ?? false) {
       // Second click within threshold → double-click: show + maximize
       _trayClickTimer!.cancel();
       _trayClickTimer = null;
-      windowManager.show();
-      windowManager.maximize();
+      _showWindow(maximize: true);
     } else {
       // First click: wait to distinguish from double-click
       _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
-        windowManager.show();
+        _showWindow();
         _trayClickTimer = null;
       });
     }
@@ -79,7 +84,7 @@ class _MainShellState extends ConsumerState<MainShell>
   @override
   void onTrayMenuItemClick(MenuItem menuItem) {
     if (menuItem.key == 'show') {
-      windowManager.show();
+      _showWindow();
     } else if (menuItem.key == 'exit') {
       windowManager.setPreventClose(false);
       windowManager.close();
