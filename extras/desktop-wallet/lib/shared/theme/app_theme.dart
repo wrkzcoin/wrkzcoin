@@ -18,10 +18,10 @@ const kTextSecondary = Color(0xFF8B949E);
 const kTextDisabled = Color(0xFF484F58);
 
 // ── Light palette ─────────────────────────────────────────────────────────────
-const kBgLight = Color(0xFFE8EDF5);
-const kSurfaceLight = Color(0xFFF4F7FC);
-const kSurfaceVariantLight = Color(0xFFE2E8F2);
-const kDividerLight = Color(0xFFB8C4D4);
+const kBgLight = Color(0xFFF0F1F3);
+const kSurfaceLight = Color(0xFFF8F9FA);
+const kSurfaceVariantLight = Color(0xFFEAECEF);
+const kDividerLight = Color(0xFFCDD1D8);
 const kTextPrimaryLight = Color(0xFF1A1F2E);
 const kTextSecondaryLight = Color(0xFF4A5568);
 const kTextDisabledLight = Color(0xFF8A97A8);
