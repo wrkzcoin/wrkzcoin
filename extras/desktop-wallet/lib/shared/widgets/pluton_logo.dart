@@ -33,7 +33,7 @@ class PlutonLogo extends StatelessWidget {
             Text(
               'PLUTON',
               style: TextStyle(
-                color: kTextPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: size * 0.44,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.2,

@@ -162,11 +162,11 @@ class _MainShellState extends ConsumerState<MainShell>
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.lock_outline, size: 18, color: kTextSecondary),
-                          SizedBox(width: 12),
-                          Text('Lock Wallet', style: TextStyle(color: kTextSecondary, fontSize: 14)),
+                          Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 12),
+                          Text('Lock Wallet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
                         ],
                       ),
                     ),
@@ -208,7 +208,7 @@ class _NodeStatusFooter extends ConsumerWidget {
             height: 8,
             decoration: BoxDecoration(
               color: nodeInfoAsync.isLoading
-                  ? kTextDisabled
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
                   : (isOnline ? kSuccess : kError),
               shape: BoxShape.circle,
             ),
@@ -217,7 +217,7 @@ class _NodeStatusFooter extends ConsumerWidget {
           Expanded(
             child: Text(
               nodeStr,
-              style: const TextStyle(color: kTextSecondary, fontSize: 11),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -230,9 +230,9 @@ class _NodeStatusFooter extends ConsumerWidget {
               ref.invalidate(nodeInfoProvider);
             },
             borderRadius: BorderRadius.circular(4),
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(Icons.refresh, size: 14, color: kTextSecondary),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.refresh, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ),
         ],
@@ -265,12 +265,12 @@ class _NavItem extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: selected ? kPrimary : kTextSecondary),
+            Icon(icon, size: 20, color: selected ? kPrimary : Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 12),
             Text(
               label,
               style: TextStyle(
-                color: selected ? kPrimary : kTextSecondary,
+                color: selected ? kPrimary : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
                 fontSize: 14,
               ),
