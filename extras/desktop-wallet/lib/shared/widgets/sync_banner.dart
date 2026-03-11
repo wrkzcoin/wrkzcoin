@@ -3,15 +3,70 @@ import '../../core/api/models/wallet_status.dart';
 import '../theme/app_theme.dart';
 
 /// Thin progress bar + label shown at the top of screens while wallet is syncing.
-class SyncBanner extends StatelessWidget {
+/// Tracks block-rate over the last 60 s to compute an ETA.
+class SyncBanner extends StatefulWidget {
   final WalletStatus status;
   const SyncBanner({super.key, required this.status});
 
   @override
-  Widget build(BuildContext context) {
-    if (status.isWalletSynced) return const SizedBox.shrink();
+  State<SyncBanner> createState() => _SyncBannerState();
+}
 
-    final pct = (status.syncProgress * 100).toStringAsFixed(1);
+class _SyncBannerState extends State<SyncBanner> {
+  // Ring of (timestamp, walletBlockCount) samples within the last 60 s
+  final List<(DateTime, int)> _samples = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _addSample();
+  }
+
+  @override
+  void didUpdateWidget(SyncBanner old) {
+    super.didUpdateWidget(old);
+    if (old.status.walletBlockCount != widget.status.walletBlockCount) {
+      _addSample();
+    }
+  }
+
+  void _addSample() {
+    _samples.add((DateTime.now(), widget.status.walletBlockCount));
+    final cutoff = DateTime.now().subtract(const Duration(seconds: 60));
+    _samples.removeWhere((s) => s.$1.isBefore(cutoff));
+  }
+
+  /// Returns a human-readable ETA string, or null if not enough data yet.
+  String? _eta() {
+    if (_samples.length < 2) return null;
+    final oldest = _samples.first;
+    final newest = _samples.last;
+    final elapsedSec = newest.$1.difference(oldest.$1).inSeconds;
+    if (elapsedSec == 0) return null;
+    final blocksPerSec = (newest.$2 - oldest.$2) / elapsedSec;
+    if (blocksPerSec <= 0) return null;
+    final remaining =
+        widget.status.networkBlockCount - widget.status.walletBlockCount;
+    if (remaining <= 0) return null;
+    final totalSec = remaining / blocksPerSec;
+    if (totalSec < 90) return '< 2 min';
+    final minutes = (totalSec / 60).round();
+    if (minutes < 60) return '~$minutes min';
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+    return mins > 0 ? '~${hours}h ${mins}m' : '~${hours}h';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.status.isWalletSynced) return const SizedBox.shrink();
+
+    final pct = (widget.status.syncProgress * 100).toStringAsFixed(1);
+    final eta = _eta();
+    final label = StringBuffer(
+        'Syncing $pct% (block ${widget.status.walletBlockCount} / ${widget.status.networkBlockCount})');
+    if (eta != null) label.write(' ($eta)');
+
     return Container(
       width: double.infinity,
       color: kWarning.withAlpha(25),
@@ -26,7 +81,7 @@ class SyncBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: LinearProgressIndicator(
-              value: status.syncProgress,
+              value: widget.status.syncProgress,
               backgroundColor: kDivider,
               color: kWarning,
               minHeight: 4,
@@ -35,7 +90,7 @@ class SyncBanner extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Text(
-            'Syncing $pct% (block ${status.walletBlockCount} / ${status.networkBlockCount})',
+            label.toString(),
             style: const TextStyle(color: kWarning, fontSize: 12),
           ),
         ],

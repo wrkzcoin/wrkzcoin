@@ -277,19 +277,19 @@ class _AddressBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: kSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kDivider),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
           Expanded(
             child: SelectableText(
               address,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontFamily: 'monospace',
-                  color: kTextPrimary,
+                  color: Theme.of(context).colorScheme.onSurface,
                   height: 1.5),
             ),
           ),
@@ -312,26 +312,26 @@ class _PaymentIdBadge extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: kSurfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: kDivider),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
           child: Text(
             'Payment ID · $label',
             style: Theme.of(context)
                 .textTheme
                 .labelSmall
-                ?.copyWith(color: kTextSecondary),
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: SelectableText(
             paymentId,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 11,
                 fontFamily: 'monospace',
-                color: kTextPrimary),
+                color: Theme.of(context).colorScheme.onSurface),
           ),
         ),
         CopyButton(text: paymentId, tooltip: 'Copy payment ID'),

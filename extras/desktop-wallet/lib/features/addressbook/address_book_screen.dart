@@ -144,7 +144,7 @@ class _EntryCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(entry.name,
-                      style: const TextStyle(color: kTextPrimary, fontWeight: FontWeight.w500, fontSize: 14)),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500, fontSize: 14)),
                   const SizedBox(height: 2),
                   Text(entry.address,
                       style: const TextStyle(color: kTextSecondary, fontSize: 11, fontFamily: 'monospace'),

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
 const _kLogLevelKey = 'pluton_log_level';
+const _kNotificationsKey = 'pluton_notifications_enabled';
 
 // ── Theme mode ────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,30 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
 
 final logLevelProvider =
     NotifierProvider<LogLevelNotifier, WalletLogLevel>(LogLevelNotifier.new);
+
+// ── Notifications preference ──────────────────────────────────────────────────
+
+class NotificationsEnabledNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _load();
+    return true; // default: On
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kNotificationsKey);
+    state = v != 'false';
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled;
+    await _storage.write(key: _kNotificationsKey, value: enabled.toString());
+  }
+}
+
+final notificationsEnabledProvider =
+    NotifierProvider<NotificationsEnabledNotifier, bool>(
+        NotificationsEnabledNotifier.new);
 
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 

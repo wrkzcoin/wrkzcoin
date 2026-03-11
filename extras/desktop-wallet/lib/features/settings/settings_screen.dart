@@ -270,6 +270,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final nodeAsync = ref.watch(statusProvider);
     final themeMode = ref.watch(themeModeProvider);
     final logLevel = ref.watch(logLevelProvider);
+    final notificationsEnabled = ref.watch(notificationsEnabledProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -404,12 +405,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       const Icon(Icons.brightness_6_outlined, size: 20, color: kTextSecondary),
                       const SizedBox(width: 12),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Theme', style: TextStyle(color: kTextPrimary, fontSize: 14)),
-                            Text('Choose app colour scheme', style: TextStyle(color: kTextSecondary, fontSize: 12)),
+                            Text('Theme', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                            Text('Choose app colour scheme', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -429,6 +430,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
+              // ── Notifications section ─────────────────────────────────────
+              _SectionHeader(title: 'Notifications', icon: Icons.notifications_outlined),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_active_outlined, size: 20, color: kTextSecondary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Incoming Transaction Alerts', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                            Text('Show a desktop notification when WRKZ is received', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: notificationsEnabled,
+                        onChanged: (v) => ref.read(notificationsEnabledProvider.notifier).set(v),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // ── Debug / Logs section ──────────────────────────────────────
               _SectionHeader(title: 'Debug & Logs', icon: Icons.bug_report_outlined),
               const SizedBox(height: 12),
@@ -441,12 +471,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         children: [
                           const Icon(Icons.tune_outlined, size: 20, color: kTextSecondary),
                           const SizedBox(width: 12),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Log Level', style: TextStyle(color: kTextPrimary, fontSize: 14)),
-                                Text('Controls wallet library verbosity', style: TextStyle(color: kTextSecondary, fontSize: 12)),
+                                Text('Log Level', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text('Controls wallet library verbosity', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                               ],
                             ),
                           ),

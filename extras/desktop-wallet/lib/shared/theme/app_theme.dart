@@ -18,13 +18,13 @@ const kTextSecondary = Color(0xFF8B949E);
 const kTextDisabled = Color(0xFF484F58);
 
 // ── Light palette ─────────────────────────────────────────────────────────────
-const kBgLight = Color(0xFFF5F7FA);
-const kSurfaceLight = Color(0xFFFFFFFF);
-const kSurfaceVariantLight = Color(0xFFF0F2F5);
-const kDividerLight = Color(0xFFE1E4E8);
+const kBgLight = Color(0xFFE8EDF5);
+const kSurfaceLight = Color(0xFFF4F7FC);
+const kSurfaceVariantLight = Color(0xFFE2E8F2);
+const kDividerLight = Color(0xFFB8C4D4);
 const kTextPrimaryLight = Color(0xFF1A1F2E);
-const kTextSecondaryLight = Color(0xFF57606A);
-const kTextDisabledLight = Color(0xFFACB4BD);
+const kTextSecondaryLight = Color(0xFF4A5568);
+const kTextDisabledLight = Color(0xFF8A97A8);
 
 // ── Dark theme ────────────────────────────────────────────────────────────────
 ThemeData buildDarkTheme() => ThemeData(
@@ -80,7 +80,8 @@ ThemeData buildLightTheme() => ThemeData(
       scaffoldBackgroundColor: kBgLight,
       cardTheme: CardThemeData(
         color: kSurfaceLight,
-        elevation: 0,
+        elevation: 2,
+        shadowColor: const Color(0x18000000),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: const BorderSide(color: kDividerLight, width: 1),

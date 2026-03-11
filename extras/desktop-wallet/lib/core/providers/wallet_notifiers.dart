@@ -101,3 +101,32 @@ class TransactionsNotifier extends AsyncNotifier<List<Transaction>> {
 final transactionsProvider =
     AsyncNotifierProvider<TransactionsNotifier, List<Transaction>>(
         TransactionsNotifier.new);
+
+// ── Node info ─────────────────────────────────────────────────────────────────
+
+class NodeInfoNotifier extends AsyncNotifier<Map<String, dynamic>> {
+  Timer? _timer;
+
+  @override
+  Future<Map<String, dynamic>> build() async {
+    ref.onDispose(() => _timer?.cancel());
+    _timer = Timer.periodic(kStatusPollInterval, (_) => _refresh());
+    return _fetch();
+  }
+
+  Future<Map<String, dynamic>> _fetch() async {
+    final ffi = ref.read(walletCApiProvider);
+    if (!ffi.isOpen) return {};
+    return ffi.getNodeInfoJson();
+  }
+
+  Future<void> _refresh() async {
+    state = await AsyncValue.guard(_fetch);
+  }
+
+  Future<void> refresh() => _refresh();
+}
+
+final nodeInfoProvider =
+    AsyncNotifierProvider<NodeInfoNotifier, Map<String, dynamic>>(
+        NodeInfoNotifier.new);

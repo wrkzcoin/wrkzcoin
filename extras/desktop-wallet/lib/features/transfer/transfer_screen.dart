@@ -421,16 +421,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: kSurfaceVariant, borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
               child: Row(
                 children: [
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Transaction Hash', style: TextStyle(color: kTextSecondary, fontSize: 11)),
+                        Text('Transaction Hash', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11)),
                         const SizedBox(height: 4),
-                        SelectableText(s.transactionHash, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: kTextPrimary)),
+                        SelectableText(s.transactionHash, style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Theme.of(context).colorScheme.onSurface)),
                       ],
                     ),
                   ),
@@ -498,7 +498,7 @@ class _ReviewRow extends StatelessWidget {
                 fontSize: 13,
                 fontFamily: monospace ? 'monospace' : null,
                 fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-                color: kTextPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),

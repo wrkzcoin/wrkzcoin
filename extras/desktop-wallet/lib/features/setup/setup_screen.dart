@@ -337,10 +337,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 activeColor: kPrimary,
               ),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'I have written down my seed phrase and private keys in a safe place.',
-                  style: TextStyle(fontSize: 13, color: kTextPrimary),
+                  style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
                 ),
               ),
             ],
@@ -377,9 +377,9 @@ class _BackupField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: kSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kDivider),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,7 +390,7 @@ class _BackupField extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontFamily: monospace ? 'monospace' : null,
-                color: kTextPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 height: 1.5,
               ),
               maxLines: maxLines,

@@ -232,7 +232,7 @@ class _TxCardState extends State<_TxCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(incoming ? 'Received' : 'Sent',
-                            style: const TextStyle(color: kTextPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
                         Text(fmt.format(tx.dateTime),
                             style: const TextStyle(color: kTextSecondary, fontSize: 11)),
                       ],
@@ -308,7 +308,7 @@ class _DetailRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontFamily: mono ? 'monospace' : null,
-                color: kTextPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
           ),
@@ -340,9 +340,9 @@ class _PaginationBar extends StatelessWidget {
     final end = ((current + 1) * _kPageSize).clamp(0, totalItems);
     return Container(
       height: 48,
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: kDivider)),
-        color: kSurface,
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
+        color: Theme.of(context).colorScheme.surfaceContainer,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -359,7 +359,7 @@ class _PaginationBar extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text('${current + 1} / $total', style: const TextStyle(fontSize: 12, color: kTextPrimary)),
+            child: Text('${current + 1} / $total', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface)),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right, size: 18),

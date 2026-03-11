@@ -53,14 +53,14 @@ class OverviewScreen extends ConsumerWidget {
                                 children: [
                                   Text(
                                     formatAmount(b.unlocked),
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 36,
                                       fontWeight: FontWeight.bold,
-                                      color: kTextPrimary,
+                                      color: Theme.of(context).colorScheme.onSurface,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const Text(kCoinTicker, style: TextStyle(fontSize: 18, color: kTextSecondary)),
+                                                  const SizedBox(width: 8),
+                                  Text(kCoinTicker, style: TextStyle(fontSize: 18, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                                 ],
                               ),
                               // Locked (unconfirmed)
@@ -298,7 +298,7 @@ class _TxRow extends StatelessWidget {
               ),
             ),
             Text(
-              '${incoming ? '+' : '-'}${formatAmount(amount)} $kCoinTicker',
+              '${incoming ? '+' : '-'}${formatAmount(amount.abs())} $kCoinTicker',
               style: TextStyle(
                 color: incoming ? kSuccess : kError,
                 fontWeight: FontWeight.w600,
@@ -321,9 +321,9 @@ class _EmptyTxPlaceholder extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: kSurface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kDivider),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: const Column(
         children: [
@@ -349,8 +349,8 @@ class _StatusRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: kTextSecondary, fontSize: 13)),
-          Text(value, style: TextStyle(color: valueColor ?? kTextPrimary, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
+          Text(value, style: TextStyle(color: valueColor ?? Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -368,7 +368,7 @@ class _SkeletonBox extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: kSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(6),
       ),
     );
