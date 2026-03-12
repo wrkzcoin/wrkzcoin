@@ -307,7 +307,7 @@ class WalletCApi {
   late final _FnSetLogLevelDart _walletSetLogLevel;
   late final _FnTakeLogsDart _walletTakeLogsJson;
   late final _FnClearLogsDart _walletClearLogs;
-  late final _FnPowStatusDart _walletGetPowStatus;
+  _FnPowStatusDart? _walletGetPowStatus;
 
   bool get isOpen => _handle != null && _handle!.address != 0;
 
@@ -444,9 +444,13 @@ class WalletCApi {
     _walletClearLogs =
         _lib.lookupFunction<_FnClearLogsNative, _FnClearLogsDart>(
             'wallet_clear_logs');
-    _walletGetPowStatus =
-        _lib.lookupFunction<_FnPowStatusNative, _FnPowStatusDart>(
-            'wallet_get_pow_status');
+    try {
+      _walletGetPowStatus =
+          _lib.lookupFunction<_FnPowStatusNative, _FnPowStatusDart>(
+              'wallet_get_pow_status');
+    } catch (_) {
+      _walletGetPowStatus = null; // symbol not in this build
+    }
   }
 
   // ── internal helpers ─────────────────────────────────────────────────────
@@ -1115,11 +1119,13 @@ class WalletCApi {
 
   /// Non-blocking query of TX PoW status. Safe to call from main thread.
   ({bool active, int elapsedMs, int nonces}) getPowStatus() {
+    final fn = _walletGetPowStatus;
+    if (fn == null) return (active: false, elapsedMs: 0, nonces: 0);
     return using((arena) {
       final a = arena<Bool>();
       final e = arena<Uint64>();
       final n = arena<Uint64>();
-      _walletGetPowStatus(a, e, n);
+      fn(a, e, n);
       return (active: a.value, elapsedMs: e.value, nonces: n.value);
     });
   }
