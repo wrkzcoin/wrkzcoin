@@ -1,4 +1,4 @@
-package com.wrkzcoin.pluton_mobile
+package work.wrkz.pluton_mobile_v2
 
 import io.flutter.embedding.android.FlutterActivity
 
