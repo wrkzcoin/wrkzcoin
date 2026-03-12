@@ -127,7 +127,7 @@
   "createFirstWallet": "创建第一个钱包",
   "addWallet": "添加钱包",
   "deleteWallet": "删除钱包",
-  "deleteWalletConfirm": "删除"{name}"？\n\n这将永久移除钱包文件和密钥，请确保已备份您的助记词。",
+  "deleteWalletConfirm": "删除\u201c{name}\u201d？\n\n这将永久移除钱包文件和密钥，请确保已备份您的助记词。",
   "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
   "delete": "删除",
 
