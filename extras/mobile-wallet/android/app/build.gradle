@@ -35,6 +35,7 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols.clear()
+            excludes += ['**/armeabi-v7a/**']
         }
     }
 
