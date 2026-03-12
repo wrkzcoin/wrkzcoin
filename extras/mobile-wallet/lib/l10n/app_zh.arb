@@ -224,7 +224,7 @@
   "renameWallet": "重命名钱包",
   "newName": "新名称",
   "rename": "重命名",
-  "deleteWalletConfirmShort": "删除"{name}"？此操作无法撤销。",
+  "deleteWalletConfirmShort": "删除\u201c{name}\u201d？此操作无法撤销。",
   "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
 
   "security": "安全",
