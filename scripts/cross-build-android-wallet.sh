@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_TYPE="${BUILD_TYPE:-Release}"
-BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build-android-arm64}"
+BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build-android-$ANDROID_ABI}"
 ANDROID_ABI="${ANDROID_ABI:-arm64-v8a}"
 ANDROID_ABIS="${ANDROID_ABIS:-}"
 ANDROID_PLATFORM="${ANDROID_PLATFORM:-android-24}"
