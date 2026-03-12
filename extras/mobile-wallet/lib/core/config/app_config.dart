@@ -19,8 +19,8 @@ class AppConfig {
       ssl: false,
     ),
     NodePreset(
-      label: 'WRKZ Secondary',
-      host: 'nodes2.wrkz.work',
+      label: 'WRKZ Finland',
+      host: 'node-fin.wrkz.work',
       port: 17856,
       ssl: false,
     ),
