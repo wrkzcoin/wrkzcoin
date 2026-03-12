@@ -106,6 +106,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         );
       }
 
+      // Apply scan coinbase setting
+      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+
       await ref.read(walletRegistryProvider).setLastOpened(filename);
       ref.read(walletOpenProvider.notifier).state = true;
       ref.read(walletLockedProvider.notifier).state = false;

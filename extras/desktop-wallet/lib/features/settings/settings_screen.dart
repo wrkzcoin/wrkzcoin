@@ -271,6 +271,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeProvider);
     final logLevel = ref.watch(logLevelProvider);
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
+    final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
 
     return SingleChildScrollView(
@@ -410,6 +411,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           Switch(
                             value: autosaveEnabled,
                             onChanged: (v) => ref.read(autosaveEnabledProvider.notifier).set(v),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(Icons.construction_outlined, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Scan Coinbase Transactions', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text('Include miner rewards when syncing (off by default)', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                          Switch(
+                            value: scanCoinbase,
+                            onChanged: (v) {
+                              ref.read(scanCoinbaseProvider.notifier).set(v);
+                              ref.read(walletCApiProvider).setScanCoinbase(v);
+                            },
                           ),
                         ],
                       ),

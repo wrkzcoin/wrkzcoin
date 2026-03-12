@@ -467,6 +467,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final autosave = ref.watch(autosaveEnabledProvider);
     final biometric = ref.watch(biometricEnabledProvider);
     final autoLockIdx = ref.watch(autoLockIndexProvider);
+    final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final walletCaption = () {
       final fn = ref.read(activeWalletFilenameProvider);
       if (fn == null) return 'Wallet';
@@ -734,6 +735,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 value: autosave,
                 onChanged: (v) =>
                     ref.read(autosaveEnabledProvider.notifier).set(v),
+              ),
+              SwitchListTile(
+                title: const Text('Scan Coinbase Transactions'),
+                subtitle:
+                    const Text('Include miner rewards (off by default)'),
+                value: scanCoinbase,
+                onChanged: (v) {
+                  ref.read(scanCoinbaseProvider.notifier).set(v);
+                  ref.read(walletCApiProvider).setScanCoinbase(v);
+                },
               ),
             ],
           ),

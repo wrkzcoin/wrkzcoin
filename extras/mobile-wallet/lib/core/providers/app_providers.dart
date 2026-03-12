@@ -176,3 +176,26 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
 
 final logLevelProvider =
     NotifierProvider<LogLevelNotifier, WalletLogLevel>(LogLevelNotifier.new);
+
+// ── scan coinbase ───────────────────────────────────────────────────────────
+
+class ScanCoinbaseNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _load();
+    return false;
+  }
+
+  Future<void> _load() async {
+    final v = await readPref(AppConfig.skScanCoinbase);
+    if (v != null) state = v == 'true';
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled;
+    await storePref(AppConfig.skScanCoinbase, enabled.toString());
+  }
+}
+
+final scanCoinbaseProvider =
+    NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);

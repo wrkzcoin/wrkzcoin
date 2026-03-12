@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/models/balance.dart';
 import '../../core/api/models/transaction.dart';
+import '../../core/api/models/wallet_status.dart';
 import '../../core/auth/wallet_auth.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
@@ -185,7 +187,7 @@ class _SeedBackupWarningState extends State<_SeedBackupWarning> {
 // ── balance card ─────────────────────────────────────────────────────────────
 
 class _BalanceCard extends StatelessWidget {
-  final AsyncValue balanceAsync;
+  final AsyncValue<Balance> balanceAsync;
   const _BalanceCard({required this.balanceAsync});
 
   @override
@@ -244,8 +246,8 @@ class _BalanceCard extends StatelessWidget {
 // ── network status card ──────────────────────────────────────────────────────
 
 class _NetworkStatusCard extends StatelessWidget {
-  final AsyncValue statusAsync;
-  final AsyncValue nodeAsync;
+  final AsyncValue<WalletStatus> statusAsync;
+  final AsyncValue<Map<String, dynamic>> nodeAsync;
   const _NetworkStatusCard(
       {required this.statusAsync, required this.nodeAsync});
 
@@ -312,7 +314,7 @@ class _NetworkStatusCard extends StatelessWidget {
 // ── recent transactions ──────────────────────────────────────────────────────
 
 class _RecentTransactions extends StatelessWidget {
-  final AsyncValue txAsync;
+  final AsyncValue<List<Transaction>> txAsync;
   const _RecentTransactions({required this.txAsync});
 
   @override

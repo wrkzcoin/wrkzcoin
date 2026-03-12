@@ -57,8 +57,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // Must have wallet open for main routes.
-      if (!open && loc != '/picker' && loc != '/setup') return '/picker';
+      // Must have wallet open for main routes (lock is allowed for password entry).
+      if (!open && loc != '/picker' && loc != '/setup' && loc != '/lock') {
+        return '/picker';
+      }
 
       // If locked, force lock screen.
       if (open && locked && loc != '/lock') return '/lock';

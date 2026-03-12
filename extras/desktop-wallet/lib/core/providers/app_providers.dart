@@ -132,6 +132,31 @@ final autosaveEnabledProvider =
     NotifierProvider<AutosaveEnabledNotifier, bool>(
         AutosaveEnabledNotifier.new);
 
+// ── Scan coinbase ────────────────────────────────────────────────────────────
+
+const _kScanCoinbaseKey = 'pluton_scan_coinbase';
+
+class ScanCoinbaseNotifier extends Notifier<bool> {
+  @override
+  bool build() {
+    _load();
+    return false; // default: Off
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kScanCoinbaseKey);
+    if (v != null) state = v == 'true';
+  }
+
+  Future<void> set(bool enabled) async {
+    state = enabled;
+    await _storage.write(key: _kScanCoinbaseKey, value: enabled.toString());
+  }
+}
+
+final scanCoinbaseProvider =
+    NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 
 /// When true, the wallet is open but the UI is locked — a login screen is shown.

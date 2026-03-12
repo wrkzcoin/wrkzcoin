@@ -1,6 +1,7 @@
 #include <walletcapi/wallet_capi.h>
 
 #include <common/StringTools.h>
+#include <config/Config.h>
 #include <common/FileSystemShim.h>
 #include <errors/Errors.h>
 #include <utilities/Addresses.h>
@@ -1648,5 +1649,10 @@ wallet_status_t wallet_clear_logs(void)
     std::lock_guard<std::mutex> lock(g_log_mutex);
     g_logs.clear();
     return static_cast<wallet_status_t>(SUCCESS);
+}
+
+void wallet_set_scan_coinbase(bool scan)
+{
+    Config::config.wallet.skipCoinbaseTransactions = !scan;
 }
 

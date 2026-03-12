@@ -301,6 +301,11 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_set_log_level(const char *level);
 WALLET_CAPI_EXPORT wallet_status_t wallet_take_logs_json(char **out_json, size_t *out_len);
 WALLET_CAPI_EXPORT wallet_status_t wallet_clear_logs(void);
 
+/* Set whether to scan coinbase (miner reward) transactions.
+   By default coinbase transactions are skipped.
+   Set scan=true to include them (needed if the wallet mines). */
+WALLET_CAPI_EXPORT void wallet_set_scan_coinbase(bool scan);
+
 #ifdef __cplusplus
 }
 #endif

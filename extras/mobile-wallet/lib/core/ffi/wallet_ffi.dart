@@ -233,6 +233,10 @@ typedef _FnPowStatusNative = Void Function(
 typedef _FnPowStatusDart = void Function(
     Pointer<Bool>, Pointer<Uint64>, Pointer<Uint64>);
 
+// wallet_set_scan_coinbase(bool scan)
+typedef _FnSetScanCoinbaseNative = Void Function(Bool);
+typedef _FnSetScanCoinbaseDart = void Function(bool);
+
 // ─── exception ────────────────────────────────────────────────────────────────
 
 class WalletCApiException implements Exception {
@@ -308,6 +312,7 @@ class WalletCApi {
   late final _FnTakeLogsDart _walletTakeLogsJson;
   late final _FnClearLogsDart _walletClearLogs;
   _FnPowStatusDart? _walletGetPowStatus;
+  _FnSetScanCoinbaseDart? _walletSetScanCoinbase;
 
   bool get isOpen => _handle != null && _handle!.address != 0;
 
@@ -450,6 +455,13 @@ class WalletCApi {
               'wallet_get_pow_status');
     } catch (_) {
       _walletGetPowStatus = null; // symbol not in this build
+    }
+    try {
+      _walletSetScanCoinbase =
+          _lib.lookupFunction<_FnSetScanCoinbaseNative, _FnSetScanCoinbaseDart>(
+              'wallet_set_scan_coinbase');
+    } catch (_) {
+      _walletSetScanCoinbase = null;
     }
   }
 
@@ -1128,6 +1140,14 @@ class WalletCApi {
       fn(a, e, n);
       return (active: a.value, elapsedMs: e.value, nonces: n.value);
     });
+  }
+
+  // --- scan coinbase ---
+
+  /// Enable or disable scanning of coinbase (miner reward) transactions.
+  /// Default is off. Call before opening a wallet for full effect.
+  void setScanCoinbase(bool scan) {
+    _walletSetScanCoinbase?.call(scan);
   }
 
   // --- error helpers ---
