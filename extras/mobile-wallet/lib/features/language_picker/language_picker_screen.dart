@@ -91,6 +91,7 @@ class _LanguagePickerScreenState extends ConsumerState<LanguagePickerScreen> {
                       .read(localeProvider.notifier)
                       .set(Locale(_selectedCode));
                   await markFirstLaunchDone();
+                  ref.invalidate(firstLaunchDoneProvider);
                   if (mounted) context.go('/splash');
                 },
                 child: const Text('Continue'),
