@@ -299,6 +299,13 @@ if (WRKZ_BUILD_WALLET_CAPI)
     target_link_libraries(wallet_capi_c WalletBackend)
     target_link_libraries(wallet_capi PRIVATE WalletBackend)
     set_property(TARGET wallet_capi PROPERTY OUTPUT_NAME "wallet_capi")
+    # Strip debug symbols in Release builds — reduces .so from ~90MB to ~15-20MB
+    if (NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_custom_command(TARGET wallet_capi POST_BUILD
+            COMMAND ${CMAKE_STRIP} -s "$<TARGET_FILE:wallet_capi>"
+            COMMENT "Stripping wallet_capi shared library"
+        )
+    endif ()
 endif ()
 if (WRKZ_BUILD_WALLET_WASM)
     if (NOT WRKZ_BUILD_WALLET_CAPI)
