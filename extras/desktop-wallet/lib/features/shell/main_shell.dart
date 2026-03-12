@@ -11,8 +11,10 @@ import '../../core/api/models/wallet_status.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
+import '../../shared/widgets/language_selector.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -25,15 +27,6 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell>
     with WindowListener {
-  static const _tabs = [
-    _TabItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Overview', path: '/overview'),
-    _TabItem(icon: Icons.qr_code_outlined, activeIcon: Icons.qr_code, label: 'Receive', path: '/receive'),
-    _TabItem(icon: Icons.send_outlined, activeIcon: Icons.send, label: 'Transfer', path: '/transfer'),
-    _TabItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: 'History', path: '/history'),
-    _TabItem(icon: Icons.contacts_outlined, activeIcon: Icons.contacts, label: 'Address Book', path: '/addressbook'),
-    _TabItem(icon: Icons.settings_outlined, activeIcon: Icons.settings, label: 'Settings', path: '/settings'),
-    _TabItem(icon: Icons.info_outline, activeIcon: Icons.info, label: 'About', path: '/about'),
-  ];
 
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
@@ -188,18 +181,29 @@ class _MainShellState extends ConsumerState<MainShell>
   }
 
   void _showNotification(Transaction tx) {
+    final tr = S.of(context);
     final notification = LocalNotification(
-      title: 'WRKZ Received',
-      body: 'You received ${formatAmount(tx.totalAmount.abs(), showTicker: true)}',
+      title: tr?.wrkzReceived ?? 'WRKZ Received',
+      body: tr?.youReceivedAmount(formatAmount(tx.totalAmount.abs(), showTicker: true)) ?? 'You received ${formatAmount(tx.totalAmount.abs(), showTicker: true)}',
     );
     notification.show();
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  int _selectedIndex(BuildContext context) {
+  List<_TabItem> _localizedTabs(S? tr) => [
+    _TabItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: tr?.tabOverview ?? 'Overview', path: '/overview'),
+    _TabItem(icon: Icons.qr_code_outlined, activeIcon: Icons.qr_code, label: tr?.tabReceive ?? 'Receive', path: '/receive'),
+    _TabItem(icon: Icons.send_outlined, activeIcon: Icons.send, label: tr?.tabTransfer ?? 'Transfer', path: '/transfer'),
+    _TabItem(icon: Icons.receipt_long_outlined, activeIcon: Icons.receipt_long, label: tr?.tabHistory ?? 'History', path: '/history'),
+    _TabItem(icon: Icons.contacts_outlined, activeIcon: Icons.contacts, label: tr?.tabAddressBook ?? 'Address Book', path: '/addressbook'),
+    _TabItem(icon: Icons.settings_outlined, activeIcon: Icons.settings, label: tr?.tabSettings ?? 'Settings', path: '/settings'),
+    _TabItem(icon: Icons.info_outline, activeIcon: Icons.info, label: tr?.tabAbout ?? 'About', path: '/about'),
+  ];
+
+  int _selectedIndex(BuildContext context, List<_TabItem> tabs) {
     final location = GoRouterState.of(context).matchedLocation;
-    final idx = _tabs.indexWhere((t) => location.startsWith(t.path));
+    final idx = tabs.indexWhere((t) => location.startsWith(t.path));
     return idx < 0 ? 0 : idx;
   }
 
@@ -210,7 +214,9 @@ class _MainShellState extends ConsumerState<MainShell>
     ref.listen(transactionsProvider, _onTxUpdate);
     ref.listen(statusProvider, _onSyncStatusChange);
 
-    final selected = _selectedIndex(context);
+    final tr = S.of(context);
+    final tabs = _localizedTabs(tr);
+    final selected = _selectedIndex(context, tabs);
     final surface = Theme.of(context).brightness == Brightness.dark
         ? kSurface
         : kSurfaceLight;
@@ -231,8 +237,8 @@ class _MainShellState extends ConsumerState<MainShell>
                 ),
                 const Divider(height: 1),
                 const SizedBox(height: 8),
-                ...List.generate(_tabs.length, (i) {
-                  final tab = _tabs[i];
+                ...List.generate(tabs.length, (i) {
+                  final tab = tabs[i];
                   final active = selected == i;
                   return _NavItem(
                     icon: active ? tab.activeIcon : tab.icon,
@@ -254,14 +260,14 @@ class _MainShellState extends ConsumerState<MainShell>
                         children: [
                           Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
                           const SizedBox(width: 12),
-                          Text('Lock Wallet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
+                          Text(tr?.lockWallet ?? 'Lock Wallet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
                         ],
                       ),
                     ),
                   ),
                 ),
                 const Divider(height: 1),
-                // ── Node status footer ────────────────────────────────────────
+                // ── Node status footer + language switcher ────────────────────
                 _NodeStatusFooter(),
               ],
             ),
@@ -309,6 +315,9 @@ class _NodeStatusFooter extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          // Language switcher
+          const LanguageSelectorButton(),
+          const SizedBox(width: 2),
           // Refresh button
           InkWell(
             onTap: () {

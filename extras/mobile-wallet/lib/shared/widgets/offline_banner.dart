@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_theme.dart';
 
 class OfflineBanner extends StatelessWidget {
@@ -20,7 +21,7 @@ class OfflineBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'No connection to daemon',
+              S.of(context)?.noConnectionToDaemon ?? 'No connection to daemon',
               style: Theme.of(context)
                   .textTheme
                   .titleMedium

@@ -6,6 +6,7 @@ import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 
@@ -70,7 +71,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       hapticError();
       setState(() {
         _loading = false;
-        _error = 'Incorrect password';
+        _error = S.of(context)?.incorrectPassword ?? 'Incorrect password';
       });
       return;
     }
@@ -88,7 +89,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         final registry = ref.read(walletRegistryProvider);
         final walletPath = registry.getWalletPath(filename);
 
-        // Read stored password for FFI open.
         final password = _passCtrl.text.isNotEmpty
             ? _passCtrl.text
             : await _getStoredPassword(filename);
@@ -96,7 +96,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         if (password == null) {
           setState(() {
             _loading = false;
-            _error = 'Enter your password';
+            _error = S.of(context)?.enterYourPassword ?? 'Enter your password';
           });
           return;
         }
@@ -110,7 +110,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         );
       }
 
-      // Apply scan coinbase setting
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
 
       await ref.read(walletRegistryProvider).setLastOpened(filename);
@@ -130,7 +129,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Future<String?> _getStoredPassword(String filename) async {
-    // For biometric unlock, we read the stored password.
     final key = AppConfig.walletPasswordKey(filename);
     return readPref(key);
   }
@@ -138,6 +136,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   @override
   Widget build(BuildContext context) {
     final caption = _walletCaption ?? 'Wallet';
+    final tr = S.of(context);
 
     return Scaffold(
       body: SafeArea(
@@ -164,7 +163,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
               Text(caption,
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 8),
-              Text('Enter your password to unlock',
+              Text(tr?.enterPasswordToUnlock ?? 'Enter your password to unlock',
                   style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 32),
               TextField(
@@ -173,7 +172,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 autofocus: true,
                 onSubmitted: (_) => _unlock(),
                 decoration: InputDecoration(
-                  hintText: 'Password',
+                  hintText: tr?.password ?? 'Password',
                   errorText: _error,
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
@@ -194,7 +193,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Unlock'),
+                    : Text(tr?.unlock ?? 'Unlock'),
               ),
               const SizedBox(height: 12),
               TextButton(
@@ -202,7 +201,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                   ref.read(activeWalletFilenameProvider.notifier).state = null;
                   context.go('/picker');
                 },
-                child: const Text('Switch Wallet'),
+                child: Text(tr?.switchWallet ?? 'Switch Wallet'),
               ),
               const Spacer(flex: 3),
             ],

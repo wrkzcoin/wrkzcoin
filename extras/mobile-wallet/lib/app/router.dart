@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/providers/providers.dart';
 import '../features/history/history_screen.dart';
+import '../features/language_picker/language_picker_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/overview/overview_screen.dart';
 import '../features/receive/receive_screen.dart';
@@ -50,8 +51,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final open = auth._walletOpen;
       final locked = auth._walletLocked;
 
-      // Allow splash, picker, and setup without redirect.
-      if (loc == '/splash') return null;
+      // Allow splash, picker, setup, and language picker without redirect.
+      if (loc == '/splash' || loc == '/language') return null;
       if (loc == '/picker' || loc == '/setup') {
         if (open && !locked) return '/overview';
         return null;
@@ -75,6 +76,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/splash',
         pageBuilder: (_, state) => const NoTransitionPage(
           child: SplashScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/language',
+        pageBuilder: (_, state) => const NoTransitionPage(
+          child: LanguagePickerScreen(),
         ),
       ),
       GoRoute(

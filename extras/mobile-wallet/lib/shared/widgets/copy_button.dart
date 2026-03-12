@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/generated/app_localizations.dart';
 import '../utils/haptics.dart';
 
 class CopyButton extends StatefulWidget {
@@ -46,7 +47,7 @@ class _CopyButtonState extends State<CopyButton> {
             : Theme.of(context).textTheme.bodySmall?.color,
       ),
       onPressed: _copy,
-      tooltip: 'Copy',
+      tooltip: S.of(context)?.copy ?? 'Copy',
       visualDensity: VisualDensity.compact,
     );
   }

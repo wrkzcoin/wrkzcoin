@@ -12,11 +12,12 @@ import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 const _storage = FlutterSecureStorage();
 const _kLastWalletKey = 'pluton_last_wallet_path';
 
-// ── Last-opened wallet persistence ───────────────────────────────────────────
+// -- Last-opened wallet persistence -------------------------------------------
 
 final lastWalletPathProvider = FutureProvider<String?>((ref) async {
   return _storage.read(key: _kLastWalletKey);
@@ -30,7 +31,7 @@ Future<void> clearLastWalletPath() async {
   await _storage.delete(key: _kLastWalletKey);
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
+// -- Screen -------------------------------------------------------------------
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -70,6 +71,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _saveNode() async {
+    final tr = S.of(context);
     setState(() { _savingNode = true; _nodeError = null; _nodeSuccess = null; });
     try {
       await ref.read(walletCApiProvider).swapNode(
@@ -78,7 +80,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ssl: _nodeSSL,
       );
       ref.read(statusProvider.notifier).refresh();
-      setState(() => _nodeSuccess = 'Node updated successfully');
+      setState(() => _nodeSuccess = tr?.nodeUpdatedSuccess ?? 'Node updated successfully');
     } on WalletCApiException catch (e) {
       setState(() => _nodeError = e.message);
     } catch (e) {
@@ -89,11 +91,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _saveWallet() async {
+    final tr = S.of(context);
     try {
       await ref.read(walletCApiProvider).save();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wallet saved'), backgroundColor: kSuccess),
+          SnackBar(content: Text(tr?.walletSaved ?? 'Wallet saved'), backgroundColor: kSuccess),
         );
       }
     } on WalletCApiException catch (e) {
@@ -106,8 +109,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _exportJson() async {
+    final tr = S.of(context);
     final path = await FilePicker.platform.saveFile(
-      dialogTitle: 'Export wallet JSON',
+      dialogTitle: tr?.exportJsonTitle ?? 'Export wallet JSON',
       fileName: 'wallet_export.json',
     );
     if (path == null) return;
@@ -116,7 +120,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await File(path).writeAsString(jsonStr);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported to $path'), backgroundColor: kSuccess),
+          SnackBar(content: Text(tr?.exportedTo(path) ?? 'Exported to $path'), backgroundColor: kSuccess),
         );
       }
     } on WalletCApiException catch (e) {
@@ -128,7 +132,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: kError),
+          SnackBar(content: Text(tr?.exportFailed(e.toString()) ?? 'Export failed: $e'), backgroundColor: kError),
         );
       }
     }
@@ -138,26 +142,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final heightCtrl = TextEditingController(text: '0');
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset Scan Height'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Enter a block height to rescan from. Use 0 for a full rescan.'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: heightCtrl,
-              decoration: const InputDecoration(labelText: 'Scan height'),
-              keyboardType: TextInputType.number,
-            ),
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: heightCtrl,
+                decoration: InputDecoration(labelText: dlgTr?.scanHeight ?? 'Scan height'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(dlgTr?.reset ?? 'Reset')),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
-        ],
-      ),
+        );
+      },
     );
     if (confirmed != true) return;
     try {
@@ -178,31 +185,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Step 1: first confirmation
     final step1 = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Wallet Data'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.warning_amber_rounded, color: kError, size: 40),
-            SizedBox(height: 12),
-            Text(
-              'This will permanently delete your wallet file from disk.\n\n'
-              'Make sure you have backed up your seed phrase and private keys before proceeding. '
-              'This action cannot be undone.',
-              style: TextStyle(height: 1.5),
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.deleteWalletData ?? 'Delete Wallet Data'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: kError, size: 40),
+              const SizedBox(height: 12),
+              Text(
+                dlgTr?.deleteWalletWarning ??
+                    'This will permanently delete your wallet file from disk.\n\n'
+                    'Make sure you have backed up your seed phrase and private keys before proceeding. '
+                    'This action cannot be undone.',
+                style: const TextStyle(height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: kError),
+              child: Text(dlgTr?.iUnderstandContinue ?? 'I understand, continue'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: kError),
-            child: const Text('I understand, continue'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     if (step1 != true) return;
     if (!mounted) return;
@@ -211,30 +222,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final typeCtrl = TextEditingController();
     final step2 = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Final Confirmation'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Type DELETE to confirm:'),
-            const SizedBox(height: 10),
-            TextField(
-              controller: typeCtrl,
-              autofocus: true,
-              decoration: const InputDecoration(hintText: 'DELETE'),
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.finalConfirmation ?? 'Final Confirmation'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(dlgTr?.typeDeleteToConfirm ?? 'Type DELETE to confirm:'),
+              const SizedBox(height: 10),
+              TextField(
+                controller: typeCtrl,
+                autofocus: true,
+                decoration: InputDecoration(hintText: dlgTr?.deleteHint ?? 'DELETE'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: kError),
+              onPressed: () => Navigator.pop(ctx, typeCtrl.text == (dlgTr?.deleteHint ?? 'DELETE')),
+              child: Text(dlgTr?.deletePermanently ?? 'Delete permanently'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: kError),
-            onPressed: () => Navigator.pop(ctx, typeCtrl.text == 'DELETE'),
-            child: const Text('Delete permanently'),
-          ),
-        ],
-      ),
+        );
+      },
     );
     if (step2 != true) return;
 
@@ -267,6 +281,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     final nodeAsync = ref.watch(statusProvider);
     final themeMode = ref.watch(themeModeProvider);
     final logLevel = ref.watch(logLevelProvider);
@@ -282,16 +297,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
+              Text(tr?.settings ?? 'Settings', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 24),
 
-              // ── Node section ──────────────────────────────────────────────
-              _SectionHeader(title: 'Daemon Node', icon: Icons.cloud_outlined),
+              // -- Node section ------------------------------------------------
+              _SectionHeader(title: tr?.sectionDaemonNode ?? 'Daemon Node', icon: Icons.cloud_outlined),
               const SizedBox(height: 12),
 
               // Node error banner (shown when node is unreachable)
               nodeAsync.whenOrNull(
                 error: (e, _) => _NodeWarningBanner(
+                  message: tr?.nodeUnreachable ?? 'Cannot reach the current node. Enter a new node address below and tap Apply.',
                   onSwitch: () => _scrollToNodeForm(),
                 ),
               ) ?? const SizedBox.shrink(),
@@ -302,10 +318,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Connect to a local or remote daemon node. '
-                        'Changes take effect immediately.',
-                        style: TextStyle(color: kTextSecondary, fontSize: 13),
+                      Text(
+                        tr?.nodeDescription ?? 'Connect to a local or remote daemon node. Changes take effect immediately.',
+                        style: const TextStyle(color: kTextSecondary, fontSize: 13),
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -314,21 +329,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             flex: 3,
                             child: TextField(
                               controller: _nodeHostCtrl,
-                              decoration: const InputDecoration(labelText: 'Host / IP address'),
+                              decoration: InputDecoration(labelText: tr?.hostIpAddress ?? 'Host / IP address'),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: TextField(
                               controller: _nodePortCtrl,
-                              decoration: const InputDecoration(labelText: 'Port'),
+                              decoration: InputDecoration(labelText: tr?.port ?? 'Port'),
                               keyboardType: TextInputType.number,
                             ),
                           ),
                           const SizedBox(width: 10),
                           Column(
                             children: [
-                              const Text('SSL', style: TextStyle(color: kTextSecondary, fontSize: 12)),
+                              Text(tr?.ssl ?? 'SSL', style: const TextStyle(color: kTextSecondary, fontSize: 12)),
                               Switch(value: _nodeSSL, onChanged: (v) => setState(() => _nodeSSL = v)),
                             ],
                           ),
@@ -358,7 +373,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         onPressed: _savingNode ? null : _saveNode,
                         child: _savingNode
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : const Text('Apply'),
+                            : Text(tr?.apply ?? 'Apply'),
                       ),
                     ],
                   ),
@@ -366,30 +381,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Wallet section ────────────────────────────────────────────
-              _SectionHeader(title: 'Wallet', icon: Icons.account_balance_wallet_outlined),
+              // -- Wallet section ----------------------------------------------
+              _SectionHeader(title: tr?.sectionWallet ?? 'Wallet', icon: Icons.account_balance_wallet_outlined),
               const SizedBox(height: 12),
               Card(
                 child: Column(
                   children: [
                     _SettingsTile(
                       icon: Icons.save_outlined,
-                      title: 'Save Wallet',
-                      subtitle: 'Flush current state to disk',
+                      title: tr?.saveWallet ?? 'Save Wallet',
+                      subtitle: tr?.saveWalletSubtitle ?? 'Flush current state to disk',
                       onTap: _saveWallet,
                     ),
                     const Divider(height: 1, indent: 56),
                     _SettingsTile(
                       icon: Icons.file_download_outlined,
-                      title: 'Export to JSON',
-                      subtitle: 'Save wallet data as a JSON file',
+                      title: tr?.exportToJson ?? 'Export to JSON',
+                      subtitle: tr?.exportToJsonSubtitle ?? 'Save wallet data as a JSON file',
                       onTap: _exportJson,
                     ),
                     const Divider(height: 1, indent: 56),
                     _SettingsTile(
                       icon: Icons.sync_outlined,
-                      title: 'Reset Scan Height',
-                      subtitle: 'Rescan blockchain from a specific height',
+                      title: tr?.resetScanHeight ?? 'Reset Scan Height',
+                      subtitle: tr?.resetScanHeightSubtitle ?? 'Rescan blockchain from a specific height',
                       onTap: _resetScanHeight,
                     ),
                     const Divider(height: 1, indent: 56),
@@ -403,8 +418,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Autosave', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                                Text('Save wallet to disk after sync and every 5 minutes', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                                Text(tr?.autosave ?? 'Autosave', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text(tr?.autosaveSubtitle ?? 'Save wallet to disk after sync and every 5 minutes', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                               ],
                             ),
                           ),
@@ -426,8 +441,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Scan Coinbase Transactions', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                                Text('Include miner rewards when syncing (off by default)', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                                Text(tr?.scanCoinbaseTx ?? 'Scan Coinbase Transactions', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text(tr?.scanCoinbaseSubtitle ?? 'Include miner rewards when syncing (off by default)', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                               ],
                             ),
                           ),
@@ -446,8 +461,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Appearance section ────────────────────────────────────────
-              _SectionHeader(title: 'Appearance', icon: Icons.palette_outlined),
+              // -- Appearance section ------------------------------------------
+              _SectionHeader(title: tr?.sectionAppearance ?? 'Appearance', icon: Icons.palette_outlined),
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -460,16 +475,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Theme', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                            Text('Choose app colour scheme', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                            Text(tr?.theme ?? 'Theme', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                            Text(tr?.themeSubtitle ?? 'Choose app colour scheme', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           ],
                         ),
                       ),
                       SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto, size: 16), label: Text('System')),
-                          ButtonSegment(value: ThemeMode.light,  icon: Icon(Icons.light_mode, size: 16),      label: Text('Light')),
-                          ButtonSegment(value: ThemeMode.dark,   icon: Icon(Icons.dark_mode, size: 16),       label: Text('Dark')),
+                        segments: [
+                          ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto, size: 16), label: Text(tr?.themeSystem ?? 'System')),
+                          ButtonSegment(value: ThemeMode.light,  icon: const Icon(Icons.light_mode, size: 16),      label: Text(tr?.themeLight ?? 'Light')),
+                          ButtonSegment(value: ThemeMode.dark,   icon: const Icon(Icons.dark_mode, size: 16),       label: Text(tr?.themeDark ?? 'Dark')),
                         ],
                         selected: {themeMode},
                         onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
@@ -481,8 +496,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Notifications section ─────────────────────────────────────
-              _SectionHeader(title: 'Notifications', icon: Icons.notifications_outlined),
+              // -- Notifications section ---------------------------------------
+              _SectionHeader(title: tr?.sectionNotifications ?? 'Notifications', icon: Icons.notifications_outlined),
               const SizedBox(height: 12),
               Card(
                 child: Padding(
@@ -495,8 +510,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Incoming Transaction Alerts', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                            Text('Show a desktop notification when WRKZ is received', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                            Text(tr?.incomingTxAlerts ?? 'Incoming Transaction Alerts', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                            Text(tr?.incomingTxAlertsSubtitle ?? 'Show a desktop notification when WRKZ is received', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           ],
                         ),
                       ),
@@ -510,8 +525,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Debug / Logs section ──────────────────────────────────────
-              _SectionHeader(title: 'Debug & Logs', icon: Icons.bug_report_outlined),
+              // -- Debug / Logs section ----------------------------------------
+              _SectionHeader(title: tr?.sectionDebugLogs ?? 'Debug & Logs', icon: Icons.bug_report_outlined),
               const SizedBox(height: 12),
               Card(
                 child: Column(
@@ -526,8 +541,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Log Level', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                                Text('Controls wallet library verbosity', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                                Text(tr?.logLevel ?? 'Log Level', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text(tr?.logLevelSubtitle ?? 'Controls wallet library verbosity', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                               ],
                             ),
                           ),
@@ -550,8 +565,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     const Divider(height: 1, indent: 56),
                     _SettingsTile(
                       icon: Icons.article_outlined,
-                      title: 'View Logs',
-                      subtitle: 'Live wallet library log output',
+                      title: tr?.viewLogs ?? 'View Logs',
+                      subtitle: tr?.viewLogsSubtitle ?? 'Live wallet library log output',
                       onTap: () => _showLogViewer(context),
                     ),
                   ],
@@ -559,8 +574,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
-              // ── Danger zone ───────────────────────────────────────────────
-              _SectionHeader(title: 'Danger Zone', icon: Icons.warning_amber_outlined, color: kError),
+              // -- Danger zone -------------------------------------------------
+              _SectionHeader(title: tr?.sectionDangerZone ?? 'Danger Zone', icon: Icons.warning_amber_outlined, color: kError),
               const SizedBox(height: 12),
               Card(
                 shape: RoundedRectangleBorder(
@@ -569,8 +584,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 child: _SettingsTile(
                   icon: Icons.delete_forever_outlined,
-                  title: 'Delete Wallet Data',
-                  subtitle: 'Permanently remove wallet file from disk',
+                  title: tr?.deleteWalletData ?? 'Delete Wallet Data',
+                  subtitle: tr?.deleteWalletDataSubtitle ?? 'Permanently remove wallet file from disk',
                   iconColor: kError,
                   titleColor: kError,
                   onTap: _deleteWalletData,
@@ -597,7 +612,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
-// ── Local helper widgets ──────────────────────────────────────────────────────
+// -- Local helper widgets -----------------------------------------------------
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -654,8 +669,9 @@ class _SettingsTile extends StatelessWidget {
 }
 
 class _NodeWarningBanner extends StatelessWidget {
+  final String message;
   final VoidCallback onSwitch;
-  const _NodeWarningBanner({required this.onSwitch});
+  const _NodeWarningBanner({required this.message, required this.onSwitch});
 
   @override
   Widget build(BuildContext context) {
@@ -671,10 +687,10 @@ class _NodeWarningBanner extends StatelessWidget {
         children: [
           const Icon(Icons.cloud_off_outlined, color: kError, size: 18),
           const SizedBox(width: 10),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Cannot reach the current node. Enter a new node address below and tap Apply.',
-              style: TextStyle(color: kError, fontSize: 13),
+              message,
+              style: const TextStyle(color: kError, fontSize: 13),
             ),
           ),
         ],
@@ -706,7 +722,7 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-// ── Log viewer dialog ─────────────────────────────────────────────────────────
+// -- Log viewer dialog --------------------------------------------------------
 
 class _LogEntry {
   final String pretty;
@@ -779,15 +795,18 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
   void _clear() => setState(() => _entries.clear());
 
   void _copyAll(BuildContext context) {
+    final tr = S.of(context);
     final text = _entries.map((e) => e.pretty).join('\n');
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Logs copied to clipboard'), duration: Duration(seconds: 2)),
+      SnackBar(content: Text(tr?.logsCopied ?? 'Logs copied to clipboard'), duration: const Duration(seconds: 2)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
+    final count = _entries.length;
     return Dialog(
       child: SizedBox(
         width: 800,
@@ -802,15 +821,15 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
                 children: [
                   const Icon(Icons.article_outlined, size: 18, color: kTextSecondary),
                   const SizedBox(width: 8),
-                  Text('Wallet Logs', style: Theme.of(context).textTheme.titleMedium),
+                  Text(tr?.walletLogs ?? 'Wallet Logs', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
-                  Text('${_entries.length} entries',
+                  Text(tr?.logEntries(count) ?? '$count entries',
                       style: const TextStyle(fontSize: 12, color: kTextDisabled)),
                   const SizedBox(width: 12),
                   // Auto-scroll toggle
                   Row(
                     children: [
-                      const Text('Auto-scroll', style: TextStyle(fontSize: 12, color: kTextSecondary)),
+                      Text(tr?.autoScroll ?? 'Auto-scroll', style: const TextStyle(fontSize: 12, color: kTextSecondary)),
                       const SizedBox(width: 4),
                       Switch(
                         value: _autoScroll,
@@ -822,17 +841,17 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.copy_outlined, size: 18),
-                    tooltip: 'Copy all',
+                    tooltip: tr?.copyAll ?? 'Copy all',
                     onPressed: _entries.isEmpty ? null : () => _copyAll(context),
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                    tooltip: 'Clear',
+                    tooltip: tr?.clear ?? 'Clear',
                     onPressed: _entries.isEmpty ? null : _clear,
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
-                    tooltip: 'Close',
+                    tooltip: tr?.close ?? 'Close',
                     onPressed: () => Navigator.pop(context),
                   ),
                 ],
@@ -842,9 +861,9 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
             // Log list
             Expanded(
               child: _entries.isEmpty
-                  ? const Center(
-                      child: Text('No logs yet. Set a log level above Disabled to see output.',
-                          style: TextStyle(color: kTextDisabled, fontSize: 13)),
+                  ? Center(
+                      child: Text(tr?.noLogsYet ?? 'No logs yet. Set a log level above Disabled to see output.',
+                          style: const TextStyle(color: kTextDisabled, fontSize: 13)),
                     )
                   : ListView.builder(
                       controller: _scroll,

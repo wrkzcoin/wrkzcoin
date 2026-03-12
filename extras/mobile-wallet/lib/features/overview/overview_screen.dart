@@ -8,6 +8,7 @@ import '../../core/api/models/wallet_status.dart';
 import '../../core/auth/wallet_auth.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/utils/haptics.dart';
@@ -23,6 +24,7 @@ class OverviewScreen extends ConsumerWidget {
     final balanceAsync = ref.watch(balanceProvider);
     final txAsync = ref.watch(transactionsProvider);
     final nodeAsync = ref.watch(nodeInfoProvider);
+    final tr = S.of(context)!;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -81,7 +83,7 @@ class OverviewScreen extends ConsumerWidget {
                 child: FilledButton.icon(
                   onPressed: () => context.go('/transfer'),
                   icon: const Icon(Icons.send, size: 18),
-                  label: const Text('Send'),
+                  label: Text(tr.send),
                 ),
               ),
               const SizedBox(width: 12),
@@ -89,7 +91,7 @@ class OverviewScreen extends ConsumerWidget {
                 child: OutlinedButton.icon(
                   onPressed: () => context.go('/receive'),
                   icon: const Icon(Icons.qr_code, size: 18),
-                  label: const Text('Receive'),
+                  label: Text(tr.receive),
                 ),
               ),
             ],
@@ -105,12 +107,12 @@ class OverviewScreen extends ConsumerWidget {
           // Recent transactions
           Row(
             children: [
-              Text('Recent Transactions',
+              Text(tr.recentTransactions,
                   style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
               TextButton(
                 onPressed: () => context.go('/history'),
-                child: const Text('View all'),
+                child: Text(tr.viewAll),
               ),
             ],
           ),
@@ -151,6 +153,7 @@ class _SeedBackupWarningState extends State<_SeedBackupWarning> {
   @override
   Widget build(BuildContext context) {
     if (!_show) return const SizedBox.shrink();
+    final tr = S.of(context)!;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
@@ -165,7 +168,7 @@ class _SeedBackupWarningState extends State<_SeedBackupWarning> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Back up your seed phrase in Settings to protect your funds.',
+                tr.seedBackupWarning,
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -192,6 +195,7 @@ class _BalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -199,7 +203,7 @@ class _BalanceCard extends StatelessWidget {
           data: (balance) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Available',
+              Text(tr.available,
                   style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 4),
               Text(
@@ -218,14 +222,14 @@ class _BalanceCard extends StatelessWidget {
                         color: Theme.of(context).textTheme.bodySmall?.color),
                     const SizedBox(width: 4),
                     Text(
-                      'Locked: ${formatAmount(balance.locked, showTicker: true)}',
+                      tr.lockedAmount(formatAmount(balance.locked, showTicker: true)),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Total: ${formatAmount(balance.total, showTicker: true)}',
+                  tr.totalAmount(formatAmount(balance.total, showTicker: true)),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -235,7 +239,7 @@ class _BalanceCard extends StatelessWidget {
             height: 80,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
-          error: (e, _) => Text('Error: $e',
+          error: (e, _) => Text(tr.errorPrefix(e.toString()),
               style: const TextStyle(color: kError, fontSize: 13)),
         ),
       ),
@@ -253,6 +257,7 @@ class _NetworkStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -268,19 +273,19 @@ class _NetworkStatusCard extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Network Status',
+                Text(tr.networkStatus,
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 12),
-                _statusRow(context, 'Node', '$daemonHost:$daemonPort'),
-                _statusRow(context, 'Status',
-                    online ? 'Connected' : 'Disconnected'),
-                _statusRow(context, 'Wallet Height',
+                _statusRow(context, tr.node, '$daemonHost:$daemonPort'),
+                _statusRow(context, tr.status,
+                    online ? tr.connected : tr.disconnected),
+                _statusRow(context, tr.walletHeight,
                     '${status.walletBlockCount}'),
-                _statusRow(context, 'Network Height',
+                _statusRow(context, tr.networkHeight,
                     '${status.networkBlockCount}'),
-                _statusRow(context, 'Peers', '${status.peerCount}'),
+                _statusRow(context, tr.peers, '${status.peerCount}'),
                 if (status.isViewWallet)
-                  _statusRow(context, 'Type', 'View-only'),
+                  _statusRow(context, tr.type, tr.viewOnly),
               ],
             );
           },
@@ -289,7 +294,7 @@ class _NetworkStatusCard extends StatelessWidget {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
           error: (e, _) => Text(
-            'Could not fetch status. Check your node in Settings.',
+            tr.couldNotFetchStatus,
             style: TextStyle(color: kError, fontSize: 13),
           ),
         ),
@@ -319,6 +324,7 @@ class _RecentTransactions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     return txAsync.when(
       data: (txs) {
         if (txs.isEmpty) {
@@ -326,7 +332,7 @@ class _RecentTransactions extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Center(
-                child: Text('No transactions yet',
+                child: Text(tr.noTransactionsYet,
                     style: Theme.of(context).textTheme.bodySmall),
               ),
             ),
@@ -341,7 +347,7 @@ class _RecentTransactions extends StatelessWidget {
         height: 80,
         child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       ),
-      error: (e, _) => Text('Error: $e',
+      error: (e, _) => Text(tr.errorPrefix(e.toString()),
           style: const TextStyle(color: kError, fontSize: 13)),
     );
   }
@@ -353,6 +359,7 @@ class _TxCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final incoming = tx.isIncoming;
     final icon = incoming ? Icons.call_received : Icons.call_made;
     final color = incoming ? kSuccess : kError;
@@ -375,8 +382,8 @@ class _TxCard extends StatelessWidget {
         ),
         subtitle: Text(
           tx.isConfirmed
-              ? _formatDate(tx.dateTime)
-              : 'Pending...',
+              ? _formatDate(context, tx.dateTime)
+              : tr.pending,
           style: Theme.of(context).textTheme.bodySmall,
         ),
         trailing: tx.isConfirmed
@@ -388,13 +395,14 @@ class _TxCard extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime dt) {
+  String _formatDate(BuildContext context, DateTime dt) {
+    final tr = S.of(context)!;
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-    if (diff.inDays < 1) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inMinutes < 1) return tr.justNow;
+    if (diff.inHours < 1) return tr.minutesAgo(diff.inMinutes);
+    if (diff.inDays < 1) return tr.hoursAgo(diff.inHours);
+    if (diff.inDays < 7) return tr.daysAgo(diff.inDays);
     return '${dt.month}/${dt.day}/${dt.year}';
   }
 }

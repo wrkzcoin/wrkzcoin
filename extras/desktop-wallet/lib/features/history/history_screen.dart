@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/copy_button.dart';
@@ -36,6 +37,7 @@ class HistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final txAsync = ref.watch(transactionsProvider);
     final filter = ref.watch(_filterProvider);
     final page = ref.watch(_pageProvider);
@@ -49,7 +51,7 @@ class HistoryScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Transaction History', style: Theme.of(context).textTheme.headlineMedium),
+              Text(tr?.transactionHistory ?? 'Transaction History', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -58,10 +60,10 @@ class HistoryScreen extends ConsumerWidget {
                     child: SizedBox(
                       height: 40,
                       child: TextField(
-                        decoration: const InputDecoration(
-                          hintText: 'Search by hash, address or payment ID…',
-                          prefixIcon: Icon(Icons.search, size: 18),
-                          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                        decoration: InputDecoration(
+                          hintText: tr?.searchByHash ?? 'Search by hash, address or payment ID\u2026',
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                         ),
                         onChanged: (v) {
                           ref.read(_filterProvider.notifier).state =
@@ -74,7 +76,7 @@ class HistoryScreen extends ConsumerWidget {
                   const SizedBox(width: 12),
                   // Direction filter chips
                   _FilterChip(
-                    label: 'All',
+                    label: tr?.all ?? 'All',
                     selected: filter.direction == _TxFilter.all,
                     onTap: () {
                       ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.all);
@@ -83,7 +85,7 @@ class HistoryScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 6),
                   _FilterChip(
-                    label: 'Received',
+                    label: tr?.filterReceived ?? 'Received',
                     selected: filter.direction == _TxFilter.incoming,
                     onTap: () {
                       ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.incoming);
@@ -92,7 +94,7 @@ class HistoryScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 6),
                   _FilterChip(
-                    label: 'Sent',
+                    label: tr?.filterSent ?? 'Sent',
                     selected: filter.direction == _TxFilter.outgoing,
                     onTap: () {
                       ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.outgoing);
@@ -103,7 +105,7 @@ class HistoryScreen extends ConsumerWidget {
                   // Refresh
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 18),
-                    tooltip: 'Refresh',
+                    tooltip: tr?.refresh ?? 'Refresh',
                     onPressed: () => ref.read(transactionsProvider.notifier).refresh(),
                   ),
                 ],
@@ -124,13 +126,13 @@ class HistoryScreen extends ConsumerWidget {
               final slice = filtered.skip(safePage * _kPageSize).take(_kPageSize).toList();
 
               if (filtered.isEmpty) {
-                return const Center(
+                return Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.receipt_long_outlined, size: 40, color: kTextDisabled),
-                      SizedBox(height: 10),
-                      Text('No transactions found', style: TextStyle(color: kTextDisabled)),
+                      const Icon(Icons.receipt_long_outlined, size: 40, color: kTextDisabled),
+                      const SizedBox(height: 10),
+                      Text(tr?.noTransactionsFound ?? 'No transactions found', style: const TextStyle(color: kTextDisabled)),
                     ],
                   ),
                 );
@@ -159,7 +161,7 @@ class HistoryScreen extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: kError))),
+            error: (e, _) => Center(child: Text(tr?.errorPrefix(e.toString()) ?? 'Error: $e', style: const TextStyle(color: kError))),
           ),
         ),
       ],
@@ -198,6 +200,7 @@ class _TxCardState extends State<_TxCard> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     final tx = widget.tx;
     final incoming = tx.isIncoming;
     final color = incoming ? kSuccess : kError;
@@ -231,7 +234,7 @@ class _TxCardState extends State<_TxCard> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(incoming ? 'Received' : 'Sent',
+                        Text(incoming ? (tr?.received ?? 'Received') : (tr?.sent ?? 'Sent'),
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
                         Text(fmt.format(tx.dateTime),
                             style: const TextStyle(color: kTextSecondary, fontSize: 11)),
@@ -252,7 +255,7 @@ class _TxCardState extends State<_TxCard> {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          tx.isConfirmed ? 'Confirmed' : 'Pending',
+                          tx.isConfirmed ? (tr?.confirmed ?? 'Confirmed') : (tr?.pending ?? 'Pending'),
                           style: TextStyle(
                             fontSize: 10,
                             color: tx.isConfirmed ? kSuccess : kWarning,
@@ -271,13 +274,13 @@ class _TxCardState extends State<_TxCard> {
                 const SizedBox(height: 12),
                 const Divider(height: 1),
                 const SizedBox(height: 12),
-                _DetailRow(label: 'Hash', value: tx.hash, mono: true, copyable: true),
+                _DetailRow(label: tr?.hash ?? 'Hash', value: tx.hash, mono: true, copyable: true),
                 if (tx.address.isNotEmpty)
-                  _DetailRow(label: 'Address', value: tx.address, mono: true),
-                _DetailRow(label: 'Block', value: tx.blockHeight.toString()),
-                _DetailRow(label: 'Fee', value: '${formatAmount(tx.fee)} $kCoinTicker'),
+                  _DetailRow(label: tr?.address ?? 'Address', value: tx.address, mono: true),
+                _DetailRow(label: tr?.block ?? 'Block', value: tx.blockHeight.toString()),
+                _DetailRow(label: tr?.fee ?? 'Fee', value: '${formatAmount(tx.fee)} $kCoinTicker'),
                 if (tx.paymentID.isNotEmpty)
-                  _DetailRow(label: 'Payment ID', value: tx.paymentID, mono: true, copyable: true),
+                  _DetailRow(label: tr?.paymentId ?? 'Payment ID', value: tx.paymentID, mono: true, copyable: true),
               ],
             ],
           ),
@@ -336,6 +339,7 @@ class _PaginationBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     final start = current * _kPageSize + 1;
     final end = ((current + 1) * _kPageSize).clamp(0, totalItems);
     return Container(
@@ -348,14 +352,14 @@ class _PaginationBar extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            'Showing $start–$end of $totalItems',
+            tr?.showingRange(start, end, totalItems) ?? 'Showing $start\u2013$end of $totalItems',
             style: const TextStyle(color: kTextSecondary, fontSize: 12),
           ),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.chevron_left, size: 18),
             onPressed: current > 0 ? () => onPage(current - 1) : null,
-            tooltip: 'Previous',
+            tooltip: tr?.previous ?? 'Previous',
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -364,7 +368,7 @@ class _PaginationBar extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.chevron_right, size: 18),
             onPressed: current < total - 1 ? () => onPage(current + 1) : null,
-            tooltip: 'Next',
+            tooltip: tr?.next ?? 'Next',
           ),
         ],
       ),

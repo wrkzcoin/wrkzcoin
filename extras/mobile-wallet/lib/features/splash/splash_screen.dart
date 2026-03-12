@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/wallet_auth.dart';
+import '../../core/config/app_config.dart';
 import '../../core/providers/providers.dart';
 import '../../shared/theme/app_theme.dart';
 
@@ -20,6 +22,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   }
 
   Future<void> _init() async {
+    // Check if first launch — show language picker.
+    final firstDone = await readPref(AppConfig.skFirstLaunchDone);
+    if (firstDone != 'true') {
+      if (mounted) context.go('/language');
+      return;
+    }
+
     final registry = ref.read(walletRegistryProvider);
     await registry.init();
 

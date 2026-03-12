@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/copy_button.dart';
@@ -47,7 +48,8 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       final (:active, :elapsedMs, nonces: _) = ffi.getPowStatus();
       if (active) {
         final sec = (elapsedMs / 1000).round();
-        setState(() => _powLabel = 'Computing PoW... ${sec}s');
+        final tr = S.of(context);
+        setState(() => _powLabel = tr?.computingPow(sec) ?? 'Computing PoW... ${sec}s');
       }
     });
   }
@@ -70,11 +72,12 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   /// Prepare a transaction via FFI (no broadcast). Uses sendAdvanced so we get
   /// the fee back for the review screen.
   Future<void> _prepare() async {
+    final tr = S.of(context);
     final dest = _addressCtrl.text.trim();
     final amountRaw = _amountCtrl.text.trim();
-    if (dest.isEmpty) { setState(() => _error = 'Enter a destination address'); return; }
+    if (dest.isEmpty) { setState(() => _error = tr?.enterDestinationAddress ?? 'Enter a destination address'); return; }
     final atomic = parseAmount(amountRaw);
-    if (atomic == null || atomic <= 0) { setState(() => _error = 'Enter a valid amount'); return; }
+    if (atomic == null || atomic <= 0) { setState(() => _error = tr?.enterValidAmount ?? 'Enter a valid amount'); return; }
 
     setState(() { _loading = true; _error = null; });
     _startPowPolling();
@@ -125,8 +128,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   /// Sweep all funds to an address.
   Future<void> _sweep() async {
+    final tr = S.of(context);
     final dest = _addressCtrl.text.trim();
-    if (dest.isEmpty) { setState(() => _error = 'Enter a destination address'); return; }
+    if (dest.isEmpty) { setState(() => _error = tr?.enterDestinationAddress ?? 'Enter a destination address'); return; }
     setState(() { _loading = true; _error = null; });
     _startPowPolling();
     try {
@@ -141,7 +145,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         final first = results.first as Map<String, dynamic>;
         throw WalletCApiException(
           first['error'] as int? ?? -1,
-          first['errorMessage'] as String? ?? 'Sweep failed',
+          first['errorMessage'] as String? ?? (tr?.sweepFailed ?? 'Sweep failed'),
         );
       }
       final hashes = successes.map((r) => r['txHash'] as String).join(', ');
@@ -175,6 +179,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Center(
@@ -189,19 +194,19 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Transfer', style: Theme.of(context).textTheme.headlineMedium),
+                        Text(tr?.transfer ?? 'Transfer', style: Theme.of(context).textTheme.headlineMedium),
                         const SizedBox(height: 4),
                         Text(
                           _sweepMode
-                              ? 'Send all funds to an address (consolidates UTXOs)'
-                              : 'Send WRKZ to any address',
+                              ? (tr?.sweepAllDescription ?? 'Send all funds to an address (consolidates UTXOs)')
+                              : (tr?.sendWrkzToAny ?? 'Send WRKZ to any address'),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
                     ),
                   ),
                   if (_step == _TransferStep.form) ...[
-                    const Text('Sweep all', style: TextStyle(fontSize: 13, color: kTextSecondary)),
+                    Text(tr?.sweepAll ?? 'Sweep all', style: const TextStyle(fontSize: 13, color: kTextSecondary)),
                     const SizedBox(width: 6),
                     Switch(
                       value: _sweepMode,
@@ -212,13 +217,13 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               ),
               const SizedBox(height: 24),
               if (!(_sweepMode && _step == _TransferStep.form)) ...[
-                _StepIndicator(current: _step),
+                _StepIndicator(current: _step, tr: tr),
                 const SizedBox(height: 24),
               ],
 
-              if (_step == _TransferStep.form) (_sweepMode ? _buildSweepForm() : _buildForm()),
-              if (_step == _TransferStep.review) _buildReview(),
-              if (_step == _TransferStep.success) _buildSuccess(),
+              if (_step == _TransferStep.form) (_sweepMode ? _buildSweepForm(tr) : _buildForm(tr)),
+              if (_step == _TransferStep.review) _buildReview(tr),
+              if (_step == _TransferStep.success) _buildSuccess(tr),
 
               if (_error != null) ...[
                 const SizedBox(height: 16),
@@ -231,7 +236,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
   }
 
-  Widget _buildSweepForm() {
+  Widget _buildSweepForm(S? tr) {
     final bookEntries = ref.watch(addressBookProvider);
     final balance = ref.watch(balanceProvider).whenOrNull(data: (b) => b.unlocked);
     return Card(
@@ -247,15 +252,14 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: kWarning.withAlpha(80)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: kWarning, size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.info_outline, color: kWarning, size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Sweep consolidates all UTXOs into one output. '
-                      'Use this when transactions fail due to too many inputs.',
-                      style: TextStyle(color: kWarning, fontSize: 12),
+                      tr?.sweepWarning ?? 'Sweep consolidates all UTXOs into one output. Use this when transactions fail due to too many inputs.',
+                      style: const TextStyle(color: kWarning, fontSize: 12),
                     ),
                   ),
                 ],
@@ -264,7 +268,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             const SizedBox(height: 16),
             if (balance != null) ...[
               Text(
-                'Available: ${formatAmount(balance)} $kCoinTicker (entire balance will be sent minus fee)',
+                tr?.sweepAvailableBalance(formatAmount(balance), kCoinTicker) ?? 'Available: ${formatAmount(balance)} $kCoinTicker (entire balance will be sent minus fee)',
                 style: const TextStyle(color: kTextSecondary, fontSize: 12),
               ),
               const SizedBox(height: 14),
@@ -274,14 +278,14 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 Expanded(
                   child: TextField(
                     controller: _addressCtrl,
-                    decoration: const InputDecoration(labelText: 'Destination address'),
+                    decoration: InputDecoration(labelText: tr?.destinationAddress ?? 'Destination address'),
                   ),
                 ),
                 if (bookEntries.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.contacts_outlined),
-                    tooltip: 'Address book',
+                    tooltip: tr?.addressBook ?? 'Address book',
                     onPressed: () => _showAddressBook(bookEntries),
                   ),
                 ],
@@ -303,7 +307,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                           ],
                         ],
                       )
-                    : const Text('Sweep All Funds'),
+                    : Text(tr?.sweepAllFunds ?? 'Sweep All Funds'),
               ),
             ),
           ],
@@ -312,7 +316,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
   }
 
-  Widget _buildForm() {
+  Widget _buildForm(S? tr) {
     final bookEntries = ref.watch(addressBookProvider);
     return Card(
       child: Padding(
@@ -325,14 +329,14 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 Expanded(
                   child: TextField(
                     controller: _addressCtrl,
-                    decoration: const InputDecoration(labelText: 'Recipient address'),
+                    decoration: InputDecoration(labelText: tr?.recipientAddress ?? 'Recipient address'),
                   ),
                 ),
                 if (bookEntries.isNotEmpty) ...[
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.contacts_outlined),
-                    tooltip: 'Address book',
+                    tooltip: tr?.addressBook ?? 'Address book',
                     onPressed: () => _showAddressBook(bookEntries),
                   ),
                 ],
@@ -343,17 +347,17 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               controller: _amountCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: 'Amount',
+                labelText: tr?.amount ?? 'Amount',
                 suffixText: kCoinTicker,
-                helperText: 'Available: ${ref.watch(balanceProvider).whenOrNull(data: (b) => formatAmount(b.unlocked)) ?? '…'} $kCoinTicker',
+                helperText: '${tr?.available ?? 'Available'}: ${ref.watch(balanceProvider).whenOrNull(data: (b) => formatAmount(b.unlocked)) ?? '\u2026'} $kCoinTicker',
               ),
             ),
             const SizedBox(height: 14),
             TextField(
               controller: _paymentIdCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Payment ID (optional)',
-                hintText: '16 or 64 hex characters',
+              decoration: InputDecoration(
+                labelText: tr?.paymentIdOptional ?? 'Payment ID (optional)',
+                hintText: tr?.hexCharacters ?? '16 or 64 hex characters',
               ),
             ),
             const SizedBox(height: 20),
@@ -372,7 +376,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                           ],
                         ],
                       )
-                    : const Text('Review Transaction'),
+                    : Text(tr?.reviewTransaction ?? 'Review Transaction'),
               ),
             ),
           ],
@@ -381,7 +385,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
   }
 
-  Widget _buildReview() {
+  Widget _buildReview(S? tr) {
     final p = _prepared!;
     final dest = _addressCtrl.text.trim();
     final int amount = parseAmount(_amountCtrl.text.trim()) ?? 0;
@@ -392,18 +396,18 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Review & Confirm', style: Theme.of(context).textTheme.headlineSmall),
+            Text(tr?.reviewAndConfirm ?? 'Review & Confirm', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 20),
-            _ReviewRow(label: 'To', value: dest, monospace: true),
-            _ReviewRow(label: 'Amount', value: '${formatAmount(amount)} $kCoinTicker'),
-            _ReviewRow(label: 'Fee', value: '${formatAmount(p.fee)} $kCoinTicker'),
+            _ReviewRow(label: tr?.to ?? 'To', value: dest, monospace: true),
+            _ReviewRow(label: tr?.amount ?? 'Amount', value: '${formatAmount(amount)} $kCoinTicker'),
+            _ReviewRow(label: tr?.fee ?? 'Fee', value: '${formatAmount(p.fee)} $kCoinTicker'),
             _ReviewRow(
-              label: 'Total deducted',
+              label: tr?.totalDeducted ?? 'Total deducted',
               value: '${formatAmount(amount + p.fee)} $kCoinTicker',
               bold: true,
             ),
             if (_paymentIdCtrl.text.trim().isNotEmpty)
-              _ReviewRow(label: 'Payment ID', value: _paymentIdCtrl.text.trim(), monospace: true),
+              _ReviewRow(label: tr?.paymentId ?? 'Payment ID', value: _paymentIdCtrl.text.trim(), monospace: true),
             const SizedBox(height: 8),
             const Divider(),
             const SizedBox(height: 12),
@@ -414,14 +418,14 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: kWarning.withAlpha(80)),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.warning_amber_outlined, color: kWarning, size: 16),
-                  SizedBox(width: 8),
+                  const Icon(Icons.warning_amber_outlined, color: kWarning, size: 16),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Transactions are irreversible. Verify the address before confirming.',
-                      style: TextStyle(color: kWarning, fontSize: 12),
+                      tr?.transactionsIrreversible ?? 'Transactions are irreversible. Verify the address before confirming.',
+                      style: const TextStyle(color: kWarning, fontSize: 12),
                     ),
                   ),
                 ],
@@ -433,7 +437,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: _loading ? null : _cancelPrepared,
-                    child: const Text('Back'),
+                    child: Text(tr?.back ?? 'Back'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -443,7 +447,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                     onPressed: _loading ? null : _send,
                     child: _loading
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Confirm & Send'),
+                        : Text(tr?.confirmAndSend ?? 'Confirm & Send'),
                   ),
                 ),
               ],
@@ -454,7 +458,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
   }
 
-  Widget _buildSuccess() {
+  Widget _buildSuccess(S? tr) {
     final s = _sent!;
     return Card(
       child: Padding(
@@ -463,9 +467,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
           children: [
             const Icon(Icons.check_circle_outline, color: kSuccess, size: 56),
             const SizedBox(height: 16),
-            Text('Transaction Sent!', style: Theme.of(context).textTheme.headlineSmall),
+            Text(tr?.transactionSent ?? 'Transaction Sent!', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
-            Text('Your transaction has been broadcast to the network.', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
+            Text(tr?.transactionBroadcast ?? 'Your transaction has been broadcast to the network.', style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(12),
@@ -476,7 +480,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Transaction Hash', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11)),
+                        Text(tr?.transactionHash ?? 'Transaction Hash', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11)),
                         const SizedBox(height: 4),
                         SelectableText(s.transactionHash, style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Theme.of(context).colorScheme.onSurface)),
                       ],
@@ -487,7 +491,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            FilledButton(onPressed: _reset, child: const Text('Send Another')),
+            FilledButton(onPressed: _reset, child: Text(tr?.sendAnother ?? 'Send Another')),
           ],
         ),
       ),
@@ -495,10 +499,11 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   }
 
   void _showAddressBook(List<AddressBookEntry> entries) {
+    final tr = S.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Address Book'),
+        title: Text(tr?.addressBookTitle ?? 'Address Book'),
         content: SizedBox(
           width: 400,
           child: ListView.separated(
@@ -518,7 +523,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             },
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel'))],
+        actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text(tr?.cancel ?? 'Cancel'))],
       ),
     );
   }
@@ -558,11 +563,16 @@ class _ReviewRow extends StatelessWidget {
 
 class _StepIndicator extends StatelessWidget {
   final _TransferStep current;
-  const _StepIndicator({required this.current});
+  final S? tr;
+  const _StepIndicator({required this.current, required this.tr});
 
   @override
   Widget build(BuildContext context) {
-    const steps = ['Fill Details', 'Review', 'Done'];
+    final steps = [
+      tr?.stepFillDetails ?? 'Fill Details',
+      tr?.stepReview ?? 'Review',
+      tr?.stepDone ?? 'Done',
+    ];
     final idx = _TransferStep.values.indexOf(current);
     return Row(
       children: List.generate(steps.length, (i) {

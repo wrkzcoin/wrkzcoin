@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 import '../../shared/widgets/copy_button.dart';
@@ -49,7 +50,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       });
     } catch (e) {
       setState(() {
-        _address = 'Error loading address';
+        _address = S.of(context)!.errorLoadingAddress;
         _loading = false;
       });
     }
@@ -77,17 +78,17 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     }
   }
 
-  void _validateAndGenerate() {
+  void _validateAndGenerate(BuildContext context) {
+    final tr = S.of(context)!;
     final pid = _pidCtrl.text.trim();
     if (pid.isEmpty) {
-      setState(() => _pidError = 'Enter a payment ID');
+      setState(() => _pidError = tr.enterPaymentId);
       return;
     }
     final validLen = pid.length == 16 || pid.length == 64;
     final validHex = RegExp(r'^[0-9a-fA-F]+$').hasMatch(pid);
     if (!validLen || !validHex) {
-      setState(
-          () => _pidError = 'Payment ID must be 16 or 64 hex characters');
+      setState(() => _pidError = tr.paymentIdInvalid);
       return;
     }
     _generateIntegrated(pid);
@@ -95,6 +96,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
+
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -108,7 +111,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                Text('Your Address',
+                Text(tr.yourAddress,
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 16),
                 Container(
@@ -168,7 +171,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                         Share.share(_address);
                         hapticLight();
                       },
-                      tooltip: 'Share',
+                      tooltip: tr.share,
                     ),
                   ],
                 ),
@@ -180,10 +183,10 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         const SizedBox(height: 24),
 
         // Integrated address generator
-        Text('Integrated Address',
+        Text(tr.integratedAddress,
             style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
-        Text('Embed a payment ID into your address',
+        Text(tr.embedPaymentId,
             style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 12),
 
@@ -192,14 +195,14 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             Expanded(
               child: OutlinedButton(
                 onPressed: () => _generateIntegrated(_randomHex(16)),
-                child: const Text('Random Short (16)'),
+                child: Text(tr.randomShort),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton(
                 onPressed: () => _generateIntegrated(_randomHex(64)),
-                child: const Text('Random Long (64)'),
+                child: Text(tr.randomLong),
               ),
             ),
           ],
@@ -208,14 +211,14 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
         TextField(
           controller: _pidCtrl,
           decoration: InputDecoration(
-            hintText: 'Or enter custom payment ID (16 or 64 hex)',
+            hintText: tr.enterCustomPaymentId,
             errorText: _pidError,
             suffixIcon: IconButton(
               icon: const Icon(Icons.check),
-              onPressed: _validateAndGenerate,
+              onPressed: () => _validateAndGenerate(context),
             ),
           ),
-          onSubmitted: (_) => _validateAndGenerate(),
+          onSubmitted: (_) => _validateAndGenerate(context),
         ),
 
         // Integrated address result
@@ -238,8 +241,8 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                         ),
                         child: Text(
                           _integratedPid!.length == 16
-                              ? 'Short PID'
-                              : 'Long PID',
+                              ? tr.shortPid
+                              : tr.longPid,
                           style: Theme.of(context)
                               .textTheme
                               .labelSmall
@@ -307,7 +310,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           Share.share(_integratedAddress!);
                           hapticLight();
                         },
-                        tooltip: 'Share',
+                        tooltip: tr.share,
                       ),
                     ],
                   ),

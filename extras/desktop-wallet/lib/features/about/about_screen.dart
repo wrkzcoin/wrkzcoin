@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
@@ -19,6 +20,8 @@ class AboutScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Center(
@@ -30,9 +33,9 @@ class AboutScreen extends StatelessWidget {
               const SizedBox(height: 24),
               const PlutonLogo(size: 56),
               const SizedBox(height: 16),
-              Text('PLUTON v2', style: Theme.of(context).textTheme.headlineMedium),
+              Text(tr?.appTitle ?? 'PLUTON v2', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 4),
-              Text('Version $_kVersion — WRKZ Desktop Wallet',
+              Text(tr?.versionInfo(_kVersion) ?? 'Version $_kVersion — WRKZ Desktop Wallet',
                   style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 32),
 
@@ -43,13 +46,14 @@ class AboutScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('About', style: Theme.of(context).textTheme.titleSmall),
+                      Text(tr?.aboutTitle ?? 'About', style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
+                        tr?.aboutDescription ??
                         'PLUTON v2 is the official desktop wallet for WrkzCoin (WRKZ), '
                         'a fast and lightweight CryptoNote-based cryptocurrency.\n\n'
                         'Built with Flutter, powered by wallet-api.',
-                        style: TextStyle(height: 1.6),
+                        style: const TextStyle(height: 1.6),
                       ),
                     ],
                   ),
@@ -63,32 +67,32 @@ class AboutScreen extends StatelessWidget {
                   children: [
                     _LinkTile(
                       icon: Icons.code,
-                      label: 'GitHub',
-                      subtitle: 'View source code and releases',
+                      label: tr?.github ?? 'GitHub',
+                      subtitle: tr?.githubSubtitle ?? 'View source code and releases',
                       url: _kGithubUrl,
                       onTap: () => _open(_kGithubUrl),
                     ),
                     const Divider(height: 1, indent: 56),
                     _LinkTile(
                       icon: Icons.chat_bubble_outline,
-                      label: 'Discord',
-                      subtitle: 'Join the community',
+                      label: tr?.discord ?? 'Discord',
+                      subtitle: tr?.discordSubtitle ?? 'Join the community',
                       url: _kDiscordUrl,
                       onTap: () => _open(_kDiscordUrl),
                     ),
                     const Divider(height: 1, indent: 56),
                     _LinkTile(
                       icon: Icons.alternate_email,
-                      label: 'Twitter / X',
-                      subtitle: 'Follow @wrkzcoin',
+                      label: tr?.twitterX ?? 'Twitter / X',
+                      subtitle: tr?.twitterXSubtitle ?? 'Follow @wrkzcoin',
                       url: _kTwitterUrl,
                       onTap: () => _open(_kTwitterUrl),
                     ),
                     const Divider(height: 1, indent: 56),
                     _LinkTile(
                       icon: Icons.language,
-                      label: 'Website',
-                      subtitle: 'wrkz.work',
+                      label: tr?.website ?? 'Website',
+                      subtitle: tr?.websiteSubtitle ?? 'wrkz.work',
                       url: _kWebsiteUrl,
                       onTap: () => _open(_kWebsiteUrl),
                     ),
@@ -104,12 +108,13 @@ class AboutScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('License', style: Theme.of(context).textTheme.titleSmall),
+                      Text(tr?.license ?? 'License', style: Theme.of(context).textTheme.titleSmall),
                       const SizedBox(height: 8),
-                      const Text(
+                      Text(
+                        tr?.licenseText ??
                         'Released under the MIT License.\n'
                         'Use at your own risk. Always back up your seed phrase.',
-                        style: TextStyle(fontSize: 12, height: 1.5),
+                        style: const TextStyle(fontSize: 12, height: 1.5),
                       ),
                     ],
                   ),

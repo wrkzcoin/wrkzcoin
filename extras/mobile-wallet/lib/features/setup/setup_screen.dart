@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 import '../../shared/widgets/copy_button.dart';
@@ -81,30 +82,31 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   String? _validate() {
+    final tr = S.of(context)!;
     final caption = _captionCtrl.text.trim();
-    if (caption.isEmpty) return 'Wallet name is required';
+    if (caption.isEmpty) return tr.walletNameRequired;
     if (_mode != _SetupMode.menu && _mode != _SetupMode.backupSeed) {
-      if (_passwordCtrl.text.isEmpty) return 'Password is required';
+      if (_passwordCtrl.text.isEmpty) return tr.passwordRequired;
       if (_passwordCtrl.text.length < 6) {
-        return 'Password must be at least 6 characters';
+        return tr.passwordTooShort;
       }
       if (_passwordCtrl.text != _confirmPwCtrl.text) {
-        return 'Passwords do not match';
+        return tr.passwordsDoNotMatch;
       }
     }
     if (_mode == _SetupMode.importSeed && _seedCtrl.text.trim().isEmpty) {
-      return 'Seed phrase is required';
+      return tr.seedRequired;
     }
     if (_mode == _SetupMode.importKeys) {
-      if (_spendKeyCtrl.text.trim().isEmpty) return 'Spend key is required';
-      if (_viewKeyCtrl.text.trim().isEmpty) return 'View key is required';
+      if (_spendKeyCtrl.text.trim().isEmpty) return tr.spendKeyRequired;
+      if (_viewKeyCtrl.text.trim().isEmpty) return tr.viewKeyRequired;
     }
     if (_mode == _SetupMode.importView) {
-      if (_viewKeyCtrl.text.trim().isEmpty) return 'View key is required';
-      if (_addressCtrl.text.trim().isEmpty) return 'Address is required';
+      if (_viewKeyCtrl.text.trim().isEmpty) return tr.viewKeyRequired;
+      if (_addressCtrl.text.trim().isEmpty) return tr.addressRequired;
     }
     if (_customNode && _customHostCtrl.text.trim().isEmpty) {
-      return 'Daemon host is required';
+      return tr.daemonHostRequired;
     }
     return null;
   }
@@ -218,6 +220,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     return Scaffold(
       appBar: _mode != _SetupMode.menu
           ? AppBar(
@@ -230,7 +233,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         _error = null;
                       }),
                     ),
-              title: Text(_modeTitle()),
+              title: Text(_modeTitle(tr)),
               automaticallyImplyLeading: false,
             )
           : null,
@@ -238,27 +241,27 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: _mode == _SetupMode.menu
-              ? _buildMenu()
+              ? _buildMenu(tr)
               : _mode == _SetupMode.backupSeed
-                  ? _buildBackup()
-                  : _buildForm(),
+                  ? _buildBackup(tr)
+                  : _buildForm(tr),
         ),
       ),
     );
   }
 
-  String _modeTitle() {
+  String _modeTitle(S tr) {
     switch (_mode) {
       case _SetupMode.create:
-        return 'Create Wallet';
+        return tr.createWallet;
       case _SetupMode.importSeed:
-        return 'Import from Seed';
+        return tr.importFromSeed;
       case _SetupMode.importKeys:
-        return 'Import from Keys';
+        return tr.importFromKeys;
       case _SetupMode.importView:
-        return 'View-Only Wallet';
+        return tr.viewOnlyWallet;
       case _SetupMode.backupSeed:
-        return 'Backup Your Seed';
+        return tr.backupSeedTitle;
       default:
         return '';
     }
@@ -266,7 +269,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   // ── menu ───────────────────────────────────────────────────────────────────
 
-  Widget _buildMenu() {
+  Widget _buildMenu(S tr) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -289,36 +292,36 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         const SizedBox(height: 20),
         Center(
           child: Text(
-            'Add Wallet',
+            tr.addWallet,
             style: Theme.of(context).textTheme.headlineMedium,
           ),
         ),
         const SizedBox(height: 32),
         _menuCard(
           icon: Icons.create_new_folder_outlined,
-          title: 'Create New Wallet',
-          subtitle: 'Generate a new wallet with a fresh seed phrase',
+          title: tr.createNewWallet,
+          subtitle: tr.createNewWalletSubtitle,
           onTap: () => setState(() => _mode = _SetupMode.create),
         ),
         const SizedBox(height: 12),
         _menuCard(
           icon: Icons.restore,
-          title: 'Import from Seed Phrase',
-          subtitle: 'Restore wallet using your 25-word mnemonic seed',
+          title: tr.importFromSeed,
+          subtitle: tr.importFromSeedSubtitle,
           onTap: () => setState(() => _mode = _SetupMode.importSeed),
         ),
         const SizedBox(height: 12),
         _menuCard(
           icon: Icons.key,
-          title: 'Import from Private Keys',
-          subtitle: 'Restore using spend key and view key',
+          title: tr.importFromKeys,
+          subtitle: tr.importFromKeysSubtitle,
           onTap: () => setState(() => _mode = _SetupMode.importKeys),
         ),
         const SizedBox(height: 12),
         _menuCard(
           icon: Icons.visibility_outlined,
-          title: 'View-Only Wallet',
-          subtitle: 'Watch-only wallet using view key and address',
+          title: tr.viewOnlyWallet,
+          subtitle: tr.viewOnlyWalletSubtitle,
           onTap: () => setState(() => _mode = _SetupMode.importView),
         ),
       ],
@@ -349,26 +352,26 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   // ── form ───────────────────────────────────────────────────────────────────
 
-  Widget _buildForm() {
+  Widget _buildForm(S tr) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Caption
-        _label('Wallet Name'),
+        _label(tr.walletName),
         TextField(
           controller: _captionCtrl,
-          decoration: const InputDecoration(hintText: 'e.g. Main Wallet'),
+          decoration: InputDecoration(hintText: tr.walletNameHint),
           textInputAction: TextInputAction.next,
         ),
         const SizedBox(height: 16),
 
         // Password
-        _label('Password'),
+        _label(tr.passwordLabel),
         TextField(
           controller: _passwordCtrl,
           obscureText: _obscurePassword,
           decoration: InputDecoration(
-            hintText: 'Enter password',
+            hintText: tr.enterPassword,
             suffixIcon: IconButton(
               icon: Icon(_obscurePassword
                   ? Icons.visibility_off
@@ -384,7 +387,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           controller: _confirmPwCtrl,
           obscureText: _obscureConfirm,
           decoration: InputDecoration(
-            hintText: 'Confirm password',
+            hintText: tr.confirmPassword,
             suffixIcon: IconButton(
               icon: Icon(
                   _obscureConfirm ? Icons.visibility_off : Icons.visibility),
@@ -398,73 +401,68 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
         // Mode-specific fields
         if (_mode == _SetupMode.importSeed) ...[
-          _label('Seed Phrase (25 words)'),
+          _label(tr.seedPhrase),
           TextField(
             controller: _seedCtrl,
             maxLines: 3,
-            decoration:
-                const InputDecoration(hintText: 'Enter your seed phrase...'),
+            decoration: InputDecoration(hintText: tr.enterSeedPhrase),
           ),
           const SizedBox(height: 16),
-          _label('Scan Height (optional)'),
+          _label(tr.scanHeight),
           TextField(
             controller: _scanHeightCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-                hintText: '0 = scan from beginning'),
+            decoration: InputDecoration(hintText: tr.scanHeightHint),
           ),
           const SizedBox(height: 16),
         ],
 
         if (_mode == _SetupMode.importKeys) ...[
-          _label('Private Spend Key'),
+          _label(tr.privateSpendKey),
           TextField(
             controller: _spendKeyCtrl,
-            decoration: const InputDecoration(hintText: '64-char hex'),
+            decoration: InputDecoration(hintText: tr.hexKey),
           ),
           const SizedBox(height: 12),
-          _label('Private View Key'),
+          _label(tr.privateViewKey),
           TextField(
             controller: _viewKeyCtrl,
-            decoration: const InputDecoration(hintText: '64-char hex'),
+            decoration: InputDecoration(hintText: tr.hexKey),
           ),
           const SizedBox(height: 12),
-          _label('Scan Height (optional)'),
+          _label(tr.scanHeight),
           TextField(
             controller: _scanHeightCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-                hintText: '0 = scan from beginning'),
+            decoration: InputDecoration(hintText: tr.scanHeightHint),
           ),
           const SizedBox(height: 16),
         ],
 
         if (_mode == _SetupMode.importView) ...[
-          _label('Private View Key'),
+          _label(tr.privateViewKey),
           TextField(
             controller: _viewKeyCtrl,
-            decoration: const InputDecoration(hintText: '64-char hex'),
+            decoration: InputDecoration(hintText: tr.hexKey),
           ),
           const SizedBox(height: 12),
-          _label('Wallet Address'),
+          _label(tr.walletAddress),
           TextField(
             controller: _addressCtrl,
-            decoration:
-                const InputDecoration(hintText: 'Wrkz... address'),
+            decoration: InputDecoration(hintText: tr.walletAddressHint),
           ),
           const SizedBox(height: 12),
-          _label('Scan Height (optional)'),
+          _label(tr.scanHeight),
           TextField(
             controller: _scanHeightCtrl,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-                hintText: '0 = scan from beginning'),
+            decoration: InputDecoration(hintText: tr.scanHeightHint),
           ),
           const SizedBox(height: 16),
         ],
 
         // Node selection
-        _label('Daemon Node'),
+        _label(tr.daemonNode),
         RadioGroup<int>(
           groupValue: _customNode ? -1 : _nodePresetIndex,
           onChanged: (v) => setState(() {
@@ -491,7 +489,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               }),
               RadioListTile<int>(
                 value: -1,
-                title: Text('Custom',
+                title: Text(tr.custom,
                     style: Theme.of(context).textTheme.bodyMedium),
                 dense: true,
                 contentPadding: EdgeInsets.zero,
@@ -503,8 +501,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           const SizedBox(height: 8),
           TextField(
             controller: _customHostCtrl,
-            decoration: const InputDecoration(
-                hintText: 'Host / IP', labelText: 'Host'),
+            decoration: InputDecoration(
+                hintText: tr.hostHint, labelText: tr.host),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 8),
@@ -514,8 +512,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 child: TextField(
                   controller: _customPortCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                      hintText: '17856', labelText: 'Port'),
+                  decoration: InputDecoration(
+                      hintText: '17856', labelText: tr.port),
                 ),
               ),
               const SizedBox(width: 12),
@@ -526,7 +524,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     onChanged: (v) =>
                         setState(() => _customSsl = v ?? false),
                   ),
-                  const Text('SSL'),
+                  Text(tr.ssl),
                 ],
               ),
             ],
@@ -562,8 +560,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       strokeWidth: 2, color: Colors.white),
                 )
               : Text(_mode == _SetupMode.create
-                  ? 'Create Wallet'
-                  : 'Import Wallet'),
+                  ? tr.createWallet
+                  : tr.importWallet),
         ),
       ],
     );
@@ -576,7 +574,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   // ── backup seed ────────────────────────────────────────────────────────────
 
-  Widget _buildBackup() {
+  Widget _buildBackup(S tr) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -593,7 +591,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Write down your seed phrase and store it safely. If you lose it, your funds are gone forever.',
+                  tr.backupWarning,
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
@@ -604,11 +602,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        _backupField('Seed Phrase', _backupSeed),
+        _backupField(tr.seedPhraseLabel, _backupSeed),
         const SizedBox(height: 16),
-        _backupField('Private View Key', _backupViewKey),
+        _backupField(tr.privateViewKeyLabel, _backupViewKey),
         const SizedBox(height: 16),
-        _backupField('Private Spend Key', _backupSpendKey),
+        _backupField(tr.privateSpendKeyLabel, _backupSpendKey),
         const SizedBox(height: 24),
         CheckboxListTile(
           value: _backupConfirmed,
@@ -616,7 +614,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
           title: Text(
-            'I have safely backed up my seed phrase',
+            tr.backupConfirmCheck,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),
@@ -632,7 +630,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   _openWallet();
                 }
               : null,
-          child: const Text('Continue to Wallet'),
+          child: Text(tr.continueToWallet),
         ),
       ],
     );

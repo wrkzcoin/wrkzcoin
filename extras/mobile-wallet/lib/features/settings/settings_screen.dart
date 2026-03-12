@@ -7,9 +7,11 @@ import '../../core/config/app_config.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 import '../../shared/widgets/copy_button.dart';
+import '../../shared/widgets/language_selector.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -67,6 +69,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _applyNode() async {
+    final tr = S.of(context)!;
     String host;
     int port;
     bool ssl;
@@ -77,7 +80,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ssl = _customSsl;
       if (host.isEmpty) {
         setState(() {
-          _nodeMsg = 'Host is required';
+          _nodeMsg = tr.hostRequired;
           _nodeMsgIsError = true;
         });
         return;
@@ -102,7 +105,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       hapticMedium();
       setState(() {
         _nodeLoading = false;
-        _nodeMsg = 'Node updated to $host:$port';
+        _nodeMsg = tr.nodeUpdated(host, port);
         _nodeMsgIsError = false;
       });
     } catch (e) {
@@ -115,39 +118,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _saveWallet() async {
+    final tr = S.of(context)!;
     try {
       await ref.read(walletCApiProvider).save();
       hapticLight();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wallet saved')),
+          SnackBar(content: Text(tr.walletSaved)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: $e')),
+          SnackBar(content: Text(tr.saveFailed(e.toString()))),
         );
       }
     }
   }
 
   Future<void> _resetScan() async {
+    final tr = S.of(context)!;
     final height = int.tryParse(_resetHeightCtrl.text) ?? 0;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Reset Scan Height'),
-        content: Text(
-            'This will rescan the blockchain from block $height. This may take a while. Continue?'),
+        title: Text(tr.resetScanHeight),
+        content: Text(tr.resetScanConfirm(height)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Reset'),
+            child: Text(tr.reset),
           ),
         ],
       ),
@@ -159,19 +163,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       hapticMedium();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Scan reset to block $height')),
+          SnackBar(content: Text(tr.scanResetTo(height))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Reset failed: $e')),
+          SnackBar(content: Text(tr.resetFailed(e.toString()))),
         );
       }
     }
   }
 
   Future<void> _backupSeed() async {
+    final tr = S.of(context)!;
     // Re-authenticate first
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
@@ -180,21 +185,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Enter Password'),
+        title: Text(tr.enterPasswordTitle),
         content: TextField(
           controller: passCtrl,
           obscureText: true,
-          decoration: const InputDecoration(hintText: 'Password'),
+          decoration: InputDecoration(hintText: tr.password),
           autofocus: true,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Confirm'),
+            child: Text(tr.confirm),
           ),
         ],
       ),
@@ -205,7 +210,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!verified) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Incorrect password')),
+          SnackBar(content: Text(tr.incorrectPassword)),
         );
       }
       return;
@@ -220,14 +225,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Seed Backup'),
+          title: Text(tr.seedBackup),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Seed Phrase:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(tr.seedPhraseColon,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -240,8 +245,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                const Text('Private View Key:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(tr.privateViewKeyColon,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -262,7 +267,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 await markSeedBackupConfirmed(filename);
                 if (ctx.mounted) Navigator.pop(ctx);
               },
-              child: const Text('I\'ve backed up'),
+              child: Text(tr.iveBackedUp),
             ),
           ],
         ),
@@ -270,13 +275,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(tr.errorPrefix(e.toString()))),
         );
       }
     }
   }
 
   Future<void> _changePassword() async {
+    final tr = S.of(context)!;
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
 
@@ -287,38 +293,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Change Password'),
+        title: Text(tr.changePassword),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: currentCtrl,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'Current password'),
+              decoration: InputDecoration(labelText: tr.currentPasswordLabel),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: newCtrl,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'New password'),
+              decoration: InputDecoration(labelText: tr.newPasswordLabel),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: confirmCtrl,
               obscureText: true,
               decoration:
-                  const InputDecoration(labelText: 'Confirm new password'),
+                  InputDecoration(labelText: tr.confirmNewPasswordLabel),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Change'),
+            child: Text(tr.change),
           ),
         ],
       ),
@@ -329,7 +335,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!verified) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Current password is incorrect')),
+          SnackBar(content: Text(tr.currentPasswordIncorrect)),
         );
       }
       return;
@@ -337,7 +343,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (newCtrl.text != confirmCtrl.text) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('New passwords do not match')),
+          SnackBar(content: Text(tr.newPasswordsDoNotMatch)),
         );
       }
       return;
@@ -345,8 +351,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (newCtrl.text.length < 6) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Password must be at least 6 characters')),
+          SnackBar(content: Text(tr.passwordTooShort)),
         );
       }
       return;
@@ -358,13 +363,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       hapticMedium();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password changed')),
+          SnackBar(content: Text(tr.passwordChanged)),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(tr.errorPrefix(e.toString()))),
         );
       }
     }
@@ -397,6 +402,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _deleteCurrentWallet() async {
+    final tr = S.of(context)!;
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
 
@@ -404,19 +410,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Wallet'),
+        title: Text(tr.deleteWallet),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'This will permanently delete the wallet file and keys. '
-              'Make sure you have backed up your seed phrase.\n\n'
-              'Type DELETE to confirm:',
-            ),
+            Text(tr.deleteWalletTypeCaps),
             const SizedBox(height: 12),
             TextField(
               controller: deleteCtrl,
-              decoration: const InputDecoration(hintText: 'DELETE'),
+              decoration: InputDecoration(hintText: tr.deleteHint),
               autofocus: true,
             ),
           ],
@@ -424,12 +426,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kError),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(tr.delete),
           ),
         ],
       ),
@@ -452,7 +454,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(tr.errorPrefix(e.toString()))),
         );
       }
     }
@@ -460,8 +462,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // ── build ──────────────────────────────────────────────────────────────────
 
+  String _autoLockLabel(S tr, int index) {
+    return switch (index) {
+      0 => tr.autoLockImmediately,
+      1 => tr.autoLock1Min,
+      2 => tr.autoLock5Min,
+      3 => tr.autoLockNever,
+      _ => '',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final themeMode = ref.watch(themeModeProvider);
     final notifications = ref.watch(notificationsEnabledProvider);
     final autosave = ref.watch(autosaveEnabledProvider);
@@ -479,45 +492,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       padding: const EdgeInsets.all(16),
       children: [
         // ── Daemon Node ──────────────────────────────────────────────────
-        _sectionTitle('Daemon Node'),
+        _sectionTitle(tr.sectionDaemonNode),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ...List.generate(AppConfig.nodePresets.length, (i) {
-                  final preset = AppConfig.nodePresets[i];
-                  return RadioListTile<int>(
-                    value: i,
-                    groupValue: _customNode ? -1 : _nodePresetIndex,
-                    onChanged: (v) => setState(() {
-                      _nodePresetIndex = v!;
-                      _customNode = false;
-                    }),
-                    title: Text(preset.label,
-                        style: Theme.of(context).textTheme.bodyMedium),
-                    subtitle: Text('${preset.host}:${preset.port}',
-                        style: Theme.of(context).textTheme.bodySmall),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                  );
-                }),
-                RadioListTile<int>(
-                  value: -1,
+                RadioGroup<int>(
                   groupValue: _customNode ? -1 : _nodePresetIndex,
-                  onChanged: (_) => setState(() => _customNode = true),
-                  title: Text('Custom',
-                      style: Theme.of(context).textTheme.bodyMedium),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setState(() {
+                    if (v == null || v == -1) {
+                      _customNode = true;
+                    } else {
+                      _nodePresetIndex = v;
+                      _customNode = false;
+                    }
+                  }),
+                  child: Column(
+                    children: [
+                      ...List.generate(AppConfig.nodePresets.length, (i) {
+                        final preset = AppConfig.nodePresets[i];
+                        return RadioListTile<int>(
+                          value: i,
+                          title: Text(preset.label,
+                              style: Theme.of(context).textTheme.bodyMedium),
+                          subtitle: Text('${preset.host}:${preset.port}',
+                              style: Theme.of(context).textTheme.bodySmall),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        );
+                      }),
+                      RadioListTile<int>(
+                        value: -1,
+                        title: Text(tr.custom,
+                            style: Theme.of(context).textTheme.bodyMedium),
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
                 ),
                 if (_customNode) ...[
                   const SizedBox(height: 8),
                   TextField(
                     controller: _customHostCtrl,
-                    decoration: const InputDecoration(
-                        hintText: 'Host / IP', labelText: 'Host'),
+                    decoration: InputDecoration(
+                        hintText: tr.hostHint, labelText: tr.host),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -526,8 +547,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         child: TextField(
                           controller: _customPortCtrl,
                           keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              hintText: '17856', labelText: 'Port'),
+                          decoration: InputDecoration(
+                              hintText: '17856', labelText: tr.port),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -538,7 +559,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             onChanged: (v) =>
                                 setState(() => _customSsl = v ?? false),
                           ),
-                          const Text('SSL'),
+                          Text(tr.ssl),
                         ],
                       ),
                     ],
@@ -562,7 +583,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Apply'),
+                      : Text(tr.apply),
                 ),
               ],
             ),
@@ -572,28 +593,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
 
         // ── Current Wallet ───────────────────────────────────────────────
-        _sectionTitle('Current Wallet — $walletCaption'),
+        _sectionTitle(tr.currentWallet(walletCaption)),
         Card(
           child: Column(
             children: [
               ListTile(
                 leading: const Icon(Icons.save),
-                title: const Text('Save Wallet'),
+                title: Text(tr.saveWallet),
                 onTap: _saveWallet,
               ),
               ListTile(
                 leading: const Icon(Icons.vpn_key_outlined),
-                title: const Text('Backup Seed'),
+                title: Text(tr.backupSeed),
                 onTap: _backupSeed,
               ),
               ListTile(
                 leading: const Icon(Icons.lock_reset),
-                title: const Text('Change Password'),
+                title: Text(tr.changePassword),
                 onTap: _changePassword,
               ),
               ListTile(
                 leading: const Icon(Icons.restart_alt),
-                title: const Text('Reset Scan Height'),
+                title: Text(tr.resetScanHeight),
                 subtitle: SizedBox(
                   width: 120,
                   child: TextField(
@@ -609,7 +630,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 trailing: TextButton(
                   onPressed: _resetScan,
-                  child: const Text('Reset'),
+                  child: Text(tr.reset),
                 ),
               ),
             ],
@@ -619,20 +640,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
 
         // ── Wallet Management ────────────────────────────────────────────
-        _sectionTitle('Wallet Management'),
+        _sectionTitle(tr.walletManagement),
         Card(
           child: Column(
             children: [
               ListTile(
                 leading: const Icon(Icons.swap_horiz),
-                title: const Text('Switch Wallet'),
-                subtitle: const Text('Save & close, pick another'),
+                title: Text(tr.switchWallet),
+                subtitle: Text(tr.switchWalletSubtitle),
                 onTap: _switchWallet,
               ),
               ListTile(
                 leading: const Icon(Icons.folder_open),
-                title: const Text('Manage Wallets'),
-                subtitle: const Text('Rename or delete wallets'),
+                title: Text(tr.manageWallets),
+                subtitle: Text(tr.manageWalletsSubtitle),
                 onTap: _manageWallets,
               ),
             ],
@@ -642,13 +663,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
 
         // ── Security ─────────────────────────────────────────────────────
-        _sectionTitle('Security'),
+        _sectionTitle(tr.security),
         Card(
           child: Column(
             children: [
               SwitchListTile(
-                title: const Text('Biometric Unlock'),
-                subtitle: const Text('Fingerprint / Face ID'),
+                title: Text(tr.biometricUnlock),
+                subtitle: Text(tr.biometricSubtitle),
                 value: biometric,
                 onChanged: (v) async {
                   if (v) {
@@ -656,8 +677,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (!available) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Biometric not available')),
+                          SnackBar(
+                              content: Text(tr.biometricNotAvailable)),
                         );
                       }
                       return;
@@ -667,9 +688,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               ListTile(
-                title: const Text('Auto-Lock'),
-                subtitle:
-                    Text(AppConfig.autoLockOptions[autoLockIdx].label),
+                title: Text(tr.autoLock),
+                subtitle: Text(_autoLockLabel(tr, autoLockIdx)),
                 trailing: DropdownButton<int>(
                   value: autoLockIdx,
                   underline: const SizedBox.shrink(),
@@ -677,7 +697,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     AppConfig.autoLockOptions.length,
                     (i) => DropdownMenuItem(
                       value: i,
-                      child: Text(AppConfig.autoLockOptions[i].label),
+                      child: Text(_autoLockLabel(tr, i)),
                     ),
                   ),
                   onChanged: (v) {
@@ -693,19 +713,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
         const SizedBox(height: 24),
 
-        // ── Appearance ───────────────────────────────────────────────────
-        _sectionTitle('Appearance'),
+        // ── Language ─────────────────────────────────────────────────────
+        _sectionTitle(tr.language),
         Card(
           child: ListTile(
-            title: const Text('Theme'),
+            leading: Text(currentLangInfo(ref.watch(localeProvider)).flag,
+                style: const TextStyle(fontSize: 24)),
+            title: Text(tr.language),
+            subtitle:
+                Text(currentLangInfo(ref.watch(localeProvider)).nativeName),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => showLanguagePicker(context, ref),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // ── Appearance ───────────────────────────────────────────────────
+        _sectionTitle(tr.appearance),
+        Card(
+          child: ListTile(
+            title: Text(tr.theme),
             trailing: SegmentedButton<ThemeMode>(
-              segments: const [
+              segments: [
                 ButtonSegment(
-                    value: ThemeMode.system, label: Text('Auto')),
+                    value: ThemeMode.system, label: Text(tr.themeAuto)),
                 ButtonSegment(
-                    value: ThemeMode.light, label: Text('Light')),
+                    value: ThemeMode.light, label: Text(tr.themeLight)),
                 ButtonSegment(
-                    value: ThemeMode.dark, label: Text('Dark')),
+                    value: ThemeMode.dark, label: Text(tr.themeDark)),
               ],
               selected: {themeMode},
               onSelectionChanged: (s) =>
@@ -717,29 +752,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
 
         // ── Notifications & Autosave ─────────────────────────────────────
-        _sectionTitle('Preferences'),
+        _sectionTitle(tr.preferences),
         Card(
           child: Column(
             children: [
               SwitchListTile(
-                title: const Text('Transaction Notifications'),
-                subtitle: const Text('Alert on incoming transactions'),
+                title: Text(tr.transactionNotifications),
+                subtitle: Text(tr.notificationsSubtitle),
                 value: notifications,
                 onChanged: (v) =>
                     ref.read(notificationsEnabledProvider.notifier).set(v),
               ),
               SwitchListTile(
-                title: const Text('Autosave'),
-                subtitle:
-                    const Text('Save after sync, then every 5 minutes'),
+                title: Text(tr.autosave),
+                subtitle: Text(tr.autosaveSubtitle),
                 value: autosave,
                 onChanged: (v) =>
                     ref.read(autosaveEnabledProvider.notifier).set(v),
               ),
               SwitchListTile(
-                title: const Text('Scan Coinbase Transactions'),
-                subtitle:
-                    const Text('Include miner rewards (off by default)'),
+                title: Text(tr.scanCoinbaseTx),
+                subtitle: Text(tr.scanCoinbaseSubtitle),
                 value: scanCoinbase,
                 onChanged: (v) {
                   ref.read(scanCoinbaseProvider.notifier).set(v);
@@ -753,13 +786,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 24),
 
         // ── Danger Zone ──────────────────────────────────────────────────
-        _sectionTitle('Danger Zone'),
+        _sectionTitle(tr.dangerZone),
         Card(
           child: ListTile(
             leading: const Icon(Icons.delete_forever, color: kError),
-            title: const Text('Delete Current Wallet',
-                style: TextStyle(color: kError)),
-            subtitle: const Text('Permanently remove wallet data'),
+            title: Text(tr.deleteCurrentWallet,
+                style: const TextStyle(color: kError)),
+            subtitle: Text(tr.deleteCurrentWalletSubtitle),
             onTap: _deleteCurrentWallet,
           ),
         ),
@@ -793,10 +826,11 @@ class _ManageWalletsDialog extends StatefulWidget {
 class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final wallets = widget.registry.wallets.toList();
 
     return AlertDialog(
-      title: const Text('Manage Wallets'),
+      title: Text(tr.manageWallets),
       content: SizedBox(
         width: double.maxFinite,
         child: ListView.builder(
@@ -807,7 +841,7 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
             final isCurrent = entry.filename == widget.currentFilename;
             return ListTile(
               title: Text(entry.caption),
-              subtitle: isCurrent ? const Text('(currently open)') : null,
+              subtitle: isCurrent ? Text(tr.currentlyOpen) : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -829,31 +863,32 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Close'),
+          child: Text(tr.close),
         ),
       ],
     );
   }
 
   Future<void> _rename(dynamic entry) async {
+    final tr = S.of(context)!;
     final ctrl = TextEditingController(text: entry.caption);
     final newName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Rename Wallet'),
+        title: Text(tr.renameWallet),
         content: TextField(
           controller: ctrl,
-          decoration: const InputDecoration(labelText: 'New name'),
+          decoration: InputDecoration(labelText: tr.newName),
           autofocus: true,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Rename'),
+            child: Text(tr.rename),
           ),
         ],
       ),
@@ -864,20 +899,21 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
   }
 
   Future<void> _delete(dynamic entry) async {
+    final tr = S.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Wallet'),
-        content: Text('Delete "${entry.caption}"? This cannot be undone.'),
+        title: Text(tr.deleteWallet),
+        content: Text(tr.deleteWalletConfirmShort(entry.caption)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kError),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(tr.delete),
           ),
         ],
       ),

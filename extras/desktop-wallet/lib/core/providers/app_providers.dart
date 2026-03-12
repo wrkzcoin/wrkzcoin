@@ -162,3 +162,54 @@ final scanCoinbaseProvider =
 /// When true, the wallet is open but the UI is locked — a login screen is shown.
 /// Set to true on lock, false after successful re-auth.
 final walletLockedProvider = StateProvider<bool>((_) => false);
+
+// ── Locale ───────────────────────────────────────────────────────────────────
+
+const _kLocaleKey = 'pluton_locale';
+const _kFirstLaunchDoneKey = 'pluton_first_launch_done';
+
+const supportedLocales = [
+  Locale('en'),
+  Locale('fr'),
+  Locale('de'),
+  Locale('zh'),
+  Locale('vi'),
+  Locale('ja'),
+  Locale('es'),
+  Locale('pt'),
+  Locale('ru'),
+];
+
+class LocaleNotifier extends Notifier<Locale?> {
+  @override
+  Locale? build() {
+    _load();
+    return null; // null = system default
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kLocaleKey);
+    if (v != null && v.isNotEmpty) {
+      state = Locale(v);
+    }
+  }
+
+  Future<void> set(Locale? locale) async {
+    state = locale;
+    await _storage.write(key: _kLocaleKey, value: locale?.languageCode ?? '');
+  }
+}
+
+final localeProvider =
+    NotifierProvider<LocaleNotifier, Locale?>(LocaleNotifier.new);
+
+// ── First launch flag ────────────────────────────────────────────────────────
+
+final firstLaunchDoneProvider = FutureProvider<bool>((ref) async {
+  final v = await _storage.read(key: _kFirstLaunchDoneKey);
+  return v == 'true';
+});
+
+Future<void> markFirstLaunchDone() async {
+  await _storage.write(key: _kFirstLaunchDoneKey, value: 'true');
+}

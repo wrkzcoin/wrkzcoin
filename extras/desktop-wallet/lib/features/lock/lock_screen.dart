@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/wallet_auth.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
@@ -27,11 +28,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Future<void> _unlock() async {
+    final tr = S.of(context);
     setState(() { _loading = true; _error = null; });
     try {
       final ok = await verifyWalletPassword(_passCtrl.text);
       if (!ok) {
-        setState(() => _error = 'Incorrect password');
+        setState(() => _error = tr?.incorrectPassword ?? 'Incorrect password');
         return;
       }
       ref.read(walletLockedProvider.notifier).state = false;
@@ -44,16 +46,26 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   Future<void> _closeWallet() async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Close Wallet'),
-        content: const Text(
-            'This will save and close the wallet.\n\n'
-            'You will be returned to the login screen.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Close Wallet')),
-        ],
-      ),
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.closeWallet ?? 'Close Wallet'),
+          content: Text(
+              dlgTr?.closeWalletDescription ??
+              'This will save and close the wallet.\n\n'
+              'You will be returned to the login screen.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dlgTr?.cancel ?? 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dlgTr?.closeWallet ?? 'Close Wallet'),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
 
@@ -68,6 +80,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return Scaffold(
       backgroundColor: kBgDark,
       body: Center(
@@ -81,12 +94,12 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                 children: [
                   const PlutonLogo(size: 48),
                   const SizedBox(height: 24),
-                  Text('Wallet Locked',
+                  Text(tr?.walletLocked ?? 'Wallet Locked',
                       style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 6),
-                  const Text(
-                    'Enter your wallet password to continue',
-                    style: TextStyle(color: kTextSecondary, fontSize: 13),
+                  Text(
+                    tr?.enterPasswordToContinue ?? 'Enter your wallet password to continue',
+                    style: const TextStyle(color: kTextSecondary, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 28),
@@ -96,7 +109,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                     autofocus: true,
                     onSubmitted: (_) { if (!_loading) _unlock(); },
                     decoration: InputDecoration(
-                      labelText: 'Password',
+                      labelText: tr?.password ?? 'Password',
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscure
@@ -142,15 +155,15 @@ class _LockScreenState extends ConsumerState<LockScreen> {
                               child: CircularProgressIndicator(
                                   color: Colors.white, strokeWidth: 2),
                             )
-                          : const Text('Unlock'),
+                          : Text(tr?.unlock ?? 'Unlock'),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextButton(
                     onPressed: _loading ? null : _closeWallet,
-                    child: const Text(
-                      'Close wallet instead',
-                      style: TextStyle(color: kTextSecondary, fontSize: 12),
+                    child: Text(
+                      tr?.closeWalletInstead ?? 'Close wallet instead',
+                      style: const TextStyle(color: kTextSecondary, fontSize: 12),
                     ),
                   ),
                 ],

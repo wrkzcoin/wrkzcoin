@@ -199,3 +199,51 @@ class ScanCoinbaseNotifier extends Notifier<bool> {
 
 final scanCoinbaseProvider =
     NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+
+// ── locale ──────────────────────────────────────────────────────────────────
+
+const supportedLocales = [
+  Locale('en'),
+  Locale('fr'),
+  Locale('de'),
+  Locale('zh'),
+  Locale('vi'),
+  Locale('ja'),
+  Locale('es'),
+  Locale('pt'),
+  Locale('ru'),
+];
+
+class LocaleNotifier extends Notifier<Locale?> {
+  @override
+  Locale? build() {
+    _load();
+    return null; // null = system default
+  }
+
+  Future<void> _load() async {
+    final v = await readPref(AppConfig.skLocale);
+    if (v != null && v.isNotEmpty) {
+      state = Locale(v);
+    }
+  }
+
+  Future<void> set(Locale? locale) async {
+    state = locale;
+    await storePref(AppConfig.skLocale, locale?.languageCode ?? '');
+  }
+}
+
+final localeProvider =
+    NotifierProvider<LocaleNotifier, Locale?>(LocaleNotifier.new);
+
+// ── first launch flag ───────────────────────────────────────────────────────
+
+final firstLaunchDoneProvider = FutureProvider<bool>((ref) async {
+  final v = await readPref(AppConfig.skFirstLaunchDone);
+  return v == 'true';
+});
+
+Future<void> markFirstLaunchDone() async {
+  await storePref(AppConfig.skFirstLaunchDone, 'true');
+}

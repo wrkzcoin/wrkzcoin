@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/api/models/wallet_status.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_theme.dart';
 
 /// Thin progress bar + label shown at the top of screens while wallet is syncing.
@@ -61,10 +62,12 @@ class _SyncBannerState extends State<SyncBanner> {
   Widget build(BuildContext context) {
     if (widget.status.isWalletSynced) return const SizedBox.shrink();
 
+    final tr = S.of(context);
     final pct = (widget.status.syncProgress * 100).toStringAsFixed(1);
     final eta = _eta();
     final label = StringBuffer(
-        'Syncing $pct% (block ${widget.status.walletBlockCount} / ${widget.status.networkBlockCount})');
+        tr?.syncingProgress(pct, widget.status.walletBlockCount, widget.status.networkBlockCount)
+        ?? 'Syncing $pct% (block ${widget.status.walletBlockCount} / ${widget.status.networkBlockCount})');
     if (eta != null) label.write(' ($eta)');
 
     return Container(

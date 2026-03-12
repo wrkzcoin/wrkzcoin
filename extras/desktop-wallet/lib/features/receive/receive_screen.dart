@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
 
@@ -44,19 +45,20 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   }
 
   Future<void> _generate(String baseAddress, {String? overridePid}) async {
+    final tr = S.of(context);
     String pid;
     if (overridePid != null) {
       pid = overridePid;
     } else {
       pid = _paymentIdCtrl.text.trim();
       if (pid.isEmpty) {
-        setState(() => _error = 'Enter a payment ID (16 or 64 hex chars)');
+        setState(() => _error = tr?.enterPaymentIdError ?? 'Enter a payment ID (16 or 64 hex chars)');
         return;
       }
       final validLen = pid.length == 16 || pid.length == 64;
       final validHex = RegExp(r'^[0-9a-fA-F]+$').hasMatch(pid);
       if (!validLen || !validHex) {
-        setState(() => _error = 'Payment ID must be 16 or 64 hex characters');
+        setState(() => _error = tr?.paymentIdInvalidError ?? 'Payment ID must be 16 or 64 hex characters');
         return;
       }
     }
@@ -72,7 +74,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     } on WalletCApiException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = tr?.errorPrefix(e.toString()) ?? 'Error: $e');
     } finally {
       if (mounted) setState(() => _generating = false);
     }
@@ -84,6 +86,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     final addrAsync = ref.watch(_primaryAddressProvider);
 
     return SingleChildScrollView(
@@ -91,9 +94,9 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Receive', style: Theme.of(context).textTheme.headlineMedium),
+          Text(tr?.tabReceive ?? 'Receive', style: Theme.of(context).textTheme.headlineMedium),
           const SizedBox(height: 6),
-          Text('Share your address to receive WRKZ',
+          Text(tr?.shareAddressSubtitle ?? 'Share your address to receive WRKZ',
               style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 24),
 
@@ -111,7 +114,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Your Address',
+                          Text(tr?.yourAddress ?? 'Your Address',
                               style: Theme.of(context).textTheme.titleSmall),
                           const SizedBox(height: 8),
                           _AddressBox(address: address),
@@ -126,12 +129,11 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                 const SizedBox(height: 24),
 
                 // ── Integrated address generator ─────────────────────────
-                Text('Generate Integrated Address',
+                Text(tr?.generateIntegratedAddress ?? 'Generate Integrated Address',
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  'Combine your address with a payment ID. '
-                  'Use the random buttons for a new ID, or enter your own below.',
+                  tr?.integratedAddressDescription ?? 'Combine your address with a payment ID. Use the random buttons for a new ID, or enter your own below.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 16),
@@ -145,7 +147,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           : () => _generate(address,
                               overridePid: _randomHex(16)),
                       icon: const Icon(Icons.shuffle, size: 16),
-                      label: const Text('Random Short (16)'),
+                      label: Text(tr?.randomShort16 ?? 'Random Short (16)'),
                     ),
                     const SizedBox(width: 12),
                     FilledButton.icon(
@@ -154,7 +156,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                           : () => _generate(address,
                               overridePid: _randomHex(64)),
                       icon: const Icon(Icons.shuffle, size: 16),
-                      label: const Text('Random Long (64)'),
+                      label: Text(tr?.randomLong64 ?? 'Random Long (64)'),
                     ),
                     if (_generating) ...[
                       const SizedBox(width: 16),
@@ -176,7 +178,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                       child: TextField(
                         controller: _paymentIdCtrl,
                         decoration: InputDecoration(
-                          labelText: 'Custom payment ID (16 or 64 hex chars)',
+                          labelText: tr?.customPaymentIdLabel ?? 'Custom payment ID (16 or 64 hex chars)',
                           errorText: _error,
                           suffixIcon: _paymentIdCtrl.text.isNotEmpty
                               ? IconButton(
@@ -197,7 +199,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                       child: OutlinedButton(
                         onPressed:
                             _generating ? null : () => _generate(address),
-                        child: const Text('Generate'),
+                        child: Text(tr?.generate ?? 'Generate'),
                       ),
                     ),
                   ],
@@ -208,7 +210,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
                   const SizedBox(height: 28),
                   const Divider(),
                   const SizedBox(height: 20),
-                  Text('Integrated Address',
+                  Text(tr?.integratedAddress ?? 'Integrated Address',
                       style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 4),
                   _PaymentIdBadge(paymentId: _usedPaymentId!),
@@ -234,7 +236,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
             ),
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) =>
-                Text('Error: $e', style: const TextStyle(color: kError)),
+                Text(tr?.errorPrefix(e.toString()) ?? 'Error: $e', style: const TextStyle(color: kError)),
           ),
         ],
       ),
@@ -274,6 +276,7 @@ class _AddressBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -293,7 +296,7 @@ class _AddressBox extends StatelessWidget {
                   height: 1.5),
             ),
           ),
-          CopyButton(text: address, tooltip: 'Copy address'),
+          CopyButton(text: address, tooltip: tr?.copyAddress ?? 'Copy address'),
         ],
       ),
     );
@@ -306,7 +309,10 @@ class _PaymentIdBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = paymentId.length == 16 ? 'Short (16)' : 'Long (64)';
+    final tr = S.of(context);
+    final label = paymentId.length == 16
+        ? (tr?.paymentIdShort ?? 'Short (16)')
+        : (tr?.paymentIdLong ?? 'Long (64)');
     return Row(
       children: [
         Container(
@@ -317,7 +323,7 @@ class _PaymentIdBadge extends StatelessWidget {
             border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
           child: Text(
-            'Payment ID · $label',
+            tr?.paymentIdLabel(label) ?? 'Payment ID \u00b7 $label',
             style: Theme.of(context)
                 .textTheme
                 .labelSmall
@@ -334,7 +340,7 @@ class _PaymentIdBadge extends StatelessWidget {
                 color: Theme.of(context).colorScheme.onSurface),
           ),
         ),
-        CopyButton(text: paymentId, tooltip: 'Copy payment ID'),
+        CopyButton(text: paymentId, tooltip: tr?.copyPaymentId ?? 'Copy payment ID'),
       ],
     );
   }

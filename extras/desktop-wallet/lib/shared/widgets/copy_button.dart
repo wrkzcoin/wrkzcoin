@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_theme.dart';
 
 /// Icon button that copies [text] to clipboard and shows a brief checkmark.
@@ -33,7 +34,9 @@ class _CopyButtonState extends State<CopyButton> {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: _copied ? 'Copied!' : (widget.tooltip ?? 'Copy'),
+      message: _copied
+          ? (S.of(context)?.copied ?? 'Copied!')
+          : (widget.tooltip ?? S.of(context)?.copy ?? 'Copy'),
       child: InkWell(
         onTap: _copy,
         borderRadius: BorderRadius.circular(4),

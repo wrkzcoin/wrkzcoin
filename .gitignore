@@ -24,7 +24,7 @@ node_modules/
 dist/
 **/dist/
 extras/web-wallet-wasm/web/wasm/generated/*
-extras/mobile-wallet/.dart_tool/**
+extras/mobile-wallet/.dart_tool/*
 extras/mobile-wallet/android/local.properties
 extras/mobile-wallet/build/**
 extras/mobile-wallet/android/.gradle/**

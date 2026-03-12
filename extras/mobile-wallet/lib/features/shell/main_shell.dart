@@ -10,7 +10,9 @@ import '../../core/config/app_config.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/utils/haptics.dart';
+import '../../shared/widgets/language_selector.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   final Widget child;
@@ -33,34 +35,6 @@ class _MainShellState extends ConsumerState<MainShell>
   // Tx notifications
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
-
-  static const _tabs = [
-    _TabItem(
-        icon: Icons.dashboard_outlined,
-        activeIcon: Icons.dashboard,
-        label: 'Overview',
-        path: '/overview'),
-    _TabItem(
-        icon: Icons.qr_code_outlined,
-        activeIcon: Icons.qr_code,
-        label: 'Receive',
-        path: '/receive'),
-    _TabItem(
-        icon: Icons.send_outlined,
-        activeIcon: Icons.send,
-        label: 'Send',
-        path: '/transfer'),
-    _TabItem(
-        icon: Icons.history_outlined,
-        activeIcon: Icons.history,
-        label: 'History',
-        path: '/history'),
-    _TabItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        label: 'Settings',
-        path: '/settings'),
-  ];
 
   @override
   void initState() {
@@ -155,8 +129,9 @@ class _MainShellState extends ConsumerState<MainShell>
 
   int _currentIndex(BuildContext context) {
     final loc = GoRouterState.of(context).uri.path;
-    for (var i = 0; i < _tabs.length; i++) {
-      if (loc == _tabs[i].path) return i;
+    final paths = ['/overview', '/receive', '/transfer', '/history', '/settings'];
+    for (var i = 0; i < paths.length; i++) {
+      if (loc == paths[i]) return i;
     }
     return 0;
   }
@@ -169,10 +144,21 @@ class _MainShellState extends ConsumerState<MainShell>
     ref.listen(transactionsProvider, _onTxUpdate);
 
     final idx = _currentIndex(context);
+    final tr = S.of(context)!;
+    final tabLabels = [
+      tr.tabOverview,
+      tr.tabReceive,
+      tr.tabSend,
+      tr.tabHistory,
+      tr.tabSettings,
+    ];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tabs[idx].label),
+        title: Text(tabLabels[idx]),
+        actions: const [
+          LanguageSelectorButton(),
+        ],
       ),
       body: widget.child,
       bottomNavigationBar: BottomNavigationBar(
@@ -180,31 +166,38 @@ class _MainShellState extends ConsumerState<MainShell>
         onTap: (i) {
           if (i != idx) {
             hapticSelection();
-            context.go(_tabs[i].path);
+            final paths = ['/overview', '/receive', '/transfer', '/history', '/settings'];
+            context.go(paths[i]);
           }
         },
-        items: _tabs
-            .map((t) => BottomNavigationBarItem(
-                  icon: Icon(t.icon),
-                  activeIcon: Icon(t.activeIcon),
-                  label: t.label,
-                ))
-            .toList(),
+        items: [
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.dashboard_outlined),
+            activeIcon: const Icon(Icons.dashboard),
+            label: tr.tabOverview,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.qr_code_outlined),
+            activeIcon: const Icon(Icons.qr_code),
+            label: tr.tabReceive,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.send_outlined),
+            activeIcon: const Icon(Icons.send),
+            label: tr.tabSend,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.history_outlined),
+            activeIcon: const Icon(Icons.history),
+            label: tr.tabHistory,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(Icons.settings_outlined),
+            activeIcon: const Icon(Icons.settings),
+            label: tr.tabSettings,
+          ),
+        ],
       ),
     );
   }
-}
-
-class _TabItem {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final String path;
-
-  const _TabItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.path,
-  });
 }

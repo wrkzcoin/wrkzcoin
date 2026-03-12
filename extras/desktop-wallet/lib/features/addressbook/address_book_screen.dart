@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
 import 'address_book_provider.dart';
@@ -20,15 +21,16 @@ class AddressBookScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final entries = ref.watch(addressBookProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Address Book'),
+        title: Text(tr?.tabAddressBook ?? 'Address Book'),
         actions: [
           FilledButton.icon(
             icon: const Icon(Icons.add, size: 16),
-            label: const Text('Add'),
+            label: Text(tr?.addButton ?? 'Add'),
             onPressed: () => _showAddDialog(context, ref),
           ),
           const SizedBox(width: 16),
@@ -42,10 +44,10 @@ class AddressBookScreen extends ConsumerWidget {
                   Icon(Icons.contacts_outlined, size: 48,
                       color: Theme.of(context).colorScheme.onSurfaceVariant),
                   const SizedBox(height: 12),
-                  Text('No saved addresses',
+                  Text(tr?.noSavedAddresses ?? 'No saved addresses',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 4),
-                  Text('Tap Add to save a frequently used address.',
+                  Text(tr?.tapAddToSave ?? 'Tap Add to save a frequently used address.',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                 ],
               ),
@@ -60,6 +62,7 @@ class AddressBookScreen extends ConsumerWidget {
   }
 
   void _showAddDialog(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final nameCtrl = TextEditingController();
     final addrCtrl = TextEditingController();
     final noteCtrl = TextEditingController();
@@ -69,17 +72,17 @@ class AddressBookScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
-          title: const Text('Add Address'),
+          title: Text(tr?.addAddress ?? 'Add Address'),
           content: SizedBox(
             width: 400,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name / label')),
+                TextField(controller: nameCtrl, decoration: InputDecoration(labelText: tr?.nameLabel ?? 'Name / label')),
                 const SizedBox(height: 12),
-                TextField(controller: addrCtrl, decoration: const InputDecoration(labelText: 'Address')),
+                TextField(controller: addrCtrl, decoration: InputDecoration(labelText: tr?.addressLabel ?? 'Address')),
                 const SizedBox(height: 12),
-                TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'Note (optional)')),
+                TextField(controller: noteCtrl, decoration: InputDecoration(labelText: tr?.noteOptional ?? 'Note (optional)')),
                 if (error != null) ...[
                   const SizedBox(height: 10),
                   Text(error!, style: const TextStyle(color: kError, fontSize: 12)),
@@ -88,17 +91,18 @@ class AddressBookScreen extends ConsumerWidget {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr?.cancel ?? 'Cancel')),
             FilledButton(
               onPressed: () {
                 final name = nameCtrl.text.trim();
                 final addr = addrCtrl.text.trim();
                 if (name.isEmpty || addr.isEmpty) {
-                  setState(() => error = 'Name and address are required');
+                  setState(() => error = tr?.nameAndAddressRequired ?? 'Name and address are required');
                   return;
                 }
                 if (!_isValidWrkzAddress(addr)) {
                   setState(() => error =
+                      tr?.invalidWrkzAddress ??
                       'Invalid WRKZ address. Must be 98 (standard), '
                       '120 (short integrated), or 186 (long integrated) '
                       'characters starting with "Wrkz".');
@@ -111,7 +115,7 @@ class AddressBookScreen extends ConsumerWidget {
                     );
                 Navigator.pop(ctx);
               },
-              child: const Text('Save'),
+              child: Text(tr?.save ?? 'Save'),
             ),
           ],
         ),
@@ -126,6 +130,8 @@ class _EntryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -157,16 +163,16 @@ class _EntryCard extends ConsumerWidget {
                 ],
               ),
             ),
-            CopyButton(text: entry.address, tooltip: 'Copy address'),
+            CopyButton(text: entry.address, tooltip: tr?.copyAddress ?? 'Copy address'),
             const SizedBox(width: 4),
             IconButton(
               icon: const Icon(Icons.edit_outlined, size: 16),
-              tooltip: 'Edit',
+              tooltip: tr?.edit ?? 'Edit',
               onPressed: () => _showEditDialog(context, ref),
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 16, color: kError),
-              tooltip: 'Delete',
+              tooltip: tr?.delete ?? 'Delete',
               onPressed: () => _confirmDelete(context, ref),
             ),
           ],
@@ -176,26 +182,27 @@ class _EntryCard extends ConsumerWidget {
   }
 
   void _showEditDialog(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final nameCtrl = TextEditingController(text: entry.name);
     final noteCtrl = TextEditingController(text: entry.note ?? '');
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit Entry'),
+        title: Text(tr?.editEntry ?? 'Edit Entry'),
         content: SizedBox(
           width: 400,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name / label')),
+              TextField(controller: nameCtrl, decoration: InputDecoration(labelText: tr?.nameLabel ?? 'Name / label')),
               const SizedBox(height: 12),
-              TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'Note (optional)')),
+              TextField(controller: noteCtrl, decoration: InputDecoration(labelText: tr?.noteOptional ?? 'Note (optional)')),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr?.cancel ?? 'Cancel')),
           FilledButton(
             onPressed: () {
               ref.read(addressBookProvider.notifier).update(
@@ -205,7 +212,7 @@ class _EntryCard extends ConsumerWidget {
                   );
               Navigator.pop(ctx);
             },
-            child: const Text('Save'),
+            child: Text(tr?.save ?? 'Save'),
           ),
         ],
       ),
@@ -213,20 +220,22 @@ class _EntryCard extends ConsumerWidget {
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Entry'),
-        content: Text('Remove "${entry.name}" from your address book?'),
+        title: Text(tr?.deleteEntry ?? 'Delete Entry'),
+        content: Text(tr?.removeFromAddressBook(entry.name) ?? 'Remove "${entry.name}" from your address book?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr?.cancel ?? 'Cancel')),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: kError),
             onPressed: () {
               ref.read(addressBookProvider.notifier).remove(entry.id);
               Navigator.pop(ctx);
             },
-            child: const Text('Delete'),
+            child: Text(tr?.delete ?? 'Delete'),
           ),
         ],
       ),

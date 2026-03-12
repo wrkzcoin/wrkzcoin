@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 
 import '../../core/api/models/wallet_status.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_theme.dart';
 
 class SyncBanner extends StatefulWidget {
@@ -84,7 +85,7 @@ class _SyncBannerState extends State<SyncBanner> {
               ),
               const SizedBox(width: 10),
               Text(
-                'Syncing $pct%',
+                S.of(context)?.syncingPercent(pct) ?? 'Syncing $pct%',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const Spacer(),

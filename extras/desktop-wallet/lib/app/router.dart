@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/providers/providers.dart';
 import '../core/providers/app_providers.dart';
+import '../features/language_picker/language_picker_screen.dart';
 import '../features/setup/setup_screen.dart';
 import '../features/lock/lock_screen.dart';
 import '../features/shell/main_shell.dart';
@@ -21,12 +22,15 @@ import '../features/about/about_screen.dart';
 class _AuthNotifier extends ChangeNotifier {
   bool walletOpen = false;
   bool walletLocked = false;
+  bool firstLaunchDone = true;
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final firstLaunch = ref.read(firstLaunchDoneProvider);
   final auth = _AuthNotifier()
     ..walletOpen = ref.read(walletOpenProvider)
-    ..walletLocked = ref.read(walletLockedProvider);
+    ..walletLocked = ref.read(walletLockedProvider)
+    ..firstLaunchDone = firstLaunch.valueOrNull ?? true;
 
   ref.listen<bool>(walletOpenProvider, (_, next) {
     auth.walletOpen = next;
@@ -36,22 +40,37 @@ final routerProvider = Provider<GoRouter>((ref) {
     auth.walletLocked = next;
     auth.notifyListeners();
   });
+  ref.listen<AsyncValue<bool>>(firstLaunchDoneProvider, (_, next) {
+    auth.firstLaunchDone = next.valueOrNull ?? true;
+    auth.notifyListeners();
+  });
 
   ref.onDispose(auth.dispose);
 
   return GoRouter(
-    initialLocation: auth.walletOpen ? '/overview' : '/setup',
+    initialLocation: (firstLaunch.valueOrNull ?? true)
+        ? (auth.walletOpen ? '/overview' : '/setup')
+        : '/language',
     refreshListenable: auth,
     redirect: (context, state) {
       final open = auth.walletOpen;
       final locked = auth.walletLocked;
       final loc = state.matchedLocation;
-      if (!open && loc != '/setup') return '/setup';
+
+      // First launch → language picker
+      if (!auth.firstLaunchDone && loc != '/language') return '/language';
+      if (auth.firstLaunchDone && loc == '/language') return '/setup';
+
+      if (!open && loc != '/setup' && loc != '/language') return '/setup';
       if (open && locked && loc != '/lock') return '/lock';
       if (open && !locked && (loc == '/setup' || loc == '/lock')) return '/overview';
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/language',
+        builder: (_, _) => const LanguagePickerScreen(),
+      ),
       GoRoute(
         path: '/setup',
         builder: (_, _) => const SetupScreen(),

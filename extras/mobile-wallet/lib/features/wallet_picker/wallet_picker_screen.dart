@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/providers/providers.dart';
 import '../../core/storage/wallet_registry.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 
@@ -36,21 +37,21 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
   }
 
   Future<void> _deleteWallet(WalletEntry entry) async {
+    final tr = S.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Wallet'),
-        content: Text(
-            'Delete "${entry.caption}"?\n\nThis will permanently remove the wallet file and keys. Make sure you have backed up your seed phrase.'),
+        title: Text(tr.deleteWallet),
+        content: Text(tr.deleteWalletConfirm(entry.caption)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(tr.cancel),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: kError),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            child: Text(tr.delete),
           ),
         ],
       ),
@@ -65,6 +66,7 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final dateFormat = DateFormat('MMM d, yyyy');
 
     return Scaffold(
@@ -97,7 +99,7 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
               const SizedBox(height: 20),
               Center(
                 child: Text(
-                  'PLUTON Mobile',
+                  tr.plutonMobile,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
               ),
@@ -105,15 +107,15 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
               Center(
                 child: Text(
                   _wallets.isEmpty
-                      ? 'Create your first wallet to get started'
-                      : 'Select a wallet to open',
+                      ? tr.createFirstWalletSubtitle
+                      : tr.selectWalletSubtitle,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
               const SizedBox(height: 32),
               if (_wallets.isNotEmpty) ...[
                 Text(
-                  'Your Wallets',
+                  tr.yourWallets,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
@@ -134,7 +136,7 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'No wallets yet',
+                              tr.noWalletsYet,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
@@ -177,7 +179,7 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
                                             BorderRadius.circular(4),
                                       ),
                                       child: Text(
-                                        'Last opened',
+                                        tr.lastOpened,
                                         style: Theme.of(context)
                                             .textTheme
                                             .labelSmall
@@ -187,7 +189,7 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
                                 ],
                               ),
                               subtitle: Text(
-                                'Created ${dateFormat.format(entry.createdAt)}',
+                                tr.createdDate(dateFormat.format(entry.createdAt)),
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                               trailing: IconButton(
@@ -212,8 +214,8 @@ class _WalletPickerScreenState extends ConsumerState<WalletPickerScreen> {
                 },
                 icon: const Icon(Icons.add),
                 label: Text(_wallets.isEmpty
-                    ? 'Create First Wallet'
-                    : 'Add Wallet'),
+                    ? tr.createFirstWallet
+                    : tr.addWallet),
               ),
             ],
           ),

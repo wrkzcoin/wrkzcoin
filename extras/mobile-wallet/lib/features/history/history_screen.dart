@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/models/transaction.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/utils/haptics.dart';
@@ -58,6 +59,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final txAsync = ref.watch(transactionsProvider);
 
     return RefreshIndicator(
@@ -73,7 +75,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Search by hash, address, payment ID...',
+                hintText: tr.searchPlaceholder,
                 prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _search.isNotEmpty
                     ? IconButton(
@@ -95,11 +97,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                _filterChip('All', _TxFilter.all),
+                _filterChip(tr.all, _TxFilter.all),
                 const SizedBox(width: 8),
-                _filterChip('Received', _TxFilter.incoming),
+                _filterChip(tr.filterReceived, _TxFilter.incoming),
                 const SizedBox(width: 8),
-                _filterChip('Sent', _TxFilter.outgoing),
+                _filterChip(tr.filterSent, _TxFilter.outgoing),
               ],
             ),
           ),
@@ -124,8 +126,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         const SizedBox(height: 12),
                         Text(
                           _search.isNotEmpty
-                              ? 'No matching transactions'
-                              : 'No transactions yet',
+                              ? tr.noMatchingTransactions
+                              : tr.noTransactionsYet,
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                       ],
@@ -177,6 +179,7 @@ class _ExpandableTxCardState extends State<_ExpandableTxCard> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context)!;
     final tx = widget.tx;
     final incoming = tx.isIncoming;
     final icon = incoming ? Icons.call_received : Icons.call_made;
@@ -208,14 +211,14 @@ class _ExpandableTxCardState extends State<_ExpandableTxCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          incoming ? 'Received' : 'Sent',
+                          incoming ? tr.received : tr.sent,
                           style:
                               Theme.of(context).textTheme.titleMedium,
                         ),
                         Text(
                           tx.isConfirmed
                               ? _formatDate(tx.dateTime)
-                              : 'Pending...',
+                              : tr.pending,
                           style:
                               Theme.of(context).textTheme.bodySmall,
                         ),
@@ -258,18 +261,18 @@ class _ExpandableTxCardState extends State<_ExpandableTxCard> {
               // Expanded details
               if (_expanded) ...[
                 const Divider(height: 20),
-                _detailRow(context, 'Hash', tx.hash),
+                _detailRow(context, tr.hash, tx.hash),
                 if (tx.address.isNotEmpty)
-                  _detailRow(context, 'Address', tx.address),
+                  _detailRow(context, tr.address, tx.address),
                 _detailRow(
-                    context, 'Block', '${tx.blockHeight}'),
+                    context, tr.block, '${tx.blockHeight}'),
                 if (tx.fee > 0)
-                  _detailRow(context, 'Fee',
+                  _detailRow(context, tr.fee,
                       formatAmount(tx.fee, showTicker: true)),
                 if (tx.paymentID.isNotEmpty)
-                  _detailRow(context, 'Payment ID', tx.paymentID),
-                _detailRow(context, 'Status',
-                    tx.isConfirmed ? 'Confirmed' : 'Pending'),
+                  _detailRow(context, tr.paymentId, tx.paymentID),
+                _detailRow(context, tr.status,
+                    tx.isConfirmed ? tr.confirmed : tr.pending),
               ],
             ],
           ),

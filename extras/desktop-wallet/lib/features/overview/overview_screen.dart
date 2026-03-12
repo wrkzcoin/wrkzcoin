@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/sync_banner.dart';
@@ -13,6 +14,7 @@ class OverviewScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final balanceAsync = ref.watch(balanceProvider);
     final statusAsync = ref.watch(statusProvider);
 
@@ -30,7 +32,7 @@ class OverviewScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Overview', style: Theme.of(context).textTheme.headlineMedium),
+                Text(tr?.tabOverview ?? 'Overview', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 24),
 
                 // ── Balance card ──────────────────────────────────────────
@@ -45,7 +47,7 @@ class OverviewScreen extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // Available (unlocked)
-                              Text('Available Balance', style: Theme.of(context).textTheme.titleSmall),
+                              Text(tr?.availableBalance ?? 'Available Balance', style: Theme.of(context).textTheme.titleSmall),
                               const SizedBox(height: 6),
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -70,7 +72,7 @@ class OverviewScreen extends ConsumerWidget {
                                   const Icon(Icons.lock_outline, size: 14, color: kTextSecondary),
                                   const SizedBox(width: 4),
                                   Text(
-                                    'Locked (unconfirmed): ${formatAmount(b.locked)} $kCoinTicker',
+                                    tr?.lockedUnconfirmed(formatAmount(b.locked), kCoinTicker) ?? 'Locked (unconfirmed): ${formatAmount(b.locked)} $kCoinTicker',
                                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                       color: b.locked > 0 ? kWarning : kTextSecondary,
                                     ),
@@ -84,7 +86,7 @@ class OverviewScreen extends ConsumerWidget {
                                   const Icon(Icons.account_balance_wallet_outlined, size: 14, color: kTextSecondary),
                                   const SizedBox(width: 4),
                                   Text(
-                                    'Total: ${formatAmount(b.total)} $kCoinTicker',
+                                    tr?.totalBalance(formatAmount(b.total), kCoinTicker) ?? 'Total: ${formatAmount(b.total)} $kCoinTicker',
                                     style: Theme.of(context).textTheme.bodyMedium,
                                   ),
                                 ],
@@ -94,7 +96,7 @@ class OverviewScreen extends ConsumerWidget {
                           loading: () => Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Available Balance', style: Theme.of(context).textTheme.titleSmall),
+                              Text(tr?.availableBalance ?? 'Available Balance', style: Theme.of(context).textTheme.titleSmall),
                               const SizedBox(height: 6),
                               const _SkeletonBox(width: 200, height: 40),
                               const SizedBox(height: 10),
@@ -103,7 +105,7 @@ class OverviewScreen extends ConsumerWidget {
                               const _SkeletonBox(width: 200, height: 16),
                             ],
                           ),
-                          error: (e, _) => Text('Error: $e', style: const TextStyle(color: kError)),
+                          error: (e, _) => Text(tr?.errorPrefix(e.toString()) ?? 'Error: $e', style: const TextStyle(color: kError)),
                         ),
                         // Show a warning when balance may be incomplete due to sync
                         if (statusAsync.valueOrNull?.isWalletSynced == false) ...[
@@ -113,7 +115,7 @@ class OverviewScreen extends ConsumerWidget {
                               const Icon(Icons.sync, size: 13, color: kWarning),
                               const SizedBox(width: 4),
                               Text(
-                                'Balance may be incomplete while syncing',
+                                tr?.balanceIncompleteWhileSyncing ?? 'Balance may be incomplete while syncing',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: kWarning),
                               ),
                             ],
@@ -124,13 +126,13 @@ class OverviewScreen extends ConsumerWidget {
                           children: [
                             FilledButton.icon(
                               icon: const Icon(Icons.send_outlined, size: 16),
-                              label: const Text('Transfer'),
+                              label: Text(tr?.transfer ?? 'Transfer'),
                               onPressed: () => context.go('/transfer'),
                             ),
                             const SizedBox(width: 12),
                             OutlinedButton.icon(
                               icon: const Icon(Icons.qr_code_outlined, size: 16),
-                              label: const Text('Receive'),
+                              label: Text(tr?.receive ?? 'Receive'),
                               onPressed: () => context.go('/receive'),
                             ),
                           ],
@@ -150,17 +152,17 @@ class OverviewScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Network', style: Theme.of(context).textTheme.titleSmall),
+                          Text(tr?.network ?? 'Network', style: Theme.of(context).textTheme.titleSmall),
                           const SizedBox(height: 14),
                           _StatusRow(
-                            label: 'Sync status',
-                            value: s.isWalletSynced ? 'Synced' : 'Syncing…',
+                            label: tr?.syncStatus ?? 'Sync status',
+                            value: s.isWalletSynced ? (tr?.synced ?? 'Synced') : (tr?.syncing ?? 'Syncing…'),
                             valueColor: s.isWalletSynced ? kSuccess : kWarning,
                           ),
-                          _StatusRow(label: 'Wallet block', value: s.walletBlockCount.toString()),
-                          _StatusRow(label: 'Network block', value: s.networkBlockCount.toString()),
-                          _StatusRow(label: 'Peers', value: s.peerCount.toString()),
-                          _StatusRow(label: 'Wallet type', value: s.isViewWallet ? 'View-only' : 'Full'),
+                          _StatusRow(label: tr?.walletBlock ?? 'Wallet block', value: s.walletBlockCount.toString()),
+                          _StatusRow(label: tr?.networkBlock ?? 'Network block', value: s.networkBlockCount.toString()),
+                          _StatusRow(label: tr?.peers ?? 'Peers', value: s.peerCount.toString()),
+                          _StatusRow(label: tr?.walletType ?? 'Wallet type', value: s.isViewWallet ? (tr?.viewOnly ?? 'View-only') : (tr?.full ?? 'Full')),
                         ],
                       ),
                     ),
@@ -188,6 +190,7 @@ class _NodeErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -199,13 +202,13 @@ class _NodeErrorCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Node connection issue', style: TextStyle(color: kError, fontWeight: FontWeight.w600)),
+                  Text(tr?.nodeConnectionIssue ?? 'Node connection issue', style: const TextStyle(color: kError, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(error, style: const TextStyle(color: kTextSecondary, fontSize: 12)),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => context.go('/settings'),
-                    child: const Text('Switch node in Settings →'),
+                    child: Text(tr?.switchNodeInSettings ?? 'Switch node in Settings →'),
                   ),
                 ],
               ),
@@ -220,6 +223,7 @@ class _NodeErrorCard extends StatelessWidget {
 class _RecentTransactions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tr = S.of(context);
     final txAsync = ref.watch(transactionsProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,8 +231,8 @@ class _RecentTransactions extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Recent Transactions', style: Theme.of(context).textTheme.titleSmall),
-            TextButton(onPressed: () => context.go('/history'), child: const Text('View all →')),
+            Text(tr?.recentTransactions ?? 'Recent Transactions', style: Theme.of(context).textTheme.titleSmall),
+            TextButton(onPressed: () => context.go('/history'), child: Text(tr?.viewAll ?? 'View all →')),
           ],
         ),
         const SizedBox(height: 8),
@@ -243,9 +247,9 @@ class _RecentTransactions extends ConsumerWidget {
             );
           },
           loading: () => Column(
-            children: List.generate(3, (_) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: const _SkeletonBox(width: double.infinity, height: 52),
+            children: List.generate(3, (_) => const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: _SkeletonBox(width: double.infinity, height: 52),
             )),
           ),
           error: (_, _) => const _EmptyTxPlaceholder(),
@@ -261,6 +265,7 @@ class _TxRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     final incoming = tx.isIncoming;
     final amount = tx.totalAmount;
     return Card(
@@ -287,7 +292,7 @@ class _TxRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    incoming ? 'Received' : 'Sent',
+                    incoming ? (tr?.received ?? 'Received') : (tr?.sent ?? 'Sent'),
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   Text(
@@ -317,6 +322,7 @@ class _EmptyTxPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(28),
@@ -325,11 +331,11 @@ class _EmptyTxPlaceholder extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: const Column(
+      child: Column(
         children: [
-          Icon(Icons.receipt_long_outlined, size: 32, color: kTextDisabled),
-          SizedBox(height: 8),
-          Text('No transactions yet', style: TextStyle(color: kTextDisabled)),
+          const Icon(Icons.receipt_long_outlined, size: 32, color: kTextDisabled),
+          const SizedBox(height: 8),
+          Text(tr?.noTransactionsYet ?? 'No transactions yet', style: const TextStyle(color: kTextDisabled)),
         ],
       ),
     );

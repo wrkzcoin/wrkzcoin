@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
 import '../../shared/widgets/pluton_logo.dart';
@@ -171,6 +172,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tr = S.of(context);
     return Scaffold(
       body: Center(
         child: SizedBox(
@@ -184,12 +186,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   children: [
                     const PlutonLogo(size: 48),
                     const SizedBox(height: 28),
-                    if (_mode == _SetupMode.menu) _buildMenu(),
-                    if (_mode == _SetupMode.create) _buildCreate(),
-                    if (_mode == _SetupMode.open) _buildOpen(),
-                    if (_mode == _SetupMode.importSeed) _buildImportSeed(),
-                    if (_mode == _SetupMode.importKeys) _buildImportKeys(),
-                    if (_mode == _SetupMode.backupSeed) _buildBackupSeed(),
+                    if (_mode == _SetupMode.menu) _buildMenu(tr),
+                    if (_mode == _SetupMode.create) _buildCreate(tr),
+                    if (_mode == _SetupMode.open) _buildOpen(tr),
+                    if (_mode == _SetupMode.importSeed) _buildImportSeed(tr),
+                    if (_mode == _SetupMode.importKeys) _buildImportKeys(tr),
+                    if (_mode == _SetupMode.backupSeed) _buildBackupSeed(tr),
                     if (_error != null) ...[
                       const SizedBox(height: 16),
                       _ErrorBox(message: _error!),
@@ -204,86 +206,90 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     );
   }
 
-  Widget _buildMenu() {
+  Widget _buildMenu(S? tr) {
     return Column(
       children: [
-        Text('Welcome to PLUTON v2', style: Theme.of(context).textTheme.headlineSmall),
+        Text(tr?.welcomeToPluton ?? 'Welcome to PLUTON v2', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
-        Text('Select an option to get started', style: Theme.of(context).textTheme.bodyMedium),
+        Text(tr?.selectOptionToStart ?? 'Select an option to get started', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 28),
-        _MenuButton(icon: Icons.add_circle_outline, label: 'Create New Wallet', onTap: () => setState(() => _mode = _SetupMode.create)),
+        _MenuButton(icon: Icons.add_circle_outline, label: tr?.createNewWallet ?? 'Create New Wallet', onTap: () => setState(() => _mode = _SetupMode.create)),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.folder_open_outlined, label: 'Open Existing Wallet', onTap: () => setState(() => _mode = _SetupMode.open)),
+        _MenuButton(icon: Icons.folder_open_outlined, label: tr?.openExistingWallet ?? 'Open Existing Wallet', onTap: () => setState(() => _mode = _SetupMode.open)),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.vpn_key_outlined, label: 'Import from Seed Phrase', onTap: () => setState(() => _mode = _SetupMode.importSeed)),
+        _MenuButton(icon: Icons.vpn_key_outlined, label: tr?.importFromSeed ?? 'Import from Seed Phrase', onTap: () => setState(() => _mode = _SetupMode.importSeed)),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.key_outlined, label: 'Import from Private Keys', onTap: () => setState(() => _mode = _SetupMode.importKeys)),
+        _MenuButton(icon: Icons.key_outlined, label: tr?.importFromKeys ?? 'Import from Private Keys', onTap: () => setState(() => _mode = _SetupMode.importKeys)),
       ],
     );
   }
 
-  Widget _buildCreate() {
+  Widget _buildCreate(S? tr) {
     return _FormWrapper(
-      title: 'Create New Wallet',
+      title: tr?.createNewWallet ?? 'Create New Wallet',
       onBack: () => setState(() { _mode = _SetupMode.menu; _error = null; }),
       loading: _loading,
       onSubmit: _doCreate,
+      continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: 'Save wallet to'),
-        _PassField(ctrl: _passCtrl),
-        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl),
+        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: tr?.saveWalletTo ?? 'Save wallet to', browseTooltip: tr?.browse ?? 'Browse'),
+        _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
+        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );
   }
 
-  Widget _buildOpen() {
+  Widget _buildOpen(S? tr) {
     return _FormWrapper(
-      title: 'Open Wallet',
+      title: tr?.openWallet ?? 'Open Wallet',
       onBack: () => setState(() { _mode = _SetupMode.menu; _error = null; }),
       loading: _loading,
       onSubmit: _doOpen,
+      continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _FileField(ctrl: _fileCtrl, onPick: _pickFile, label: 'Wallet file'),
-        _PassField(ctrl: _passCtrl),
-        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl),
+        _FileField(ctrl: _fileCtrl, onPick: _pickFile, label: tr?.walletFile ?? 'Wallet file', browseTooltip: tr?.browse ?? 'Browse'),
+        _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
+        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );
   }
 
-  Widget _buildImportSeed() {
+  Widget _buildImportSeed(S? tr) {
     return _FormWrapper(
-      title: 'Import from Seed',
+      title: tr?.importFromSeedTitle ?? 'Import from Seed',
       onBack: () => setState(() { _mode = _SetupMode.menu; _error = null; }),
       loading: _loading,
       onSubmit: _doImportSeed,
+      continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: 'Save wallet to'),
-        _PassField(ctrl: _passCtrl),
-        _TField(ctrl: _seedCtrl, label: 'Mnemonic Seed Phrase', maxLines: 3),
-        _TField(ctrl: _scanHeightCtrl, label: 'Scan from height (0 = full scan)'),
-        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl),
+        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: tr?.saveWalletTo ?? 'Save wallet to', browseTooltip: tr?.browse ?? 'Browse'),
+        _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
+        _TField(ctrl: _seedCtrl, label: tr?.mnemonicSeedPhrase ?? 'Mnemonic Seed Phrase', maxLines: 3),
+        _TField(ctrl: _scanHeightCtrl, label: tr?.scanFromHeight ?? 'Scan from height (0 = full scan)'),
+        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );
   }
 
-  Widget _buildImportKeys() {
+  Widget _buildImportKeys(S? tr) {
     return _FormWrapper(
-      title: 'Import from Keys',
+      title: tr?.importFromKeysTitle ?? 'Import from Keys',
       onBack: () => setState(() { _mode = _SetupMode.menu; _error = null; }),
       loading: _loading,
       onSubmit: _doImportKeys,
+      continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: 'Save wallet to'),
-        _PassField(ctrl: _passCtrl),
-        _TField(ctrl: _viewKeyCtrl, label: 'Private View Key'),
-        _TField(ctrl: _spendKeyCtrl, label: 'Private Spend Key'),
-        _TField(ctrl: _scanHeightCtrl, label: 'Scan from height (0 = full scan)'),
-        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl),
+        _FileField(ctrl: _fileCtrl, onPick: _saveFile, label: tr?.saveWalletTo ?? 'Save wallet to', browseTooltip: tr?.browse ?? 'Browse'),
+        _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
+        _TField(ctrl: _viewKeyCtrl, label: tr?.privateViewKey ?? 'Private View Key'),
+        _TField(ctrl: _spendKeyCtrl, label: tr?.privateSpendKey ?? 'Private Spend Key'),
+        _TField(ctrl: _scanHeightCtrl, label: tr?.scanFromHeight ?? 'Scan from height (0 = full scan)'),
+        _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );
   }
 
-  Widget _buildBackupSeed() {
+  Widget _buildBackupSeed(S? tr) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -301,7 +307,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Back up your wallet before continuing.\nThese keys cannot be recovered if lost.',
+                  tr?.backupWarning ?? 'Back up your wallet before continuing.\nThese keys cannot be recovered if lost.',
                   style: const TextStyle(color: kWarning, fontSize: 13, height: 1.4),
                 ),
               ),
@@ -309,22 +315,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Text('Your Wallet Address', style: Theme.of(context).textTheme.titleSmall),
+        Text(tr?.yourWalletAddress ?? 'Your Wallet Address', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
         _BackupField(value: _newWalletAddress ?? ''),
 
         const SizedBox(height: 16),
-        Text('Seed Phrase (25 words)', style: Theme.of(context).textTheme.titleSmall),
+        Text(tr?.seedPhrase25Words ?? 'Seed Phrase (25 words)', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
         _BackupField(value: _newWalletSeed ?? '', monospace: true, maxLines: 4),
 
         const SizedBox(height: 16),
-        Text('Private View Key', style: Theme.of(context).textTheme.titleSmall),
+        Text(tr?.privateViewKey ?? 'Private View Key', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
         _BackupField(value: _newWalletViewKey ?? '', monospace: true),
 
         const SizedBox(height: 16),
-        Text('Private Spend Key', style: Theme.of(context).textTheme.titleSmall),
+        Text(tr?.privateSpendKey ?? 'Private Spend Key', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
         _BackupField(value: _newWalletSpendKey ?? '', monospace: true),
 
@@ -343,7 +349,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'I have written down my seed phrase and private keys in a safe place.',
+                  tr?.seedBackupConfirm ?? 'I have written down my seed phrase and private keys in a safe place.',
                   style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
                 ),
               ),
@@ -360,7 +366,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                     context.go('/overview');
                   }
                 : null,
-            child: const Text('I\'ve backed up my wallet — Continue'),
+            child: Text(tr?.backedUpContinue ?? 'I\'ve backed up my wallet \u2014 Continue'),
           ),
         ),
       ],
@@ -466,6 +472,7 @@ class _FormWrapper extends StatelessWidget {
   final bool loading;
   final VoidCallback onSubmit;
   final List<Widget> children;
+  final String continueLabel;
 
   const _FormWrapper({
     required this.title,
@@ -473,6 +480,7 @@ class _FormWrapper extends StatelessWidget {
     required this.loading,
     required this.onSubmit,
     required this.children,
+    this.continueLabel = 'Continue',
   });
 
   @override
@@ -494,7 +502,7 @@ class _FormWrapper extends StatelessWidget {
             onPressed: loading ? null : onSubmit,
             child: loading
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Continue'),
+                : Text(continueLabel),
           ),
         ),
       ],
@@ -506,21 +514,23 @@ class _FileField extends StatelessWidget {
   final TextEditingController ctrl;
   final VoidCallback onPick;
   final String label;
-  const _FileField({required this.ctrl, required this.onPick, required this.label});
+  final String browseTooltip;
+  const _FileField({required this.ctrl, required this.onPick, required this.label, this.browseTooltip = 'Browse'});
 
   @override
   Widget build(BuildContext context) {
     return Row(children: [
       Expanded(child: TextField(controller: ctrl, decoration: InputDecoration(labelText: label))),
       const SizedBox(width: 8),
-      IconButton(icon: const Icon(Icons.folder_outlined), onPressed: onPick, tooltip: 'Browse'),
+      IconButton(icon: const Icon(Icons.folder_outlined), onPressed: onPick, tooltip: browseTooltip),
     ]);
   }
 }
 
 class _PassField extends StatefulWidget {
   final TextEditingController ctrl;
-  const _PassField({required this.ctrl});
+  final String label;
+  const _PassField({required this.ctrl, this.label = 'Wallet password'});
 
   @override
   State<_PassField> createState() => _PassFieldState();
@@ -535,7 +545,7 @@ class _PassFieldState extends State<_PassField> {
       controller: widget.ctrl,
       obscureText: _obscure,
       decoration: InputDecoration(
-        labelText: 'Wallet password',
+        labelText: widget.label,
         suffixIcon: IconButton(
           icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
           onPressed: () => setState(() => _obscure = !_obscure),
@@ -560,14 +570,16 @@ class _TField extends StatelessWidget {
 class _DaemonFields extends StatelessWidget {
   final TextEditingController hostCtrl;
   final TextEditingController portCtrl;
-  const _DaemonFields({required this.hostCtrl, required this.portCtrl});
+  final String hostLabel;
+  final String portLabel;
+  const _DaemonFields({required this.hostCtrl, required this.portCtrl, this.hostLabel = 'Daemon host', this.portLabel = 'Port'});
 
   @override
   Widget build(BuildContext context) {
     return Row(children: [
-      Expanded(flex: 3, child: TextField(controller: hostCtrl, decoration: const InputDecoration(labelText: 'Daemon host'))),
+      Expanded(flex: 3, child: TextField(controller: hostCtrl, decoration: InputDecoration(labelText: hostLabel))),
       const SizedBox(width: 8),
-      Expanded(child: TextField(controller: portCtrl, decoration: const InputDecoration(labelText: 'Port'), keyboardType: TextInputType.number)),
+      Expanded(child: TextField(controller: portCtrl, decoration: InputDecoration(labelText: portLabel), keyboardType: TextInputType.number)),
     ]);
   }
 }
