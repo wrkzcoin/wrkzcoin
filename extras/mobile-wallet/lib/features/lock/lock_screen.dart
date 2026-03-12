@@ -42,7 +42,11 @@ class _LockScreenState extends ConsumerState<LockScreen> {
   }
 
   Future<void> _tryBiometric() async {
-    final biometricOn = ref.read(biometricEnabledProvider);
+    // Read directly from storage — the provider's async _load() may not have
+    // completed yet when initState fires, so ref.read would return the default
+    // (false) and biometric would never trigger.
+    final stored = await readPref(AppConfig.skBiometricEnabled);
+    final biometricOn = stored == 'true';
     if (!biometricOn) return;
     final available = await isBiometricAvailable();
     if (!available) return;
