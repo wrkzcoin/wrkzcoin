@@ -221,9 +221,9 @@ if (ANDROID)
             set(WRKZ_ANDROID_UCONTEXT_LIB "${WRKZ_LIBUCONTEXT_LIB}")
             message(STATUS "Android System: linking libucontext from ${WRKZ_LIBUCONTEXT_LIB}")
         else ()
-            if (WRKZ_BUILD_EXECUTABLES)
+            if (WRKZ_BUILD_EXECUTABLES OR WRKZ_BUILD_WALLET_CAPI)
                 message(FATAL_ERROR
-                    "Android CLI build requires libucontext, but it was not found at:\n"
+                    "Android build requires libucontext, but it was not found at:\n"
                     "  ${WRKZ_LIBUCONTEXT_LIB}\n"
                     "Build it first with scripts/build-libucontext-android.sh and set LIBUCONTEXT_ROOT.")
             else ()
@@ -233,9 +233,9 @@ if (ANDROID)
             endif ()
         endif ()
     else ()
-        if (WRKZ_BUILD_EXECUTABLES)
+        if (WRKZ_BUILD_EXECUTABLES OR WRKZ_BUILD_WALLET_CAPI)
             message(FATAL_ERROR
-                "Android CLI build requires LIBUCONTEXT_ROOT.\n"
+                "Android build requires LIBUCONTEXT_ROOT.\n"
                 "Build libucontext first with scripts/build-libucontext-android.sh.")
         else ()
             message(STATUS "Android System: LIBUCONTEXT_ROOT not set, building without libucontext")
@@ -384,15 +384,22 @@ if (WIN32 AND NOT MSVC AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(Wrkzd shlwapi rpcrt4)
 endif ()
 
-if (ANDROID AND WRKZ_BUILD_EXECUTABLES AND WRKZ_ANDROID_UCONTEXT_LIB)
+if (ANDROID AND WRKZ_ANDROID_UCONTEXT_LIB)
     # Keep libucontext late in link order for static archives.
-    target_link_libraries(cryptotest "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(miner "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(WalletApi "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(WalletService "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(WalletUpgrader "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(zedwallet++ "${WRKZ_ANDROID_UCONTEXT_LIB}")
-    target_link_libraries(Wrkzd "${WRKZ_ANDROID_UCONTEXT_LIB}")
+    # Shared libs (wallet_capi) need explicit linking because static archive
+    # symbols are not automatically pulled into the final .so.
+    if (WRKZ_BUILD_WALLET_CAPI)
+        target_link_libraries(wallet_capi PRIVATE "${WRKZ_ANDROID_UCONTEXT_LIB}")
+    endif ()
+    if (WRKZ_BUILD_EXECUTABLES)
+        target_link_libraries(cryptotest "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(miner "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(WalletApi "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(WalletService "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(WalletUpgrader "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(zedwallet++ "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(Wrkzd "${WRKZ_ANDROID_UCONTEXT_LIB}")
+    endif ()
 endif ()
 
 # Add dependencies means we have to build the latter before we build the former
