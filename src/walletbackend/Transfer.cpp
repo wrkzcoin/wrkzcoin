@@ -19,6 +19,7 @@
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
+#include <walletbackend/PowProgress.h>
 #include <ctime> // time_t
 
 namespace SendTransaction
@@ -1488,6 +1489,12 @@ namespace SendTransaction
             }
 
             nonce += threadCount;
+
+            /* Report progress every 256 nonces to avoid atomic contention */
+            if ((nonce & 0xFF) == 0)
+            {
+                PowProgress::nonces.fetch_add(256, std::memory_order_relaxed);
+            }
         }
     }
 
@@ -1496,6 +1503,8 @@ namespace SendTransaction
         std::vector<uint8_t> extra,
         const uint64_t height)
     {
+        PowProgress::Guard powGuard; // sets active=true, resets on return
+
         /* Add the nonce identifier */
         extra.push_back(Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER);
 

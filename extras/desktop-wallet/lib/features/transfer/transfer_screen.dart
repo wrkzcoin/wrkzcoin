@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,8 +34,33 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   SendResult? _prepared;
   SendResult? _sent;
 
+  // PoW progress polling
+  Timer? _powTimer;
+  String? _powLabel;
+
+  void _startPowPolling() {
+    _powLabel = null;
+    _powTimer?.cancel();
+    _powTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted || !_loading) { _stopPowPolling(); return; }
+      final ffi = ref.read(walletCApiProvider);
+      final (:active, :elapsedMs, nonces: _) = ffi.getPowStatus();
+      if (active) {
+        final sec = (elapsedMs / 1000).round();
+        setState(() => _powLabel = 'Computing PoW... ${sec}s');
+      }
+    });
+  }
+
+  void _stopPowPolling() {
+    _powTimer?.cancel();
+    _powTimer = null;
+    if (mounted && _powLabel != null) setState(() => _powLabel = null);
+  }
+
   @override
   void dispose() {
+    _powTimer?.cancel();
     _addressCtrl.dispose();
     _amountCtrl.dispose();
     _paymentIdCtrl.dispose();
@@ -51,6 +77,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     if (atomic == null || atomic <= 0) { setState(() => _error = 'Enter a valid amount'); return; }
 
     setState(() { _loading = true; _error = null; });
+    _startPowPolling();
     try {
       final ffi = ref.read(walletCApiProvider);
       final paymentId = _paymentIdCtrl.text.trim();
@@ -65,6 +92,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
+      _stopPowPolling();
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -100,6 +128,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     final dest = _addressCtrl.text.trim();
     if (dest.isEmpty) { setState(() => _error = 'Enter a destination address'); return; }
     setState(() { _loading = true; _error = null; });
+    _startPowPolling();
     try {
       final ffi = ref.read(walletCApiProvider);
       final result = await ffi.sweepToAddress(dest);
@@ -127,6 +156,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
+      _stopPowPolling();
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -263,7 +293,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               child: FilledButton(
                 onPressed: _loading ? null : _sweep,
                 child: _loading
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                          if (_powLabel != null) ...[
+                            const SizedBox(width: 10),
+                            Text(_powLabel!, style: const TextStyle(fontSize: 13)),
+                          ],
+                        ],
+                      )
                     : const Text('Sweep All Funds'),
               ),
             ),
@@ -323,7 +362,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
               child: FilledButton(
                 onPressed: _loading ? null : _prepare,
                 child: _loading
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                          if (_powLabel != null) ...[
+                            const SizedBox(width: 10),
+                            Text(_powLabel!, style: const TextStyle(fontSize: 13)),
+                          ],
+                        ],
+                      )
                     : const Text('Review Transaction'),
               ),
             ),

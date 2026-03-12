@@ -7,6 +7,7 @@
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
+#include <walletbackend/PowProgress.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
 
@@ -1542,6 +1543,38 @@ wallet_status_t wallet_poll_event(
 void wallet_string_free(char *p)
 {
     delete[] p;
+}
+
+void wallet_get_pow_status(
+    bool *out_active,
+    uint64_t *out_elapsed_ms,
+    uint64_t *out_nonces)
+{
+    const bool running = PowProgress::active.load(std::memory_order_acquire);
+    if (out_active != nullptr)
+    {
+        *out_active = running;
+    }
+    if (out_elapsed_ms != nullptr)
+    {
+        if (running)
+        {
+            const auto now = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count());
+            const auto start = PowProgress::startMs.load(std::memory_order_relaxed);
+            *out_elapsed_ms = now > start ? now - start : 0;
+        }
+        else
+        {
+            *out_elapsed_ms = 0;
+        }
+    }
+    if (out_nonces != nullptr)
+    {
+        *out_nonces = PowProgress::nonces.load(std::memory_order_relaxed);
+    }
 }
 
 const char *wallet_error_code_to_string(wallet_status_t code)

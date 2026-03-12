@@ -285,6 +285,15 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_poll_event(
     char **out_event_json,
     size_t *out_len);
 
+/* Query TX PoW progress. Non-blocking, lock-free.
+   out_active: true if PoW is currently running.
+   out_elapsed_ms: milliseconds since PoW started (0 if not active).
+   out_nonces: approximate nonces tried so far. */
+WALLET_CAPI_EXPORT void wallet_get_pow_status(
+    bool *out_active,
+    uint64_t *out_elapsed_ms,
+    uint64_t *out_nonces);
+
 WALLET_CAPI_EXPORT const char *wallet_error_code_to_string(wallet_status_t code);
 WALLET_CAPI_EXPORT const char *wallet_last_error_message(void);
 WALLET_CAPI_EXPORT void wallet_clear_last_error_message(void);

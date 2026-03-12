@@ -24,3 +24,4 @@ node_modules/
 dist/
 **/dist/
 extras/web-wallet-wasm/web/wasm/generated/*
+extras/mobile-wallet/.dart_tool/package_graph.json
