@@ -665,6 +665,14 @@ if (ENABLE_ZMQ)
     endif ()
 endif ()
 
+# When building wallet_capi (shared lib), every static library linked into it
+# must be compiled with -fPIC.  Set the default BEFORE external deps are created
+# so their targets inherit it at creation time (more reliable than setting the
+# target property after the fact from src/CMakeLists.txt).
+if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif ()
+
 add_subdirectory(external)
 
 # Optional Emscripten pthread builds require every linked object to be compiled
