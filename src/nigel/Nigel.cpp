@@ -98,6 +98,14 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
     var status = 0;
     var responseText = '';
 
+    // Auto-upgrade http:// to https:// when the page itself is served over
+    // HTTPS.  Browsers block mixed content (HTTP XHR from HTTPS pages).
+    if (typeof self !== 'undefined' && self.location && self.location.protocol === 'https:') {
+        if (urlStr.startsWith('http://')) {
+            urlStr = 'https://' + urlStr.substring(7);
+        }
+    }
+
     function doRequest(withJsonContentType) {
         try {
             var xhr = new XMLHttpRequest();
