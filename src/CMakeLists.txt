@@ -105,7 +105,7 @@ endif ()
 if (WRKZ_BUILD_WALLET_WASM)
     add_executable(wallet_wasm ${WalletWasmBridge})
 
-    # WalletBackend and wallet_capi_c also #include <wasm_fs_bridge.h>
+    # WalletBackend, wallet_capi_c, and wallet_capi also #include <wasm_fs_bridge.h>
     # under __EMSCRIPTEN__, so they need the include path too.
     target_include_directories(WalletBackend PRIVATE
         ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/include
@@ -113,6 +113,11 @@ if (WRKZ_BUILD_WALLET_WASM)
     target_include_directories(wallet_capi_c PRIVATE
         ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/include
     )
+    if (TARGET wallet_capi)
+        target_include_directories(wallet_capi PRIVATE
+            ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/include
+        )
+    endif ()
 endif ()
 
 if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
