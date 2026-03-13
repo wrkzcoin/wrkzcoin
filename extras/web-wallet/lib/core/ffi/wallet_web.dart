@@ -9,7 +9,7 @@
 ///
 /// Usage:
 ///   final api = WalletCApi();
-///   await api.create('my_wallet', 'pass', 'nodes.wrkz.work', 17856);
+///   await api.create('my_wallet', 'pass', 'node-fin.wrkz.work', 443, ssl: true);
 ///   // ... use api ...
 ///   api.close();
 library;
