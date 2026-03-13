@@ -11,6 +11,9 @@
 
 #include <common/Base58.h>
 #include <common/FileSystemShim.h>
+#if defined(__EMSCRIPTEN__)
+#include <wasm_fs_bridge.h>
+#endif
 #include <config/CryptoNoteConfig.h>
 #include <crypto/crypto.h>
 #include <crypto/random.h>
@@ -72,6 +75,18 @@ namespace
     /* Check the wallet filename for the new wallet to be created is valid */
     Error checkNewWalletFilename(std::string filename)
     {
+#if defined(__EMSCRIPTEN__)
+        /* In WASM mode we use in-memory store — just check name isn't taken */
+        if (WasmFs::exists(filename))
+        {
+            return WALLET_FILE_ALREADY_EXISTS;
+        }
+        if (filename.empty())
+        {
+            return INVALID_WALLET_FILENAME;
+        }
+        return SUCCESS;
+#else
         /* Check the file doesn't exist */
         if (std::ifstream(filename))
         {
@@ -88,6 +103,7 @@ namespace
         fs::remove(filename);
 
         return SUCCESS;
+#endif
     }
 
 } // namespace
@@ -485,6 +501,14 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     const bool daemonSSL,
     const unsigned int syncThreadCount)
 {
+#if defined(__EMSCRIPTEN__)
+    /* WASM: read from in-memory store (backed by browser IndexedDB) */
+    std::vector<char> buffer = WasmFs::read(filename);
+    if (buffer.empty())
+    {
+        return {FILENAME_NON_EXISTENT, nullptr};
+    }
+#else
     /* Open in binary mode, since we have encrypted data */
     std::ifstream file(filename, std::ios_base::binary);
 
@@ -496,6 +520,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
 
     /* Read file into a buffer */
     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
+#endif
 
     /* Check that the decrypted data has the 'isAWallet' identifier,
        and remove it it does. If it doesn't, return an error. */
@@ -672,6 +697,29 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
     /* Encrypt, and pad */
     StringSource(walletData, true, new StreamTransformationFilter(cbcEncryption, new StringSink(encryptedData)));
 
+#if defined(__EMSCRIPTEN__)
+    /* WASM: write to in-memory store (JS side persists to IndexedDB) */
+    if (filename.empty())
+    {
+        Logger::logger.log(
+            std::string("Wallet filename is empty"),
+            Logger::FATAL,
+            {Logger::FILESYSTEM, Logger::SAVE});
+        return INVALID_WALLET_FILENAME;
+    }
+
+    /* Build the full file data: identifier + salt + encrypted payload */
+    std::vector<char> fileData;
+    fileData.insert(fileData.end(),
+        Constants::IS_A_WALLET_IDENTIFIER.begin(),
+        Constants::IS_A_WALLET_IDENTIFIER.end());
+    fileData.insert(fileData.end(), std::begin(salt), std::end(salt));
+    fileData.insert(fileData.end(), encryptedData.begin(), encryptedData.end());
+
+    WasmFs::write(filename, fileData);
+
+    return SUCCESS;
+#else
     std::ofstream file(filename, std::ios_base::binary);
 
     if (!file)
@@ -701,6 +749,7 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
     std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
 
     return SUCCESS;
+#endif
 }
 
 /////////////////////

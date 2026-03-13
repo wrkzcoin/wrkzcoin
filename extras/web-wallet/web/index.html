@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="PLUTON Web — WRKZ Wallet">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="PLUTON Web">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <title>PLUTON Web — WRKZ Wallet</title>
+  <link rel="manifest" href="manifest.json">
+
+  <script>
+    // The value below is injected by flutter build, do not touch.
+    const serviceWorkerVersion = null;
+  </script>
+  <!-- This script adds the flutter initialization JS code -->
+  <script src="flutter.js" defer></script>
+
+  <!--
+    Load the WASM wallet module.
+    wallet_wasm.js + wallet_wasm.wasm must be placed in web/ alongside this file.
+    If using pthreads, wallet_wasm.worker.js is also required.
+
+    IMPORTANT: For SharedArrayBuffer (pthreads) support, the web server must
+    send these headers:
+      Cross-Origin-Opener-Policy: same-origin
+      Cross-Origin-Embedder-Policy: require-corp
+  -->
+  <script type="module">
+    import { WalletBridge } from './wallet_bridge.js';
+
+    // Create a global WalletBridge instance for Dart to access via JS interop
+    const walletBridge = new WalletBridge();
+
+    // Make it available globally for dart:js_interop
+    window.walletBridge = walletBridge;
+
+    // Initialize the WASM module (async)
+    walletBridge.init('./wallet_wasm.js').then(() => {
+      console.log('WRKZ WASM wallet module loaded');
+      window.walletBridgeReady = true;
+      window.dispatchEvent(new Event('walletBridgeReady'));
+    }).catch((err) => {
+      console.error('Failed to load WASM wallet module:', err);
+      window.walletBridgeError = err.message;
+    });
+  </script>
+</head>
+<body>
+  <script>
+    window.addEventListener('load', function(ev) {
+      // Download main.dart.js
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: serviceWorkerVersion,
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

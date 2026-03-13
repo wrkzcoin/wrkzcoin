@@ -28,3 +28,4 @@ extras/mobile-wallet/.dart_tool/*
 extras/mobile-wallet/android/local.properties
 extras/mobile-wallet/build/**
 extras/mobile-wallet/android/.gradle/**
+extras/web-wallet/.dart_tool/**
