@@ -1,7 +1,9 @@
 /// wallet_web.dart
 ///
 /// Web implementation of the wallet API using dart:js_interop to call
-/// the WalletBridge JavaScript wrapper around the WASM module.
+/// the WalletBridgeWorker JavaScript wrapper which delegates all WASM
+/// calls to a dedicated Web Worker — keeping the main browser thread
+/// responsive.
 ///
 /// This file provides the same public API as wallet_ffi.dart (desktop/mobile)
 /// so that the rest of the Flutter app (providers, screens) can use either
@@ -9,6 +11,7 @@
 ///
 /// Usage:
 ///   final api = WalletCApi();
+///   await api.init();  // spawns the web worker
 ///   await api.create('my_wallet', 'pass', 'node-fin.wrkz.work', 443, ssl: true);
 ///   // ... use api ...
 ///   api.close();
@@ -16,8 +19,6 @@ library;
 
 import 'dart:convert';
 import 'dart:js_interop';
-
-
 
 // ─── exception ────────────────────────────────────────────────────────────────
 
@@ -54,65 +55,92 @@ external JSAny _jsonParse(JSString text);
 @JS('JSON.stringify')
 external JSString _jsonStringify(JSAny? value);
 
-/// Binding for walletBridge.call(method, paramsObj).
-@JS('walletBridge.call')
-external JSAny? _bridgeCall(JSString method, JSAny params);
+/// The global walletBridgeWorker instance (WalletBridgeWorker from wallet_bridge.js).
+/// Initialised by index.html before Flutter starts.
+@JS('walletBridge')
+external JSObject get _jsBridge;
 
-/// Call a method on the JS WalletBridge.call() synchronously.
-/// The WASM module runs synchronously (not async) so this returns immediately.
-JSAny? _jsCall(String method, [Map<String, dynamic>? params]) {
+/// Call a method on the bridge that returns a JS Promise.
+/// Every method on WalletBridgeWorker is async.
+Future<JSAny?> _callAsync(String method, [Map<String, dynamic>? params]) {
   final paramsStr = params != null ? jsonEncode(params) : '{}';
   final paramsObj = _jsonParse(paramsStr.toJS);
-  return _bridgeCall(method.toJS, paramsObj);
+  // bridge.call(method, params) returns a Promise
+  final promise = _jsBridge.callMethod('call'.toJS, method.toJS, paramsObj);
+  return (promise as JSPromise).toDart;
 }
 
-/// Helper: call bridge and parse the result as a Dart object.
-dynamic _call(String method, [Map<String, dynamic>? params]) {
-  final result = _jsCall(method, params);
+/// Helper: call bridge and parse the Promise result as a Dart object.
+Future<dynamic> _call(String method, [Map<String, dynamic>? params]) async {
+  final result = await _callAsync(method, params);
   if (result == null) return null;
-
-  // Convert JS result to Dart via JSON round-trip
   final jsonStr = _jsonStringify(result);
   return jsonDecode(jsonStr.toDart);
 }
 
 /// Helper: call bridge and expect a string result.
-String _callStr(String method, [Map<String, dynamic>? params]) {
-  final result = _jsCall(method, params);
+Future<String> _callStr(String method, [Map<String, dynamic>? params]) async {
+  final result = await _callAsync(method, params);
   if (result == null) return '';
   if (result.isA<JSString>()) return (result as JSString).toDart;
-  // Might be returned as a JSON-encoded value
-  return result.toString();
+  return _jsonStringify(result).toDart;
 }
 
 /// Helper: call bridge and expect a bool result.
-bool _callBool(String method, [Map<String, dynamic>? params]) {
-  final result = _jsCall(method, params);
+Future<bool> _callBool(String method, [Map<String, dynamic>? params]) async {
+  final result = await _callAsync(method, params);
   if (result == null) return false;
   if (result.isA<JSBoolean>()) return (result as JSBoolean).toDart;
   return false;
 }
 
 /// Helper: call bridge and expect an int result.
-int _callInt(String method, [Map<String, dynamic>? params]) {
-  final result = _jsCall(method, params);
+Future<int> _callInt(String method, [Map<String, dynamic>? params]) async {
+  final result = await _callAsync(method, params);
   if (result == null) return 0;
   if (result.isA<JSNumber>()) return (result as JSNumber).toDartInt;
   return 0;
 }
 
 /// Helper: call bridge and expect a Map result.
-Map<String, dynamic> _callMap(String method, [Map<String, dynamic>? params]) {
-  final result = _call(method, params);
+Future<Map<String, dynamic>> _callMap(String method, [Map<String, dynamic>? params]) async {
+  final result = await _call(method, params);
   if (result is Map<String, dynamic>) return result;
   if (result is Map) return Map<String, dynamic>.from(result);
   return {};
 }
 
+/// For lifecycle methods that need the bridge's async JS methods directly
+/// (create, open, etc. involve IndexedDB).
+Future<dynamic> _callLifecycle(String method, Map<String, dynamic> params) async {
+  final paramsStr = jsonEncode(params);
+  final paramsObj = _jsonParse(paramsStr.toJS);
+  // Use the specific lifecycle method on the bridge (e.g. bridge.create(opts))
+  final promise = _jsBridge.callMethod(method.toJS, paramsObj);
+  final result = await (promise as JSPromise).toDart;
+  if (result == null) return null;
+  final jsonStr = _jsonStringify(result);
+  return jsonDecode(jsonStr.toDart);
+}
+
+// ─── JS interop extension for callMethod ─────────────────────────────────────
+
+extension _JSObjectCallMethod on JSObject {
+  /// Call a method on a JS object by name.
+  /// Works with 0–2 arguments.
+  JSAny? callMethod(JSString name, [JSAny? arg1, JSAny? arg2]) {
+    return _jsCallMethod(this, name, arg1, arg2);
+  }
+}
+
+@JS('_dartCallMethod')
+external JSAny? _jsCallMethod(JSObject obj, JSString name, JSAny? arg1, JSAny? arg2);
+
 // ─── main binding class ───────────────────────────────────────────────────────
 
 /// Web implementation of the wallet API.
-/// Calls through to the WalletBridge JS wrapper which dispatches to WASM.
+/// Calls through to the WalletBridgeWorker JS wrapper which delegates
+/// all WASM calls to a dedicated Web Worker.
 ///
 /// Same public API as the desktop/mobile WalletCApi (wallet_ffi.dart).
 class WalletCApi {
@@ -124,9 +152,10 @@ class WalletCApi {
 
   // --- version ---
 
-  int apiVersion() => _callInt('apiVersion');
-
-  String versionString() => _callStr('versionString');
+  Future<int> apiVersionAsync() => _callInt('apiVersion');
+  int apiVersion() => 0; // synchronous fallback; use apiVersionAsync
+  String versionString() => ''; // synchronous fallback; use versionStringAsync
+  Future<String> versionStringAsync() => _callStr('versionString');
 
   // --- lifecycle ---
 
@@ -134,8 +163,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
-    // On web, the JS bridge handles IndexedDB → WASM in-memory store loading
-    _call('open', {
+    await _callLifecycle('open', {
       'filename': filename,
       'password': password,
       'daemonHost': daemonHost,
@@ -150,7 +178,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
-    _call('create', {
+    await _callLifecycle('create', {
       'filename': filename,
       'password': password,
       'daemonHost': daemonHost,
@@ -166,7 +194,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    _call('restoreFromSeed', {
+    await _callLifecycle('restoreFromSeed', {
       'mnemonicSeed': mnemonicSeed,
       'filename': filename,
       'password': password,
@@ -184,7 +212,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    _call('restoreFromKeys', {
+    await _callLifecycle('restoreFromKeys', {
       'privateSpendKey': privateSpendKey,
       'privateViewKey': privateViewKey,
       'filename': filename,
@@ -203,7 +231,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    _call('restoreViewWallet', {
+    await _callLifecycle('restoreViewWallet', {
       'privateViewKey': privateViewKey,
       'address': address,
       'filename': filename,
@@ -217,35 +245,35 @@ class WalletCApi {
     _open = true;
   }
 
-  void close() {
+  Future<void> close() async {
     if (_open) {
-      _call('close');
+      await _callLifecycle('close', {});
       _open = false;
     }
   }
 
   Future<void> save() async {
-    _call('save');
+    await _callLifecycle('save', {});
   }
 
   Future<void> changePassword(String newPassword) async {
-    _call('changePassword', {'newPassword': newPassword});
+    await _call('changePassword', {'newPassword': newPassword});
   }
 
   Future<String> exportJson() async {
-    final result = _call('exportJson');
+    final result = await _call('exportJson');
     if (result is String) return result;
     return jsonEncode(result);
   }
 
   Future<void> deleteFile(String filename) async {
-    _call('deleteFile', {'filename': filename});
+    await _callLifecycle('deleteFile', {'filename': filename});
   }
 
   // --- sync / node ---
 
   Future<Map<String, int>> getSyncStatus() async {
-    final m = _callMap('getSyncStatus');
+    final m = await _callMap('getSyncStatus');
     return {
       'walletHeight': (m['walletHeight'] as num?)?.toInt() ?? 0,
       'localDaemonHeight': (m['localDaemonHeight'] as num?)?.toInt() ?? 0,
@@ -266,7 +294,7 @@ class WalletCApi {
   }
 
   Future<void> swapNode(String host, int port, {bool ssl = false}) async {
-    _call('swapNode', {
+    await _call('swapNode', {
       'daemonHost': host,
       'daemonPort': port,
       'daemonSsl': ssl,
@@ -274,7 +302,7 @@ class WalletCApi {
   }
 
   Future<void> reset({int scanHeight = 0, int timestamp = 0}) async {
-    _call('reset', {
+    await _call('reset', {
       'scanHeight': scanHeight,
       'timestamp': timestamp,
     });
@@ -283,7 +311,7 @@ class WalletCApi {
   // --- balances ---
 
   Future<({int unlocked, int locked})> getTotalBalance() async {
-    final m = _callMap('getTotalBalance');
+    final m = await _callMap('getTotalBalance');
     return (
       unlocked: (m['unlocked'] as num?)?.toInt() ?? 0,
       locked: (m['locked'] as num?)?.toInt() ?? 0,
@@ -292,7 +320,7 @@ class WalletCApi {
 
   Future<({int unlocked, int locked})> getBalanceForAddress(
       String address) async {
-    final m = _callMap('getBalanceForAddress', {'address': address});
+    final m = await _callMap('getBalanceForAddress', {'address': address});
     return (
       unlocked: (m['unlocked'] as num?)?.toInt() ?? 0,
       locked: (m['locked'] as num?)?.toInt() ?? 0,
@@ -377,7 +405,7 @@ class WalletCApi {
 
   Future<({int txCount, int totalFee})> estimateSweep(
       {int amountToSweep = 0}) async {
-    final m = _callMap('estimateSweep', {
+    final m = await _callMap('estimateSweep', {
       'amountToSweep': amountToSweep,
     });
     return (
@@ -431,7 +459,7 @@ class WalletCApi {
   }
 
   Future<void> deleteSubwallet(String address) async {
-    _call('deleteSubwallet', {'address': address});
+    await _call('deleteSubwallet', {'address': address});
   }
 
   // --- integrated address ---
@@ -448,15 +476,9 @@ class WalletCApi {
 
   ({WalletEvent type, Map<String, dynamic> data})? pollEvent(
       {int timeoutMs = 0}) {
-    final m = _callMap('pollEvent', {'timeoutMs': timeoutMs});
-    final evType = (m['eventType'] as num?)?.toInt() ?? 0;
-    final t = WalletEvent.fromInt(evType);
-    if (t == WalletEvent.none) return null;
-    final data = m['eventData'];
-    return (
-      type: t,
-      data: data is Map<String, dynamic> ? data : <String, dynamic>{},
-    );
+    // pollEvent is still synchronous for compatibility with the polling timer.
+    // In worker mode, events arrive via callbacks instead.
+    return null;
   }
 
   // --- logging ---
@@ -465,19 +487,27 @@ class WalletCApi {
     _call('setLogLevel', {'level': level});
   }
 
-  Map<String, dynamic> takeLogs() => _callMap('takeLogsJson');
+  Future<Map<String, dynamic>> takeLogsAsync() => _callMap('takeLogsJson');
+  Map<String, dynamic> takeLogs() => {}; // sync fallback
 
-  void clearLogs() => _call('clearLogs');
+  void clearLogs() {
+    _call('clearLogs');
+  }
 
   // --- TX PoW progress ---
 
-  ({bool active, int elapsedMs, int nonces}) getPowStatus() {
-    final m = _callMap('getPowStatus');
+  Future<({bool active, int elapsedMs, int nonces})> getPowStatusAsync() async {
+    final m = await _callMap('getPowStatus');
     return (
       active: m['active'] == true,
       elapsedMs: (m['elapsedMs'] as num?)?.toInt() ?? 0,
       nonces: (m['nonces'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  ({bool active, int elapsedMs, int nonces}) getPowStatus() {
+    // Sync fallback for UI polling — returns inactive
+    return (active: false, elapsedMs: 0, nonces: 0);
   }
 
   // --- scan coinbase ---
@@ -489,7 +519,6 @@ class WalletCApi {
   // --- error helpers ---
 
   String errorCodeToString(int code) {
-    // Not directly available via WASM bridge — provide a basic fallback
     return 'Error code: $code';
   }
 }

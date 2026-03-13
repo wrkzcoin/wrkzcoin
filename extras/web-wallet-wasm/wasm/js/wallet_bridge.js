@@ -507,3 +507,197 @@ export class WalletBridge {
 export const WALLET_EVENT_NONE = 0;
 export const WALLET_EVENT_SYNCED = 1;
 export const WALLET_EVENT_TRANSACTION = 2;
+
+// ====== Worker-based proxy (runs on main thread, delegates to Web Worker) ======
+
+/**
+ * WalletBridgeWorker — main-thread proxy that delegates all WASM calls to a
+ * dedicated Web Worker, keeping the browser UI thread responsive.
+ *
+ * Provides the same public API as WalletBridge, but every method is async.
+ * The Dart js_interop layer calls this instead of WalletBridge directly.
+ *
+ * Usage:
+ *   const wallet = new WalletBridgeWorker();
+ *   await wallet.init('./wallet_worker.js', './wallet_wasm.js');
+ *   await wallet.create({ filename: 'my_wallet', ... });
+ */
+export class WalletBridgeWorker {
+  constructor() {
+    this._worker = null;
+    this._nextId = 1;
+    this._pending = new Map(); // id → { resolve, reject }
+    this._eventCallback = null;
+  }
+
+  /**
+   * Spawn the worker and initialize the WASM module inside it.
+   */
+  async init(workerPath = './wallet_worker.js', wasmPath = './wallet_wasm.js') {
+    this._worker = new Worker(workerPath, { type: 'module' });
+
+    this._worker.onmessage = (e) => {
+      const msg = e.data;
+
+      // Event broadcast from polling
+      if (msg.type === 'event') {
+        if (this._eventCallback) {
+          this._eventCallback(msg.eventType, msg.eventData);
+        }
+        return;
+      }
+
+      // RPC response
+      const p = this._pending.get(msg.id);
+      if (!p) return;
+      this._pending.delete(msg.id);
+      if (msg.ok) {
+        p.resolve(msg.result);
+      } else {
+        p.reject(new Error(msg.error || 'Unknown worker error'));
+      }
+    };
+
+    this._worker.onerror = (e) => {
+      console.error('[WalletBridgeWorker] worker error:', e);
+    };
+
+    // Send init message
+    return this._send('init', null, null, { wasmPath });
+  }
+
+  /** Low-level: send a message to the worker and return a Promise. */
+  _send(type, method, params, extra = {}) {
+    return new Promise((resolve, reject) => {
+      const id = this._nextId++;
+      this._pending.set(id, { resolve, reject });
+      this._worker.postMessage({ id, type, method, params, ...extra });
+    });
+  }
+
+  /** Call a synchronous WASM method via the worker (non-blocking from main thread). */
+  call(method, params = {}) {
+    return this._send('call', method, params);
+  }
+
+  /** Call an async method (involves IndexedDB). */
+  _async(method, params = {}) {
+    return this._send('async', method, params);
+  }
+
+  // ====== Lifecycle (async — IndexedDB) ======
+  create(opts) { return this._async('create', opts); }
+  open(opts) { return this._async('open', opts); }
+  restoreFromSeed(opts) { return this._async('restoreFromSeed', opts); }
+  restoreFromKeys(opts) { return this._async('restoreFromKeys', opts); }
+  restoreViewWallet(opts) { return this._async('restoreViewWallet', opts); }
+  close() { return this._async('close'); }
+  save() { return this._async('save'); }
+  deleteFile(filename) { return this._async('deleteFile', { filename }); }
+  listWallets() { return this._async('listWallets'); }
+
+  // ====== Sync & Node (sync WASM via worker) ======
+  getSyncStatus() { return this.call('getSyncStatus'); }
+  getStatusJson() { return this.call('getStatusJson'); }
+  isDaemonOnline() { return this.call('isDaemonOnline'); }
+  getNodeInfoJson() { return this.call('getNodeInfoJson'); }
+  swapNode(daemonHost, daemonPort, daemonSsl = false) {
+    return this.call('swapNode', { daemonHost, daemonPort, daemonSsl });
+  }
+  reset(scanHeight = 0, timestamp = 0) {
+    return this.call('reset', { scanHeight, timestamp });
+  }
+
+  // ====== Balance ======
+  getTotalBalance() { return this.call('getTotalBalance'); }
+  getBalanceForAddress(address) { return this.call('getBalanceForAddress', { address }); }
+  getBalancesJson() { return this.call('getBalancesJson'); }
+
+  // ====== Addresses ======
+  getPrimaryAddress() { return this.call('getPrimaryAddress'); }
+  getAddressesJson() { return this.call('getAddressesJson'); }
+
+  // ====== Transactions ======
+  getTransactionsJson(startHeight = 0, endHeight = 0, includeUnconfirmed = true) {
+    return this.call('getTransactionsJson', { startHeight, endHeight, includeUnconfirmed });
+  }
+  getTransactionsStatusJson(requestJson) {
+    return this.call('getTransactionsStatusJson', { requestJson });
+  }
+  getTxPrivateKey(txHash) { return this.call('getTxPrivateKey', { txHash }); }
+
+  // ====== Send / Sweep ======
+  sendBasic(destination, amount, opts = {}) {
+    return this.call('sendBasic', { destination, amount, ...opts });
+  }
+  sendPrepared(preparedTxHash) { return this.call('sendPrepared', { preparedTxHash }); }
+  sendAdvancedJson(requestJson, broadcast = true) {
+    return this.call('sendAdvancedJson', { requestJson, broadcast });
+  }
+  sweepToAddress(destination, opts = {}) {
+    return this.call('sweepToAddress', { destination, ...opts });
+  }
+  estimateSweep(amountToSweep = 0) { return this.call('estimateSweep', { amountToSweep }); }
+
+  // ====== Keys / Seeds ======
+  getPrivateViewKey() { return this.call('getPrivateViewKey'); }
+  getSpendKeysJson(address) { return this.call('getSpendKeysJson', { address }); }
+  getMnemonicSeed() { return this.call('getMnemonicSeed'); }
+  getMnemonicSeedForAddress(address) { return this.call('getMnemonicSeedForAddress', { address }); }
+  isViewWallet() { return this.call('isViewWallet'); }
+
+  // ====== Password ======
+  changePassword(newPassword) { return this.call('changePassword', { newPassword }); }
+
+  // ====== Export ======
+  exportJson() { return this.call('exportJson'); }
+
+  // ====== Subwallets ======
+  addSubwallet() { return this.call('addSubwallet'); }
+  importSubwalletFromKey(privateSpendKey, scanHeight = 0) {
+    return this.call('importSubwalletFromKey', { privateSpendKey, scanHeight });
+  }
+  importSubwalletFromIndex(walletIndex, scanHeight = 0) {
+    return this.call('importSubwalletFromIndex', { walletIndex, scanHeight });
+  }
+  deleteSubwallet(address) { return this.call('deleteSubwallet', { address }); }
+
+  // ====== Integrated Address ======
+  createIntegratedAddress(address, paymentId) {
+    return this.call('createIntegratedAddress', { address, paymentId });
+  }
+
+  // ====== Events ======
+  startEventPolling(callback, intervalMs = 1000) {
+    this._eventCallback = callback;
+    return this._send('startEvents', null, null, { intervalMs });
+  }
+  stopEventPolling() {
+    this._eventCallback = null;
+    return this._send('stopEvents');
+  }
+
+  // ====== PoW Status ======
+  getPowStatus() { return this.call('getPowStatus'); }
+
+  // ====== Logging ======
+  setLogLevel(level) { return this.call('setLogLevel', { level }); }
+  takeLogsJson() { return this.call('takeLogsJson'); }
+  clearLogs() { return this.call('clearLogs'); }
+
+  // ====== Coinbase ======
+  setScanCoinbase(scan) { return this.call('setScanCoinbase', { scan }); }
+
+  // ====== Version ======
+  apiVersion() { return this.call('apiVersion'); }
+  versionString() { return this.call('versionString'); }
+
+  // ====== Cleanup ======
+  terminate() {
+    if (this._worker) {
+      this._worker.terminate();
+      this._worker = null;
+    }
+    this._pending.clear();
+  }
+}

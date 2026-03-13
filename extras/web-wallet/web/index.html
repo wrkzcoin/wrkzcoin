@@ -32,18 +32,34 @@
       Cross-Origin-Opener-Policy: same-origin
       Cross-Origin-Embedder-Policy: require-corp
   -->
-  <script type="module">
-    import { WalletBridge } from './wallet_bridge.js';
+  <script>
+    // Helper for dart:js_interop to call methods on JS objects by name.
+    // Dart's @JS() can only bind to fixed global functions, not dynamic
+    // method names on arbitrary objects.
+    function _dartCallMethod(obj, name, arg1, arg2) {
+      const fn = obj[name];
+      if (typeof fn !== 'function') {
+        throw new Error('No such method: ' + name);
+      }
+      if (arg2 !== undefined && arg2 !== null) return fn.call(obj, arg1, arg2);
+      if (arg1 !== undefined && arg1 !== null) return fn.call(obj, arg1);
+      return fn.call(obj);
+    }
+    window._dartCallMethod = _dartCallMethod;
+  </script>
 
-    // Create a global WalletBridge instance for Dart to access via JS interop
-    const walletBridge = new WalletBridge();
+  <script type="module">
+    import { WalletBridgeWorker } from './wallet_bridge.js';
+
+    // Create a worker-based bridge — all WASM calls run off the main thread
+    const walletBridge = new WalletBridgeWorker();
 
     // Make it available globally for dart:js_interop
     window.walletBridge = walletBridge;
 
-    // Initialize the WASM module (async)
-    walletBridge.init('./wallet_wasm.js').then(() => {
-      console.log('WRKZ WASM wallet module loaded');
+    // Spawn the web worker and initialize the WASM module inside it
+    walletBridge.init('./wallet_worker.js', './wallet_wasm.js').then(() => {
+      console.log('WRKZ WASM wallet module loaded (via Web Worker)');
       window.walletBridgeReady = true;
       window.dispatchEvent(new Event('walletBridgeReady'));
     }).catch((err) => {
