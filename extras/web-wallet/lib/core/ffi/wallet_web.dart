@@ -17,7 +17,7 @@ library;
 import 'dart:convert';
 import 'dart:js_interop';
 
-import 'package:web/web.dart' as web;
+
 
 // ─── exception ────────────────────────────────────────────────────────────────
 
@@ -47,23 +47,23 @@ enum WalletEvent {
 
 // ─── JS interop bindings ─────────────────────────────────────────────────────
 
-/// Extension type for the global walletBridge JS object.
-/// This maps to the WalletBridge class defined in wallet_bridge.js.
-@JS('walletBridge')
-external JSObject get _jsBridge;
+/// Minimal binding to globalThis.JSON for parse/stringify.
+@JS('JSON.parse')
+external JSAny _jsonParse(JSString text);
+
+@JS('JSON.stringify')
+external JSString _jsonStringify(JSAny? value);
+
+/// Binding for walletBridge.call(method, paramsObj).
+@JS('walletBridge.call')
+external JSAny? _bridgeCall(JSString method, JSAny params);
 
 /// Call a method on the JS WalletBridge.call() synchronously.
 /// The WASM module runs synchronously (not async) so this returns immediately.
 JSAny? _jsCall(String method, [Map<String, dynamic>? params]) {
-  final paramsJs = params != null
-      ? (jsonEncode(params) as JSString).toJS
-      : '{}' .toJS;
-  // walletBridge.call(method, JSON.parse(params))
-  return _jsBridge.callMethod(
-    'call'.toJS,
-    method.toJS,
-    web.JSON.parse(paramsJs as JSString),
-  );
+  final paramsStr = params != null ? jsonEncode(params) : '{}';
+  final paramsObj = _jsonParse(paramsStr.toJS);
+  return _bridgeCall(method.toJS, paramsObj);
 }
 
 /// Helper: call bridge and parse the result as a Dart object.
@@ -72,7 +72,7 @@ dynamic _call(String method, [Map<String, dynamic>? params]) {
   if (result == null) return null;
 
   // Convert JS result to Dart via JSON round-trip
-  final jsonStr = web.JSON.stringify(result);
+  final jsonStr = _jsonStringify(result);
   return jsonDecode(jsonStr.toDart);
 }
 

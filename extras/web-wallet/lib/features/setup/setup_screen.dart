@@ -221,7 +221,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       onSubmit: _doCreate,
       continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _TField(ctrl: _fileCtrl, label: tr?.walletName ?? 'Wallet name'),
+        _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
@@ -236,7 +236,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       onSubmit: _doOpen,
       continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _TField(ctrl: _fileCtrl, label: tr?.walletName ?? 'Wallet name'),
+        _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
@@ -251,7 +251,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       onSubmit: _doImportSeed,
       continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _TField(ctrl: _fileCtrl, label: tr?.walletName ?? 'Wallet name'),
+        _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _TField(ctrl: _seedCtrl, label: tr?.mnemonicSeedPhrase ?? 'Mnemonic Seed Phrase', maxLines: 3),
         _TField(ctrl: _scanHeightCtrl, label: tr?.scanFromHeight ?? 'Scan from height (0 = full scan)'),
@@ -268,7 +268,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       onSubmit: _doImportKeys,
       continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _TField(ctrl: _fileCtrl, label: tr?.walletName ?? 'Wallet name'),
+        _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _TField(ctrl: _viewKeyCtrl, label: tr?.privateViewKey ?? 'Private View Key'),
         _TField(ctrl: _spendKeyCtrl, label: tr?.privateSpendKey ?? 'Private Spend Key'),
