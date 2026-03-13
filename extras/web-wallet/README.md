@@ -165,26 +165,86 @@ Then open http://localhost:8080.
 
 ```nginx
 server {
-    listen 443 ssl http2;
-    server_name wallet.example.com;
+    listen 80;
+    server_name web.domain.com;
+    return 301 https://$host$request_uri;
+}
 
-    root /var/www/pluton-web/build/web;
+server {
+    listen 443 ssl http2;
+    server_name web.domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/web.domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/web.domain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    root /path/to/extras/web-wallet/build/web;
     index index.html;
 
-    # Required for SharedArrayBuffer (WASM pthreads)
-    add_header Cross-Origin-Opener-Policy  "same-origin" always;
-    add_header Cross-Origin-Embedder-Policy "require-corp" always;
-
-    # Cache WASM binary aggressively
-    location ~* \.wasm$ {
-        add_header Cross-Origin-Opener-Policy  "same-origin" always;
-        add_header Cross-Origin-Embedder-Policy "require-corp" always;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        types { application/wasm wasm; }
+    # ── Same-origin proxy for daemon RPC ─────────────────────────────
+    # Eliminates CORS entirely — set node URL to /daemon/ in the wallet.
+    location /daemon/ {
+        proxy_pass         https://node-fin.wrkz.work/;
+        proxy_ssl_verify   off;
+        proxy_set_header   Host              node-fin.wrkz.work;
+        proxy_set_header   Origin            https://web.domain.com;
+        proxy_set_header   X-Forwarded-For   $remote_addr;
+        proxy_set_header   X-Forwarded-Proto https;
     }
 
-    # Flutter SPA fallback
+    # ── SPA entry point — never cached ───────────────────────────────
+    location = /index.html {
+        add_header Cache-Control                "no-cache, no-store, must-revalidate" always;
+        add_header Cross-Origin-Opener-Policy   "same-origin"  always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+        try_files $uri =404;
+    }
+
+    # ── WASM binary ──────────────────────────────────────────────────
+    location ~* \.wasm$ {
+        default_type application/wasm;
+        add_header Cross-Origin-Opener-Policy   "same-origin"  always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+        try_files $uri =404;
+    }
+
+    # ── JS / ES-module workers ───────────────────────────────────────
+    # CORP header so Emscripten pthread workers can load wallet_wasm.js
+    # from within a COEP context.
+    location ~* \.(js|mjs)$ {
+        add_header Access-Control-Allow-Origin  "*"            always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Cross-Origin-Opener-Policy   "same-origin"  always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+        try_files $uri =404;
+    }
+
+    # ── Other static assets ──────────────────────────────────────────
+    location ~* \.(css|png|jpg|jpeg|gif|svg|ico|webp|ttf|otf|woff|woff2)$ {
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+        try_files $uri =404;
+    }
+
+    # ── SPA catch-all with full cross-origin isolation headers ───────
     location / {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin  "*"              always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "*"              always;
+            add_header Cross-Origin-Opener-Policy   "same-origin"   always;
+            add_header Cross-Origin-Embedder-Policy "require-corp"  always;
+            add_header Cross-Origin-Resource-Policy "cross-origin"  always;
+            add_header Content-Length 0;
+            add_header Content-Type   text/plain;
+            return 204;
+        }
+
+        add_header Cross-Origin-Opener-Policy   "same-origin"  always;
+        add_header Cross-Origin-Embedder-Policy "require-corp" always;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
         try_files $uri $uri/ /index.html;
     }
 }

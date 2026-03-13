@@ -4,9 +4,12 @@ const String kCoinTicker = 'WRKZ';
 const String kCoinName = 'WrkzCoin';
 
 /// Default daemon node shown in Create/Open/Import forms.
-const String kDefaultDaemonHost = 'nodes.wrkz.work';
-const int kDefaultDaemonPort = 17856;
-const bool kDefaultDaemonSSL = false;
+/// Must use HTTPS — browsers block mixed content (HTTP from HTTPS pages).
+/// Alternative: use same-origin nginx proxy (e.g. 'web-wallet.wrkz.work/daemon')
+/// with the proxy forwarding to the real node.
+const String kDefaultDaemonHost = 'node-fin.wrkz.work';
+const int kDefaultDaemonPort = 443;
+const bool kDefaultDaemonSSL = true;
 
 /// How often to poll the wallet via FFI for live updates.
 const Duration kStatusPollInterval = Duration(seconds: 5);

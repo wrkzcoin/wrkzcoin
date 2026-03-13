@@ -60,6 +60,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
+        ssl: kDefaultDaemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       final address = await ffi.getPrimaryAddress();
@@ -94,6 +95,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
+        ssl: kDefaultDaemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
@@ -119,6 +121,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
+        ssl: kDefaultDaemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
@@ -145,6 +148,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
+        ssl: kDefaultDaemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);

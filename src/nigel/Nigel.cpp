@@ -31,9 +31,21 @@ inline std::string daemonBaseUrl(const std::string &host, const uint16_t port, c
 {
     const uint16_t defaultPort = ssl ? 443 : 80;
     const std::string portStr = (port == defaultPort) ? "" : (":" + std::to_string(port));
-    const bool needsIpv6Brackets = host.find(':') != std::string::npos && (host.empty() || host.front() != '[');
-    const std::string formattedHost = needsIpv6Brackets ? ("[" + host + "]") : host;
-    return std::string(ssl ? "https://" : "http://") + formattedHost + portStr;
+
+    // Support a base-path prefix in the host string, e.g. "example.com/daemon".
+    // This lets a web wallet use a same-origin reverse proxy to avoid mixed content.
+    std::string hostname = host;
+    std::string basePath;
+    const auto slashPos = host.find('/');
+    if (slashPos != std::string::npos)
+    {
+        hostname = host.substr(0, slashPos);
+        basePath = host.substr(slashPos);  // includes leading '/'
+    }
+
+    const bool needsIpv6Brackets = hostname.find(':') != std::string::npos && (hostname.empty() || hostname.front() != '[');
+    const std::string formattedHost = needsIpv6Brackets ? ("[" + hostname + "]") : hostname;
+    return std::string(ssl ? "https://" : "http://") + formattedHost + portStr + basePath;
 }
 
 inline std::shared_ptr<httplib::Client> getClient(
