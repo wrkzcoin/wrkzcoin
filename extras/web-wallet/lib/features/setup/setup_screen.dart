@@ -282,7 +282,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       children: [
         _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
-        _PassField(ctrl: _passConfirmCtrl, label: tr?.confirmPassword ?? 'Confirm password'),
+        _PassField(ctrl: _passConfirmCtrl, label: 'Confirm password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );
