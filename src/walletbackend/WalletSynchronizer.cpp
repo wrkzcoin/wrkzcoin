@@ -713,6 +713,17 @@ void WalletSynchronizer::start()
     /* Reinit any vars which may have changed if we previously called stop() */
     m_shouldStop = false;
 
+    /* If syncThreadCount is 0, run in no-background-thread mode.
+       Used by the WASM/web build which runs single-threaded. */
+    if (m_threadCount == 0)
+    {
+        Logger::logger.log(
+            "Sync thread count is 0 — skipping background thread launch (WASM/single-threaded mode)",
+            Logger::DEBUG,
+            {Logger::SYNC});
+        return;
+    }
+
     if (m_daemon == nullptr)
     {
         throw std::runtime_error("Daemon has not been initialized!");
