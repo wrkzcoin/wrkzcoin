@@ -42,6 +42,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   // Form fields — on web, wallet "filename" is just a logical name stored in IndexedDB
   final _fileCtrl = TextEditingController(text: 'my_wallet');
   final _passCtrl = TextEditingController();
+  final _passConfirmCtrl = TextEditingController();
   final _daemonHostCtrl = TextEditingController(text: kDefaultDaemonHost);
   final _daemonPortCtrl = TextEditingController(text: '$kDefaultDaemonPort');
   final _viewKeyCtrl = TextEditingController();
@@ -52,13 +53,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   void dispose() {
     for (final c in [
-      _fileCtrl, _passCtrl, _daemonHostCtrl, _daemonPortCtrl,
+      _fileCtrl, _passCtrl, _passConfirmCtrl, _daemonHostCtrl, _daemonPortCtrl,
       _viewKeyCtrl, _spendKeyCtrl, _seedCtrl, _scanHeightCtrl,
     ]) { c.dispose(); }
     super.dispose();
   }
 
   Future<void> _doCreate() async {
+    if (_passCtrl.text != _passConfirmCtrl.text) {
+      setState(() => _error = 'Passwords do not match.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -277,6 +282,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       children: [
         _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
+        _PassField(ctrl: _passConfirmCtrl, label: tr?.confirmPassword ?? 'Confirm password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],
     );

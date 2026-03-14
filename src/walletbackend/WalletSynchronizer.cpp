@@ -708,13 +708,16 @@ void WalletSynchronizer::start()
     m_shouldStop = false;
 
     /* If syncThreadCount is 0, run in no-background-thread mode.
-       Used by the WASM/web build which runs single-threaded. */
+       Used by the WASM/web build which runs single-threaded.
+       We still must re-enable the block store in case a prior stop() call
+       (e.g. from pauseSynchronizerToRunFunction/save()) left it disabled. */
     if (m_threadCount == 0)
     {
         Logger::logger.log(
-            "Sync thread count is 0 — skipping background thread launch (WASM/single-threaded mode)",
+            "Sync thread count is 0 — re-enabling block store (WASM/single-threaded mode)",
             Logger::DEBUG,
             {Logger::SYNC});
+        m_blockDownloader.startStorageOnly();
         return;
     }
 
@@ -827,12 +830,13 @@ bool WalletSynchronizer::syncStep()
         return false;
     }
 
-    /* Process each block synchronously (replaces the multi-threaded pipeline). */
+    /* Process each block synchronously (replaces the multi-threaded pipeline).
+       Note: completeBlockProcessing() already calls dropBlock() internally —
+       do NOT call it again here. */
     for (const auto &[block, arrivalIndex] : blocks)
     {
         const auto ourInputs = processBlockOutputs(block);
         completeBlockProcessing(block, ourInputs);
-        m_blockDownloader.dropBlock(block.blockHeight, block.blockHash);
     }
 
     return true;
