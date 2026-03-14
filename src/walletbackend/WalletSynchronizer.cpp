@@ -57,14 +57,8 @@ WalletSynchronizer::WalletSynchronizer(
     m_eventHandler(eventHandler),
     m_blockDownloader(daemon, nullptr, startHeight, startTimestamp)
 {
-    if (threadCount == 0)
-    {
-        threadCount = std::thread::hardware_concurrency();
-        if (threadCount == 0)
-        {
-            threadCount = 1;
-        }
-    }
+    /* threadCount == 0 means "explicitly no background threads" (WASM single-threaded mode).
+       Any non-zero value is used as-is — the caller is responsible for choosing a sensible count. */
 
     m_threadCount = threadCount;
 }
@@ -806,14 +800,8 @@ void WalletSynchronizer::initializeAfterLoad(
     m_eventHandler = eventHandler;
     m_blockDownloader.initializeAfterLoad(m_daemon);
 
-    if (threadCount == 0)
-    {
-        threadCount = std::thread::hardware_concurrency();
-        if (threadCount == 0)
-        {
-            threadCount = 1;
-        }
-    }
+    /* threadCount == 0 means "explicitly no background threads" (WASM single-threaded mode).
+       Any non-zero value is used as-is. */
 
     m_threadCount = threadCount;
 }
