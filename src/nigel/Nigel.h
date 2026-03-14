@@ -39,6 +39,10 @@ class Nigel
 
     void init(bool startBackgroundThread = true);
 
+    /* Manually refresh daemon info (block count, peers, fees).
+       Called by syncStep() in single-threaded WASM mode instead of background thread. */
+    void refreshInfo();
+
     void swapNode(const std::string daemonHost, const uint16_t daemonPort, const bool daemonSSL);
 
     void decreaseRequestedBlockCount();

@@ -62,6 +62,10 @@ class BlockDownloader
 
     void initializeAfterLoad(const std::shared_ptr<Nigel> daemon);
 
+    /* Single synchronous download attempt — used in WASM no-thread mode
+       instead of the background downloader thread. */
+    bool downloadStep();
+
   private:
     //////////////////////////////
     /* Private member functions */

@@ -542,6 +542,17 @@ wallet_status_t wallet_save(wallet_handle_t *wallet)
     return static_cast<wallet_status_t>(error.getErrorCode());
 }
 
+int wallet_sync_step(wallet_handle_t *wallet)
+{
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return -1;
+    }
+    return instance->syncStep() ? 1 : 0;
+}
+
 wallet_status_t wallet_get_sync_status(
     wallet_handle_t *wallet,
     uint64_t *out_wallet_height,

@@ -1469,6 +1469,11 @@ uint64_t WalletBackend::getWalletCount() const
     return m_subWallets->getWalletCount();
 }
 
+bool WalletBackend::syncStep()
+{
+    return m_walletSynchronizer->syncStep();
+}
+
 std::tuple<uint64_t, uint64_t, uint64_t> WalletBackend::getSyncStatus() const
 {
     /* The last block the wallet has synced */

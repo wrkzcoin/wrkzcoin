@@ -97,6 +97,11 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_get_sync_status(
     uint64_t *out_local_daemon_height,
     uint64_t *out_network_height);
 
+/* Drive one synchronous sync step (download + process one batch of blocks).
+   Intended for WASM single-threaded mode. Returns 1 if blocks were processed,
+   0 if nothing to do, negative on error. */
+WALLET_CAPI_EXPORT int wallet_sync_step(wallet_handle_t *wallet);
+
 WALLET_CAPI_EXPORT wallet_status_t wallet_get_status_json(
     wallet_handle_t *wallet,
     char **out_json,

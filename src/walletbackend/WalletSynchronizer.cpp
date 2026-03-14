@@ -806,6 +806,38 @@ void WalletSynchronizer::initializeAfterLoad(
     m_threadCount = threadCount;
 }
 
+bool WalletSynchronizer::syncStep()
+{
+    if (m_daemon == nullptr || m_subWallets == nullptr)
+    {
+        return false;
+    }
+
+    /* Refresh daemon block counts — normally done by Nigel's background thread. */
+    m_daemon->refreshInfo();
+
+    /* Download a batch of blocks from the daemon into the internal store. */
+    m_blockDownloader.downloadStep();
+
+    /* Fetch downloaded blocks for inline processing. */
+    const auto blocks = m_blockDownloader.fetchBlocks(Constants::BLOCK_PROCESSING_CHUNK);
+
+    if (blocks.empty())
+    {
+        return false;
+    }
+
+    /* Process each block synchronously (replaces the multi-threaded pipeline). */
+    for (const auto &[block, arrivalIndex] : blocks)
+    {
+        const auto ourInputs = processBlockOutputs(block);
+        completeBlockProcessing(block, ourInputs);
+        m_blockDownloader.dropBlock(block.blockHeight, block.blockHash);
+    }
+
+    return true;
+}
+
 uint64_t WalletSynchronizer::getCurrentScanHeight() const
 {
     return m_blockDownloader.getHeight();

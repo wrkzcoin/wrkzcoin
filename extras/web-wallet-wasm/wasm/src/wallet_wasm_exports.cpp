@@ -295,6 +295,18 @@ static char *dispatch(const std::string &method, const json &p)
         return ok_json(true);
     }
 
+    /* -------- sync step (WASM single-threaded mode) -------- */
+
+    if (method == "syncStep")
+    {
+        if (!g_wallet)
+            return err_json(-1, "no wallet open");
+        const int progressed = wallet_sync_step(g_wallet);
+        json r;
+        r["progressed"] = (progressed > 0);
+        return ok_json(r);
+    }
+
     /* -------- sync & node status -------- */
 
     if (method == "getSyncStatus")

@@ -422,6 +422,11 @@ void Nigel::stop()
     }
 }
 
+void Nigel::refreshInfo()
+{
+    getDaemonInfo();
+}
+
 void Nigel::init(bool startBackgroundThread)
 {
     m_shouldStop = false;

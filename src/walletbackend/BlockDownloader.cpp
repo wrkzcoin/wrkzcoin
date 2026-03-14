@@ -225,6 +225,11 @@ std::vector<Crypto::Hash> BlockDownloader::getBlockCheckpoints() const
     return result;
 }
 
+bool BlockDownloader::downloadStep()
+{
+    return downloadBlocks();
+}
+
 bool BlockDownloader::downloadBlocks()
 {
     const uint64_t localDaemonBlockCount = m_daemon->localDaemonBlockCount();

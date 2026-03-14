@@ -15,6 +15,19 @@ import { WalletBridge } from './wallet_bridge.js';
 
 let bridge = null;
 let bridgeReady = false; // true only after bridge.init() fully completes
+let syncTimer = null;    // drives sync in single-threaded WASM mode
+
+function startSyncTimer() {
+  if (syncTimer) return;
+  syncTimer = setInterval(() => {
+    if (!bridgeReady || !bridge) return;
+    try { bridge.call('syncStep', {}); } catch (_) {}
+  }, 2000);
+}
+
+function stopSyncTimer() {
+  if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+}
 
 /**
  * Handle messages from the main thread.
@@ -48,20 +61,26 @@ self.onmessage = async (e) => {
       switch (msg.method) {
         case 'create':
           result = await bridge.create(msg.params);
+          startSyncTimer();
           break;
         case 'open':
           result = await bridge.open(msg.params);
+          startSyncTimer();
           break;
         case 'restoreFromSeed':
           result = await bridge.restoreFromSeed(msg.params);
+          startSyncTimer();
           break;
         case 'restoreFromKeys':
           result = await bridge.restoreFromKeys(msg.params);
+          startSyncTimer();
           break;
         case 'restoreViewWallet':
           result = await bridge.restoreViewWallet(msg.params);
+          startSyncTimer();
           break;
         case 'close':
+          stopSyncTimer();
           result = await bridge.close();
           break;
         case 'save':
