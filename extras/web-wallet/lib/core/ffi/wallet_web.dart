@@ -83,7 +83,9 @@ Never _throwJsError(Object e) {
 /// Waits until the WASM wallet module is fully loaded in the worker.
 /// Resolves immediately if already ready; polls at 100 ms intervals otherwise.
 Future<void> _waitForBridge() async {
-  while (_walletBridgeReadyFlag == null || !_walletBridgeReadyFlag!.toDart) {
+  for (;;) {
+    final ready = _walletBridgeReadyFlag;
+    if (ready != null && ready.toDart) return;
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 }
