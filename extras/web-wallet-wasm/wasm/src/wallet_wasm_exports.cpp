@@ -81,14 +81,14 @@ static std::string str_param(const json &p, const char *key)
 
 static uint64_t u64_param(const json &p, const char *key, uint64_t def = 0)
 {
-    if (p.contains(key) && p[key].is_number_unsigned())
+    if (p.contains(key) && p[key].is_number())
         return p[key].get<uint64_t>();
     return def;
 }
 
 static uint32_t u32_param(const json &p, const char *key, uint32_t def = 0)
 {
-    if (p.contains(key) && p[key].is_number_unsigned())
+    if (p.contains(key) && p[key].is_number())
         return p[key].get<uint32_t>();
     return def;
 }
