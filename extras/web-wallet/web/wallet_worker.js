@@ -14,10 +14,13 @@
 import { WalletBridge } from './wallet_bridge.js';
 
 let bridge = null;
-let bridgeReady = false; // true only after bridge.init() fully completes
-let syncTimer = null;    // drives sync in single-threaded WASM mode
+let bridgeReady = false;   // true only after bridge.init() fully completes
+let syncTimer = null;      // drives sync in single-threaded WASM mode
+let pthreadsEnabled = false; // true when WASM was built with -pthread
 
 function startSyncTimer() {
+  // In pthread builds the WASM background threads drive sync — no JS timer needed.
+  if (pthreadsEnabled) return;
   if (syncTimer) return;
   syncTimer = setInterval(() => {
     if (!bridgeReady || !bridge) return;
@@ -41,7 +44,9 @@ self.onmessage = async (e) => {
       bridge = new WalletBridge();
       await bridge.init(msg.wasmPath || './wallet_wasm.js');
       bridgeReady = true;
-      self.postMessage({ id: msg.id, ok: true, result: 'initialized' });
+      // Detect build mode: pthreads builds drive sync internally via WASM threads.
+      try { pthreadsEnabled = bridge.call('isPthreadsEnabled', {}) === true; } catch (_) {}
+      self.postMessage({ id: msg.id, ok: true, result: 'initialized', pthreadsEnabled });
     } catch (err) {
       bridge = null;
       self.postMessage({ id: msg.id, ok: false, error: err.message || String(err) });

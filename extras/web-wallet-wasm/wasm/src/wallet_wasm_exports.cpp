@@ -18,9 +18,11 @@
  *   { "ok": false, "error": <code>, "errorMessage": "<msg>" }
  */
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include "walletcapi/wallet_capi.h"
 #include "wasm_fs_bridge.h"
@@ -105,6 +107,23 @@ static bool bool_param(const json &p, const char *key, bool def = false)
     return def;
 }
 
+/* Resolve syncThreads: honour an explicit non-zero caller value; if the
+   caller passed 0 (no-thread mode), keep 0 in no-pthread builds so the JS
+   syncStep timer drives sync, but auto-detect in pthread builds so the
+   WASM background threads take over. */
+static uint32_t resolve_sync_threads(const json &p)
+{
+    uint32_t requested = u32_param(p, "syncThreads", 0);
+#ifdef __EMSCRIPTEN_PTHREADS__
+    if (requested == 0)
+    {
+        uint32_t hw = static_cast<uint32_t>(std::thread::hardware_concurrency());
+        requested = std::max(1u, std::min(hw, 4u)); // 1–4 threads
+    }
+#endif
+    return requested;
+}
+
 /* Helper: extract string output from wallet_capi and build ok response. */
 static char *string_result(wallet_status_t st, char *out, size_t /*len*/)
 {
@@ -150,6 +169,15 @@ static char *dispatch(const std::string &method, const json &p)
         return ok_json(v ? v : "");
     }
 
+    if (method == "isPthreadsEnabled")
+    {
+#ifdef __EMSCRIPTEN_PTHREADS__
+        return ok_json(true);
+#else
+        return ok_json(false);
+#endif
+    }
+
     /* -------- lifecycle (create / open / restore / close) -------- */
 
     if (method == "create")
@@ -161,7 +189,7 @@ static char *dispatch(const std::string &method, const json &p)
         auto host = str_param(p, "daemonHost");
         auto port = u16_param(p, "daemonPort");
         auto ssl = bool_param(p, "daemonSsl");
-        auto threads = u32_param(p, "syncThreads", 1);
+        auto threads = resolve_sync_threads(p);
         wallet_status_t st = wallet_create(
             filename.c_str(), password.c_str(),
             host.c_str(), port, ssl, threads, &g_wallet);
@@ -182,7 +210,7 @@ static char *dispatch(const std::string &method, const json &p)
         auto host = str_param(p, "daemonHost");
         auto port = u16_param(p, "daemonPort");
         auto ssl = bool_param(p, "daemonSsl");
-        auto threads = u32_param(p, "syncThreads", 1);
+        auto threads = resolve_sync_threads(p);
         wallet_status_t st = wallet_open(
             filename.c_str(), password.c_str(),
             host.c_str(), port, ssl, threads, &g_wallet);
@@ -205,7 +233,7 @@ static char *dispatch(const std::string &method, const json &p)
         auto host = str_param(p, "daemonHost");
         auto port = u16_param(p, "daemonPort");
         auto ssl = bool_param(p, "daemonSsl");
-        auto threads = u32_param(p, "syncThreads", 1);
+        auto threads = resolve_sync_threads(p);
         wallet_status_t st = wallet_restore_from_seed(
             seed.c_str(), filename.c_str(), password.c_str(),
             scanHeight, host.c_str(), port, ssl, threads, &g_wallet);
@@ -229,7 +257,7 @@ static char *dispatch(const std::string &method, const json &p)
         auto host = str_param(p, "daemonHost");
         auto port = u16_param(p, "daemonPort");
         auto ssl = bool_param(p, "daemonSsl");
-        auto threads = u32_param(p, "syncThreads", 1);
+        auto threads = resolve_sync_threads(p);
         wallet_status_t st = wallet_restore_from_keys(
             spendKey.c_str(), viewKey.c_str(),
             filename.c_str(), password.c_str(),
@@ -254,7 +282,7 @@ static char *dispatch(const std::string &method, const json &p)
         auto host = str_param(p, "daemonHost");
         auto port = u16_param(p, "daemonPort");
         auto ssl = bool_param(p, "daemonSsl");
-        auto threads = u32_param(p, "syncThreads", 1);
+        auto threads = resolve_sync_threads(p);
         wallet_status_t st = wallet_restore_view(
             viewKey.c_str(), address.c_str(),
             filename.c_str(), password.c_str(),
