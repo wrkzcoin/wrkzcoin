@@ -41,6 +41,10 @@ export class WalletBridge {
     const factory = (await import(wasmModulePath)).default;
     this._module = await factory();
 
+    // Verify the exported function exists
+    console.log('[WalletBridge] module ready. _wallet_wasm_request exported:',
+      typeof this._module._wallet_wasm_request);
+
     // Create the cwrap'd request function
     this._request = this._module.cwrap(
       'wallet_wasm_request',
@@ -66,7 +70,13 @@ export class WalletBridge {
 
     const requestJson = JSON.stringify({ method, params });
     const resultPtr = this._request(requestJson);
+
+    if (!resultPtr) {
+      throw new Error(`[WalletBridge] WASM returned null for method: ${method} — malloc failure or WASM crash`);
+    }
+
     const resultStr = this._module.UTF8ToString(resultPtr);
+    console.log(`[WalletBridge] ${method} →`, resultStr.length > 300 ? resultStr.substring(0, 300) + '…' : resultStr);
     this._module._free(resultPtr);
 
     const response = JSON.parse(resultStr);
