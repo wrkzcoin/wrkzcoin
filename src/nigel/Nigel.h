@@ -37,7 +37,7 @@ class Nigel
     /* Public member functions */
     /////////////////////////////
 
-    void init();
+    void init(bool startBackgroundThread = true);
 
     void swapNode(const std::string daemonHost, const uint16_t daemonPort, const bool daemonSSL);
 

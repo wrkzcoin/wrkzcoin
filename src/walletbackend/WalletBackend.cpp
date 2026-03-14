@@ -763,7 +763,9 @@ void WalletBackend::init()
         throw std::runtime_error("Daemon has not been initialized!");
     }
 
-    m_daemon->init();
+    /* When syncThreadCount == 0 (WASM single-threaded mode), skip Nigel's
+       background refresh thread — daemon info is fetched on demand instead. */
+    m_daemon->init(m_syncThreadCount > 0);
 
     /* Init the wallet synchronizer if it hasn't been loaded from the wallet
        file */

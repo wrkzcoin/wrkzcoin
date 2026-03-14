@@ -422,15 +422,19 @@ void Nigel::stop()
     }
 }
 
-void Nigel::init()
+void Nigel::init(bool startBackgroundThread)
 {
     m_shouldStop = false;
 
     /* Get initial daemon info before returning so the status is valid. */
     getDaemonInfo();
 
-    /* Now launch the background thread to constantly update the heights etc */
-    m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
+    /* Now launch the background thread to constantly update the heights etc.
+       Skipped when startBackgroundThread=false (e.g. WASM single-threaded mode). */
+    if (startBackgroundThread)
+    {
+        m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
+    }
 }
 
 bool Nigel::getDaemonInfo()
