@@ -35,6 +35,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   // SSL for daemon — updated from defaultNodeProvider when entering a form
   bool _daemonSSL = kDefaultDaemonSSL;
 
+  // Existing wallets loaded from IndexedDB for the Open Wallet selector
+  List<String>? _savedWallets; // null = not loaded yet
+  String? _selectedWallet;    // currently selected wallet in the dropdown
+
   // Form fields — on web, wallet "filename" is just a logical name stored in IndexedDB
   final _fileCtrl = TextEditingController(text: 'my_wallet');
   final _passCtrl = TextEditingController();
@@ -166,6 +170,21 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     }
   }
 
+  Future<void> _loadSavedWallets() async {
+    try {
+      final wallets = await ref.read(walletCApiProvider).listWallets();
+      if (mounted) setState(() {
+        _savedWallets = wallets;
+        if (wallets.isNotEmpty) {
+          _selectedWallet = wallets.first;
+          _fileCtrl.text = wallets.first;
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _savedWallets = []);
+    }
+  }
+
   /// Sync daemon form controllers from the saved default node preference.
   void _applyNodeDefaults() {
     final node = ref.read(defaultNodeProvider);
@@ -239,7 +258,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         const SizedBox(height: 28),
         _MenuButton(icon: Icons.add_circle_outline, label: tr?.createNewWallet ?? 'Create New Wallet', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.create); }),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.folder_open_outlined, label: tr?.openExistingWallet ?? 'Open Existing Wallet', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.open); }),
+        _MenuButton(icon: Icons.folder_open_outlined, label: tr?.openExistingWallet ?? 'Open Existing Wallet', onTap: () { _applyNodeDefaults(); _loadSavedWallets(); setState(() => _mode = _SetupMode.open); }),
         const SizedBox(height: 10),
         _MenuButton(icon: Icons.vpn_key_outlined, label: tr?.importFromSeed ?? 'Import from Seed Phrase', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.importSeed); }),
         const SizedBox(height: 10),
@@ -264,14 +283,39 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Widget _buildOpen(S? tr) {
+    final wallets = _savedWallets;
     return _FormWrapper(
       title: tr?.openWallet ?? 'Open Wallet',
-      onBack: () => setState(() { _mode = _SetupMode.menu; _error = null; }),
+      onBack: () => setState(() {
+        _mode = _SetupMode.menu;
+        _error = null;
+        _savedWallets = null;
+        _selectedWallet = null;
+      }),
       loading: _loading,
       onSubmit: _doOpen,
       continueLabel: tr?.continueButton ?? 'Continue',
       children: [
-        _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name'),
+        if (wallets == null)
+          // Still loading from IndexedDB
+          const Center(child: SizedBox(height: 48, child: CircularProgressIndicator(strokeWidth: 2)))
+        else if (wallets.isEmpty)
+          // No saved wallets — free-type name
+          _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name')
+        else
+          // Dropdown of saved wallets; selection updates _fileCtrl for _doOpen
+          DropdownButtonFormField<String>(
+            value: _selectedWallet,
+            decoration: InputDecoration(labelText: tr?.walletFile ?? 'Select wallet'),
+            hint: Text(tr?.walletFile ?? 'Select a saved wallet'),
+            items: wallets
+                .map((w) => DropdownMenuItem(value: w, child: Text(w)))
+                .toList(),
+            onChanged: (v) => setState(() {
+              _selectedWallet = v;
+              _fileCtrl.text = v ?? '';
+            }),
+          ),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
       ],

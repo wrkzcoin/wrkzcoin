@@ -310,6 +310,12 @@ class WalletCApi {
     await _callLifecycle('deleteFile', {'filename': filename});
   }
 
+  Future<List<String>> listWallets() async {
+    final result = await _callLifecycle('listWallets', {});
+    if (result is List) return result.map((e) => e.toString()).toList();
+    return [];
+  }
+
   // --- sync / node ---
 
   Future<Map<String, int>> getSyncStatus() async {
