@@ -177,7 +177,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   Future<void> _loadSavedWallets() async {
     try {
-      final wallets = await ref.read(walletCApiProvider).listWallets();
+      final wallets = await ref.read(walletCApiProvider).listWallets()
+          .timeout(const Duration(seconds: 10));
       if (mounted) setState(() {
         _savedWallets = wallets;
         if (wallets.isNotEmpty) {
@@ -310,17 +311,21 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name')
         else
           // Dropdown of saved wallets; selection updates _fileCtrl for _doOpen
-          DropdownButtonFormField<String>(
-            value: _selectedWallet,
+          InputDecorator(
             decoration: InputDecoration(labelText: tr?.walletFile ?? 'Select wallet'),
-            hint: Text(tr?.walletFile ?? 'Select a saved wallet'),
-            items: wallets
-                .map((w) => DropdownMenuItem(value: w, child: Text(w)))
-                .toList(),
-            onChanged: (v) => setState(() {
-              _selectedWallet = v;
-              _fileCtrl.text = v ?? '';
-            }),
+            child: DropdownButton<String>(
+              value: _selectedWallet,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              hint: Text(tr?.walletFile ?? 'Select a saved wallet'),
+              items: wallets
+                  .map((w) => DropdownMenuItem(value: w, child: Text(w)))
+                  .toList(),
+              onChanged: (v) => setState(() {
+                _selectedWallet = v;
+                _fileCtrl.text = v ?? '';
+              }),
+            ),
           ),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
