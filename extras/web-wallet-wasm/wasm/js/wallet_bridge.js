@@ -91,7 +91,7 @@ export class WalletBridge {
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
-      syncThreads: opts.syncThreads || 1,
+      syncThreads: opts.syncThreads || 0,
     });
     this._currentFilename = opts.filename || 'wallet';
     // Save initial wallet state to WASM store, then persist to IndexedDB
@@ -119,7 +119,7 @@ export class WalletBridge {
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
-      syncThreads: opts.syncThreads || 1,
+      syncThreads: opts.syncThreads || 0,
     });
     this._currentFilename = filename;
     return result;
@@ -137,7 +137,7 @@ export class WalletBridge {
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
-      syncThreads: opts.syncThreads || 1,
+      syncThreads: opts.syncThreads || 0,
     });
     this._currentFilename = opts.filename || 'wallet';
     await this._persistToIndexedDB();
@@ -157,7 +157,7 @@ export class WalletBridge {
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
-      syncThreads: opts.syncThreads || 1,
+      syncThreads: opts.syncThreads || 0,
     });
     this._currentFilename = opts.filename || 'wallet';
     await this._persistToIndexedDB();
@@ -177,7 +177,7 @@ export class WalletBridge {
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
-      syncThreads: opts.syncThreads || 1,
+      syncThreads: opts.syncThreads || 0,
     });
     this._currentFilename = opts.filename || 'wallet';
     await this._persistToIndexedDB();
