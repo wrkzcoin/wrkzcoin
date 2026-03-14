@@ -62,11 +62,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         ssl: kDefaultDaemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       final address = await ffi.getPrimaryAddress();
       final seed = await ffi.getMnemonicSeed();
       final keys = await ffi.getSpendKeysJson(address);
       final viewKey = await ffi.getPrivateViewKey();
+      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
 
       await storeWalletPassword(_passCtrl.text);
       setState(() {

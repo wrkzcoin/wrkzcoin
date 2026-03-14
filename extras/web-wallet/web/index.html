@@ -46,6 +46,16 @@
       return fn.call(obj);
     }
     window._dartCallMethod = _dartCallMethod;
+
+    // Helper for dart:js_interop to extract a readable message from a JS
+    // Error (or any thrown value) that comes back via a rejected Promise.
+    function _extractJsError(err) {
+      if (!err) return 'Unknown error';
+      if (typeof err === 'string') return err;
+      if (err.message) return String(err.message);
+      return String(err);
+    }
+    window._extractJsError = _extractJsError;
   </script>
 
   <script type="module">

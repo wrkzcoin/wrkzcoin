@@ -60,14 +60,47 @@ external JSString _jsonStringify(JSAny? value);
 @JS('walletBridge')
 external JSObject get _jsBridge;
 
+/// True once walletBridge.init() has finished (WASM loaded inside the worker).
+@JS('walletBridgeReady')
+external JSBoolean? get _walletBridgeReadyFlag;
+
+/// Extract a readable message from a JS exception (Error or plain value).
+@JS('_extractJsError')
+external JSString _extractJsError(JSAny? err);
+
+/// Throws [WalletCApiException] with a readable message extracted from [e],
+/// which may be a raw JS Error thrown by a rejected Promise.
+Never _throwJsError(Object e) {
+  String msg;
+  try {
+    msg = _extractJsError((e as JSAny?)).toDart;
+  } catch (_) {
+    msg = e.toString();
+  }
+  throw WalletCApiException(-1, msg);
+}
+
+/// Waits until the WASM wallet module is fully loaded in the worker.
+/// Resolves immediately if already ready; polls at 100 ms intervals otherwise.
+Future<void> _waitForBridge() async {
+  while (_walletBridgeReadyFlag == null || !_walletBridgeReadyFlag!.toDart) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+}
+
 /// Call a method on the bridge that returns a JS Promise.
 /// Every method on WalletBridgeWorker is async.
-Future<JSAny?> _callAsync(String method, [Map<String, dynamic>? params]) {
+Future<JSAny?> _callAsync(String method, [Map<String, dynamic>? params]) async {
+  await _waitForBridge();
   final paramsStr = params != null ? jsonEncode(params) : '{}';
   final paramsObj = _jsonParse(paramsStr.toJS);
   // bridge.call(method, params) returns a Promise
   final promise = _jsBridge.callMethod('call'.toJS, method.toJS, paramsObj);
-  return (promise as JSPromise).toDart;
+  try {
+    return await (promise as JSPromise).toDart;
+  } catch (e) {
+    _throwJsError(e);
+  }
 }
 
 /// Helper: call bridge and parse the Promise result as a Dart object.
@@ -113,14 +146,19 @@ Future<Map<String, dynamic>> _callMap(String method, [Map<String, dynamic>? para
 /// For lifecycle methods that need the bridge's async JS methods directly
 /// (create, open, etc. involve IndexedDB).
 Future<dynamic> _callLifecycle(String method, Map<String, dynamic> params) async {
+  await _waitForBridge();
   final paramsStr = jsonEncode(params);
   final paramsObj = _jsonParse(paramsStr.toJS);
   // Use the specific lifecycle method on the bridge (e.g. bridge.create(opts))
   final promise = _jsBridge.callMethod(method.toJS, paramsObj);
-  final result = await (promise as JSPromise).toDart;
-  if (result == null) return null;
-  final jsonStr = _jsonStringify(result);
-  return jsonDecode(jsonStr.toDart);
+  try {
+    final result = await (promise as JSPromise).toDart;
+    if (result == null) return null;
+    final jsonStr = _jsonStringify(result);
+    return jsonDecode(jsonStr.toDart);
+  } catch (e) {
+    _throwJsError(e);
+  }
 }
 
 // ─── JS interop extension for callMethod ─────────────────────────────────────

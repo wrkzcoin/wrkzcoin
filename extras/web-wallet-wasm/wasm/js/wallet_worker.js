@@ -14,6 +14,7 @@
 import { WalletBridge } from './wallet_bridge.js';
 
 let bridge = null;
+let bridgeReady = false; // true only after bridge.init() fully completes
 
 /**
  * Handle messages from the main thread.
@@ -26,15 +27,17 @@ self.onmessage = async (e) => {
     try {
       bridge = new WalletBridge();
       await bridge.init(msg.wasmPath || './wallet_wasm.js');
+      bridgeReady = true;
       self.postMessage({ id: msg.id, ok: true, result: 'initialized' });
     } catch (err) {
+      bridge = null;
       self.postMessage({ id: msg.id, ok: false, error: err.message || String(err) });
     }
     return;
   }
 
-  if (!bridge) {
-    self.postMessage({ id: msg.id, ok: false, error: 'Worker not initialized' });
+  if (!bridgeReady) {
+    self.postMessage({ id: msg.id, ok: false, error: 'WASM wallet not ready — wait for walletBridgeReady event' });
     return;
   }
 
