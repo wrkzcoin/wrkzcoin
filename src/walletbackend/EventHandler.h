@@ -35,6 +35,11 @@ template<typename T> class Event
         /* If we have a function to run, and we're not ignoring events */
         if (m_function && !m_paused)
         {
+#if defined(__EMSCRIPTEN__)
+            /* WASM/single-threaded mode: std::thread construction fails with
+               EAGAIN in no-pthread builds. Call the handler inline instead. */
+            m_function(args);
+#else
             /* Launch the function, and return instantly. This way we
                can have multiple functions running at once.
 
@@ -43,6 +48,7 @@ template<typename T> class Event
                consider using std::osyncstream.
                Further reading: https://stackoverflow.com/q/14718124/8737306 */
             std::thread(m_function, args).detach();
+#endif
         }
     }
 

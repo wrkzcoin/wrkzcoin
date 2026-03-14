@@ -175,6 +175,31 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     }
   }
 
+  Future<void> _deleteWallet(String name) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete wallet?'),
+        content: Text('This will permanently delete "$name" from this browser. Make sure you have your seed phrase backed up.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: kError),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(walletCApiProvider).deleteFile(name);
+    } catch (_) {}
+    // Reload the list
+    setState(() { _savedWallets = null; _selectedWallet = null; });
+    await _loadSavedWallets();
+  }
+
   Future<void> _loadSavedWallets() async {
     try {
       final wallets = await ref.read(walletCApiProvider).listWallets()
@@ -310,22 +335,37 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           // No saved wallets — free-type name
           _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name')
         else
-          // Dropdown of saved wallets; selection updates _fileCtrl for _doOpen
-          InputDecorator(
-            decoration: InputDecoration(labelText: tr?.walletFile ?? 'Select wallet'),
-            child: DropdownButton<String>(
-              value: _selectedWallet,
-              isExpanded: true,
-              underline: const SizedBox.shrink(),
-              hint: Text(tr?.walletFile ?? 'Select a saved wallet'),
-              items: wallets
-                  .map((w) => DropdownMenuItem(value: w, child: Text(w)))
-                  .toList(),
-              onChanged: (v) => setState(() {
-                _selectedWallet = v;
-                _fileCtrl.text = v ?? '';
-              }),
-            ),
+          // Dropdown of saved wallets with delete action
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InputDecorator(
+                decoration: InputDecoration(labelText: tr?.walletFile ?? 'Select wallet'),
+                child: DropdownButton<String>(
+                  value: _selectedWallet,
+                  isExpanded: true,
+                  underline: const SizedBox.shrink(),
+                  hint: Text(tr?.walletFile ?? 'Select a saved wallet'),
+                  items: wallets
+                      .map((w) => DropdownMenuItem(value: w, child: Text(w)))
+                      .toList(),
+                  onChanged: (v) => setState(() {
+                    _selectedWallet = v;
+                    _fileCtrl.text = v ?? '';
+                  }),
+                ),
+              ),
+              if (_selectedWallet != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: const Text('Delete wallet'),
+                    style: TextButton.styleFrom(foregroundColor: kError, padding: EdgeInsets.zero),
+                    onPressed: () => _deleteWallet(_selectedWallet!),
+                  ),
+                ),
+            ],
           ),
         _PassField(ctrl: _passCtrl, label: tr?.walletPassword ?? 'Wallet password'),
         _DaemonFields(hostCtrl: _daemonHostCtrl, portCtrl: _daemonPortCtrl, hostLabel: tr?.daemonHost ?? 'Daemon host', portLabel: tr?.port ?? 'Port'),
