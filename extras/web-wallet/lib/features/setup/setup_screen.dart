@@ -32,6 +32,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   String? _newWalletSpendKey;
   bool _seedConfirmed = false;
 
+  // SSL for daemon — updated from defaultNodeProvider when entering a form
+  bool _daemonSSL = kDefaultDaemonSSL;
+
   // Form fields — on web, wallet "filename" is just a logical name stored in IndexedDB
   final _fileCtrl = TextEditingController(text: 'my_wallet');
   final _passCtrl = TextEditingController();
@@ -60,7 +63,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
-        ssl: kDefaultDaemonSSL,
+        ssl: _daemonSSL,
       );
       final address = await ffi.getPrimaryAddress();
       final seed = await ffi.getMnemonicSeed();
@@ -95,7 +98,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
-        ssl: kDefaultDaemonSSL,
+        ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
@@ -121,7 +124,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
-        ssl: kDefaultDaemonSSL,
+        ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
@@ -148,7 +151,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
-        ssl: kDefaultDaemonSSL,
+        ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
@@ -163,38 +166,66 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     }
   }
 
+  /// Sync daemon form controllers from the saved default node preference.
+  void _applyNodeDefaults() {
+    final node = ref.read(defaultNodeProvider);
+    _daemonHostCtrl.text = node.host;
+    _daemonPortCtrl.text = '${node.port}';
+    setState(() => _daemonSSL = node.ssl);
+  }
+
+  void _openPreWalletSettings() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => const _PreWalletSettingsDialog(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tr = S.of(context);
     return Scaffold(
-      body: Center(
-        child: SizedBox(
-          width: _mode == _SetupMode.backupSeed ? 560 : 460,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const PlutonLogo(size: 48),
-                    const SizedBox(height: 28),
-                    if (_mode == _SetupMode.menu) _buildMenu(tr),
-                    if (_mode == _SetupMode.create) _buildCreate(tr),
-                    if (_mode == _SetupMode.open) _buildOpen(tr),
-                    if (_mode == _SetupMode.importSeed) _buildImportSeed(tr),
-                    if (_mode == _SetupMode.importKeys) _buildImportKeys(tr),
-                    if (_mode == _SetupMode.backupSeed) _buildBackupSeed(tr),
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      _ErrorBox(message: _error!),
-                    ],
-                  ],
+      body: Stack(
+        children: [
+          Center(
+            child: SizedBox(
+              width: _mode == _SetupMode.backupSeed ? 560 : 460,
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const PlutonLogo(size: 48),
+                        const SizedBox(height: 28),
+                        if (_mode == _SetupMode.menu) _buildMenu(tr),
+                        if (_mode == _SetupMode.create) _buildCreate(tr),
+                        if (_mode == _SetupMode.open) _buildOpen(tr),
+                        if (_mode == _SetupMode.importSeed) _buildImportSeed(tr),
+                        if (_mode == _SetupMode.importKeys) _buildImportKeys(tr),
+                        if (_mode == _SetupMode.backupSeed) _buildBackupSeed(tr),
+                        if (_error != null) ...[
+                          const SizedBox(height: 16),
+                          _ErrorBox(message: _error!),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.settings_outlined),
+              tooltip: tr?.settings ?? 'Settings',
+              onPressed: _openPreWalletSettings,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -206,13 +237,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         const SizedBox(height: 8),
         Text(tr?.selectOptionToStart ?? 'Select an option to get started', style: Theme.of(context).textTheme.bodyMedium),
         const SizedBox(height: 28),
-        _MenuButton(icon: Icons.add_circle_outline, label: tr?.createNewWallet ?? 'Create New Wallet', onTap: () => setState(() => _mode = _SetupMode.create)),
+        _MenuButton(icon: Icons.add_circle_outline, label: tr?.createNewWallet ?? 'Create New Wallet', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.create); }),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.folder_open_outlined, label: tr?.openExistingWallet ?? 'Open Existing Wallet', onTap: () => setState(() => _mode = _SetupMode.open)),
+        _MenuButton(icon: Icons.folder_open_outlined, label: tr?.openExistingWallet ?? 'Open Existing Wallet', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.open); }),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.vpn_key_outlined, label: tr?.importFromSeed ?? 'Import from Seed Phrase', onTap: () => setState(() => _mode = _SetupMode.importSeed)),
+        _MenuButton(icon: Icons.vpn_key_outlined, label: tr?.importFromSeed ?? 'Import from Seed Phrase', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.importSeed); }),
         const SizedBox(height: 10),
-        _MenuButton(icon: Icons.key_outlined, label: tr?.importFromKeys ?? 'Import from Private Keys', onTap: () => setState(() => _mode = _SetupMode.importKeys)),
+        _MenuButton(icon: Icons.key_outlined, label: tr?.importFromKeys ?? 'Import from Private Keys', onTap: () { _applyNodeDefaults(); setState(() => _mode = _SetupMode.importKeys); }),
       ],
     );
   }
@@ -557,5 +588,182 @@ class _DaemonFields extends StatelessWidget {
       const SizedBox(width: 8),
       Expanded(child: TextField(controller: portCtrl, decoration: InputDecoration(labelText: portLabel), keyboardType: TextInputType.number)),
     ]);
+  }
+}
+
+// ── Pre-wallet settings dialog ────────────────────────────────────────────────
+
+class _PreWalletSettingsDialog extends ConsumerStatefulWidget {
+  const _PreWalletSettingsDialog();
+
+  @override
+  ConsumerState<_PreWalletSettingsDialog> createState() => _PreWalletSettingsDialogState();
+}
+
+class _PreWalletSettingsDialogState extends ConsumerState<_PreWalletSettingsDialog> {
+  late final TextEditingController _hostCtrl;
+  late final TextEditingController _portCtrl;
+  bool _ssl = false;
+  bool _saving = false;
+  bool _saved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final node = ref.read(defaultNodeProvider);
+    _hostCtrl = TextEditingController(text: node.host);
+    _portCtrl = TextEditingController(text: '${node.port}');
+    _ssl = node.ssl;
+  }
+
+  @override
+  void dispose() {
+    _hostCtrl.dispose();
+    _portCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveNode() async {
+    setState(() { _saving = true; _saved = false; });
+    await ref.read(defaultNodeProvider.notifier).set(
+      host: _hostCtrl.text.trim(),
+      port: int.tryParse(_portCtrl.text) ?? kDefaultDaemonPort,
+      ssl: _ssl,
+    );
+    if (mounted) setState(() { _saving = false; _saved = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tr = S.of(context);
+    final themeMode = ref.watch(themeModeProvider);
+    final logLevel = ref.watch(logLevelProvider);
+
+    return Dialog(
+      child: SizedBox(
+        width: 500,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Title bar
+              Row(
+                children: [
+                  const Icon(Icons.settings_outlined, size: 20),
+                  const SizedBox(width: 10),
+                  Text(tr?.settings ?? 'Settings', style: Theme.of(context).textTheme.titleLarge),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+
+              // Default remote node
+              Text(tr?.sectionDaemonNode ?? 'Default Remote Node',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(tr?.nodeDescription ?? 'Used when creating or opening a wallet.',
+                  style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextField(
+                      controller: _hostCtrl,
+                      decoration: InputDecoration(labelText: tr?.hostIpAddress ?? 'Host / IP'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _portCtrl,
+                      decoration: InputDecoration(labelText: tr?.port ?? 'Port'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(
+                    children: [
+                      Text(tr?.ssl ?? 'SSL', style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                      Switch(value: _ssl, onChanged: (v) => setState(() { _ssl = v; _saved = false; })),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  FilledButton(
+                    onPressed: _saving ? null : _saveNode,
+                    child: _saving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(tr?.apply ?? 'Apply'),
+                  ),
+                  if (_saved) ...[
+                    const SizedBox(width: 10),
+                    const Icon(Icons.check_circle_outline, color: kSuccess, size: 16),
+                    const SizedBox(width: 4),
+                    Text(tr?.nodeUpdatedSuccess ?? 'Saved', style: const TextStyle(color: kSuccess, fontSize: 13)),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 24),
+
+              // Appearance
+              Text(tr?.sectionAppearance ?? 'Appearance',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              SegmentedButton<ThemeMode>(
+                segments: [
+                  ButtonSegment(value: ThemeMode.system, icon: const Icon(Icons.brightness_auto, size: 16), label: Text(tr?.themeSystem ?? 'System')),
+                  ButtonSegment(value: ThemeMode.light,  icon: const Icon(Icons.light_mode, size: 16),      label: Text(tr?.themeLight ?? 'Light')),
+                  ButtonSegment(value: ThemeMode.dark,   icon: const Icon(Icons.dark_mode, size: 16),       label: Text(tr?.themeDark ?? 'Dark')),
+                ],
+                selected: {themeMode},
+                onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              ),
+              const SizedBox(height: 24),
+
+              // Log level
+              Text(tr?.sectionDebugLogs ?? 'Debug & Logs',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tr?.logLevel ?? 'Log Level',
+                            style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface)),
+                        Text(tr?.logLevelSubtitle ?? 'Controls wallet library verbosity',
+                            style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                      ],
+                    ),
+                  ),
+                  DropdownButton<WalletLogLevel>(
+                    value: logLevel,
+                    underline: const SizedBox.shrink(),
+                    items: WalletLogLevel.values
+                        .map((l) => DropdownMenuItem(value: l, child: Text(l.label, style: const TextStyle(fontSize: 13))))
+                        .toList(),
+                    onChanged: (l) {
+                      if (l != null) ref.read(logLevelProvider.notifier).set(l);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../config/app_config.dart';
 
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
@@ -213,3 +214,41 @@ final firstLaunchDoneProvider = FutureProvider<bool>((ref) async {
 Future<void> markFirstLaunchDone() async {
   await _storage.write(key: _kFirstLaunchDoneKey, value: 'true');
 }
+
+// ── Default node preference ───────────────────────────────────────────────────
+
+const _kDefaultNodeHostKey = 'pluton_default_node_host';
+const _kDefaultNodePortKey = 'pluton_default_node_port';
+const _kDefaultNodeSSLKey  = 'pluton_default_node_ssl';
+
+typedef DefaultNode = ({String host, int port, bool ssl});
+
+class DefaultNodeNotifier extends Notifier<DefaultNode> {
+  @override
+  DefaultNode build() {
+    _load();
+    return (host: kDefaultDaemonHost, port: kDefaultDaemonPort, ssl: kDefaultDaemonSSL);
+  }
+
+  Future<void> _load() async {
+    final host = await _storage.read(key: _kDefaultNodeHostKey);
+    if (host == null) return;
+    final portStr = await _storage.read(key: _kDefaultNodePortKey);
+    final sslStr  = await _storage.read(key: _kDefaultNodeSSLKey);
+    state = (
+      host: host,
+      port: int.tryParse(portStr ?? '') ?? kDefaultDaemonPort,
+      ssl:  sslStr == 'true',
+    );
+  }
+
+  Future<void> set({required String host, required int port, required bool ssl}) async {
+    state = (host: host, port: port, ssl: ssl);
+    await _storage.write(key: _kDefaultNodeHostKey, value: host);
+    await _storage.write(key: _kDefaultNodePortKey, value: port.toString());
+    await _storage.write(key: _kDefaultNodeSSLKey,  value: ssl.toString());
+  }
+}
+
+final defaultNodeProvider =
+    NotifierProvider<DefaultNodeNotifier, DefaultNode>(DefaultNodeNotifier.new);
