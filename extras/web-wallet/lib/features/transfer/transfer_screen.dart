@@ -40,18 +40,13 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   String? _powLabel;
 
   void _startPowPolling() {
-    _powLabel = null;
+    // In single-threaded WASM, PoW runs synchronously inside the worker —
+    // no async poll can update the label during computation. Show a static
+    // "Computing PoW…" message immediately so the user knows what is happening.
+    final tr = S.of(context);
+    setState(() => _powLabel = tr?.computingPow(0) ?? 'Computing PoW…');
     _powTimer?.cancel();
-    _powTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
-      if (!mounted || !_loading) { _stopPowPolling(); return; }
-      final ffi = ref.read(walletCApiProvider);
-      final (:active, :elapsedMs, nonces: _) = ffi.getPowStatus();
-      if (active) {
-        final sec = (elapsedMs / 1000).round();
-        final tr = S.of(context);
-        setState(() => _powLabel = tr?.computingPow(sec) ?? 'Computing PoW... ${sec}s');
-      }
-    });
+    _powTimer = null;
   }
 
   void _stopPowPolling() {
