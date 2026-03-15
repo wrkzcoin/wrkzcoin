@@ -835,7 +835,44 @@ bool WalletSynchronizer::syncStep()
        do NOT call it again here. */
     for (const auto &[block, arrivalIndex] : blocks)
     {
-        const auto ourInputs = processBlockOutputs(block);
+        auto ourInputs = processBlockOutputs(block);
+
+        /* The daemon's getWalletSyncData never supplies globalOutputIndex
+           ("Daemon doesn't supply this, blockchain cache api does" — WalletTypes.h).
+           Fetch them here so spending these outputs doesn't fail with
+           "Missing global output index". Mirrors blockProcessingThread logic. */
+        if (!m_subWallets->isViewWallet() && !ourInputs.empty())
+        {
+            std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
+
+            for (auto &[publicKey, input] : ourInputs)
+            {
+                if (!input.globalOutputIndex)
+                {
+                    if (globalIndexes.empty())
+                    {
+                        globalIndexes = getGlobalIndexes(block.blockHeight);
+                    }
+
+                    auto it = globalIndexes.find(input.parentTransactionHash);
+
+                    if (it != globalIndexes.end() && it->second.size() > input.transactionIndex)
+                    {
+                        input.globalOutputIndex = it->second[input.transactionIndex];
+                    }
+                    else
+                    {
+                        Logger::logger.log(
+                            "Could not resolve global output index for input in block "
+                                + std::to_string(block.blockHeight)
+                                + " — spending this output may fail",
+                            Logger::WARNING,
+                            {Logger::SYNC});
+                    }
+                }
+            }
+        }
+
         completeBlockProcessing(block, ourInputs);
     }
 
