@@ -1000,6 +1000,19 @@ namespace SendTransaction
            we can just do a cast here) */
         Crypto::Hash txPrefixHash = getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(tx));
 
+        /* Diagnostic: log prefix hash and prefix binary size for signature debugging */
+        {
+            const auto prefixBin = CryptoNote::toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(tx));
+            std::stringstream dbg;
+            dbg << "Ring-sig diagnostic: prefixHash=" << txPrefixHash
+                << " prefixSize=" << prefixBin.size()
+                << " unlockTime=" << tx.unlockTime
+                << " inputs=" << tx.inputs.size()
+                << " outputs=" << tx.outputs.size()
+                << " extraLen=" << tx.extra.size();
+            Logger::logger.log(dbg.str(), Logger::DEBUG, {Logger::TRANSACTIONS});
+        }
+
         size_t i = 0;
 
         /* Add the transaction signatures */
@@ -1011,6 +1024,19 @@ namespace SendTransaction
             for (const auto output : input.outputs)
             {
                 publicKeys.push_back(output.key);
+            }
+
+            /* Diagnostic: log ring member keys and global indices */
+            {
+                std::stringstream dbg;
+                dbg << "Input " << i << ": realOutput=" << input.realOutput
+                    << " ringSize=" << publicKeys.size();
+                for (size_t k = 0; k < input.outputs.size(); k++)
+                {
+                    dbg << " [" << k << "]idx=" << input.outputs[k].index
+                        << " key=" << input.outputs[k].key;
+                }
+                Logger::logger.log(dbg.str(), Logger::DEBUG, {Logger::TRANSACTIONS});
             }
 
             /* Generate the ring signatures - note - modifying the transaction
