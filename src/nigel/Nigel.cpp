@@ -93,6 +93,21 @@ inline std::string daemonUrl(const std::string &host, const uint16_t port, const
 EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
                             const char* body, int body_len,
                             int* out_status, int* out_body_len), {
+    // In Emscripten pthreads builds with ALLOW_MEMORY_GROWTH, the module-level
+    // HEAPU8 / HEAP32 typed-array views in a pthread worker can be stale: they
+    // were created against the *original* SharedArrayBuffer length and are not
+    // updated until the worker's event-loop processes the broadcast message sent
+    // by the main thread after a memory.grow().  Because our C++ sync loop runs
+    // without yielding to the browser event loop, those views stay stale for the
+    // lifetime of the worker.  _malloc() may return a pointer beyond the stale
+    // view's length, making HEAPU8.set() / HEAP32[] a silent no-op and leaving
+    // the response buffer full of zeros.
+    //
+    // Fix: snapshot fresh views directly from the underlying SharedArrayBuffer
+    // (.buffer always reflects the grown length) before every memory access.
+    var h8  = new Uint8Array(HEAPU8.buffer);
+    var h32 = new Int32Array(HEAP32.buffer);
+
     var urlStr = UTF8ToString(url);
     var methodStr = UTF8ToString(method);
     var status = 0;
@@ -115,7 +130,7 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
                 xhr.setRequestHeader('Accept', 'application/json');
             }
             if (body_len > 0) {
-                xhr.send(new TextDecoder('utf-8').decode(HEAPU8.subarray(body, body + body_len)));
+                xhr.send(new TextDecoder('utf-8').decode(h8.subarray(body, body + body_len)));
             } else {
                 xhr.send(null);
             }
@@ -152,15 +167,15 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
         status = 0;
         responseText = '';
     }
-    HEAP32[out_status >> 2] = status;
+    h32[out_status >> 2] = status;
     var encoded = (new TextEncoder()).encode(responseText);
     var len = encoded.length;
-    HEAP32[out_body_len >> 2] = len;
+    h32[out_body_len >> 2] = len;
     if (len === 0) { return 0; }
     var ptr = _malloc(len + 1);
     if (!ptr) { return 0; }
-    HEAPU8.set(encoded, ptr);
-    HEAPU8[ptr + len] = 0;
+    h8.set(encoded, ptr);
+    h8[ptr + len] = 0;
     return ptr;
 });
 
