@@ -8,9 +8,11 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
+#include <logger/Logger.h>
 #include <serialization/SerializationTools.h>
 #include <utilities/Utilities.h>
 

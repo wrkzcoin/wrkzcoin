@@ -1346,9 +1346,9 @@ namespace SendTransaction
             if (CryptoNote::fromBinaryArray(roundTripped, txBin))
             {
                 const Crypto::Hash origPrefixHash =
-                    CryptoNote::getObjectHash(static_cast<CryptoNote::TransactionPrefix>(result.transaction));
+                    getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(result.transaction));
                 const Crypto::Hash rtPrefixHash =
-                    CryptoNote::getObjectHash(static_cast<CryptoNote::TransactionPrefix>(roundTripped));
+                    getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(roundTripped));
 
                 if (origPrefixHash != rtPrefixHash)
                 {
