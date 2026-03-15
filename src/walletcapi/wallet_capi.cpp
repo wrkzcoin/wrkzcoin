@@ -898,6 +898,7 @@ wallet_status_t wallet_send_basic(
 
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
@@ -1017,6 +1018,7 @@ wallet_status_t wallet_send_advanced_json(
 
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
@@ -1394,6 +1396,7 @@ wallet_status_t wallet_send_prepared(
     const auto [error, txHash] = instance->sendPreparedTransaction(hash);
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
