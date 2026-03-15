@@ -26,7 +26,7 @@ class AboutScreen extends StatelessWidget {
       padding: const EdgeInsets.all(28),
       child: Center(
         child: SizedBox(
-          width: 500,
+          width: MediaQuery.sizeOf(context).width < 600 ? double.infinity : 500,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [

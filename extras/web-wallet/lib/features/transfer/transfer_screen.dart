@@ -179,10 +179,10 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   Widget build(BuildContext context) {
     final tr = S.of(context);
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 28),
       child: Center(
         child: SizedBox(
-          width: 560,
+          width: MediaQuery.sizeOf(context).width < 600 ? double.infinity : 560,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

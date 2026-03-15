@@ -152,6 +152,67 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   void _lock() => ref.read(walletLockedProvider.notifier).state = true;
 
+  /// Width below which the sidebar collapses into a drawer.
+  static const double _mobileBreakpoint = 600;
+
+  Widget _buildSidebarContent(BuildContext context, List<_TabItem> tabs, int selected, Color surface, S? tr, {bool isDrawer = false}) {
+    return Container(
+      width: 200,
+      color: surface,
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 24, 16, 20),
+              child: PlutonLogo(),
+            ),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            ...List.generate(tabs.length, (i) {
+              final tab = tabs[i];
+              final active = selected == i;
+              return _NavItem(
+                icon: active ? tab.activeIcon : tab.icon,
+                label: tab.label,
+                selected: active,
+                onTap: () {
+                  if (isDrawer) Navigator.of(context).pop();
+                  context.go(tab.path);
+                },
+              );
+            }),
+            const Spacer(),
+            // Lock button
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: InkWell(
+                onTap: () {
+                  if (isDrawer) Navigator.of(context).pop();
+                  _lock();
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 12),
+                      Text(tr?.lockWallet ?? 'Lock Wallet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            // ── Node status footer + language switcher ────────────────────
+            _NodeStatusFooter(),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(transactionsProvider, _onTxUpdate);
@@ -164,57 +225,34 @@ class _MainShellState extends ConsumerState<MainShell> {
         ? kSurface
         : kSurfaceLight;
 
+    final isNarrow = MediaQuery.sizeOf(context).width < _mobileBreakpoint;
+
+    if (isNarrow) {
+      // ── Mobile: drawer-based navigation ──────────────────────────────────
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(tabs[selected].label, style: const TextStyle(fontSize: 16)),
+          backgroundColor: surface,
+          leading: Builder(
+            builder: (ctx) => IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () => Scaffold.of(ctx).openDrawer(),
+            ),
+          ),
+        ),
+        drawer: Drawer(
+          backgroundColor: surface,
+          child: _buildSidebarContent(context, tabs, selected, surface, tr, isDrawer: true),
+        ),
+        body: widget.child,
+      );
+    }
+
+    // ── Desktop: fixed sidebar ───────────────────────────────────────────────
     return Scaffold(
       body: Row(
         children: [
-          // ── Navigation Rail ─────────────────────────────────────────────────
-          Container(
-            width: 200,
-            color: surface,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 24, 16, 20),
-                  child: PlutonLogo(),
-                ),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                ...List.generate(tabs.length, (i) {
-                  final tab = tabs[i];
-                  final active = selected == i;
-                  return _NavItem(
-                    icon: active ? tab.activeIcon : tab.icon,
-                    label: tab.label,
-                    selected: active,
-                    onTap: () => context.go(tab.path),
-                  );
-                }),
-                const Spacer(),
-                // Lock button
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: InkWell(
-                    onTap: _lock,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          Icon(Icons.lock_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                          const SizedBox(width: 12),
-                          Text(tr?.lockWallet ?? 'Lock Wallet', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const Divider(height: 1),
-                // ── Node status footer + language switcher ────────────────────
-                _NodeStatusFooter(),
-              ],
-            ),
-          ),
+          _buildSidebarContent(context, tabs, selected, surface, tr),
           const VerticalDivider(width: 1),
           Expanded(child: widget.child),
         ],

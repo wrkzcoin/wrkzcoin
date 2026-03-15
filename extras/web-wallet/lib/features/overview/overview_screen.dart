@@ -28,7 +28,7 @@ class OverviewScreen extends ConsumerWidget {
 
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
+            padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
