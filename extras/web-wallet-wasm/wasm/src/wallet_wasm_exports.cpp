@@ -846,33 +846,6 @@ static char *dispatch(const std::string &method, const json &p)
         return ok_json(r);
     }
 
-    /* -------- logging -------- */
-
-    if (method == "setLogLevel")
-    {
-        auto level = str_param(p, "level");
-        wallet_status_t st = wallet_set_log_level(level.c_str());
-        if (st != 0)
-            return err_json(st);
-        return ok_json(true);
-    }
-
-    if (method == "takeLogsJson")
-    {
-        char *out = nullptr;
-        size_t len = 0;
-        wallet_status_t st = wallet_take_logs_json(&out, &len);
-        return json_result(st, out, len);
-    }
-
-    if (method == "clearLogs")
-    {
-        wallet_status_t st = wallet_clear_logs();
-        if (st != 0)
-            return err_json(st);
-        return ok_json(true);
-    }
-
     /* -------- coinbase scan -------- */
 
     if (method == "setScanCoinbase")

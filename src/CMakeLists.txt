@@ -331,6 +331,7 @@ if (WRKZ_BUILD_WALLET_WASM)
 
     target_include_directories(wallet_wasm PRIVATE
         ${CMAKE_SOURCE_DIR}/extras/web-wallet-wasm/wasm/include
+        ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(wallet_wasm PRIVATE wallet_capi_c)
     set_target_properties(wallet_wasm PROPERTIES
