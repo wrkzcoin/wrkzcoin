@@ -21,11 +21,15 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <deque>
+#include <mutex>
 #include <string>
 #include <thread>
 
 #include "walletcapi/wallet_capi.h"
 #include "wasm_fs_bridge.h"
+#include "logger/Logger.h"
 
 /* nlohmann/json — already available in the repo's external/ */
 #include "json.hpp"
@@ -151,6 +155,44 @@ static char *json_result(wallet_status_t st, char *out, size_t /*len*/)
 static wallet_handle_t *g_wallet = nullptr;
 
 /* ------------------------------------------------------------------ */
+/*  In-memory log ring buffer                                          */
+/* ------------------------------------------------------------------ */
+
+static std::mutex g_logMutex;
+static std::deque<json> g_logBuffer;
+static constexpr size_t LOG_BUFFER_MAX = 500;
+
+/* Register the log callback once at static-init time so logs are
+   captured as soon as the WASM module loads (before any JS call). */
+struct LogCallbackInstaller
+{
+    LogCallbackInstaller()
+    {
+        Logger::logger.setLogCallback([](
+            const std::string prettyMessage,
+            const std::string /*rawMessage*/,
+            const Logger::LogLevel level,
+            const std::vector<Logger::LogCategory> /*categories*/)
+        {
+            /* Build a lowercase level tag to match Flutter _levelColors */
+            std::string levelStr = Logger::logLevelToString(level);
+            std::transform(levelStr.begin(), levelStr.end(), levelStr.begin(), ::tolower);
+
+            json entry = {
+                {"pretty", prettyMessage},
+                {"level",  levelStr},
+                {"ts",     static_cast<int64_t>(std::time(nullptr))}
+            };
+
+            std::lock_guard<std::mutex> lock(g_logMutex);
+            if (g_logBuffer.size() >= LOG_BUFFER_MAX)
+                g_logBuffer.pop_front();
+            g_logBuffer.push_back(std::move(entry));
+        });
+    }
+};
+static LogCallbackInstaller g_logCallbackInstaller;
+
 /*  Dispatch table                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -176,6 +218,36 @@ static char *dispatch(const std::string &method, const json &p)
 #else
         return ok_json(false);
 #endif
+    }
+
+    /* -------- logging -------- */
+
+    if (method == "setLogLevel")
+    {
+        /* Accept numeric level: DISABLED=0 FATAL=1 WARNING=2 INFO=3 DEBUG=4 TRACE=5 */
+        int levelInt = static_cast<int>(u32_param(p, "level", 3 /* INFO */));
+        /* Clamp to valid range */
+        if (levelInt < 0) levelInt = 0;
+        if (levelInt > 5) levelInt = 5;
+        Logger::logger.setLogLevel(static_cast<Logger::LogLevel>(levelInt));
+        return ok_json(true);
+    }
+
+    if (method == "takeLogsJson")
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        json entries = json::array();
+        for (const auto &e : g_logBuffer)
+            entries.push_back(e);
+        g_logBuffer.clear();
+        return ok_json(json{{"entries", entries}});
+    }
+
+    if (method == "clearLogs")
+    {
+        std::lock_guard<std::mutex> lock(g_logMutex);
+        g_logBuffer.clear();
+        return ok_json(true);
     }
 
     /* -------- lifecycle (create / open / restore / close) -------- */

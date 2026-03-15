@@ -529,12 +529,19 @@ class WalletCApi {
 
   // --- logging ---
 
-  void setLogLevel(String level) {
-    _call('setLogLevel', {'level': level});
+  void setLogLevel(String levelName) {
+    // Map Dart WalletLogLevel enum names to C++ Logger::LogLevel numeric values:
+    // disabled=0, fatal=1, warning=2, info=3, debug=4, trace=5
+    const nameToLevel = {
+      'disabled': 0, 'fatal': 1, 'warning': 2, 'info': 3, 'debug': 4, 'trace': 5,
+    };
+    final numericLevel = nameToLevel[levelName.toLowerCase()] ?? 3;
+    _call('setLogLevel', {'level': numericLevel});
   }
 
   Future<Map<String, dynamic>> takeLogsAsync() => _callMap('takeLogsJson');
-  Map<String, dynamic> takeLogs() => {}; // sync fallback
+  // takeLogs() is kept for API compatibility but the log viewer uses takeLogsAsync().
+  Map<String, dynamic> takeLogs() => {};
 
   void clearLogs() {
     _call('clearLogs');

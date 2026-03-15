@@ -784,14 +784,14 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
     super.dispose();
   }
 
-  void _poll() {
+  Future<void> _poll() async {
     try {
-      final data = widget.ffi.takeLogs();
+      final data = await widget.ffi.takeLogsAsync();
       final list = (data['entries'] as List<dynamic>? ?? [])
           .map((e) => _LogEntry.fromJson(e as Map<String, dynamic>))
           .toList();
       if (list.isEmpty) return;
-      setState(() => _entries.addAll(list));
+      if (mounted) setState(() => _entries.addAll(list));
       if (_autoScroll) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scroll.hasClients) {
