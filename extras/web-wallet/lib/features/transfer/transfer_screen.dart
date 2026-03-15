@@ -79,8 +79,11 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     try {
       final ffi = ref.read(walletCApiProvider);
       final paymentId = _paymentIdCtrl.text.trim();
+      // Use a fixed fee >= TRANSACTION_POW_PASS_WITH_FEE (10000 atomic = 100 WRKZ)
+      // to bypass the extremely slow tx PoW in single-threaded WASM.
       final requestJson = jsonEncode({
         'destinations': [{'address': dest, 'amount': atomic}],
+        'fee': 10000,
         if (paymentId.isNotEmpty) 'paymentID': paymentId,
       });
       final result = await ffi.sendAdvanced(requestJson, broadcast: false);

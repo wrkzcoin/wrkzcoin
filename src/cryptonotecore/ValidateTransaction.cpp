@@ -14,9 +14,6 @@
 #include <serialization/SerializationTools.h>
 #include <utilities/Utilities.h>
 
-#include <iostream>
-#include <sstream>
-
 ValidateTransaction::ValidateTransaction(
     const CryptoNote::CachedTransaction &cachedTransaction,
     CryptoNote::TransactionValidatorState &state,
@@ -718,22 +715,6 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
             if (!Crypto::crypto_ops::checkRingSignature(
                     prefixHash, in.keyImage, outputKeys, m_transaction.signatures[inputIndex]))
             {
-                /* Diagnostic: log the data that failed ring-sig verification */
-                {
-                    std::stringstream dbg;
-                    dbg << "Ring-sig FAIL input " << inputIndex
-                        << ": prefixHash=" << prefixHash
-                        << " keyImage=" << in.keyImage
-                        << " amount=" << in.amount
-                        << " ringSize=" << outputKeys.size();
-                    for (size_t k = 0; k < outputKeys.size(); k++)
-                    {
-                        dbg << " [" << k << "]idx=" << globalIndexes[k]
-                            << " key=" << outputKeys[k];
-                    }
-                    std::cout << dbg.str() << std::endl;
-                }
-
                 setTransactionValidationResult(
                     CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES,
                     "Transaction contains invalid signatures"
