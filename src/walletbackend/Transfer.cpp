@@ -1000,6 +1000,11 @@ namespace SendTransaction
            we can just do a cast here) */
         Crypto::Hash txPrefixHash = getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(tx));
 
+        Logger::logger.log(
+            "generateRingSignatures: prefixHash=" + Common::podToHex(txPrefixHash)
+            + " inputs=" + std::to_string(inputsAndFakes.size()),
+            Logger::DEBUG, {Logger::TRANSACTIONS});
+
         size_t i = 0;
 
         /* Add the transaction signatures */
@@ -1011,6 +1016,21 @@ namespace SendTransaction
             for (const auto output : input.outputs)
             {
                 publicKeys.push_back(output.key);
+            }
+
+            {
+                std::string dbg = "Ring-sig SIGN input=" + std::to_string(i)
+                    + " keyImage=" + Common::podToHex(boost::get<CryptoNote::KeyInput>(tx.inputs[i]).keyImage)
+                    + " amount=" + std::to_string(boost::get<CryptoNote::KeyInput>(tx.inputs[i]).amount)
+                    + " realOut=" + std::to_string(input.realOutput)
+                    + " ring=" + std::to_string(publicKeys.size());
+                for (size_t k = 0; k < input.outputs.size(); k++)
+                {
+                    dbg += " [" + std::to_string(k) + "]idx="
+                        + std::to_string(input.outputs[k].index)
+                        + " key=" + Common::podToHex(input.outputs[k].key);
+                }
+                Logger::logger.log(dbg, Logger::DEBUG, {Logger::TRANSACTIONS});
             }
 
             /* Generate the ring signatures - note - modifying the transaction
@@ -1317,6 +1337,49 @@ namespace SendTransaction
         /* NOTE: Do not modify the transaction after this, or the ring signatures
            will be invalidated */
         std::tie(result.error, result.transaction) = generateRingSignatures(setupTX, inputsAndFakes, tmpSecretKeys);
+
+        /* ── Round-trip verification: serialize → deserialize → re-check sigs ── */
+        if (!result.error)
+        {
+            const auto txBin = CryptoNote::toBinaryArray(result.transaction);
+            CryptoNote::Transaction roundTripped;
+            if (CryptoNote::fromBinaryArray(roundTripped, txBin))
+            {
+                const Crypto::Hash origPrefixHash =
+                    CryptoNote::getObjectHash(static_cast<CryptoNote::TransactionPrefix>(result.transaction));
+                const Crypto::Hash rtPrefixHash =
+                    CryptoNote::getObjectHash(static_cast<CryptoNote::TransactionPrefix>(roundTripped));
+
+                if (origPrefixHash != rtPrefixHash)
+                {
+                    Logger::logger.log(
+                        "BUG: prefix hash changed after round-trip! orig=" + Common::podToHex(origPrefixHash)
+                        + " rt=" + Common::podToHex(rtPrefixHash),
+                        Logger::WARNING, {Logger::TRANSACTIONS});
+                }
+
+                /* Re-verify signatures using the round-tripped transaction
+                   (same as what the daemon will do) */
+                for (size_t idx = 0; idx < inputsAndFakes.size(); idx++)
+                {
+                    std::vector<Crypto::PublicKey> pks;
+                    for (const auto &o : inputsAndFakes[idx].outputs)
+                        pks.push_back(o.key);
+
+                    if (!Crypto::crypto_ops::checkRingSignature(
+                            rtPrefixHash,
+                            boost::get<CryptoNote::KeyInput>(roundTripped.inputs[idx]).keyImage,
+                            pks,
+                            roundTripped.signatures[idx]))
+                    {
+                        Logger::logger.log(
+                            "BUG: ring-sig input " + std::to_string(idx)
+                            + " FAILS after round-trip (prefixHash=" + Common::podToHex(rtPrefixHash) + ")",
+                            Logger::WARNING, {Logger::TRANSACTIONS});
+                    }
+                }
+            }
+        }
 
         return result;
     }

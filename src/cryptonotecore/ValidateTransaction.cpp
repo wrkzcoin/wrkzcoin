@@ -715,6 +715,20 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
             if (!Crypto::crypto_ops::checkRingSignature(
                     prefixHash, in.keyImage, outputKeys, m_transaction.signatures[inputIndex]))
             {
+                /* Log the data that failed ring-sig check for debugging */
+                std::string dbg = "Ring-sig FAIL input=" + std::to_string(inputIndex)
+                    + " prefixHash=" + Common::podToHex(prefixHash)
+                    + " keyImage=" + Common::podToHex(in.keyImage)
+                    + " amount=" + std::to_string(in.amount)
+                    + " ring=" + std::to_string(outputKeys.size());
+                for (size_t k = 0; k < outputKeys.size(); k++)
+                {
+                    dbg += " [" + std::to_string(k) + "]idx="
+                        + std::to_string(globalIndexes[k])
+                        + " key=" + Common::podToHex(outputKeys[k]);
+                }
+                Logger::logger.log(dbg, Logger::WARNING, {Logger::TRANSACTIONS});
+
                 setTransactionValidationResult(
                     CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES,
                     "Transaction contains invalid signatures"
