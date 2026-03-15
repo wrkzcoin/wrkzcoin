@@ -1511,13 +1511,16 @@ namespace SendTransaction
         /* Add extra room for the nonce */
         extra.resize(extra.size() + 8);
 
+        std::atomic<bool> shouldStop = false;
+
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+        /* WASM single-threaded mode: std::thread is unavailable.
+           Run the PoW worker inline on the calling thread (threadCount=1, nonce=0). */
+        generateTransactionPowWorker(extra, 1, 0, shouldStop, tx, height);
+#else
         std::vector<std::thread> threads;
 
         const int threadCount = std::max(1u, std::thread::hardware_concurrency());
-
-        std::atomic<bool> shouldStop = false;
-
-        const std::shared_ptr<Nigel> daemon;
 
         for (int i = 0; i < threadCount; i++)
         {
@@ -1536,6 +1539,7 @@ namespace SendTransaction
         {
             thread.join();
         }
+#endif
 
         return extra;
     }
