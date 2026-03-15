@@ -226,9 +226,9 @@
   "deletePermanently": "永久删除",
 
   "aboutTitle": "关于",
-  "versionInfo": "版本 {version} \u2014 WRKZ 桌面钱包",
+  "versionInfo": "版本 {version} \u2014 WRKZ 网页钱包",
   "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
-  "aboutDescription": "PLUTON v2 是 WrkzCoin (WRKZ) 的官方桌面钱包，WrkzCoin 是一种基于 CryptoNote 的快速轻量加密货币。\n\n使用 Flutter 构建，由 wallet-api 驱动。",
+  "aboutDescription": "PLUTON v2 是 WrkzCoin (WRKZ) 的官方网页钱包，WrkzCoin 是一种基于 CryptoNote 的快速轻量加密货币。\n\n使用 Flutter 构建，由 wallet-api 驱动。",
   "github": "GitHub",
   "githubSubtitle": "查看源代码和发行版",
   "discord": "Discord",

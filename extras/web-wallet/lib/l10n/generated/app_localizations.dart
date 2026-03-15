@@ -1290,13 +1290,13 @@ abstract class S {
   /// No description provided for @versionInfo.
   ///
   /// In en, this message translates to:
-  /// **'Version {version} — WRKZ Desktop Wallet'**
+  /// **'Version {version} — WRKZ Web Wallet'**
   String versionInfo(String version);
 
   /// No description provided for @aboutDescription.
   ///
   /// In en, this message translates to:
-  /// **'PLUTON v2 is the official desktop wallet for WrkzCoin (WRKZ), a fast and lightweight CryptoNote-based cryptocurrency.\n\nBuilt with Flutter, powered by wallet-api.'**
+  /// **'PLUTON v2 is the official web wallet for WrkzCoin (WRKZ), a fast and lightweight CryptoNote-based cryptocurrency.\n\nBuilt with Flutter, powered by wallet-api.'**
   String get aboutDescription;
 
   /// No description provided for @github.

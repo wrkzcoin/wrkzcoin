@@ -226,9 +226,9 @@
   "deletePermanently": "Supprimer définitivement",
 
   "aboutTitle": "À propos",
-  "versionInfo": "Version {version} \u2014 Portefeuille de bureau WRKZ",
+  "versionInfo": "Version {version} \u2014 Portefeuille web WRKZ",
   "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
-  "aboutDescription": "PLUTON v2 est le portefeuille de bureau officiel pour WrkzCoin (WRKZ), une cryptomonnaie rapide et légère basée sur CryptoNote.\n\nCréé avec Flutter, propulsé par wallet-api.",
+  "aboutDescription": "PLUTON v2 est le portefeuille web officiel pour WrkzCoin (WRKZ), une cryptomonnaie rapide et légère basée sur CryptoNote.\n\nCréé avec Flutter, propulsé par wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Voir le code source et les versions",
   "discord": "Discord",

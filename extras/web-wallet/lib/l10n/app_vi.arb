@@ -226,9 +226,9 @@
   "deletePermanently": "Xóa vĩnh viễn",
 
   "aboutTitle": "Giới thiệu",
-  "versionInfo": "Phiên bản {version} \u2014 Ví máy tính WRKZ",
+  "versionInfo": "Phiên bản {version} \u2014 Ví web WRKZ",
   "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
-  "aboutDescription": "PLUTON v2 là ví máy tính chính thức cho WrkzCoin (WRKZ), một loại tiền mã hóa nhanh và nhẹ dựa trên CryptoNote.\n\nĐược xây dựng bằng Flutter, vận hành bởi wallet-api.",
+  "aboutDescription": "PLUTON v2 là ví web chính thức cho WrkzCoin (WRKZ), một loại tiền mã hóa nhanh và nhẹ dựa trên CryptoNote.\n\nĐược xây dựng bằng Flutter, vận hành bởi wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Xem mã nguồn và các bản phát hành",
   "discord": "Discord",

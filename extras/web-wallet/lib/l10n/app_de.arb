@@ -228,7 +228,7 @@
   "aboutTitle": "Info",
   "versionInfo": "Version {version} \u2014 WRKZ Desktop-Wallet",
   "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
-  "aboutDescription": "PLUTON v2 ist das offizielle Desktop-Wallet für WrkzCoin (WRKZ), eine schnelle und leichtgewichtige CryptoNote-basierte Kryptowährung.\n\nErstellt mit Flutter, betrieben von wallet-api.",
+  "aboutDescription": "PLUTON v2 ist das offizielle Web-Wallet für WrkzCoin (WRKZ), eine schnelle und leichtgewichtige CryptoNote-basierte Kryptowährung.\n\nErstellt mit Flutter, betrieben von wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Quellcode und Releases ansehen",
   "discord": "Discord",

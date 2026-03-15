@@ -641,12 +641,12 @@ class SEn extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Version $version — WRKZ Desktop Wallet';
+    return 'Version $version — WRKZ Web Wallet';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 is the official desktop wallet for WrkzCoin (WRKZ), a fast and lightweight CryptoNote-based cryptocurrency.\n\nBuilt with Flutter, powered by wallet-api.';
+      'PLUTON v2 is the official web wallet for WrkzCoin (WRKZ), a fast and lightweight CryptoNote-based cryptocurrency.\n\nBuilt with Flutter, powered by wallet-api.';
 
   @override
   String get github => 'GitHub';

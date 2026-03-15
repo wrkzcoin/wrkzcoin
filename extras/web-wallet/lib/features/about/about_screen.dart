@@ -35,7 +35,7 @@ class AboutScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Text(tr?.appTitle ?? 'PLUTON v2', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 4),
-              Text(tr?.versionInfo(_kVersion) ?? 'Version $_kVersion — WRKZ Desktop Wallet',
+              Text(tr?.versionInfo(_kVersion) ?? 'Version $_kVersion — WRKZ Web Wallet',
                   style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 32),
 
@@ -50,7 +50,7 @@ class AboutScreen extends StatelessWidget {
                       const SizedBox(height: 10),
                       Text(
                         tr?.aboutDescription ??
-                        'PLUTON v2 is the official desktop wallet for WrkzCoin (WRKZ), '
+                        'PLUTON v2 is the official web wallet for WrkzCoin (WRKZ), '
                         'a fast and lightweight CryptoNote-based cryptocurrency.\n\n'
                         'Built with Flutter, powered by wallet-api.',
                         style: const TextStyle(height: 1.6),
