@@ -19,10 +19,11 @@ class _LanguagePickerScreenState extends ConsumerState<LanguagePickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenH = MediaQuery.of(context).size.height;
     return Scaffold(
       body: Center(
-        child: SizedBox(
-          width: 460,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: screenH * 0.9, maxWidth: 460),
           child: Card(
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -54,9 +55,9 @@ class _LanguagePickerScreenState extends ConsumerState<LanguagePickerScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 24),
-                  SizedBox(
-                    height: 400,
+                  Flexible(
                     child: ListView.builder(
+                      shrinkWrap: true,
                       itemCount: languages.length,
                       itemBuilder: (_, i) {
                         final lang = languages[i];
