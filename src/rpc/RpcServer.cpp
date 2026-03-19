@@ -571,7 +571,7 @@ std::tuple<Error, uint16_t> RpcServer::info(
     const uint64_t height = m_core->getTopBlockIndex() + 1;
     const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
 
-    BlockDetails blockDetails;
+    CryptoNote::BlockDetails blockDetails;
     try
     {
         /* Re-read top index to avoid stale height after a reorg */
@@ -1221,7 +1221,7 @@ std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
         const auto height = m_core->getTopBlockIndex();
         const auto hash = m_core->getBlockHashByIndex(height);
 
-        if (hash == CryptoNote::Constants::NULL_HASH)
+        if (hash == Constants::NULL_HASH)
         {
             throw std::runtime_error("Top block hash is null during chain reorganization");
         }
