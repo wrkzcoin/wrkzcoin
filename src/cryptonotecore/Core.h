@@ -24,6 +24,7 @@
 
 #include <WalletTypes.h>
 #include <ctime>
+#include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
 #include <unordered_map>
@@ -425,6 +426,15 @@ namespace CryptoNote
         void cutSegment(IBlockchainCache &segment, uint32_t startIndex);
         
         std::mutex m_submitBlockMutex;
+
+        /* Read/write lock protecting chainsLeaves, chainsStorage, and mainChainSet.
+           Writers (addBlock) take unique_lock; readers take shared_lock.
+           Mutable because const reader methods need to acquire it. */
+        mutable std::shared_mutex m_chainMutex;
+
+        /* Internal implementation of getBlockDetails(hash) without locking,
+           called by both public getBlockDetails overloads which hold the lock. */
+        BlockDetails getBlockDetailsInternal(const Crypto::Hash &blockHash) const;
     };
 
 } // namespace CryptoNote
