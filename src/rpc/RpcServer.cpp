@@ -568,15 +568,56 @@ std::tuple<Error, uint16_t> RpcServer::info(
     httplib::Response &res,
     const nlohmann::json &body)
 {
-    const uint64_t height = m_core->getTopBlockIndex() + 1;
-    const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
-
-    CryptoNote::BlockDetails blockDetails;
     try
     {
-        /* Re-read top index to avoid stale height after a reorg */
-        const uint32_t safeTop = m_core->getTopBlockIndex();
-        blockDetails = m_core->getBlockDetails(safeTop);
+        const uint64_t height = m_core->getTopBlockIndex() + 1;
+        const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
+        const auto blockDetails = m_core->getBlockDetails(m_core->getTopBlockIndex());
+        const uint64_t difficulty = m_core->getDifficultyForNextBlock();
+
+        uint64_t total_conn = m_p2p->get_connections_count();
+        uint64_t outgoing_connections_count = m_p2p->get_outgoing_connections_count();
+
+        nlohmann::json upgradeHeights = nlohmann::json::array();
+        for (const uint64_t h : CryptoNote::parameters::FORK_HEIGHTS)
+        {
+            upgradeHeights.push_back(h);
+        }
+
+        nlohmann::json j;
+        j["height"] = height;
+        j["difficulty"] = difficulty;
+        /* Transaction count without coinbase transactions - one per block, so subtract height */
+        j["tx_count"] = m_core->getBlockchainTransactionCount() - height;
+        j["tx_pool_size"] = m_core->getPoolTransactionCount();
+        j["alt_blocks_count"] = m_core->getAlternativeBlockCount();
+        j["outgoing_connections_count"] = outgoing_connections_count;
+        j["incoming_connections_count"] = total_conn - outgoing_connections_count;
+        j["white_peerlist_size"] = m_p2p->getPeerlistManager().get_white_peers_count();
+        j["grey_peerlist_size"] = m_p2p->getPeerlistManager().get_gray_peers_count();
+        j["last_known_block_index"] = std::max(1u, m_syncManager->getObservedHeight()) - 1;
+        j["network_height"] = networkHeight;
+        j["upgrade_heights"] = upgradeHeights;
+        j["supported_height"] = CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
+            ? 0
+            : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX];
+        j["hashrate"] = static_cast<uint64_t>(round(difficulty / CryptoNote::parameters::DIFFICULTY_TARGET));
+        j["synced"] = (height == networkHeight);
+        j["pruned"] = m_syncManager->isPrunedNode();
+        j["prune_depth"] = m_syncManager->getPrunedNodeDepth();
+        j["prune_capability_active"] = m_syncManager->isPruneCapabilityActive();
+        j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
+        j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
+        j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
+        j["major_version"] = blockDetails.majorVersion;
+        j["minor_version"] = blockDetails.minorVersion;
+        j["version"] = PROJECT_VERSION;
+        j["status"] = "OK";
+        j["start_time"] = m_core->getStartTime();
+
+        res.body = j.dump();
+
+        return {SUCCESS, 200};
     }
     catch (const std::exception &)
     {
@@ -586,52 +627,6 @@ std::tuple<Error, uint16_t> RpcServer::info(
         res.body = j.dump();
         return {SUCCESS, 503};
     }
-
-    const uint64_t difficulty = m_core->getDifficultyForNextBlock();
-
-    uint64_t total_conn = m_p2p->get_connections_count();
-    uint64_t outgoing_connections_count = m_p2p->get_outgoing_connections_count();
-
-    nlohmann::json upgradeHeights = nlohmann::json::array();
-    for (const uint64_t h : CryptoNote::parameters::FORK_HEIGHTS)
-    {
-        upgradeHeights.push_back(h);
-    }
-
-    nlohmann::json j;
-    j["height"] = height;
-    j["difficulty"] = difficulty;
-    /* Transaction count without coinbase transactions - one per block, so subtract height */
-    j["tx_count"] = m_core->getBlockchainTransactionCount() - height;
-    j["tx_pool_size"] = m_core->getPoolTransactionCount();
-    j["alt_blocks_count"] = m_core->getAlternativeBlockCount();
-    j["outgoing_connections_count"] = outgoing_connections_count;
-    j["incoming_connections_count"] = total_conn - outgoing_connections_count;
-    j["white_peerlist_size"] = m_p2p->getPeerlistManager().get_white_peers_count();
-    j["grey_peerlist_size"] = m_p2p->getPeerlistManager().get_gray_peers_count();
-    j["last_known_block_index"] = std::max(1u, m_syncManager->getObservedHeight()) - 1;
-    j["network_height"] = networkHeight;
-    j["upgrade_heights"] = upgradeHeights;
-    j["supported_height"] = CryptoNote::parameters::FORK_HEIGHTS_SIZE == 0
-        ? 0
-        : CryptoNote::parameters::FORK_HEIGHTS[CryptoNote::parameters::CURRENT_FORK_INDEX];
-    j["hashrate"] = static_cast<uint64_t>(round(difficulty / CryptoNote::parameters::DIFFICULTY_TARGET));
-    j["synced"] = (height == networkHeight);
-    j["pruned"] = m_syncManager->isPrunedNode();
-    j["prune_depth"] = m_syncManager->getPrunedNodeDepth();
-    j["prune_capability_active"] = m_syncManager->isPruneCapabilityActive();
-    j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
-    j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
-    j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
-    j["major_version"] = blockDetails.majorVersion;
-    j["minor_version"] = blockDetails.minorVersion;
-    j["version"] = PROJECT_VERSION;
-    j["status"] = "OK";
-    j["start_time"] = m_core->getStartTime();
-
-    res.body = j.dump();
-
-    return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t> RpcServer::height(

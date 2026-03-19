@@ -1402,7 +1402,17 @@ namespace CryptoNote
                            be in the pool that would now be considered invalid */
                         checkAndRemoveInvalidPoolTransactions(validatorState);
 
-                        copyTransactionsToPool(chainsLeaves[endpointIndex]);
+                        try
+                        {
+                            copyTransactionsToPool(chainsLeaves[endpointIndex]);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            logger(Logging::WARNING) << "Failed to copy transactions to pool after chain switch: " << e.what();
+                            /* Non-fatal: chain switch is already committed.
+                               Transactions from the old chain that are still valid
+                               will be re-added when peers relay them. */
+                        }
 
                         ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED;
 
@@ -3045,6 +3055,10 @@ namespace CryptoNote
     std::vector<Crypto::Hash> Core::doBuildSparseChain(const Crypto::Hash &blockHash) const
     {
         IBlockchainCache *chain = findSegmentContainingBlock(blockHash);
+        if (chain == nullptr)
+        {
+            throw std::runtime_error("doBuildSparseChain: block hash not found in any chain segment");
+        }
 
         uint32_t blockIndex = chain->getBlockIndex(blockHash);
 
@@ -3568,105 +3582,132 @@ namespace CryptoNote
     {
         throwIfNotInitialized();
 
-        IBlockchainCache *segment = findSegmentContainingBlock(blockHash);
-        if (segment == nullptr)
+        /* Retry once on transient failures caused by concurrent chain reorganization.
+           The segment pointer or its contents can become stale if addBlock() switches
+           the main chain between our find and use calls. */
+        for (uint32_t attempt = 0; attempt < 2; ++attempt)
         {
-            throw std::runtime_error("Requested hash wasn't found in blockchain.");
+            IBlockchainCache *segment = findSegmentContainingBlock(blockHash);
+            if (segment == nullptr)
+            {
+                if (attempt == 0)
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    continue;
+                }
+                throw std::runtime_error("Requested hash wasn't found in blockchain.");
+            }
+
+            try
+            {
+                uint32_t blockIndex = segment->getBlockIndex(blockHash);
+                BlockTemplate blockTemplate = restoreBlockTemplate(segment, blockIndex);
+
+                BlockDetails blockDetails;
+                blockDetails.majorVersion = blockTemplate.majorVersion;
+                blockDetails.minorVersion = blockTemplate.minorVersion;
+                blockDetails.timestamp = blockTemplate.timestamp;
+                blockDetails.prevBlockHash = blockTemplate.previousBlockHash;
+                blockDetails.nonce = blockTemplate.nonce;
+                blockDetails.hash = blockHash;
+
+                blockDetails.reward = 0;
+                for (const TransactionOutput &out : blockTemplate.baseTransaction.outputs)
+                {
+                    blockDetails.reward += out.amount;
+                }
+
+                blockDetails.index = blockIndex;
+                blockDetails.isAlternative = mainChainSet.count(segment) == 0;
+
+                blockDetails.difficulty = getBlockDifficulty(blockIndex);
+
+                std::vector<uint64_t> sizes = segment->getLastBlocksSizes(1, blockDetails.index, addGenesisBlock);
+                assert(sizes.size() == 1);
+                blockDetails.transactionsCumulativeSize = sizes.front();
+
+                uint64_t blockBlobSize = getObjectBinarySize(blockTemplate);
+                uint64_t coinbaseTransactionSize = getObjectBinarySize(blockTemplate.baseTransaction);
+                blockDetails.blockSize = blockBlobSize + blockDetails.transactionsCumulativeSize - coinbaseTransactionSize;
+
+                blockDetails.alreadyGeneratedCoins = segment->getAlreadyGeneratedCoins(blockDetails.index);
+                blockDetails.alreadyGeneratedTransactions = segment->getAlreadyGeneratedTransactions(blockDetails.index);
+
+                uint64_t prevBlockGeneratedCoins = 0;
+                blockDetails.sizeMedian = 0;
+                if (blockDetails.index > 0)
+                {
+                    auto lastBlocksSizes =
+                        segment->getLastBlocksSizes(currency.rewardBlocksWindow(), blockDetails.index - 1, addGenesisBlock);
+                    blockDetails.sizeMedian = Common::medianValue(lastBlocksSizes);
+                    prevBlockGeneratedCoins = segment->getAlreadyGeneratedCoins(blockDetails.index - 1);
+                }
+
+                int64_t emissionChange = 0;
+                bool result = currency.getBlockReward(
+                    blockDetails.majorVersion,
+                    blockDetails.sizeMedian,
+                    0,
+                    prevBlockGeneratedCoins,
+                    0,
+                    blockIndex,
+                    blockDetails.baseReward,
+                    emissionChange);
+                if (result)
+                {
+                }
+                assert(result);
+
+                uint64_t currentReward = 0;
+                result = currency.getBlockReward(
+                    blockDetails.majorVersion,
+                    blockDetails.sizeMedian,
+                    blockDetails.transactionsCumulativeSize,
+                    prevBlockGeneratedCoins,
+                    0,
+                    blockIndex,
+                    currentReward,
+                    emissionChange);
+                assert(result);
+
+                if (blockDetails.baseReward == 0 && currentReward == 0)
+                {
+                    blockDetails.penalty = static_cast<double>(0);
+                }
+                else
+                {
+                    assert(blockDetails.baseReward >= currentReward);
+                    blockDetails.penalty = static_cast<double>(blockDetails.baseReward - currentReward)
+                                           / static_cast<double>(blockDetails.baseReward);
+                }
+
+                blockDetails.transactions.reserve(blockTemplate.transactionHashes.size() + 1);
+                CachedTransaction cachedBaseTx(std::move(blockTemplate.baseTransaction));
+                blockDetails.transactions.push_back(getTransactionDetails(cachedBaseTx.getTransactionHash(), segment, false));
+
+                blockDetails.totalFeeAmount = 0;
+                for (const Crypto::Hash &transactionHash : blockTemplate.transactionHashes)
+                {
+                    blockDetails.transactions.push_back(getTransactionDetails(transactionHash, segment, false));
+                    blockDetails.totalFeeAmount += blockDetails.transactions.back().fee;
+                }
+
+                return blockDetails;
+            }
+            catch (const std::exception &e)
+            {
+                if (attempt == 0)
+                {
+                    logger(Logging::DEBUGGING) << "getBlockDetails(hash) failed, chain may be reorganizing: " << e.what();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    continue;
+                }
+                throw;
+            }
         }
 
-        uint32_t blockIndex = segment->getBlockIndex(blockHash);
-        BlockTemplate blockTemplate = restoreBlockTemplate(segment, blockIndex);
-
-        BlockDetails blockDetails;
-        blockDetails.majorVersion = blockTemplate.majorVersion;
-        blockDetails.minorVersion = blockTemplate.minorVersion;
-        blockDetails.timestamp = blockTemplate.timestamp;
-        blockDetails.prevBlockHash = blockTemplate.previousBlockHash;
-        blockDetails.nonce = blockTemplate.nonce;
-        blockDetails.hash = blockHash;
-
-        blockDetails.reward = 0;
-        for (const TransactionOutput &out : blockTemplate.baseTransaction.outputs)
-        {
-            blockDetails.reward += out.amount;
-        }
-
-        blockDetails.index = blockIndex;
-        blockDetails.isAlternative = mainChainSet.count(segment) == 0;
-
-        blockDetails.difficulty = getBlockDifficulty(blockIndex);
-
-        std::vector<uint64_t> sizes = segment->getLastBlocksSizes(1, blockDetails.index, addGenesisBlock);
-        assert(sizes.size() == 1);
-        blockDetails.transactionsCumulativeSize = sizes.front();
-
-        uint64_t blockBlobSize = getObjectBinarySize(blockTemplate);
-        uint64_t coinbaseTransactionSize = getObjectBinarySize(blockTemplate.baseTransaction);
-        blockDetails.blockSize = blockBlobSize + blockDetails.transactionsCumulativeSize - coinbaseTransactionSize;
-
-        blockDetails.alreadyGeneratedCoins = segment->getAlreadyGeneratedCoins(blockDetails.index);
-        blockDetails.alreadyGeneratedTransactions = segment->getAlreadyGeneratedTransactions(blockDetails.index);
-
-        uint64_t prevBlockGeneratedCoins = 0;
-        blockDetails.sizeMedian = 0;
-        if (blockDetails.index > 0)
-        {
-            auto lastBlocksSizes =
-                segment->getLastBlocksSizes(currency.rewardBlocksWindow(), blockDetails.index - 1, addGenesisBlock);
-            blockDetails.sizeMedian = Common::medianValue(lastBlocksSizes);
-            prevBlockGeneratedCoins = segment->getAlreadyGeneratedCoins(blockDetails.index - 1);
-        }
-
-        int64_t emissionChange = 0;
-        bool result = currency.getBlockReward(
-            blockDetails.majorVersion,
-            blockDetails.sizeMedian,
-            0,
-            prevBlockGeneratedCoins,
-            0,
-            blockIndex,
-            blockDetails.baseReward,
-            emissionChange);
-        if (result)
-        {
-        }
-        assert(result);
-
-        uint64_t currentReward = 0;
-        result = currency.getBlockReward(
-            blockDetails.majorVersion,
-            blockDetails.sizeMedian,
-            blockDetails.transactionsCumulativeSize,
-            prevBlockGeneratedCoins,
-            0,
-            blockIndex,
-            currentReward,
-            emissionChange);
-        assert(result);
-
-        if (blockDetails.baseReward == 0 && currentReward == 0)
-        {
-            blockDetails.penalty = static_cast<double>(0);
-        }
-        else
-        {
-            assert(blockDetails.baseReward >= currentReward);
-            blockDetails.penalty = static_cast<double>(blockDetails.baseReward - currentReward)
-                                   / static_cast<double>(blockDetails.baseReward);
-        }
-
-        blockDetails.transactions.reserve(blockTemplate.transactionHashes.size() + 1);
-        CachedTransaction cachedBaseTx(std::move(blockTemplate.baseTransaction));
-        blockDetails.transactions.push_back(getTransactionDetails(cachedBaseTx.getTransactionHash(), segment, false));
-
-        blockDetails.totalFeeAmount = 0;
-        for (const Crypto::Hash &transactionHash : blockTemplate.transactionHashes)
-        {
-            blockDetails.transactions.push_back(getTransactionDetails(transactionHash, segment, false));
-            blockDetails.totalFeeAmount += blockDetails.transactions.back().fee;
-        }
-
-        return blockDetails;
+        /* Unreachable, but keeps the compiler happy */
+        throw std::runtime_error("getBlockDetails(hash) failed after retries");
     }
 
     TransactionDetails Core::getTransactionDetails(const Crypto::Hash &transactionHash) const
