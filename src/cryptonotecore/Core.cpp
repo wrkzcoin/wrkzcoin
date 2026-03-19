@@ -360,7 +360,7 @@ namespace CryptoNote
             }
             catch (const std::exception &e)
             {
-                logger(Logging::DEBUG) << "buildSparseChain failed (attempt " << (attempt + 1)
+                logger(Logging::DEBUGGING) << "buildSparseChain failed (attempt " << (attempt + 1)
                                        << "/3), chain may be reorganizing: " << e.what();
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
@@ -3556,7 +3556,7 @@ namespace CryptoNote
         }
         catch (const std::exception &e)
         {
-            logger(Logging::DEBUG) << "Failed to get block details for height " << safeHeight
+            logger(Logging::DEBUGGING) << "Failed to get block details for height " << safeHeight
                                    << ", chain may be reorganizing (attempt " << (attempt + 1) << "/3)";
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
