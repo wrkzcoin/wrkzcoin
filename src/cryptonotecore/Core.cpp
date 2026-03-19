@@ -350,6 +350,23 @@ namespace CryptoNote
     std::vector<Crypto::Hash> Core::buildSparseChain() const
     {
         throwIfNotInitialized();
+
+        for (uint32_t attempt = 0; attempt < 3; ++attempt)
+        {
+            try
+            {
+                Crypto::Hash topBlockHash = chainsLeaves[0]->getTopBlockHash();
+                return doBuildSparseChain(topBlockHash);
+            }
+            catch (const std::exception &e)
+            {
+                logger(Logging::DEBUG) << "buildSparseChain failed (attempt " << (attempt + 1)
+                                       << "/3), chain may be reorganizing: " << e.what();
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+        }
+
+        /* Final attempt — let it throw if it still fails */
         Crypto::Hash topBlockHash = chainsLeaves[0]->getTopBlockHash();
         return doBuildSparseChain(topBlockHash);
     }
@@ -3508,14 +3525,26 @@ namespace CryptoNote
 
     BlockDetails Core::getBlockDetails(const uint32_t blockHeight, const uint32_t attempt) const
     {
-        if (attempt > 10)
+        if (attempt > 3)
         {
             throw std::runtime_error("Requested block height wasn't found in blockchain.");
         }
 
         throwIfNotInitialized();
 
-        IBlockchainCache *segment = findSegmentContainingBlock(blockHeight);
+        /* Re-clamp the requested height to the current top on retries,
+           because a reorg may have shortened the chain. */
+        uint32_t safeHeight = blockHeight;
+        if (attempt > 0)
+        {
+            uint32_t currentTop = chainsLeaves[0]->getTopBlockIndex();
+            if (safeHeight > currentTop)
+            {
+                safeHeight = currentTop;
+            }
+        }
+
+        IBlockchainCache *segment = findSegmentContainingBlock(safeHeight);
         if (segment == nullptr)
         {
             throw std::runtime_error("Requested block height wasn't found in blockchain.");
@@ -3523,14 +3552,15 @@ namespace CryptoNote
 
         try
         {
-            return getBlockDetails(segment->getBlockHash(blockHeight));
+            return getBlockDetails(segment->getBlockHash(safeHeight));
         }
-        catch (const std::out_of_range &e)
+        catch (const std::exception &e)
         {
-            logger(Logging::INFO) << "Failed to get block details, mid chain reorg";
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            logger(Logging::DEBUG) << "Failed to get block details for height " << safeHeight
+                                   << ", chain may be reorganizing (attempt " << (attempt + 1) << "/3)";
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-            return getBlockDetails(blockHeight, attempt+1);
+            return getBlockDetails(blockHeight, attempt + 1);
         }
     }
 

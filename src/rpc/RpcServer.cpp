@@ -570,7 +570,23 @@ std::tuple<Error, uint16_t> RpcServer::info(
 {
     const uint64_t height = m_core->getTopBlockIndex() + 1;
     const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
-    const auto blockDetails = m_core->getBlockDetails(height - 1);
+
+    BlockDetails blockDetails;
+    try
+    {
+        /* Re-read top index to avoid stale height after a reorg */
+        const uint32_t safeTop = m_core->getTopBlockIndex();
+        blockDetails = m_core->getBlockDetails(safeTop);
+    }
+    catch (const std::exception &)
+    {
+        nlohmann::json j;
+        j["status"] = "BUSY";
+        j["error"] = "Chain is reorganizing, please retry shortly";
+        res.body = j.dump();
+        return {SUCCESS, 503};
+    }
+
     const uint64_t difficulty = m_core->getDifficultyForNextBlock();
 
     uint64_t total_conn = m_p2p->get_connections_count();
@@ -1200,43 +1216,60 @@ std::tuple<Error, uint16_t> RpcServer::getLastBlockHeader(
     httplib::Response &res,
     const nlohmann::json &body)
 {
-    const auto height = m_core->getTopBlockIndex();
-    const auto hash = m_core->getBlockHashByIndex(height);
-    const auto topBlock = m_core->getBlockByHash(hash);
-    const auto outputs = topBlock.baseTransaction.outputs;
-    const auto extraDetails = m_core->getBlockDetails(hash);
+    try
+    {
+        const auto height = m_core->getTopBlockIndex();
+        const auto hash = m_core->getBlockHashByIndex(height);
 
-    const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
-        [](const auto acc, const auto out) {
-            return acc + out.amount;
+        if (hash == CryptoNote::Constants::NULL_HASH)
+        {
+            throw std::runtime_error("Top block hash is null during chain reorganization");
         }
-    );
 
-    nlohmann::json blockHeader;
-    blockHeader["major_version"] = topBlock.majorVersion;
-    blockHeader["minor_version"] = topBlock.minorVersion;
-    blockHeader["timestamp"] = topBlock.timestamp;
-    blockHeader["prev_hash"] = Common::podToHex(topBlock.previousBlockHash);
-    blockHeader["nonce"] = topBlock.nonce;
-    blockHeader["orphan_status"] = extraDetails.isAlternative;
-    blockHeader["height"] = height;
-    blockHeader["depth"] = uint64_t(0);
-    blockHeader["hash"] = Common::podToHex(hash);
-    blockHeader["difficulty"] = m_core->getBlockDifficulty(height);
-    blockHeader["reward"] = reward;
-    blockHeader["num_txes"] = extraDetails.transactions.size();
-    blockHeader["block_size"] = extraDetails.blockSize;
+        const auto topBlock = m_core->getBlockByHash(hash);
+        const auto outputs = topBlock.baseTransaction.outputs;
+        const auto extraDetails = m_core->getBlockDetails(hash);
 
-    nlohmann::json result;
-    result["status"] = "OK";
-    result["block_header"] = blockHeader;
+        const uint64_t reward = std::accumulate(outputs.begin(), outputs.end(), 0ull,
+            [](const auto acc, const auto out) {
+                return acc + out.amount;
+            }
+        );
 
-    nlohmann::json j;
-    j["jsonrpc"] = "2.0";
-    j["result"] = result;
-    res.body = j.dump();
+        nlohmann::json blockHeader;
+        blockHeader["major_version"] = topBlock.majorVersion;
+        blockHeader["minor_version"] = topBlock.minorVersion;
+        blockHeader["timestamp"] = topBlock.timestamp;
+        blockHeader["prev_hash"] = Common::podToHex(topBlock.previousBlockHash);
+        blockHeader["nonce"] = topBlock.nonce;
+        blockHeader["orphan_status"] = extraDetails.isAlternative;
+        blockHeader["height"] = height;
+        blockHeader["depth"] = uint64_t(0);
+        blockHeader["hash"] = Common::podToHex(hash);
+        blockHeader["difficulty"] = m_core->getBlockDifficulty(height);
+        blockHeader["reward"] = reward;
+        blockHeader["num_txes"] = extraDetails.transactions.size();
+        blockHeader["block_size"] = extraDetails.blockSize;
 
-    return {SUCCESS, 200};
+        nlohmann::json result;
+        result["status"] = "OK";
+        result["block_header"] = blockHeader;
+
+        nlohmann::json j;
+        j["jsonrpc"] = "2.0";
+        j["result"] = result;
+        res.body = j.dump();
+
+        return {SUCCESS, 200};
+    }
+    catch (const std::exception &e)
+    {
+        nlohmann::json j;
+        j["jsonrpc"] = "2.0";
+        j["error"] = {{"code", -9}, {"message", "Chain is reorganizing, please retry shortly"}};
+        res.body = j.dump();
+        return {SUCCESS, 503};
+    }
 }
 
 std::tuple<Error, uint16_t> RpcServer::getBlockHeaderByHash(
