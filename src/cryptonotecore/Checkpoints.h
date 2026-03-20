@@ -10,6 +10,7 @@
 
 #include <logging/LoggerRef.h>
 #include <map>
+#include <mutex>
 
 namespace CryptoNote
 {
@@ -28,8 +29,16 @@ namespace CryptoNote
 
         bool checkBlock(uint32_t index, const Crypto::Hash &h, bool &isCheckpoint) const;
 
+        /* Add a dynamic checkpoint at runtime (e.g. when network consensus confirms
+           a block that local validation rejected).  Returns true if inserted. */
+        bool addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash);
+
       private:
         std::map<uint32_t, Crypto::Hash> points;
+
+        /* Protects `points` against concurrent reads/writes when dynamic
+           checkpoints are inserted while validation threads are reading. */
+        mutable std::mutex m_mutex;
 
         Logging::LoggerRef logger;
     };

@@ -103,12 +103,14 @@ namespace CryptoNote
     //---------------------------------------------------------------------------
     bool Checkpoints::isInCheckpointZone(uint32_t index) const
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
         return !points.empty() && (index <= (--points.end())->first);
     }
 
     //---------------------------------------------------------------------------
     bool Checkpoints::checkBlock(uint32_t index, const Crypto::Hash &h, bool &isCheckpoint) const
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
         auto it = points.find(index);
         isCheckpoint = it != points.end();
         if (!isCheckpoint)
@@ -137,6 +139,20 @@ namespace CryptoNote
     {
         bool ignored;
         return checkBlock(index, h, ignored);
+    }
+
+    //---------------------------------------------------------------------------
+    bool Checkpoints::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto result = points.insert({height, hash});
+        if (!result.second)
+        {
+            /* Height already has a checkpoint — only accept if the hash matches. */
+            return result.first->second == hash;
+        }
+        logger(INFO) << "Dynamic checkpoint added at height " << height << " hash " << hash;
+        return true;
     }
 
 } // namespace CryptoNote

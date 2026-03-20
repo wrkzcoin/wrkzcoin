@@ -2927,6 +2927,16 @@ namespace CryptoNote
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
     }
 
+    void Core::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
+    {
+        if (checkpoints.addDynamicCheckpoint(height, hash))
+        {
+            logger(Logging::WARNING) << "Dynamic checkpoint registered at height " << height
+                                     << " (hash " << hash << "). "
+                                     << "Consider --resync to repair local database.";
+        }
+    }
+
     size_t Core::pruneRawBlocks(uint32_t pruneDepth)
     {
         if (pruneDepth == 0)
