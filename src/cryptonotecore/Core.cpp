@@ -1392,6 +1392,8 @@ namespace CryptoNote
                         std::move(rawBlock));
                     logger(Logging::DEBUGGING) << "Block " << blockStr << " added to alternative chain.";
 
+                    pruneStaleAlternativeChains();
+
                     auto mainChainCache = chainsLeaves[0];
                     if (cache->getCurrentCumulativeDifficulty() > mainChainCache->getCurrentCumulativeDifficulty())
                     {
@@ -1453,6 +1455,8 @@ namespace CryptoNote
 
                 updateMainChainSet();
                 updateBlockMedianSize();
+
+                pruneStaleAlternativeChains();
             }
         }
         else
