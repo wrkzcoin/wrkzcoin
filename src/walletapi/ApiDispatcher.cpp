@@ -493,7 +493,7 @@ bool ApiDispatcher::checkAuthenticated(const httplib::Request &req, httplib::Res
 
 std::tuple<Error, uint16_t> ApiDispatcher::openWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     const auto [daemonHost, daemonPort, daemonSSL, filename, password] = getDefaultWalletParams(body);
 
@@ -508,7 +508,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::openWallet(const httplib::Request &re
 std::tuple<Error, uint16_t>
     ApiDispatcher::keyImportWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     const auto [daemonHost, daemonPort, daemonSSL, filename, password] = getDefaultWalletParams(body);
 
@@ -541,7 +541,7 @@ std::tuple<Error, uint16_t>
 std::tuple<Error, uint16_t>
     ApiDispatcher::seedImportWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     const auto [daemonHost, daemonPort, daemonSSL, filename, password] = getDefaultWalletParams(body);
 
@@ -565,7 +565,7 @@ std::tuple<Error, uint16_t>
 std::tuple<Error, uint16_t>
     ApiDispatcher::importViewWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     const auto [daemonHost, daemonPort, daemonSSL, filename, password] = getDefaultWalletParams(body);
 
@@ -597,7 +597,7 @@ std::tuple<Error, uint16_t>
 
 std::tuple<Error, uint16_t> ApiDispatcher::createWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     const auto [daemonHost, daemonPort, daemonSSL, filename, password] = getDefaultWalletParams(body);
 
@@ -1056,7 +1056,7 @@ std::tuple<Error, uint16_t>
 
 std::tuple<Error, uint16_t> ApiDispatcher::closeWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
+    /* m_mutex is already held exclusively by middleware() for write operations */
 
     m_walletBackend = nullptr;
 

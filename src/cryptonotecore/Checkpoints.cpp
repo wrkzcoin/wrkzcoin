@@ -139,6 +139,7 @@ namespace CryptoNote
     //---------------------------------------------------------------------------
     bool Checkpoints::checkBlock(uint32_t index, const Crypto::Hash &h) const
     {
+        /* No lock here — delegates to the 3-arg overload which already locks. */
         bool ignored;
         return checkBlock(index, h, ignored);
     }
