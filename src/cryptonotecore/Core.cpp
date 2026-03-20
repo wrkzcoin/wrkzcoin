@@ -3488,6 +3488,40 @@ namespace CryptoNote
                                        << " exceeds cap " << maxAltChains;
             deleteLeaf(weakest);
         }
+
+        /* Pass 3: if total alt BLOCK count still exceeds the cap, keep
+           pruning weakest leaves.  This handles the case where few leaves
+           each carry many blocks (deep micro-forks). */
+        const size_t maxAltBlocks = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_COUNT;
+        auto countAltBlocks = [this]() -> size_t {
+            using Ptr = decltype(chainsStorage)::value_type;
+            return std::accumulate(chainsStorage.begin(), chainsStorage.end(), size_t(0),
+                [this](size_t sum, const Ptr &ptr) {
+                    return mainChainSet.count(ptr.get()) == 0 ? sum + ptr->getBlockCount() : sum;
+                });
+        };
+
+        while (chainsLeaves.size() > 1 && countAltBlocks() > maxAltBlocks)
+        {
+            size_t weakest = 1;
+            uint64_t weakestDiff = chainsLeaves[1]->getCurrentCumulativeDifficulty();
+
+            for (size_t i = 2; i < chainsLeaves.size(); ++i)
+            {
+                const auto diff = chainsLeaves[i]->getCurrentCumulativeDifficulty();
+                if (diff < weakestDiff)
+                {
+                    weakestDiff = diff;
+                    weakest = i;
+                }
+            }
+
+            logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
+                                       << ", tip height " << chainsLeaves[weakest]->getTopBlockIndex()
+                                       << ") — total alt blocks " << countAltBlocks()
+                                       << " exceeds cap " << maxAltBlocks;
+            deleteLeaf(weakest);
+        }
     }
 
     void Core::deleteLeaf(size_t leafIndex)

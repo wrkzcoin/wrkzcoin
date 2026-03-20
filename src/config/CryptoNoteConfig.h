@@ -298,6 +298,7 @@ namespace CryptoNote
 
         const uint32_t CRYPTONOTE_MAX_ALT_BLOCK_DEPTH = 180; // prune alt chains whose tip is this many blocks behind main
         const size_t CRYPTONOTE_MAX_ALT_CHAIN_COUNT = 50; // max alt chain leaves to keep; excess pruned by lowest cumulative difficulty
+        const size_t CRYPTONOTE_MAX_ALT_BLOCK_COUNT = 100; // max total alt blocks across all chains; excess pruned by weakest leaf
         const uint64_t CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL =
             7; // CRYPTONOTE_NUMBER_OF_PERIODS_TO_FORGET_TX_DELETED_FROM_POOL * CRYPTONOTE_MEMPOOL_TX_LIVETIME = time to
                // forget tx
