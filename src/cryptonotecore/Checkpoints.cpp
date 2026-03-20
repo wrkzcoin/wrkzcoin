@@ -15,7 +15,9 @@ using namespace Logging;
 namespace CryptoNote
 {
     //---------------------------------------------------------------------------
-    Checkpoints::Checkpoints(std::shared_ptr<Logging::ILogger> log): logger(log, "checkpoints") {}
+    Checkpoints::Checkpoints(std::shared_ptr<Logging::ILogger> log):
+        m_mutex(std::make_unique<std::mutex>()),
+        logger(log, "checkpoints") {}
 
     //---------------------------------------------------------------------------
     bool Checkpoints::addCheckpoint(uint32_t index, const std::string &hash_str)
@@ -103,14 +105,14 @@ namespace CryptoNote
     //---------------------------------------------------------------------------
     bool Checkpoints::isInCheckpointZone(uint32_t index) const
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(*m_mutex);
         return !points.empty() && (index <= (--points.end())->first);
     }
 
     //---------------------------------------------------------------------------
     bool Checkpoints::checkBlock(uint32_t index, const Crypto::Hash &h, bool &isCheckpoint) const
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(*m_mutex);
         auto it = points.find(index);
         isCheckpoint = it != points.end();
         if (!isCheckpoint)
@@ -144,7 +146,7 @@ namespace CryptoNote
     //---------------------------------------------------------------------------
     bool Checkpoints::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(*m_mutex);
         auto result = points.insert({height, hash});
         if (!result.second)
         {
