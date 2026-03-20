@@ -1377,6 +1377,8 @@ namespace CryptoNote
 
                     notifyObservers(
                         makeDelTransactionMessage(std::move(hashes), Messages::DeleteTransaction::Reason::InBlock));
+
+                    pruneStaleAlternativeChains();
                 }
                 else
                 {
@@ -3431,6 +3433,31 @@ namespace CryptoNote
         while (chainsLeaves.size() > 1)
         {
             deleteLeaf(1);
+        }
+    }
+
+    void Core::pruneStaleAlternativeChains()
+    {
+        if (chainsLeaves.size() <= 1)
+        {
+            return;
+        }
+
+        const auto mainTopIndex = chainsLeaves[0]->getTopBlockIndex();
+
+        /* Iterate backwards so that deleteLeaf() index removal doesn't
+           invalidate indices we haven't visited yet. */
+        for (size_t i = chainsLeaves.size() - 1; i >= 1; --i)
+        {
+            const auto altTopIndex = chainsLeaves[i]->getTopBlockIndex();
+            if (mainTopIndex > altTopIndex
+                && (mainTopIndex - altTopIndex) > CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_DEPTH)
+            {
+                logger(Logging::DEBUGGING) << "Pruning stale alt chain (leaf " << i
+                                           << ", tip height " << altTopIndex
+                                           << ", depth behind main: " << (mainTopIndex - altTopIndex) << ")";
+                deleteLeaf(i);
+            }
         }
     }
 

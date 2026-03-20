@@ -389,6 +389,8 @@ namespace CryptoNote
 
         void deleteAlternativeChains();
 
+        void pruneStaleAlternativeChains();
+
         void deleteLeaf(size_t leafIndex);
 
         void mergeMainChainSegments();
