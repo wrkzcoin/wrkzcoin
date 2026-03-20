@@ -389,7 +389,7 @@ namespace CryptoNote
 
         void deleteAlternativeChains();
 
-        void pruneStaleAlternativeChains();
+        void pruneStaleAlternativeChains(IBlockchainCache *exclude = nullptr);
 
         void deleteLeaf(size_t leafIndex);
 

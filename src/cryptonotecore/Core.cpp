@@ -1392,8 +1392,6 @@ namespace CryptoNote
                         std::move(rawBlock));
                     logger(Logging::DEBUGGING) << "Block " << blockStr << " added to alternative chain.";
 
-                    pruneStaleAlternativeChains();
-
                     auto mainChainCache = chainsLeaves[0];
                     if (cache->getCurrentCumulativeDifficulty() > mainChainCache->getCurrentCumulativeDifficulty())
                     {
@@ -1455,8 +1453,6 @@ namespace CryptoNote
 
                 updateMainChainSet();
                 updateBlockMedianSize();
-
-                pruneStaleAlternativeChains();
             }
         }
         else
@@ -1498,6 +1494,14 @@ namespace CryptoNote
                 std::move(rawBlock));
 
             updateMainChainSet();
+        }
+
+        /* Prune alt chains after every block (main or alt).  Skip the
+           cache we just wrote to so its pointer stays valid for
+           notifyOnSuccess below. */
+        if (ret != error::AddBlockErrorCode::ADDED_TO_MAIN)
+        {
+            pruneStaleAlternativeChains(cache);
         }
 
         logger(Logging::DEBUGGING) << "Block: " << blockStr << " successfully added";
@@ -3440,7 +3444,7 @@ namespace CryptoNote
         }
     }
 
-    void Core::pruneStaleAlternativeChains()
+    void Core::pruneStaleAlternativeChains(IBlockchainCache *exclude)
     {
         if (chainsLeaves.size() <= 1)
         {
@@ -3452,6 +3456,11 @@ namespace CryptoNote
         /* Pass 1: prune alt chains whose tip is too far behind main chain. */
         for (size_t i = chainsLeaves.size() - 1; i >= 1; --i)
         {
+            if (chainsLeaves[i] == exclude)
+            {
+                continue;
+            }
+
             const auto altTopIndex = chainsLeaves[i]->getTopBlockIndex();
             if (mainTopIndex > altTopIndex
                 && (mainTopIndex - altTopIndex) > CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_DEPTH)
@@ -3463,20 +3472,19 @@ namespace CryptoNote
             }
         }
 
-        /* Pass 2: if too many alt chain leaves remain, drop the weakest
-           (lowest cumulative difficulty) until we are at the cap.
-           This handles hundreds of shallow micro-forks from miners on
-           slightly stale tips. */
-        const size_t maxAltChains = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_CHAIN_COUNT;
-        while (chainsLeaves.size() > 1 + maxAltChains)
-        {
-            /* Find the leaf (excluding main chain at index 0) with the
-               lowest cumulative difficulty — least likely to ever win. */
-            size_t weakest = 1;
-            uint64_t weakestDiff = chainsLeaves[1]->getCurrentCumulativeDifficulty();
+        /* Helper: find the weakest leaf (lowest cumulative difficulty),
+           skipping main chain (index 0) and the excluded pointer. */
+        auto findWeakest = [this, exclude]() -> size_t {
+            size_t weakest = 0;
+            uint64_t weakestDiff = std::numeric_limits<uint64_t>::max();
 
-            for (size_t i = 2; i < chainsLeaves.size(); ++i)
+            for (size_t i = 1; i < chainsLeaves.size(); ++i)
             {
+                if (chainsLeaves[i] == exclude)
+                {
+                    continue;
+                }
+
                 const auto diff = chainsLeaves[i]->getCurrentCumulativeDifficulty();
                 if (diff < weakestDiff)
                 {
@@ -3485,17 +3493,30 @@ namespace CryptoNote
                 }
             }
 
+            return weakest; // 0 means nothing eligible found
+        };
+
+        /* Pass 2: if too many alt chain leaves remain, drop the weakest
+           (lowest cumulative difficulty) until we are at the cap. */
+        const size_t maxAltChains = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_CHAIN_COUNT;
+        while (chainsLeaves.size() > 1 + maxAltChains)
+        {
+            const size_t weakest = findWeakest();
+            if (weakest == 0)
+            {
+                break;
+            }
+
             logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
                                        << ", tip height " << chainsLeaves[weakest]->getTopBlockIndex()
-                                       << ", cumulative difficulty " << weakestDiff
+                                       << ", cumulative difficulty " << chainsLeaves[weakest]->getCurrentCumulativeDifficulty()
                                        << ") — alt chain count " << (chainsLeaves.size() - 1)
                                        << " exceeds cap " << maxAltChains;
             deleteLeaf(weakest);
         }
 
         /* Pass 3: if total alt BLOCK count still exceeds the cap, keep
-           pruning weakest leaves.  This handles the case where few leaves
-           each carry many blocks (deep micro-forks). */
+           pruning weakest leaves. */
         const size_t maxAltBlocks = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_COUNT;
         auto countAltBlocks = [this]() -> size_t {
             using Ptr = decltype(chainsStorage)::value_type;
@@ -3507,17 +3528,10 @@ namespace CryptoNote
 
         while (chainsLeaves.size() > 1 && countAltBlocks() > maxAltBlocks)
         {
-            size_t weakest = 1;
-            uint64_t weakestDiff = chainsLeaves[1]->getCurrentCumulativeDifficulty();
-
-            for (size_t i = 2; i < chainsLeaves.size(); ++i)
+            const size_t weakest = findWeakest();
+            if (weakest == 0)
             {
-                const auto diff = chainsLeaves[i]->getCurrentCumulativeDifficulty();
-                if (diff < weakestDiff)
-                {
-                    weakestDiff = diff;
-                    weakest = i;
-                }
+                break;
             }
 
             logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
