@@ -3445,8 +3445,7 @@ namespace CryptoNote
 
         const auto mainTopIndex = chainsLeaves[0]->getTopBlockIndex();
 
-        /* Iterate backwards so that deleteLeaf() index removal doesn't
-           invalidate indices we haven't visited yet. */
+        /* Pass 1: prune alt chains whose tip is too far behind main chain. */
         for (size_t i = chainsLeaves.size() - 1; i >= 1; --i)
         {
             const auto altTopIndex = chainsLeaves[i]->getTopBlockIndex();
@@ -3458,6 +3457,36 @@ namespace CryptoNote
                                            << ", depth behind main: " << (mainTopIndex - altTopIndex) << ")";
                 deleteLeaf(i);
             }
+        }
+
+        /* Pass 2: if too many alt chain leaves remain, drop the weakest
+           (lowest cumulative difficulty) until we are at the cap.
+           This handles hundreds of shallow micro-forks from miners on
+           slightly stale tips. */
+        const size_t maxAltChains = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_CHAIN_COUNT;
+        while (chainsLeaves.size() > 1 + maxAltChains)
+        {
+            /* Find the leaf (excluding main chain at index 0) with the
+               lowest cumulative difficulty — least likely to ever win. */
+            size_t weakest = 1;
+            uint64_t weakestDiff = chainsLeaves[1]->getCurrentCumulativeDifficulty();
+
+            for (size_t i = 2; i < chainsLeaves.size(); ++i)
+            {
+                const auto diff = chainsLeaves[i]->getCurrentCumulativeDifficulty();
+                if (diff < weakestDiff)
+                {
+                    weakestDiff = diff;
+                    weakest = i;
+                }
+            }
+
+            logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
+                                       << ", tip height " << chainsLeaves[weakest]->getTopBlockIndex()
+                                       << ", cumulative difficulty " << weakestDiff
+                                       << ") — alt chain count " << (chainsLeaves.size() - 1)
+                                       << " exceeds cap " << maxAltChains;
+            deleteLeaf(weakest);
         }
     }
 
