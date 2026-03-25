@@ -165,6 +165,13 @@ void MasternodeSigner::chainLockLoop()
 
                 // Get active set and compute quorum for this block.
                 const auto activeSet = m_core.getActiveMasternodeSet(height);
+
+                // Need at least CHAINLOCK_QUORUM_SIZE active MNs for a valid quorum.
+                if (activeSet.size() < CryptoNote::parameters::CHAINLOCK_QUORUM_SIZE)
+                {
+                    continue;
+                }
+
                 const auto quorum = CryptoNote::MasternodeQuorum::selectQuorum(
                     activeSet,
                     blockHash,
