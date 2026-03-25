@@ -82,6 +82,11 @@ namespace CryptoNote
         {
             return;
         }
+        // Only Registered or Inactive masternodes can be activated.
+        if (it->second.status != Status::Registered && it->second.status != Status::Inactive)
+        {
+            return;
+        }
         it->second.status = Status::Active;
         it->second.deactivationHeight.reset();
     }
@@ -90,6 +95,11 @@ namespace CryptoNote
     {
         const auto it = m_states.find(masternodeId);
         if (it == m_states.end())
+        {
+            return;
+        }
+        // Only Active masternodes can be deactivated.
+        if (it->second.status != Status::Active)
         {
             return;
         }
@@ -104,6 +114,11 @@ namespace CryptoNote
         {
             return;
         }
+        // Only Active or Inactive masternodes can be penalized.
+        if (it->second.status != Status::Active && it->second.status != Status::Inactive)
+        {
+            return;
+        }
         it->second.status = Status::Penalized;
         it->second.deactivationHeight = height;
     }
@@ -112,6 +127,11 @@ namespace CryptoNote
     {
         const auto it = m_states.find(masternodeId);
         if (it == m_states.end())
+        {
+            return;
+        }
+        // Cannot revoke an already-revoked masternode.
+        if (it->second.status == Status::Revoked)
         {
             return;
         }
@@ -461,7 +481,9 @@ namespace CryptoNote
 
         result.hasMasternodeWinner = true;
         result.masternodeWinner = winner;
-        result.masternodeReward = (totalReward * masternodePercent) / 100;
+        // Use __uint128_t to prevent overflow when totalReward * masternodePercent exceeds uint64_t.
+        result.masternodeReward = static_cast<uint64_t>(
+            (static_cast<__uint128_t>(totalReward) * masternodePercent) / 100);
         result.powReward = totalReward - result.masternodeReward;
         return result;
     }

@@ -74,6 +74,12 @@ namespace CryptoNote
         // Remove locks and pending votes for txs that have not confirmed within expiry.
         void pruneExpired(uint32_t currentHeight, uint64_t expiryBlocks);
 
+        // Serialize finalized locks to JSON string for persistence.
+        std::string toJson() const;
+
+        // Deserialize finalized locks from JSON string. Returns false on parse error.
+        bool fromJson(const std::string &json);
+
       private:
         // Finalized locks: keyImage -> InstantSendLock
         // Multiple keyImages may point to the same lock (one lock covers all inputs).

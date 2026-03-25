@@ -1982,6 +1982,9 @@ namespace CryptoNote
         const uint32_t top = mainChain->getTopBlockIndex();
         if (!buildMasternodeStateForChain(mainChain, top, masternodeStateTracker))
         {
+            logger(Logging::ERROR)
+                << "rebuildMasternodeStateFromMainChain: buildMasternodeStateForChain failed at top="
+                << top << " — tracker cleared, masternode rewards will be disabled until next successful rebuild";
             masternodeStateTracker.clear();
         }
     }
@@ -2391,6 +2394,30 @@ namespace CryptoNote
                 }
 
                 return transactionValidationResult;
+            }
+
+            // InstantSend enforcement: reject block transactions that conflict with IS locks.
+            // Only applies on the main chain where we maintain IS state.
+            if (cache == chainsLeaves[0] && isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()))
+            {
+                const auto &tx = transaction.getTransaction();
+                const auto txHash = transaction.getTransactionHash();
+                for (const auto &input : tx.inputs)
+                {
+                    if (input.type() != typeid(KeyInput))
+                    {
+                        continue;
+                    }
+                    const auto &keyInput = boost::get<KeyInput>(input);
+                    if (m_instantSendManager.isConflict(keyInput.keyImage, txHash))
+                    {
+                        logger(Logging::WARNING) << "Block " << blockStr
+                                                 << " contains transaction " << txHash
+                                                 << " that conflicts with an InstantSend lock on input "
+                                                 << Common::podToHex(keyInput.keyImage) << " — rejected";
+                        return error::BlockValidationError::TRANSACTION_INCONSISTENCY;
+                    }
+                }
             }
 
             if (useValidationMasternodeTracker)
@@ -4316,6 +4343,7 @@ namespace CryptoNote
         root["top_height"] = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
         root["state"] = masternodeStateTracker.toJson();
         root["chainlocks"] = m_chainLockManager.toJson();
+        root["instantsend"] = m_instantSendManager.toJson();
         const std::string blob = root.dump();
 
         if (!chainsLeaves.empty())
@@ -4417,6 +4445,19 @@ namespace CryptoNote
             catch (const std::exception &e)
             {
                 logger(Logging::WARNING) << "Failed to restore ChainLock data from snapshot: " << e.what();
+            }
+        }
+
+        // Restore InstantSend locks if present (field may be absent in older snapshots).
+        if (root.contains("instantsend"))
+        {
+            try
+            {
+                m_instantSendManager.fromJson(root.at("instantsend").get<std::string>());
+            }
+            catch (const std::exception &e)
+            {
+                logger(Logging::WARNING) << "Failed to restore InstantSend data from snapshot: " << e.what();
             }
         }
 

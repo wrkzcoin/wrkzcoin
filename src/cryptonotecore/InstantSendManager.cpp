@@ -5,8 +5,10 @@
 #include "InstantSendManager.h"
 
 #include <algorithm>
+#include <common/StringTools.h>
 #include <crypto/crypto.h>
 #include <crypto/hash.h>
+#include "json.hpp"
 
 namespace CryptoNote
 {
@@ -207,6 +209,104 @@ namespace CryptoNote
         {
             m_locks[ki] = lock;
         }
+    }
+
+    std::string InstantSendManager::toJson() const
+    {
+        // Deduplicate locks (multiple keyImages may point to the same lock).
+        std::map<Crypto::Hash, const InstantSendLock *> uniqueLocks;
+        for (const auto &[ki, lock] : m_locks)
+        {
+            uniqueLocks[lock.txHash] = &lock;
+        }
+
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &[txHash, lockPtr] : uniqueLocks)
+        {
+            nlohmann::json jLock;
+            jLock["tx_hash"] = Common::podToHex(lockPtr->txHash);
+            jLock["locked_at_height"] = lockPtr->lockedAtHeight;
+
+            nlohmann::json kiArr = nlohmann::json::array();
+            for (const auto &ki : lockPtr->keyImages)
+            {
+                kiArr.push_back(Common::podToHex(ki));
+            }
+            jLock["key_images"] = kiArr;
+
+            nlohmann::json voteArr = nlohmann::json::array();
+            for (const auto &vote : lockPtr->votes)
+            {
+                nlohmann::json jVote;
+                jVote["tx_hash"] = Common::podToHex(vote.txHash);
+                jVote["mn_id"] = Common::podToHex(vote.masternodeId);
+                jVote["signing_key"] = Common::podToHex(vote.signingKey);
+                jVote["signature"] = Common::podToHex(vote.signature);
+                voteArr.push_back(jVote);
+            }
+            jLock["votes"] = voteArr;
+            arr.push_back(jLock);
+        }
+
+        return arr.dump();
+    }
+
+    bool InstantSendManager::fromJson(const std::string &json)
+    {
+        nlohmann::json arr;
+        try
+        {
+            arr = nlohmann::json::parse(json);
+        }
+        catch (const std::exception &)
+        {
+            return false;
+        }
+
+        if (!arr.is_array())
+        {
+            return false;
+        }
+
+        // Clear existing finalized locks (pending state is not persisted).
+        m_locks.clear();
+
+        for (const auto &jLock : arr)
+        {
+            InstantSendLock lock;
+            if (!Common::podFromHex(jLock.at("tx_hash").get<std::string>(), lock.txHash))
+            {
+                return false;
+            }
+            lock.lockedAtHeight = jLock.at("locked_at_height").get<uint32_t>();
+
+            for (const auto &kiHex : jLock.at("key_images"))
+            {
+                Crypto::KeyImage ki;
+                if (!Common::podFromHex(kiHex.get<std::string>(), ki))
+                {
+                    return false;
+                }
+                lock.keyImages.push_back(ki);
+            }
+
+            for (const auto &jVote : jLock.at("votes"))
+            {
+                InstantSendVote vote;
+                if (!Common::podFromHex(jVote.at("tx_hash").get<std::string>(), vote.txHash)
+                    || !Common::podFromHex(jVote.at("mn_id").get<std::string>(), vote.masternodeId)
+                    || !Common::podFromHex(jVote.at("signing_key").get<std::string>(), vote.signingKey)
+                    || !Common::podFromHex(jVote.at("signature").get<std::string>(), vote.signature))
+                {
+                    return false;
+                }
+                lock.votes.push_back(vote);
+            }
+
+            storeLock(lock);
+        }
+
+        return true;
     }
 
 } // namespace CryptoNote

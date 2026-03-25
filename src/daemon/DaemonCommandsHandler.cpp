@@ -802,8 +802,9 @@ bool DaemonCommandsHandler::masternodes(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document countDoc;
-    if (countDoc.Parse(countRes->body.c_str()).HasParseError() || !countDoc.IsObject())
+    nlohmann::json countDoc;
+    try { countDoc = nlohmann::json::parse(countRes->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Invalid response from /masternodes/count") << std::endl;
         return false;
@@ -821,8 +822,9 @@ bool DaemonCommandsHandler::masternodes(const std::vector<std::string> &args)
         return false;
     }
 
-    rapidjson::Document listDoc;
-    if (listDoc.Parse(listRes->body.c_str()).HasParseError() || !listDoc.IsObject())
+    nlohmann::json listDoc;
+    try { listDoc = nlohmann::json::parse(listRes->body); }
+    catch (const nlohmann::json::parse_error &)
     {
         std::cout << WarningMsg("Invalid response from /masternodes list") << std::endl;
         return false;
@@ -835,7 +837,7 @@ bool DaemonCommandsHandler::masternodes(const std::vector<std::string> &args)
     }
 
     const auto &mnArray = getArrayFromJSON(listDoc, "masternodes");
-    if (mnArray.Empty())
+    if (mnArray.empty())
     {
         std::cout << InformationMsg("No masternodes in requested page.") << std::endl;
         return true;
