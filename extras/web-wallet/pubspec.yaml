@@ -1,0 +1,55 @@
+name: pluton_web_wallet
+description: "PLUTON Web — WRKZ Web Wallet powered by WrkzCoin (WebAssembly)"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Localization
+  flutter_localizations:
+    sdk: flutter
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # Secure local storage (uses localStorage on web)
+  flutter_secure_storage: ^9.2.4
+
+  # QR code display (pure Dart — works on web)
+  qr_flutter: ^4.1.0
+
+  # Path utilities
+  path: ^1.9.1
+
+  # Icons
+  cupertino_icons: ^1.0.8
+
+  # URL launcher (has web support)
+  url_launcher: ^6.3.1
+
+  # Intl (number/date formatting)
+  intl: ^0.20.2
+
+  # JS interop for WASM bridge
+  web: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  generate: true
+  uses-material-design: true
+
+  assets:
+    - assets/images/

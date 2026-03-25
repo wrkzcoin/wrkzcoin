@@ -318,9 +318,9 @@ namespace CryptoNote
 
     BlockTemplate Core::getBlockByIndex(uint32_t index) const
     {
+        std::shared_lock lock(m_chainMutex);
         assert(!chainsStorage.empty());
         assert(!chainsLeaves.empty());
-        assert(index <= getTopBlockIndex());
 
         throwIfNotInitialized();
         IBlockchainCache *segment = findMainChainSegmentContainingBlock(index);
@@ -331,6 +331,7 @@ namespace CryptoNote
 
     BlockTemplate Core::getBlockByHash(const Crypto::Hash &blockHash) const
     {
+        std::shared_lock lock(m_chainMutex);
         assert(!chainsStorage.empty());
         assert(!chainsLeaves.empty());
 
@@ -349,7 +350,27 @@ namespace CryptoNote
 
     std::vector<Crypto::Hash> Core::buildSparseChain() const
     {
+        std::shared_lock lock(m_chainMutex);
         throwIfNotInitialized();
+
+        for (uint32_t attempt = 0; attempt < 3; ++attempt)
+        {
+            try
+            {
+                Crypto::Hash topBlockHash = chainsLeaves[0]->getTopBlockHash();
+                return doBuildSparseChain(topBlockHash);
+            }
+            catch (const std::exception &e)
+            {
+                logger(Logging::DEBUGGING) << "buildSparseChain failed (attempt " << (attempt + 1)
+                                       << "/3), chain may be reorganizing: " << e.what();
+                lock.unlock();
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                lock.lock();
+            }
+        }
+
+        /* Final attempt — let it throw if it still fails */
         Crypto::Hash topBlockHash = chainsLeaves[0]->getTopBlockHash();
         return doBuildSparseChain(topBlockHash);
     }
@@ -1137,6 +1158,7 @@ namespace CryptoNote
 
     std::error_code Core::addBlock(const CachedBlock &cachedBlock, RawBlock &&rawBlock)
     {
+        std::unique_lock lock(m_chainMutex);
         throwIfNotInitialized();
         uint32_t blockIndex = cachedBlock.getBlockIndex();
         Crypto::Hash blockHash = cachedBlock.getBlockHash();
@@ -1355,6 +1377,8 @@ namespace CryptoNote
 
                     notifyObservers(
                         makeDelTransactionMessage(std::move(hashes), Messages::DeleteTransaction::Reason::InBlock));
+
+                    pruneStaleAlternativeChains();
                 }
                 else
                 {
@@ -1385,7 +1409,17 @@ namespace CryptoNote
                            be in the pool that would now be considered invalid */
                         checkAndRemoveInvalidPoolTransactions(validatorState);
 
-                        copyTransactionsToPool(chainsLeaves[endpointIndex]);
+                        try
+                        {
+                            copyTransactionsToPool(chainsLeaves[endpointIndex]);
+                        }
+                        catch (const std::exception &e)
+                        {
+                            logger(Logging::WARNING) << "Failed to copy transactions to pool after chain switch: " << e.what();
+                            /* Non-fatal: chain switch is already committed.
+                               Transactions from the old chain that are still valid
+                               will be re-added when peers relay them. */
+                        }
 
                         ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED;
 
@@ -1460,6 +1494,14 @@ namespace CryptoNote
                 std::move(rawBlock));
 
             updateMainChainSet();
+        }
+
+        /* Prune alt chains after every block (main or alt).  Skip the
+           cache we just wrote to so its pointer stays valid for
+           notifyOnSuccess below. */
+        if (ret != error::AddBlockErrorCode::ADDED_TO_MAIN)
+        {
+            pruneStaleAlternativeChains(cache);
         }
 
         logger(Logging::DEBUGGING) << "Block: " << blockStr << " successfully added";
@@ -2185,6 +2227,7 @@ namespace CryptoNote
 
     size_t Core::getBlockchainTransactionCount() const
     {
+        std::shared_lock lock(m_chainMutex);
         throwIfNotInitialized();
         IBlockchainCache *mainChain = chainsLeaves[0];
         return mainChain->getTransactionCount();
@@ -2192,6 +2235,7 @@ namespace CryptoNote
 
     size_t Core::getAlternativeBlockCount() const
     {
+        std::shared_lock lock(m_chainMutex);
         throwIfNotInitialized();
 
         using Ptr = decltype(chainsStorage)::value_type;
@@ -2893,6 +2937,16 @@ namespace CryptoNote
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
     }
 
+    void Core::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
+    {
+        if (checkpoints.addDynamicCheckpoint(height, hash))
+        {
+            logger(Logging::WARNING) << "Dynamic checkpoint registered at height " << height
+                                     << " (hash " << hash << "). "
+                                     << "Consider --resync to repair local database.";
+        }
+    }
+
     size_t Core::pruneRawBlocks(uint32_t pruneDepth)
     {
         if (pruneDepth == 0)
@@ -3028,6 +3082,10 @@ namespace CryptoNote
     std::vector<Crypto::Hash> Core::doBuildSparseChain(const Crypto::Hash &blockHash) const
     {
         IBlockchainCache *chain = findSegmentContainingBlock(blockHash);
+        if (chain == nullptr)
+        {
+            throw std::runtime_error("doBuildSparseChain: block hash not found in any chain segment");
+        }
 
         uint32_t blockIndex = chain->getBlockIndex(blockHash);
 
@@ -3386,6 +3444,104 @@ namespace CryptoNote
         }
     }
 
+    void Core::pruneStaleAlternativeChains(IBlockchainCache *exclude)
+    {
+        if (chainsLeaves.size() <= 1)
+        {
+            return;
+        }
+
+        const auto mainTopIndex = chainsLeaves[0]->getTopBlockIndex();
+
+        /* Pass 1: prune alt chains whose tip is too far behind main chain. */
+        for (size_t i = chainsLeaves.size() - 1; i >= 1; --i)
+        {
+            if (chainsLeaves[i] == exclude)
+            {
+                continue;
+            }
+
+            const auto altTopIndex = chainsLeaves[i]->getTopBlockIndex();
+            if (mainTopIndex > altTopIndex
+                && (mainTopIndex - altTopIndex) > CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_DEPTH)
+            {
+                logger(Logging::DEBUGGING) << "Pruning stale alt chain (leaf " << i
+                                           << ", tip height " << altTopIndex
+                                           << ", depth behind main: " << (mainTopIndex - altTopIndex) << ")";
+                deleteLeaf(i);
+            }
+        }
+
+        /* Helper: find the weakest leaf (lowest cumulative difficulty),
+           skipping main chain (index 0) and the excluded pointer. */
+        auto findWeakest = [this, exclude]() -> size_t {
+            size_t weakest = 0;
+            uint64_t weakestDiff = std::numeric_limits<uint64_t>::max();
+
+            for (size_t i = 1; i < chainsLeaves.size(); ++i)
+            {
+                if (chainsLeaves[i] == exclude)
+                {
+                    continue;
+                }
+
+                const auto diff = chainsLeaves[i]->getCurrentCumulativeDifficulty();
+                if (diff < weakestDiff)
+                {
+                    weakestDiff = diff;
+                    weakest = i;
+                }
+            }
+
+            return weakest; // 0 means nothing eligible found
+        };
+
+        /* Pass 2: if too many alt chain leaves remain, drop the weakest
+           (lowest cumulative difficulty) until we are at the cap. */
+        const size_t maxAltChains = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_CHAIN_COUNT;
+        while (chainsLeaves.size() > 1 + maxAltChains)
+        {
+            const size_t weakest = findWeakest();
+            if (weakest == 0)
+            {
+                break;
+            }
+
+            logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
+                                       << ", tip height " << chainsLeaves[weakest]->getTopBlockIndex()
+                                       << ", cumulative difficulty " << chainsLeaves[weakest]->getCurrentCumulativeDifficulty()
+                                       << ") — alt chain count " << (chainsLeaves.size() - 1)
+                                       << " exceeds cap " << maxAltChains;
+            deleteLeaf(weakest);
+        }
+
+        /* Pass 3: if total alt BLOCK count still exceeds the cap, keep
+           pruning weakest leaves. */
+        const size_t maxAltBlocks = CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_COUNT;
+        auto countAltBlocks = [this]() -> size_t {
+            using Ptr = decltype(chainsStorage)::value_type;
+            return std::accumulate(chainsStorage.begin(), chainsStorage.end(), size_t(0),
+                [this](size_t sum, const Ptr &ptr) {
+                    return mainChainSet.count(ptr.get()) == 0 ? sum + ptr->getBlockCount() : sum;
+                });
+        };
+
+        while (chainsLeaves.size() > 1 && countAltBlocks() > maxAltBlocks)
+        {
+            const size_t weakest = findWeakest();
+            if (weakest == 0)
+            {
+                break;
+            }
+
+            logger(Logging::DEBUGGING) << "Pruning weakest alt chain (leaf " << weakest
+                                       << ", tip height " << chainsLeaves[weakest]->getTopBlockIndex()
+                                       << ") — total alt blocks " << countAltBlocks()
+                                       << " exceeds cap " << maxAltBlocks;
+            deleteLeaf(weakest);
+        }
+    }
+
     void Core::deleteLeaf(size_t leafIndex)
     {
         assert(leafIndex < chainsLeaves.size());
@@ -3508,14 +3664,28 @@ namespace CryptoNote
 
     BlockDetails Core::getBlockDetails(const uint32_t blockHeight, const uint32_t attempt) const
     {
-        if (attempt > 10)
+        std::shared_lock lock(m_chainMutex);
+
+        if (attempt > 3)
         {
             throw std::runtime_error("Requested block height wasn't found in blockchain.");
         }
 
         throwIfNotInitialized();
 
-        IBlockchainCache *segment = findSegmentContainingBlock(blockHeight);
+        /* Re-clamp the requested height to the current top on retries,
+           because a reorg may have shortened the chain. */
+        uint32_t safeHeight = blockHeight;
+        if (attempt > 0)
+        {
+            uint32_t currentTop = chainsLeaves[0]->getTopBlockIndex();
+            if (safeHeight > currentTop)
+            {
+                safeHeight = currentTop;
+            }
+        }
+
+        IBlockchainCache *segment = findSegmentContainingBlock(safeHeight);
         if (segment == nullptr)
         {
             throw std::runtime_error("Requested block height wasn't found in blockchain.");
@@ -3523,21 +3693,29 @@ namespace CryptoNote
 
         try
         {
-            return getBlockDetails(segment->getBlockHash(blockHeight));
+            return getBlockDetailsInternal(segment->getBlockHash(safeHeight));
         }
-        catch (const std::out_of_range &e)
+        catch (const std::exception &e)
         {
-            logger(Logging::INFO) << "Failed to get block details, mid chain reorg";
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            logger(Logging::DEBUGGING) << "Failed to get block details for height " << safeHeight
+                                   << ", chain may be reorganizing (attempt " << (attempt + 1) << "/3)";
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-            return getBlockDetails(blockHeight, attempt+1);
+            return getBlockDetails(blockHeight, attempt + 1);
         }
     }
 
     BlockDetails Core::getBlockDetails(const Crypto::Hash &blockHash) const
     {
+        std::shared_lock lock(m_chainMutex);
         throwIfNotInitialized();
+        return getBlockDetailsInternal(blockHash);
+    }
 
+    BlockDetails Core::getBlockDetailsInternal(const Crypto::Hash &blockHash) const
+    {
+        /* Assumes caller holds m_chainMutex (shared or unique). */
         IBlockchainCache *segment = findSegmentContainingBlock(blockHash);
         if (segment == nullptr)
         {

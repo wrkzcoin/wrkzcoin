@@ -57,10 +57,8 @@ WalletSynchronizer::WalletSynchronizer(
     m_eventHandler(eventHandler),
     m_blockDownloader(daemon, nullptr, startHeight, startTimestamp)
 {
-    if (threadCount == 0)
-    {
-        threadCount = 1;
-    }
+    /* threadCount == 0 means "explicitly no background threads" (WASM single-threaded mode).
+       Any non-zero value is used as-is — the caller is responsible for choosing a sensible count. */
 
     m_threadCount = threadCount;
 }
@@ -709,6 +707,20 @@ void WalletSynchronizer::start()
     /* Reinit any vars which may have changed if we previously called stop() */
     m_shouldStop = false;
 
+    /* If syncThreadCount is 0, run in no-background-thread mode.
+       Used by the WASM/web build which runs single-threaded.
+       We still must re-enable the block store in case a prior stop() call
+       (e.g. from pauseSynchronizerToRunFunction/save()) left it disabled. */
+    if (m_threadCount == 0)
+    {
+        Logger::logger.log(
+            "Sync thread count is 0 — re-enabling block store (WASM/single-threaded mode)",
+            Logger::DEBUG,
+            {Logger::SYNC});
+        m_blockDownloader.startStorageOnly();
+        return;
+    }
+
     if (m_daemon == nullptr)
     {
         throw std::runtime_error("Daemon has not been initialized!");
@@ -791,12 +803,80 @@ void WalletSynchronizer::initializeAfterLoad(
     m_eventHandler = eventHandler;
     m_blockDownloader.initializeAfterLoad(m_daemon);
 
-    if (threadCount == 0)
-    {
-        threadCount = 1;
-    }
+    /* threadCount == 0 means "explicitly no background threads" (WASM single-threaded mode).
+       Any non-zero value is used as-is. */
 
     m_threadCount = threadCount;
+}
+
+bool WalletSynchronizer::syncStep()
+{
+    if (m_daemon == nullptr || m_subWallets == nullptr)
+    {
+        return false;
+    }
+
+    /* Refresh daemon block counts — normally done by Nigel's background thread. */
+    m_daemon->refreshInfo();
+
+    /* Download a batch of blocks from the daemon into the internal store. */
+    m_blockDownloader.downloadStep();
+
+    /* Fetch downloaded blocks for inline processing. */
+    const auto blocks = m_blockDownloader.fetchBlocks(Constants::BLOCK_PROCESSING_CHUNK);
+
+    if (blocks.empty())
+    {
+        return false;
+    }
+
+    /* Process each block synchronously (replaces the multi-threaded pipeline).
+       Note: completeBlockProcessing() already calls dropBlock() internally —
+       do NOT call it again here. */
+    for (const auto &[block, arrivalIndex] : blocks)
+    {
+        auto ourInputs = processBlockOutputs(block);
+
+        /* The daemon's getWalletSyncData never supplies globalOutputIndex
+           ("Daemon doesn't supply this, blockchain cache api does" — WalletTypes.h).
+           Fetch them here so spending these outputs doesn't fail with
+           "Missing global output index". Mirrors blockProcessingThread logic. */
+        if (!m_subWallets->isViewWallet() && !ourInputs.empty())
+        {
+            std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
+
+            for (auto &[publicKey, input] : ourInputs)
+            {
+                if (!input.globalOutputIndex)
+                {
+                    if (globalIndexes.empty())
+                    {
+                        globalIndexes = getGlobalIndexes(block.blockHeight);
+                    }
+
+                    auto it = globalIndexes.find(input.parentTransactionHash);
+
+                    if (it != globalIndexes.end() && it->second.size() > input.transactionIndex)
+                    {
+                        input.globalOutputIndex = it->second[input.transactionIndex];
+                    }
+                    else
+                    {
+                        Logger::logger.log(
+                            "Could not resolve global output index for input in block "
+                                + std::to_string(block.blockHeight)
+                                + " — spending this output may fail",
+                            Logger::WARNING,
+                            {Logger::SYNC});
+                    }
+                }
+            }
+        }
+
+        completeBlockProcessing(block, ourInputs);
+    }
+
+    return true;
 }
 
 uint64_t WalletSynchronizer::getCurrentScanHeight() const

@@ -860,6 +860,53 @@ namespace CryptoNote
                         << addResult.message() << "), temporary ban applied for "
                         << CHECKPOINT_MISMATCH_BAN_SECONDS << "s";
                 }
+
+                /* --- Network-consensus block trust ---
+                   Track how many independent peers have sent us this same block
+                   that we rejected.  If enough peers agree on it and it is deeply
+                   buried in the network chain, the problem is almost certainly
+                   local (e.g. corrupted output-key DB).  Add a dynamic checkpoint
+                   so the next peer's copy of this block passes validation. */
+                if (addResult == error::AddBlockErrorCondition::TRANSACTION_VALIDATION_FAILED
+                    || addResult == error::AddBlockErrorCondition::BLOCK_VALIDATION_FAILED)
+                {
+                    const auto &blockHash = cachedBlocks[index].getBlockHash();
+                    const uint32_t blockHeight = cachedBlocks[index].getBlockIndex();
+                    const uint32_t observedHeight = m_observedHeight;
+
+                    std::lock_guard<std::mutex> lock(m_networkTrustMutex);
+
+                    /* Record this peer as a source of this rejected block. */
+                    m_rejectedBlockPeers[blockHash].insert(context.m_remote_ip);
+                    const uint32_t peerCount =
+                        static_cast<uint32_t>(m_rejectedBlockPeers[blockHash].size());
+
+                    const uint32_t depth =
+                        (observedHeight > blockHeight) ? (observedHeight - blockHeight) : 0;
+
+                    if (peerCount >= NETWORK_TRUST_PEER_THRESHOLD
+                        && depth >= DEEP_CONFIRMATION_THRESHOLD
+                        && m_networkTrustedBlocks.find(blockHash) == m_networkTrustedBlocks.end())
+                    {
+                        m_networkTrustedBlocks.insert(blockHash);
+                        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                            << "Block " << Common::podToHex(blockHash) << " at height "
+                            << blockHeight << " rejected by local validation but confirmed by "
+                            << peerCount << " independent peers (network height "
+                            << observedHeight << ", depth " << depth << "). "
+                            << "Adding dynamic checkpoint — consider --resync to fix local DB.";
+                        m_core.addDynamicCheckpoint(blockHeight, blockHash);
+                    }
+                    else if (peerCount > 1)
+                    {
+                        logger(Logging::INFO)
+                            << "Block " << Common::podToHex(blockHash) << " at height "
+                            << blockHeight << " rejected from " << peerCount << "/"
+                            << NETWORK_TRUST_PEER_THRESHOLD << " peers (depth "
+                            << depth << "/" << DEEP_CONFIRMATION_THRESHOLD << ")";
+                    }
+                }
+
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << addResult.message();
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
@@ -1204,6 +1251,13 @@ namespace CryptoNote
             logger(INFO, BRIGHT_GREEN) << asciiArt << ENDL;
 
             m_observerManager.notify(&ICryptoNoteProtocolObserver::blockchainSynchronized, m_core.getTopBlockIndex());
+
+            /* Free memory used by network-trust tracking now that sync is complete. */
+            {
+                std::lock_guard<std::mutex> lock(m_networkTrustMutex);
+                m_rejectedBlockPeers.clear();
+                m_networkTrustedBlocks.clear();
+            }
         }
         return true;
     }

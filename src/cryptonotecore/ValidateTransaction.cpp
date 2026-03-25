@@ -8,11 +8,16 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <cryptonotecore/Mixins.h>
 #include <cryptonotecore/TransactionValidationErrors.h>
 #include <cryptonotecore/ValidateTransaction.h>
+#include <logger/Logger.h>
 #include <serialization/SerializationTools.h>
 #include <utilities/Utilities.h>
+
+#include <chrono>
+#include <mutex>
 
 ValidateTransaction::ValidateTransaction(
     const CryptoNote::CachedTransaction &cachedTransaction,
@@ -715,6 +720,50 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
             if (!Crypto::crypto_ops::checkRingSignature(
                     prefixHash, in.keyImage, outputKeys, m_transaction.signatures[inputIndex]))
             {
+                /* Rate-limit ring-sig FAIL logs: only emit for a given prefixHash
+                   once per 60 seconds to avoid log spam during sync stalls. */
+                {
+                    static std::mutex s_ringSigLogMutex;
+                    static Crypto::Hash s_lastFailHash {};
+                    static std::chrono::steady_clock::time_point s_lastFailTime {};
+                    static uint64_t s_suppressedCount = 0;
+
+                    const auto now = std::chrono::steady_clock::now();
+                    std::lock_guard<std::mutex> logLock(s_ringSigLogMutex);
+
+                    const bool sameHash = (prefixHash == s_lastFailHash);
+                    const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                        now - s_lastFailTime).count();
+
+                    if (sameHash && elapsed < 60)
+                    {
+                        ++s_suppressedCount;
+                    }
+                    else
+                    {
+                        std::string dbg = "Ring-sig FAIL input=" + std::to_string(inputIndex)
+                            + " prefixHash=" + Common::podToHex(prefixHash)
+                            + " keyImage=" + Common::podToHex(in.keyImage)
+                            + " amount=" + std::to_string(in.amount)
+                            + " ring=" + std::to_string(outputKeys.size());
+                        for (size_t k = 0; k < outputKeys.size(); k++)
+                        {
+                            dbg += " [" + std::to_string(k) + "]idx="
+                                + std::to_string(globalIndexes[k])
+                                + " key=" + Common::podToHex(outputKeys[k]);
+                        }
+                        if (s_suppressedCount > 0)
+                        {
+                            dbg += " (suppressed " + std::to_string(s_suppressedCount) + " duplicates)";
+                        }
+                        Logger::logger.log(dbg, Logger::WARNING, {Logger::TRANSACTIONS});
+
+                        s_lastFailHash = prefixHash;
+                        s_lastFailTime = now;
+                        s_suppressedCount = 0;
+                    }
+                }
+
                 setTransactionValidationResult(
                     CryptoNote::error::TransactionValidationError::INPUT_INVALID_SIGNATURES,
                     "Transaction contains invalid signatures"

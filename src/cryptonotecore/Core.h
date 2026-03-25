@@ -24,6 +24,7 @@
 
 #include <WalletTypes.h>
 #include <ctime>
+#include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
 #include <unordered_map>
@@ -239,6 +240,8 @@ namespace CryptoNote
 
         virtual void rewind(const uint64_t blockIndex) override;
 
+        virtual void addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash) override;
+
         size_t pruneRawBlocks(uint32_t pruneDepth);
 
         std::error_code compactDatabase();
@@ -386,6 +389,8 @@ namespace CryptoNote
 
         void deleteAlternativeChains();
 
+        void pruneStaleAlternativeChains(IBlockchainCache *exclude = nullptr);
+
         void deleteLeaf(size_t leafIndex);
 
         void mergeMainChainSegments();
@@ -425,6 +430,15 @@ namespace CryptoNote
         void cutSegment(IBlockchainCache &segment, uint32_t startIndex);
         
         std::mutex m_submitBlockMutex;
+
+        /* Read/write lock protecting chainsLeaves, chainsStorage, and mainChainSet.
+           Writers (addBlock) take unique_lock; readers take shared_lock.
+           Mutable because const reader methods need to acquire it. */
+        mutable std::shared_mutex m_chainMutex;
+
+        /* Internal implementation of getBlockDetails(hash) without locking,
+           called by both public getBlockDetails overloads which hold the lock. */
+        BlockDetails getBlockDetailsInternal(const Crypto::Hash &blockHash) const;
     };
 
 } // namespace CryptoNote

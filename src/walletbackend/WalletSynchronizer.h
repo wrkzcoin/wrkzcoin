@@ -109,6 +109,11 @@ class WalletSynchronizer
 
     void setSubWallets(const std::shared_ptr<SubWallets> subWallets);
 
+    /* Drive one round of block download + processing synchronously.
+       Used in WASM single-threaded mode (m_threadCount == 0) instead of
+       background threads. Returns true if blocks were processed. */
+    bool syncStep();
+
   private:
     //////////////////////////////
     /* Private member functions */

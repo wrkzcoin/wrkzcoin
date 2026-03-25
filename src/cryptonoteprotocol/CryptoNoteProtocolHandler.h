@@ -20,6 +20,8 @@
 #include <chrono>
 #include <common/ObserverManager.h>
 #include <logging/LoggerRef.h>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace System
 {
@@ -242,6 +244,23 @@ namespace CryptoNote
         uint64_t m_syncBlockSyncBytes;
 
         std::atomic<uint32_t> m_syncDemotedPeers;
+
+        /* --- Network-consensus block trust (sync recovery) --- */
+
+        /* Number of independent peers that must reject the same block before
+           we trust network consensus and add a dynamic checkpoint. */
+        static constexpr uint32_t NETWORK_TRUST_PEER_THRESHOLD = 6;
+
+        /* The block must be at least this many blocks behind the observed
+           network height before we consider trusting it. */
+        static constexpr uint32_t DEEP_CONFIRMATION_THRESHOLD = 300;
+
+        /* Maps block_hash → set of peer IPs that sent us this block and we rejected it. */
+        std::mutex m_networkTrustMutex;
+        std::unordered_map<Crypto::Hash, std::unordered_set<uint32_t>> m_rejectedBlockPeers;
+
+        /* Block hashes already promoted to dynamic checkpoints (avoid re-adding). */
+        std::unordered_set<Crypto::Hash> m_networkTrustedBlocks;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

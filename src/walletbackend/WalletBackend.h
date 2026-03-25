@@ -227,6 +227,9 @@ class WalletBackend
 
     /* wallet sync height, local blockchain sync height,
        remote blockchain sync height */
+    /* Drive one synchronous sync step — for WASM single-threaded mode. */
+    bool syncStep();
+
     std::tuple<uint64_t, uint64_t, uint64_t> getSyncStatus() const;
 
     /* Get the wallet password */

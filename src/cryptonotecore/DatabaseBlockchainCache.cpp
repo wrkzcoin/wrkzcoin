@@ -1611,7 +1611,13 @@ namespace CryptoNote
 
         auto batch = BlockchainReadBatch().requestBlockIndexByBlockHash(blockHash);
         auto result = readDatabase(batch);
-        return result.getBlockIndexesByBlockHashes().at(blockHash);
+        const auto &indexes = result.getBlockIndexesByBlockHashes();
+        auto it = indexes.find(blockHash);
+        if (it == indexes.end())
+        {
+            throw std::runtime_error("Block index not found in database for given hash");
+        }
+        return it->second;
     }
 
     bool DatabaseBlockchainCache::hasTransaction(const Crypto::Hash &transactionHash) const

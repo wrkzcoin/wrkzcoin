@@ -120,6 +120,14 @@ if (WRKZ_ANDROID_PROFILE)
     set(WRKZ_BUILD_EXECUTABLES OFF CACHE BOOL "Build CLI/daemon executables" FORCE)
     set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
 endif ()
+
+# Emscripten WASM builds only need the wallet library chain — disable
+# executables, ZMQ, and RocksDB which are daemon-only.
+if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
+    message(STATUS "Emscripten WASM build: disabling executables, ZMQ, RocksDB")
+    set(WRKZ_BUILD_EXECUTABLES OFF CACHE BOOL "Build CLI/daemon executables" FORCE)
+    set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
+endif ()
 message(STATUS "WRKZ_BUILD_EXECUTABLES: ${WRKZ_BUILD_EXECUTABLES}")
 message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
 message(STATUS "WRKZ_BUILD_WALLET_WASM: ${WRKZ_BUILD_WALLET_WASM}")
@@ -491,8 +499,14 @@ else ()
         message(STATUS "Boost headers for Emscripten wallet_wasm: ${Boost_INCLUDE_DIRS}")
         set(WRKZ_BOOST_LINK_LIBS "")
     else ()
-        find_package(Boost REQUIRED COMPONENTS date_time)
-        set(WRKZ_BOOST_LINK_LIBS ${Boost_LIBRARIES})
+        # Only Boost headers are needed — boost::posix_time::ptime and
+        # microsec_clock::local_time() are fully header-only (they use
+        # Windows/POSIX APIs directly).  The compiled date_time library is
+        # only required for locale-based I/O which this codebase does not use.
+        find_package(Boost REQUIRED)
+        set(WRKZ_BOOST_LINK_LIBS "")
+        # Suppress MSVC #pragma comment(lib, "boost_date_time-...") auto-link.
+        add_compile_definitions(BOOST_DATE_TIME_NO_LIB BOOST_ALL_NO_LIB)
     endif ()
 endif ()
 if ((NOT Boost_INCLUDE_DIRS OR Boost_INCLUDE_DIRS STREQUAL "") AND DEFINED Boost_INCLUDE_DIR)
@@ -659,6 +673,14 @@ if (ENABLE_ZMQ)
     endif ()
 endif ()
 
+# When building wallet_capi (shared lib), every static library linked into it
+# must be compiled with -fPIC.  Set the default BEFORE external deps are created
+# so their targets inherit it at creation time (more reliable than setting the
+# target property after the fact from src/CMakeLists.txt).
+if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif ()
+
 add_subdirectory(external)
 
 # Optional Emscripten pthread builds require every linked object to be compiled
@@ -689,7 +711,8 @@ endif ()
 add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
-if (NOT MSVC)
+## Skip for Emscripten — RocksDB is only used by the daemon, not wallet_wasm.
+if (NOT MSVC AND NOT EMSCRIPTEN)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
     set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
     set(ROCKSDB_CMAKE_EXTRA_ARGS "")

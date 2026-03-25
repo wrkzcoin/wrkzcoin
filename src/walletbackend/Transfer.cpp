@@ -19,6 +19,7 @@
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
+#include <walletbackend/PowProgress.h>
 #include <ctime> // time_t
 
 namespace SendTransaction
@@ -999,6 +1000,11 @@ namespace SendTransaction
            we can just do a cast here) */
         Crypto::Hash txPrefixHash = getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(tx));
 
+        Logger::logger.log(
+            "generateRingSignatures: prefixHash=" + Common::podToHex(txPrefixHash)
+            + " inputs=" + std::to_string(inputsAndFakes.size()),
+            Logger::DEBUG, {Logger::TRANSACTIONS});
+
         size_t i = 0;
 
         /* Add the transaction signatures */
@@ -1010,6 +1016,21 @@ namespace SendTransaction
             for (const auto output : input.outputs)
             {
                 publicKeys.push_back(output.key);
+            }
+
+            {
+                std::string dbg = "Ring-sig SIGN input=" + std::to_string(i)
+                    + " keyImage=" + Common::podToHex(boost::get<CryptoNote::KeyInput>(tx.inputs[i]).keyImage)
+                    + " amount=" + std::to_string(boost::get<CryptoNote::KeyInput>(tx.inputs[i]).amount)
+                    + " realOut=" + std::to_string(input.realOutput)
+                    + " ring=" + std::to_string(publicKeys.size());
+                for (size_t k = 0; k < input.outputs.size(); k++)
+                {
+                    dbg += " [" + std::to_string(k) + "]idx="
+                        + std::to_string(input.outputs[k].index)
+                        + " key=" + Common::podToHex(input.outputs[k].key);
+                }
+                Logger::logger.log(dbg, Logger::DEBUG, {Logger::TRANSACTIONS});
             }
 
             /* Generate the ring signatures - note - modifying the transaction
@@ -1317,6 +1338,49 @@ namespace SendTransaction
            will be invalidated */
         std::tie(result.error, result.transaction) = generateRingSignatures(setupTX, inputsAndFakes, tmpSecretKeys);
 
+        /* ── Round-trip verification: serialize → deserialize → re-check sigs ── */
+        if (!result.error)
+        {
+            const auto txBin = CryptoNote::toBinaryArray(result.transaction);
+            CryptoNote::Transaction roundTripped;
+            if (CryptoNote::fromBinaryArray(roundTripped, txBin))
+            {
+                const Crypto::Hash origPrefixHash =
+                    getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(result.transaction));
+                const Crypto::Hash rtPrefixHash =
+                    getTransactionHash(static_cast<CryptoNote::TransactionPrefix>(roundTripped));
+
+                if (origPrefixHash != rtPrefixHash)
+                {
+                    Logger::logger.log(
+                        "BUG: prefix hash changed after round-trip! orig=" + Common::podToHex(origPrefixHash)
+                        + " rt=" + Common::podToHex(rtPrefixHash),
+                        Logger::WARNING, {Logger::TRANSACTIONS});
+                }
+
+                /* Re-verify signatures using the round-tripped transaction
+                   (same as what the daemon will do) */
+                for (size_t idx = 0; idx < inputsAndFakes.size(); idx++)
+                {
+                    std::vector<Crypto::PublicKey> pks;
+                    for (const auto &o : inputsAndFakes[idx].outputs)
+                        pks.push_back(o.key);
+
+                    if (!Crypto::crypto_ops::checkRingSignature(
+                            rtPrefixHash,
+                            boost::get<CryptoNote::KeyInput>(roundTripped.inputs[idx]).keyImage,
+                            pks,
+                            roundTripped.signatures[idx]))
+                    {
+                        Logger::logger.log(
+                            "BUG: ring-sig input " + std::to_string(idx)
+                            + " FAILS after round-trip (prefixHash=" + Common::podToHex(rtPrefixHash) + ")",
+                            Logger::WARNING, {Logger::TRANSACTIONS});
+                    }
+                }
+            }
+        }
+
         return result;
     }
 
@@ -1488,6 +1552,12 @@ namespace SendTransaction
             }
 
             nonce += threadCount;
+
+            /* Report progress every 256 nonces to avoid atomic contention */
+            if ((nonce & 0xFF) == 0)
+            {
+                PowProgress::nonces.fetch_add(256, std::memory_order_relaxed);
+            }
         }
     }
 
@@ -1496,19 +1566,24 @@ namespace SendTransaction
         std::vector<uint8_t> extra,
         const uint64_t height)
     {
+        PowProgress::Guard powGuard; // sets active=true, resets on return
+
         /* Add the nonce identifier */
         extra.push_back(Constants::TX_EXTRA_TRANSACTION_POW_NONCE_IDENTIFIER);
 
         /* Add extra room for the nonce */
         extra.resize(extra.size() + 8);
 
+        std::atomic<bool> shouldStop = false;
+
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+        /* WASM single-threaded mode: std::thread is unavailable.
+           Run the PoW worker inline on the calling thread (threadCount=1, nonce=0). */
+        generateTransactionPowWorker(extra, 1, 0, shouldStop, tx, height);
+#else
         std::vector<std::thread> threads;
 
         const int threadCount = std::max(1u, std::thread::hardware_concurrency());
-
-        std::atomic<bool> shouldStop = false;
-
-        const std::shared_ptr<Nigel> daemon;
 
         for (int i = 0; i < threadCount; i++)
         {
@@ -1527,6 +1602,7 @@ namespace SendTransaction
         {
             thread.join();
         }
+#endif
 
         return extra;
     }

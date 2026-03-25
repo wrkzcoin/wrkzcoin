@@ -11,6 +11,9 @@
 
 #include <common/Base58.h>
 #include <common/FileSystemShim.h>
+#if defined(__EMSCRIPTEN__)
+#include <wasm_fs_bridge.h>
+#endif
 #include <config/CryptoNoteConfig.h>
 #include <crypto/crypto.h>
 #include <crypto/random.h>
@@ -72,6 +75,18 @@ namespace
     /* Check the wallet filename for the new wallet to be created is valid */
     Error checkNewWalletFilename(std::string filename)
     {
+#if defined(__EMSCRIPTEN__)
+        /* In WASM mode we use in-memory store — just check name isn't taken */
+        if (WasmFs::exists(filename))
+        {
+            return WALLET_FILE_ALREADY_EXISTS;
+        }
+        if (filename.empty())
+        {
+            return INVALID_WALLET_FILENAME;
+        }
+        return SUCCESS;
+#else
         /* Check the file doesn't exist */
         if (std::ifstream(filename))
         {
@@ -88,6 +103,7 @@ namespace
         fs::remove(filename);
 
         return SUCCESS;
+#endif
     }
 
 } // namespace
@@ -485,6 +501,14 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     const bool daemonSSL,
     const unsigned int syncThreadCount)
 {
+#if defined(__EMSCRIPTEN__)
+    /* WASM: read from in-memory store (backed by browser IndexedDB) */
+    std::vector<char> buffer = WasmFs::read(filename);
+    if (buffer.empty())
+    {
+        return {FILENAME_NON_EXISTENT, nullptr};
+    }
+#else
     /* Open in binary mode, since we have encrypted data */
     std::ifstream file(filename, std::ios_base::binary);
 
@@ -496,6 +520,7 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
 
     /* Read file into a buffer */
     std::vector<char> buffer((std::istreambuf_iterator<char>(file)), (std::istreambuf_iterator<char>()));
+#endif
 
     /* Check that the decrypted data has the 'isAWallet' identifier,
        and remove it it does. If it doesn't, return an error. */
@@ -672,6 +697,29 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
     /* Encrypt, and pad */
     StringSource(walletData, true, new StreamTransformationFilter(cbcEncryption, new StringSink(encryptedData)));
 
+#if defined(__EMSCRIPTEN__)
+    /* WASM: write to in-memory store (JS side persists to IndexedDB) */
+    if (filename.empty())
+    {
+        Logger::logger.log(
+            std::string("Wallet filename is empty"),
+            Logger::FATAL,
+            {Logger::FILESYSTEM, Logger::SAVE});
+        return INVALID_WALLET_FILENAME;
+    }
+
+    /* Build the full file data: identifier + salt + encrypted payload */
+    std::vector<char> fileData;
+    fileData.insert(fileData.end(),
+        Constants::IS_A_WALLET_IDENTIFIER.begin(),
+        Constants::IS_A_WALLET_IDENTIFIER.end());
+    fileData.insert(fileData.end(), std::begin(salt), std::end(salt));
+    fileData.insert(fileData.end(), encryptedData.begin(), encryptedData.end());
+
+    WasmFs::write(filename, fileData);
+
+    return SUCCESS;
+#else
     std::ofstream file(filename, std::ios_base::binary);
 
     if (!file)
@@ -701,6 +749,7 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
     std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
 
     return SUCCESS;
+#endif
 }
 
 /////////////////////
@@ -714,7 +763,9 @@ void WalletBackend::init()
         throw std::runtime_error("Daemon has not been initialized!");
     }
 
-    m_daemon->init();
+    /* When syncThreadCount == 0 (WASM single-threaded mode), skip Nigel's
+       background refresh thread — daemon info is fetched on demand instead. */
+    m_daemon->init(m_syncThreadCount > 0);
 
     /* Init the wallet synchronizer if it hasn't been loaded from the wallet
        file */
@@ -934,6 +985,26 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         return {{ILLEGAL_VIEW_WALLET_OPERATION, Crypto::Hash()}};
     }
 
+    /* Validate destination — integrated addresses (short or long payment ID) are allowed */
+    if (Error err = validateAddresses({destination}, /* allowIntegrated */ true); err != SUCCESS)
+    {
+        return {{err, Crypto::Hash()}};
+    }
+
+    /* Extract the base address and payment ID from an integrated address, mirroring
+       the same handling in SendTransaction::sendTransactionAdvanced (Transfer.cpp). */
+    std::string resolvedDest = destination;
+    std::string resolvedPaymentID = paymentID;
+    if (Utilities::isIntegratedAddress(destination))
+    {
+        auto [baseAddress, embeddedPaymentID] = Utilities::extractIntegratedAddressData(destination);
+        resolvedDest = baseAddress;
+        if (resolvedPaymentID.empty())
+        {
+            resolvedPaymentID = embeddedPaymentID;
+        }
+    }
+
     const uint64_t height = m_daemon->networkBlockCount();
     const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
     const uint64_t mixin = defaultMixin;
@@ -969,7 +1040,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
     if (amountToSweep > 0)
     {
         /* Worst-case fee per batch (full batch, 1 destination output) */
-        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, paymentID != "", 0);
+        const size_t worstCaseSize = Utilities::estimateTransactionSize(mixin, maxInputsPerTx, 1, resolvedPaymentID != "", 0);
         const uint64_t feePerBatch = Utilities::getMinimumTransactionFee(worstCaseSize, height);
 
         uint64_t sum = 0;
@@ -1004,18 +1075,30 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
 
         /* Iteratively estimate fee: the destination amount is decomposed into canonical
            denominations, so the output count depends on the fee, which depends on the
-           output count.  Also add 9 bytes for the Tx PoW nonce (identifier + 8-byte nonce)
-           that makeTransaction appends to tx.extra whenever the fee is below
-           TRANSACTION_POW_PASS_WITH_FEE (sweep fees are always below that threshold). */
+           output count.
+           In WASM builds the fee is clamped to TRANSACTION_POW_PASS_WITH_FEE so the
+           extremely slow single-threaded PoW is bypassed entirely.  In native builds
+           we still add 9 bytes overhead for the PoW nonce that makeTransaction appends. */
+#if defined(__EMSCRIPTEN__)
+        const size_t POW_NONCE_OVERHEAD = 0;
+#else
         const size_t POW_NONCE_OVERHEAD = 9;
+#endif
         size_t numOutputs = 1;
         uint64_t estimatedFee = 0;
 
         for (int iter = 0; iter < 3; iter++)
         {
             const size_t estimatedSize = Utilities::estimateTransactionSize(
-                mixin, batch.size(), numOutputs, paymentID != "", 0) + POW_NONCE_OVERHEAD;
+                mixin, batch.size(), numOutputs, resolvedPaymentID != "", 0) + POW_NONCE_OVERHEAD;
             estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
+#if defined(__EMSCRIPTEN__)
+            /* Ensure fee is high enough to bypass tx PoW in WASM */
+            if (estimatedFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+            {
+                estimatedFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
+            }
+#endif
 
             if (estimatedFee >= batchSum)
                 break;
@@ -1059,7 +1142,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
                                                : 0;
 
         auto destinations = SendTransaction::setupDestinations(
-            {{destination, destinationAmount}},
+            {{resolvedDest, destinationAmount}},
             changeRequired,
             changeAddress
         );
@@ -1068,7 +1151,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             mixin,
             m_daemon,
             batch,
-            paymentID,
+            resolvedPaymentID,
             destinations,
             m_subWallets,
             unlockTime,
@@ -1104,7 +1187,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         }
 
         SendTransaction::storeSentTransaction(
-            txHash, actualFee, paymentID, batch, changeAddress,
+            txHash, actualFee, resolvedPaymentID, batch, changeAddress,
             changeRequired, m_subWallets
         );
 
@@ -1396,6 +1479,11 @@ std::vector<std::string> WalletBackend::getAddresses() const
 uint64_t WalletBackend::getWalletCount() const
 {
     return m_subWallets->getWalletCount();
+}
+
+bool WalletBackend::syncStep()
+{
+    return m_walletSynchronizer->syncStep();
 }
 
 std::tuple<uint64_t, uint64_t, uint64_t> WalletBackend::getSyncStatus() const

@@ -134,66 +134,72 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     unset(_WRKZ_PREV_WITH_LIBBSD)
 endif ()
 
-# zstd (new layout): CMake entrypoint lives under build/cmake
-set(ZSTD_BUILD_STATIC ON CACHE BOOL "Build static zstd" FORCE)
-set(ZSTD_BUILD_SHARED OFF CACHE BOOL "Disable shared zstd" FORCE)
-set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "Disable zstd CLI tools" FORCE)
-set(ZSTD_BUILD_TESTS OFF CACHE BOOL "Disable zstd tests" FORCE)
-set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "Disable zstd contrib" FORCE)
-add_subdirectory(zstd/build/cmake)
-set(WITH_SNAPPY OFF CACHE BOOL "Disable Snappy in RocksDB" FORCE)
+# ── zstd + RocksDB (daemon-only, skip for Emscripten WASM builds) ────────────
+if (NOT EMSCRIPTEN)
+    # zstd (new layout): CMake entrypoint lives under build/cmake
+    set(ZSTD_BUILD_STATIC ON CACHE BOOL "Build static zstd" FORCE)
+    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "Disable shared zstd" FORCE)
+    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "Disable zstd CLI tools" FORCE)
+    set(ZSTD_BUILD_TESTS OFF CACHE BOOL "Disable zstd tests" FORCE)
+    set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "Disable zstd contrib" FORCE)
+    add_subdirectory(zstd/build/cmake)
+    set(WITH_SNAPPY OFF CACHE BOOL "Disable Snappy in RocksDB" FORCE)
 
-if (MSVC)
-    add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
-    set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
-elseif (NOT MSVC)
-    set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
-    if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
-        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
-        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
-    elseif (DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
-        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
-        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "CMAKE_BUILD_PARALLEL_LEVEL")
-    else ()
-        include(ProcessorCount)
-        ProcessorCount(_WRKZ_CPU_COUNT)
-        if (NOT _WRKZ_CPU_COUNT GREATER 0)
-            set(_WRKZ_CPU_COUNT 1)
-        endif ()
+    if (MSVC)
+        add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
+        set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+    elseif (NOT MSVC)
+        set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
+            set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
+            set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
+        elseif (DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND NOT "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" STREQUAL "")
+            set(_WRKZ_ROCKSDB_FALLBACK_JOBS "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+            set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "CMAKE_BUILD_PARALLEL_LEVEL")
+        else ()
+            include(ProcessorCount)
+            ProcessorCount(_WRKZ_CPU_COUNT)
+            if (NOT _WRKZ_CPU_COUNT GREATER 0)
+                set(_WRKZ_CPU_COUNT 1)
+            endif ()
 
-        set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${_WRKZ_CPU_COUNT}")
-        if (DEFINED ROCKSDB_BUILD_PARALLEL_CAP AND NOT ROCKSDB_BUILD_PARALLEL_CAP STREQUAL ""
-            AND ROCKSDB_BUILD_PARALLEL_CAP GREATER 0
-            AND _WRKZ_ROCKSDB_FALLBACK_JOBS GREATER ROCKSDB_BUILD_PARALLEL_CAP)
-            set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL_CAP}")
+            set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${_WRKZ_CPU_COUNT}")
+            if (DEFINED ROCKSDB_BUILD_PARALLEL_CAP AND NOT ROCKSDB_BUILD_PARALLEL_CAP STREQUAL ""
+                AND ROCKSDB_BUILD_PARALLEL_CAP GREATER 0
+                AND _WRKZ_ROCKSDB_FALLBACK_JOBS GREATER ROCKSDB_BUILD_PARALLEL_CAP)
+                set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL_CAP}")
+            endif ()
+            set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "cpu_count_capped")
+            unset(_WRKZ_CPU_COUNT)
         endif ()
-        set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "cpu_count_capped")
-        unset(_WRKZ_CPU_COUNT)
+        message(STATUS
+            "RocksDB sub-build parallel jobs fallback: ${_WRKZ_ROCKSDB_FALLBACK_JOBS} "
+            "(source=${_WRKZ_ROCKSDB_PARALLEL_SOURCE}, cap=${ROCKSDB_BUILD_PARALLEL_CAP})")
+
+        add_custom_target(
+                rocksdb
+                BYPRODUCTS
+                    ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a
+                COMMAND ${CMAKE_COMMAND}
+                    -DROCKSDB_BUILD_DIR=${PROJECT_BINARY_DIR}/rocksdb
+                    -DROCKSDB_TARGET=rocksdb
+                    -DROCKSDB_BUILD_PARALLEL=${ROCKSDB_BUILD_PARALLEL}
+                    -DROCKSDB_FALLBACK_PARALLEL=${_WRKZ_ROCKSDB_FALLBACK_JOBS}
+                    -DROCKSDB_BUILD_PARALLEL_CAP=${ROCKSDB_BUILD_PARALLEL_CAP}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/BuildRocksDB.cmake
+                WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/rocksdb
+        )
+        add_dependencies(rocksdb libzstd_static)
+        add_library(rocksdblib STATIC IMPORTED GLOBAL)
+        set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
+        add_dependencies(rocksdblib rocksdb)
+
+        unset(_WRKZ_ROCKSDB_FALLBACK_JOBS)
+        unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)
     endif ()
-    message(STATUS
-        "RocksDB sub-build parallel jobs fallback: ${_WRKZ_ROCKSDB_FALLBACK_JOBS} "
-        "(source=${_WRKZ_ROCKSDB_PARALLEL_SOURCE}, cap=${ROCKSDB_BUILD_PARALLEL_CAP})")
-
-    add_custom_target(
-            rocksdb
-            BYPRODUCTS
-                ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a
-            COMMAND ${CMAKE_COMMAND}
-                -DROCKSDB_BUILD_DIR=${PROJECT_BINARY_DIR}/rocksdb
-                -DROCKSDB_TARGET=rocksdb
-                -DROCKSDB_BUILD_PARALLEL=${ROCKSDB_BUILD_PARALLEL}
-                -DROCKSDB_FALLBACK_PARALLEL=${_WRKZ_ROCKSDB_FALLBACK_JOBS}
-                -DROCKSDB_BUILD_PARALLEL_CAP=${ROCKSDB_BUILD_PARALLEL_CAP}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/BuildRocksDB.cmake
-            WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/rocksdb
-    )
-    add_dependencies(rocksdb libzstd_static)
-    add_library(rocksdblib STATIC IMPORTED GLOBAL)
-    set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
-    add_dependencies(rocksdblib rocksdb)
-
-    unset(_WRKZ_ROCKSDB_FALLBACK_JOBS)
-    unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)
+else ()
+    # Emscripten: only set folder property for targets that exist
+    set_property(TARGET upnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
 endif ()
 
 if (MSVC)

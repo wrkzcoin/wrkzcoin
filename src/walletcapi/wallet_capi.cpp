@@ -1,12 +1,17 @@
 #include <walletcapi/wallet_capi.h>
 
 #include <common/StringTools.h>
+#include <config/Config.h>
 #include <common/FileSystemShim.h>
+#if defined(__EMSCRIPTEN__)
+#include <wasm_fs_bridge.h>
+#endif
 #include <errors/Errors.h>
 #include <utilities/Addresses.h>
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
+#include <walletbackend/PowProgress.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
 
@@ -67,6 +72,7 @@ namespace
     void ensure_log_bridge()
     {
         std::call_once(g_log_bridge_once, [] {
+            Logger::logger.setLogLevel(Logger::DISABLED);
             Logger::logger.setLogCallback([](
                 const std::string prettyMessage,
                 const std::string message,
@@ -94,7 +100,6 @@ namespace
                     g_logs.pop_front();
                 }
             });
-            Logger::logger.setLogLevel(Logger::TRACE);
         });
     }
 
@@ -481,6 +486,14 @@ wallet_status_t wallet_delete_file(const char *filename)
         return static_cast<wallet_status_t>(UNKNOWN_ERROR);
     }
 
+#if defined(__EMSCRIPTEN__)
+    const bool removed = WasmFs::remove(std::string(filename));
+    if (removed)
+    {
+        return static_cast<wallet_status_t>(SUCCESS);
+    }
+    return static_cast<wallet_status_t>(FILENAME_NON_EXISTENT);
+#else
     std::error_code ec;
     const bool removed = fs::remove(std::string(filename), ec);
 
@@ -495,6 +508,7 @@ wallet_status_t wallet_delete_file(const char *filename)
     }
 
     return static_cast<wallet_status_t>(FILENAME_NON_EXISTENT);
+#endif
 }
 
 void wallet_close(wallet_handle_t *wallet)
@@ -526,6 +540,17 @@ wallet_status_t wallet_save(wallet_handle_t *wallet)
 
     const auto error = instance->save();
     return static_cast<wallet_status_t>(error.getErrorCode());
+}
+
+int wallet_sync_step(wallet_handle_t *wallet)
+{
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return -1;
+    }
+    return instance->syncStep() ? 1 : 0;
 }
 
 wallet_status_t wallet_get_sync_status(
@@ -567,12 +592,21 @@ wallet_status_t wallet_get_status_json(
     }
 
     const auto s = instance->getStatus();
+    const bool isDaemonSynced = s.networkBlockCount > 0 &&
+                                s.localDaemonBlockCount >= s.networkBlockCount;
+    const bool isWalletSynced = s.networkBlockCount > 0 &&
+                                s.walletBlockCount >= s.networkBlockCount;
     nlohmann::json j{
         {"walletBlockCount", s.walletBlockCount},
         {"localDaemonBlockCount", s.localDaemonBlockCount},
         {"networkBlockCount", s.networkBlockCount},
         {"peerCount", s.peerCount},
-        {"lastKnownHashrate", s.lastKnownHashrate},
+        {"hashrate", s.lastKnownHashrate},
+        {"isDaemonSynced", isDaemonSynced},
+        {"isWalletSynced", isWalletSynced},
+        {"isOutOfSync", !isDaemonSynced && !isWalletSynced},
+        {"isViewWallet", instance->isViewWallet()},
+        {"subWalletCount", static_cast<int>(instance->getAddresses().size())},
     };
 
     return alloc_out_string(j.dump(), out_json, out_len);
@@ -688,13 +722,51 @@ wallet_status_t wallet_get_transactions_json(
         txs = instance->getTransactions();
     }
 
-    nlohmann::json j{
-        {"transactions", txs},
+    /* Serialise a single transaction into the format the Flutter UI expects:
+       - transfers: [{amount, type}]  where type=0 outgoing, 1 incoming
+         (C++ map uses positive for incoming, negative for outgoing)
+       - totalAmount: net signed amount (sum of transfer map)
+       - isConfirmed: true for on-chain txs, false for mempool
+       - address: empty string (multi-subwallet disambiguation not needed here) */
+    auto serializeTx = [](const WalletTypes::Transaction &tx, bool confirmed) -> nlohmann::json {
+        nlohmann::json transferArr = nlohmann::json::array();
+        for (const auto &[pubKey, amount] : tx.transfers)
+        {
+            transferArr.push_back({
+                {"amount", amount},
+                {"type", amount >= 0 ? 1 : 0},
+            });
+        }
+        return nlohmann::json{
+            {"hash", Common::podToHex(tx.hash.data)},
+            {"timestamp", tx.timestamp},
+            {"blockHeight", tx.blockHeight},
+            {"paymentID", tx.paymentID},
+            {"unlockTime", tx.unlockTime},
+            {"fee", tx.fee},
+            {"isCoinbaseTransaction", tx.isCoinbaseTransaction},
+            {"totalAmount", tx.totalAmount()},
+            {"isConfirmed", confirmed},
+            {"address", ""},
+            {"transfers", transferArr},
+        };
     };
+
+    nlohmann::json txArray = nlohmann::json::array();
+    for (const auto &tx : txs)
+    {
+        txArray.push_back(serializeTx(tx, true));
+    }
+    nlohmann::json j{{"transactions", txArray}};
 
     if (include_unconfirmed)
     {
-        j["unconfirmedTransactions"] = instance->getUnconfirmedTransactions();
+        nlohmann::json unconfirmedArray = nlohmann::json::array();
+        for (const auto &tx : instance->getUnconfirmedTransactions())
+        {
+            unconfirmedArray.push_back(serializeTx(tx, false));
+        }
+        j["unconfirmedTransactions"] = unconfirmedArray;
     }
 
     return alloc_out_string(j.dump(), out_json, out_len);
@@ -826,6 +898,7 @@ wallet_status_t wallet_send_basic(
 
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
@@ -945,6 +1018,7 @@ wallet_status_t wallet_send_advanced_json(
 
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
@@ -1181,6 +1255,20 @@ wallet_status_t wallet_change_password(
     return static_cast<wallet_status_t>(error.getErrorCode());
 }
 
+wallet_status_t wallet_export_json(
+    wallet_handle_t *wallet,
+    char **out_json,
+    size_t *out_len)
+{
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return status;
+    }
+    return alloc_out_string(instance->toJSON(), out_json, out_len);
+}
+
 wallet_status_t wallet_add_subwallet_json(
     wallet_handle_t *wallet,
     char **out_result_json,
@@ -1308,10 +1396,101 @@ wallet_status_t wallet_send_prepared(
     const auto [error, txHash] = instance->sendPreparedTransaction(hash);
     if (error)
     {
+        set_last_error_message(error.getErrorMessage());
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
     return alloc_out_string(Common::podToHex(txHash), out_tx_hash, out_len);
+}
+
+wallet_status_t wallet_sweep_to_address(
+    wallet_handle_t *wallet,
+    const char *destination,
+    const char *payment_id,
+    uint64_t amount_to_sweep,
+    char **out_result_json,
+    size_t *out_len)
+{
+    if (destination == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return status;
+    }
+
+    const std::string payment = payment_id ? payment_id : "";
+
+    std::vector<std::tuple<Error, Crypto::Hash>> results;
+    try
+    {
+        results = instance->sweepToAddress(std::string(destination), payment, amount_to_sweep);
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_sweep_to_address_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+    catch (...)
+    {
+        set_last_error_message("wallet_sweep_to_address_exception: unknown");
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    nlohmann::json arr = nlohmann::json::array();
+    for (const auto &[error, hash] : results)
+    {
+        if (error)
+        {
+            arr.push_back({
+                {"error", error.getErrorCode()},
+                {"errorMessage", error.getErrorMessage()}
+            });
+        }
+        else
+        {
+            arr.push_back({{"txHash", Common::podToHex(hash)}});
+        }
+    }
+    nlohmann::json j{{"results", arr}};
+    return alloc_out_string(j.dump(), out_result_json, out_len);
+}
+
+wallet_status_t wallet_estimate_sweep(
+    wallet_handle_t *wallet,
+    uint64_t amount_to_sweep,
+    uint64_t *out_tx_count,
+    uint64_t *out_total_fee)
+{
+    if (out_tx_count == nullptr || out_total_fee == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return status;
+    }
+
+    try
+    {
+        const auto [txCount, totalFee] = instance->estimateSweep("", amount_to_sweep);
+        *out_tx_count = static_cast<uint64_t>(txCount);
+        *out_total_fee = totalFee;
+    }
+    catch (const std::exception &e)
+    {
+        set_last_error_message(std::string("wallet_estimate_sweep_exception: ") + e.what());
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    return static_cast<wallet_status_t>(SUCCESS);
 }
 
 wallet_status_t wallet_create_integrated_address(
@@ -1393,6 +1572,38 @@ void wallet_string_free(char *p)
     delete[] p;
 }
 
+void wallet_get_pow_status(
+    bool *out_active,
+    uint64_t *out_elapsed_ms,
+    uint64_t *out_nonces)
+{
+    const bool running = PowProgress::active.load(std::memory_order_acquire);
+    if (out_active != nullptr)
+    {
+        *out_active = running;
+    }
+    if (out_elapsed_ms != nullptr)
+    {
+        if (running)
+        {
+            const auto now = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch())
+                    .count());
+            const auto start = PowProgress::startMs.load(std::memory_order_relaxed);
+            *out_elapsed_ms = now > start ? now - start : 0;
+        }
+        else
+        {
+            *out_elapsed_ms = 0;
+        }
+    }
+    if (out_nonces != nullptr)
+    {
+        *out_nonces = PowProgress::nonces.load(std::memory_order_relaxed);
+    }
+}
+
 const char *wallet_error_code_to_string(wallet_status_t code)
 {
     static thread_local std::string last;
@@ -1464,5 +1675,10 @@ wallet_status_t wallet_clear_logs(void)
     std::lock_guard<std::mutex> lock(g_log_mutex);
     g_logs.clear();
     return static_cast<wallet_status_t>(SUCCESS);
+}
+
+void wallet_set_scan_coinbase(bool scan)
+{
+    Config::config.wallet.skipCoinbaseTransactions = !scan;
 }
 

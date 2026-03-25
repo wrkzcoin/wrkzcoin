@@ -62,6 +62,16 @@ class BlockDownloader
 
     void initializeAfterLoad(const std::shared_ptr<Nigel> daemon);
 
+    /* Single synchronous download attempt — used in WASM no-thread mode
+       instead of the background downloader thread. */
+    bool downloadStep();
+
+    /* Re-enable the internal block store without starting the download thread.
+       Called by WalletSynchronizer::start() in WASM/single-threaded mode after
+       a stop()/start() cycle (e.g. save()) to prevent push_back_n from silently
+       discarding downloaded blocks. */
+    void startStorageOnly();
+
   private:
     //////////////////////////////
     /* Private member functions */

@@ -214,5 +214,9 @@ namespace CryptoNote
             const bool performExpensiveValidation) = 0;
 
         virtual void rewind(const uint64_t blockIndex) = 0;
+
+        /* Register a dynamic checkpoint discovered via network consensus during sync.
+           Blocks at or below this height will skip expensive transaction validation. */
+        virtual void addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash) = 0;
     };
 } // namespace CryptoNote
