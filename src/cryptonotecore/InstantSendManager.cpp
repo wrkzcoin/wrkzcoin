@@ -214,7 +214,7 @@ namespace CryptoNote
     std::string InstantSendManager::toJson() const
     {
         // Deduplicate locks (multiple keyImages may point to the same lock).
-        std::map<Crypto::Hash, const InstantSendLock *> uniqueLocks;
+        std::unordered_map<Crypto::Hash, const InstantSendLock *> uniqueLocks;
         for (const auto &[ki, lock] : m_locks)
         {
             uniqueLocks[lock.txHash] = &lock;
