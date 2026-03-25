@@ -100,7 +100,7 @@ void RpcServer::setupRoutes(httplib::Server &srv)
     /* Route the request through our middleware function, before forwarding
        to the specified function */
     const auto router = [this](const auto function, const RpcMode routePermissions, const bool isBodyRequired, const bool syncRequired) {
-        return [=](const httplib::Request &req, httplib::Response &res) {
+        return [this, function, routePermissions, isBodyRequired, syncRequired](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
             middleware(
@@ -700,26 +700,20 @@ std::tuple<Error, uint16_t> RpcServer::peers(
 std::tuple<Error, uint16_t> RpcServer::masternodeCount(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    nlohmann::json j;
+    j["count"] = m_core->getMasternodeCount();
+    j["status"] = "OK";
 
-    writer.StartObject();
-    writer.Key("count");
-    writer.Uint64(m_core->getMasternodeCount());
-    writer.Key("status");
-    writer.String("OK");
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    res.body = j.dump();
     return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t> RpcServer::masternodes(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     size_t offset = 0;
     size_t limit = 100;
@@ -752,64 +746,42 @@ std::tuple<Error, uint16_t> RpcServer::masternodes(
 
     const auto snapshots = m_core->getMasternodeSnapshots(offset, limit);
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    nlohmann::json j;
+    j["offset"] = offset;
+    j["limit"] = limit;
+    j["count"] = snapshots.size();
+    j["total"] = m_core->getMasternodeCount();
 
-    writer.StartObject();
-    writer.Key("offset");
-    writer.Uint64(offset);
-    writer.Key("limit");
-    writer.Uint64(limit);
-    writer.Key("count");
-    writer.Uint64(snapshots.size());
-    writer.Key("total");
-    writer.Uint64(m_core->getMasternodeCount());
-    writer.Key("masternodes");
-    writer.StartArray();
+    nlohmann::json mnArray = nlohmann::json::array();
     for (const auto &snapshot : snapshots)
     {
-        writer.StartObject();
-        writer.Key("mn_id");
-        writer.String(Common::podToHex(snapshot.masternodeId));
-        writer.Key("state");
-        writer.String(CryptoNote::Core::masternodeStatusToString(snapshot.status));
-        writer.Key("bonded");
-        writer.Bool(snapshot.bonded);
-        writer.Key("bond_amount");
-        writer.Uint64(snapshot.bondAmount);
-        writer.Key("has_collateral");
-        writer.Bool(snapshot.hasCollateral);
-        writer.Key("collateral_amount");
-        writer.Uint64(snapshot.collateralAmount);
-        writer.Key("collateral_global_output_index");
-        writer.Uint64(snapshot.collateralGlobalOutputIndex);
-        writer.Key("has_endpoint_commitment");
-        writer.Bool(snapshot.hasEndpointCommitment);
-        writer.Key("endpoint_commitment");
-        writer.String(snapshot.hasEndpointCommitment ? Common::podToHex(snapshot.endpointCommitment) : "");
-        writer.Key("health_percent");
-        writer.Uint64(snapshot.healthPercent);
-        writer.Key("spend_locked");
-        writer.Bool(snapshot.spendLocked);
-        writer.Key("last_paid_height");
-        writer.Uint64(snapshot.lastPaidHeight);
-        writer.Key("reward_in_fairness_window");
-        writer.Uint64(snapshot.rewardInFairnessWindow);
-        writer.EndObject();
+        nlohmann::json mn;
+        mn["mn_id"] = Common::podToHex(snapshot.masternodeId);
+        mn["state"] = CryptoNote::Core::masternodeStatusToString(snapshot.status);
+        mn["bonded"] = snapshot.bonded;
+        mn["bond_amount"] = snapshot.bondAmount;
+        mn["has_collateral"] = snapshot.hasCollateral;
+        mn["collateral_amount"] = snapshot.collateralAmount;
+        mn["collateral_global_output_index"] = snapshot.collateralGlobalOutputIndex;
+        mn["has_endpoint_commitment"] = snapshot.hasEndpointCommitment;
+        mn["endpoint_commitment"] = snapshot.hasEndpointCommitment ? Common::podToHex(snapshot.endpointCommitment) : "";
+        mn["health_percent"] = snapshot.healthPercent;
+        mn["spend_locked"] = snapshot.spendLocked;
+        mn["last_paid_height"] = snapshot.lastPaidHeight;
+        mn["reward_in_fairness_window"] = snapshot.rewardInFairnessWindow;
+        mnArray.push_back(mn);
     }
-    writer.EndArray();
-    writer.Key("status");
-    writer.String("OK");
-    writer.EndObject();
+    j["masternodes"] = mnArray;
+    j["status"] = "OK";
 
-    res.body = sb.GetString();
+    res.body = j.dump();
     return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t> RpcServer::masternode(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     const auto idHex = req.path_params.count("id") ? req.path_params.at("id") : std::string {};
     Crypto::Hash masternodeId;
@@ -824,52 +796,32 @@ std::tuple<Error, uint16_t> RpcServer::masternode(
         return {Error(UNKNOWN_ERROR, "Masternode not found"), 404};
     }
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
+    nlohmann::json j;
+    j["mn_id"] = Common::podToHex(snapshot->masternodeId);
+    j["state"] = CryptoNote::Core::masternodeStatusToString(snapshot->status);
+    j["bonded"] = snapshot->bonded;
+    j["bond_amount"] = snapshot->bondAmount;
+    j["has_collateral"] = snapshot->hasCollateral;
+    j["collateral_amount"] = snapshot->collateralAmount;
+    j["collateral_global_output_index"] = snapshot->collateralGlobalOutputIndex;
+    j["has_endpoint_commitment"] = snapshot->hasEndpointCommitment;
+    j["endpoint_commitment"] = snapshot->hasEndpointCommitment ? Common::podToHex(snapshot->endpointCommitment) : "";
+    j["health_percent"] = snapshot->healthPercent;
+    j["spend_locked"] = snapshot->spendLocked;
+    j["last_paid_height"] = snapshot->lastPaidHeight;
+    j["reward_in_fairness_window"] = snapshot->rewardInFairnessWindow;
+    j["has_signing_key"] = snapshot->hasSigningKey;
+    j["signing_key"] = snapshot->hasSigningKey ? Common::podToHex(snapshot->signingKey) : "";
+    j["status"] = "OK";
 
-    writer.StartObject();
-    writer.Key("mn_id");
-    writer.String(Common::podToHex(snapshot->masternodeId));
-    writer.Key("state");
-    writer.String(CryptoNote::Core::masternodeStatusToString(snapshot->status));
-    writer.Key("bonded");
-    writer.Bool(snapshot->bonded);
-    writer.Key("bond_amount");
-    writer.Uint64(snapshot->bondAmount);
-    writer.Key("has_collateral");
-    writer.Bool(snapshot->hasCollateral);
-    writer.Key("collateral_amount");
-    writer.Uint64(snapshot->collateralAmount);
-    writer.Key("collateral_global_output_index");
-    writer.Uint64(snapshot->collateralGlobalOutputIndex);
-    writer.Key("has_endpoint_commitment");
-    writer.Bool(snapshot->hasEndpointCommitment);
-    writer.Key("endpoint_commitment");
-    writer.String(snapshot->hasEndpointCommitment ? Common::podToHex(snapshot->endpointCommitment) : "");
-    writer.Key("health_percent");
-    writer.Uint64(snapshot->healthPercent);
-    writer.Key("spend_locked");
-    writer.Bool(snapshot->spendLocked);
-    writer.Key("last_paid_height");
-    writer.Uint64(snapshot->lastPaidHeight);
-    writer.Key("reward_in_fairness_window");
-    writer.Uint64(snapshot->rewardInFairnessWindow);
-    writer.Key("has_signing_key");
-    writer.Bool(snapshot->hasSigningKey);
-    writer.Key("signing_key");
-    writer.String(snapshot->hasSigningKey ? Common::podToHex(snapshot->signingKey) : "");
-    writer.Key("status");
-    writer.String("OK");
-    writer.EndObject();
-
-    res.body = sb.GetString();
+    res.body = j.dump();
     return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t> RpcServer::chainlock(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     uint32_t height = 0;
     try
@@ -881,51 +833,40 @@ std::tuple<Error, uint16_t> RpcServer::chainlock(
         return {Error(UNKNOWN_ERROR, "Invalid height parameter"), 400};
     }
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-    writer.StartObject();
-    writer.Key("height");
-    writer.Uint64(height);
+    nlohmann::json j;
+    j["height"] = height;
 
     const bool locked = m_core->hasChainLock(height);
-    writer.Key("locked");
-    writer.Bool(locked);
+    j["locked"] = locked;
 
     if (locked)
     {
         const auto clOpt = m_core->getChainLock(height);
         if (clOpt.has_value())
         {
-            writer.Key("block_hash");
-            writer.String(Common::podToHex(clOpt->blockHash));
-            writer.Key("vote_count");
-            writer.Uint64(clOpt->votes.size());
-            writer.Key("votes");
-            writer.StartArray();
+            j["block_hash"] = Common::podToHex(clOpt->blockHash);
+            j["vote_count"] = clOpt->votes.size();
+            nlohmann::json votesArray = nlohmann::json::array();
             for (const auto &vote : clOpt->votes)
             {
-                writer.StartObject();
-                writer.Key("mn_id");
-                writer.String(Common::podToHex(vote.masternodeId));
-                writer.Key("signing_key");
-                writer.String(Common::podToHex(vote.signingKey));
-                writer.EndObject();
+                nlohmann::json v;
+                v["mn_id"] = Common::podToHex(vote.masternodeId);
+                v["signing_key"] = Common::podToHex(vote.signingKey);
+                votesArray.push_back(v);
             }
-            writer.EndArray();
+            j["votes"] = votesArray;
         }
     }
 
-    writer.Key("status");
-    writer.String("OK");
-    writer.EndObject();
-    res.body = sb.GetString();
+    j["status"] = "OK";
+    res.body = j.dump();
     return {SUCCESS, 200};
 }
 
 std::tuple<Error, uint16_t> RpcServer::instantSendLock(
     const httplib::Request &req,
     httplib::Response &res,
-    const rapidjson::Document &body)
+    const nlohmann::json &body)
 {
     Crypto::Hash txHash;
     const std::string txHashStr = req.path_params.at("txhash");
@@ -960,21 +901,13 @@ std::tuple<Error, uint16_t> RpcServer::instantSendLock(
         }
     }
 
-    rapidjson::StringBuffer sb;
-    rapidjson::Writer<rapidjson::StringBuffer> writer(sb);
-    writer.StartObject();
-    writer.Key("tx_hash");
-    writer.String(txHashStr);
-    writer.Key("is_locked");
-    writer.Bool(locked);
-    writer.Key("lock_tx_hash");
-    writer.String(locked ? lockTxHash : "");
-    writer.Key("vote_count");
-    writer.Uint64(voteCount);
-    writer.Key("status");
-    writer.String("OK");
-    writer.EndObject();
-    res.body = sb.GetString();
+    nlohmann::json j;
+    j["tx_hash"] = txHashStr;
+    j["is_locked"] = locked;
+    j["lock_tx_hash"] = locked ? lockTxHash : "";
+    j["vote_count"] = voteCount;
+    j["status"] = "OK";
+    res.body = j.dump();
     return {SUCCESS, 200};
 }
 

@@ -129,19 +129,19 @@ class RpcServer
         peers(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        masternodeCount(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        masternodeCount(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        masternodes(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        masternodes(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        masternode(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        masternode(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        chainlock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        chainlock(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
-        instantSendLock(const httplib::Request &req, httplib::Response &res, const rapidjson::Document &body);
+        instantSendLock(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     ///////////////////
     /* POST REQUESTS */
