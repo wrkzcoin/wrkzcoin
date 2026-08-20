@@ -423,8 +423,31 @@ namespace CryptoNote
     {
         throwIfNotInitialized();
 
+        /* This serves NOTIFY_REQUEST_GET_OBJECTS, so it is asked for hundreds of
+           blocks at a time and virtually all of them are on the main chain.
+           Resolve those in two batched database reads up front; anything left
+           over - alternative chain blocks, or blocks we simply do not have -
+           falls through to the per hash walk below. */
+        std::unordered_map<Crypto::Hash, RawBlock> mainChainBlocks;
+
+        if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]))
+        {
+            mainChainBlocks = dbCache->getRawBlocksByHashes(blockHashes);
+        }
+
         for (const auto &hash : blockHashes)
         {
+            const auto cached = mainChainBlocks.find(hash);
+            if (cached != mainChainBlocks.end())
+            {
+                blocks.push_back(std::move(cached->second));
+
+                /* Dropping the entry keeps a repeated hash in the request from
+                   picking up the block we just moved out of. */
+                mainChainBlocks.erase(cached);
+                continue;
+            }
+
             IBlockchainCache *blockchainSegment = findSegmentContainingBlock(hash);
             if (blockchainSegment == nullptr)
             {
@@ -790,17 +813,10 @@ namespace CryptoNote
 
             if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                for (uint64_t index = startIndex; index < endIndex; ++index)
-                {
-                    WalletTypes::WalletBlockInfo walletBlock;
-
-                    if (!dbCache->getWalletSyncBlock(static_cast<uint32_t>(index), skipCoinbaseTransactions, walletBlock))
-                    {
-                        continue;
-                    }
-
-                    walletBlocks.push_back(std::move(walletBlock));
-                }
+                walletBlocks = dbCache->getWalletSyncBlocks(
+                    static_cast<uint32_t>(startIndex),
+                    static_cast<uint32_t>(endIndex),
+                    skipCoinbaseTransactions);
             }
             else
             {
@@ -1889,8 +1905,16 @@ namespace CryptoNote
         uint64_t fee;
         const uint64_t lastTimestamp = chainsLeaves[0]->getLastTimestamps(1)[0];
 
-        if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true, lastTimestamp))
+        /* Argument order is (..., fee, blockIndex, blockTimestamp, isPoolTransaction). */
+        if (auto validationResult = validateTransaction(
+                cachedTransaction,
+                validatorState,
+                chainsLeaves[0],
+                m_transactionValidationThreadPool,
+                fee,
+                getTopBlockIndex(),
+                lastTimestamp,
+                true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();

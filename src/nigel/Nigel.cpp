@@ -65,6 +65,17 @@ inline std::shared_ptr<httplib::Client> getClient(
     client->set_connection_timeout(timeout);
     client->set_read_timeout(timeout);
     client->set_write_timeout(timeout);
+
+    /* Syncing a wallet is tens of thousands of sequential requests to the same
+     * daemon. Without this every one of them pays for a fresh TCP handshake,
+     * and a fresh TLS handshake on top of that when talking to an SSL node. */
+    client->set_keep_alive(true);
+
+    /* Nagle delays the last partial segment of a write while an ack is
+     * outstanding, which on a strict request/response loop like this one turns
+     * into a per-request stall. */
+    client->set_tcp_nodelay(true);
+
     return client;
 }
 

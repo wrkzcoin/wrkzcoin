@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
 #include <system/ErrorMessage.h>
 #include <system/IpAddress.h>
 #include <system/InterruptedException.h>
@@ -378,6 +380,12 @@ namespace System
     {
         contextPair.readContext = nullptr;
         contextPair.writeContext = nullptr;
+
+        /* See the linux implementation - Nagle adds a fixed stall to every
+         * Levin round trip, and sync is made of round trips. */
+        const int nodelay = 1;
+        setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
+
         epoll_event connectionEvent;
         connectionEvent.events = EPOLLONESHOT;
         connectionEvent.data.ptr = nullptr;

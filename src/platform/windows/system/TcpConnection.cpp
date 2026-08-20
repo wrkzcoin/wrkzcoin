@@ -316,6 +316,15 @@ namespace System
         readContext(nullptr),
         writeContext(nullptr)
     {
+        /* See the linux implementation - Nagle adds a fixed stall to every
+         * Levin round trip, and sync is made of round trips. */
+        const BOOL nodelay = TRUE;
+        setsockopt(
+            static_cast<SOCKET>(connection),
+            IPPROTO_TCP,
+            TCP_NODELAY,
+            reinterpret_cast<const char *>(&nodelay),
+            sizeof nodelay);
     }
 
 } // namespace System
