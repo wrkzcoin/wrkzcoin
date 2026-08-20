@@ -1889,8 +1889,16 @@ namespace CryptoNote
         uint64_t fee;
         const uint64_t lastTimestamp = chainsLeaves[0]->getLastTimestamps(1)[0];
 
-        if (auto validationResult =
-                validateTransaction(cachedTransaction, validatorState, chainsLeaves[0], m_transactionValidationThreadPool, fee, getTopBlockIndex(), true, lastTimestamp))
+        /* Argument order is (..., fee, blockIndex, blockTimestamp, isPoolTransaction). */
+        if (auto validationResult = validateTransaction(
+                cachedTransaction,
+                validatorState,
+                chainsLeaves[0],
+                m_transactionValidationThreadPool,
+                fee,
+                getTopBlockIndex(),
+                lastTimestamp,
+                true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
