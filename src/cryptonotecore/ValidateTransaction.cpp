@@ -219,11 +219,10 @@ bool ValidateTransaction::isZeroInputMasternodeHeartbeat() const
         return false;
     }
 
-    // Quick structural check: extra must contain a valid MN01 Heartbeat payload.
-    // MN_BASE_PAYLOAD_SIZE = 4 (MN01) + 1 (type) + 32 (mnId) = 37 bytes.
-    // MN_HEARTBEAT_PAYLOAD_SIZE = 37 + 1 (flag) + 64 (sig) = 102 bytes.
+    // Quick structural check: extra must contain a valid MN01 Heartbeat payload of exactly the
+    // expected size (header | height | flag | signature — see MasternodeTx.h).
     const auto extraData = Utilities::getExtraDataFromExtra(m_transaction.extra);
-    if (extraData.size() != 102)
+    if (extraData.size() != CryptoNote::MASTERNODE_HEARTBEAT_PAYLOAD_SIZE)
     {
         return false;
     }
@@ -860,10 +859,13 @@ bool ValidateTransaction::validateTransactionUnlockTime()
 
     bool valid;
 
-    // After the masternode fork, ChainLock + InstantSend reduce double-spend risk to near-zero,
-    // so the unlock time floor is lowered from 15 to 3 blocks.
+    // From the masternode *reward* fork (UNLOCK_TIME_HEIGHT_V3) ChainLock quorums are expected to
+    // be live, so the unlock time floor is lowered from 15 to 3 blocks. A fork height of 0 means
+    // the feature is disabled and the V1 floor applies everywhere. `m_blockHeight` is the index of
+    // the previous block, so the rule switches for transactions in block UNLOCK_TIME_HEIGHT_V3.
     const uint64_t minUnlockBlocks =
-        (m_blockHeight >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+        (CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3 > 0
+         && m_blockHeight + 1 >= CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3)
             ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
             : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 

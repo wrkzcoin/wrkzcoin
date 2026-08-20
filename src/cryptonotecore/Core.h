@@ -31,6 +31,7 @@
 #include <common/FileSystemShim.h>
 #include <ctime>
 #include <functional>
+#include <mutex>
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
@@ -215,25 +216,51 @@ namespace CryptoNote
 
         std::optional<Crypto::Hash> getMasternodeRewardWinner(uint32_t height) const;
 
+        /* ChainLock quorum for `height`: the active set sorted by H(mnId || hash(block height-1)).
+         * Empty optional if block height-1 is not known locally (height > top + 1). */
+        std::optional<std::vector<Crypto::Hash>> getChainLockQuorum(uint32_t height) const;
+
+        /* InstantSend quorum for the current cycle (seeded by the hash of the block at the start of
+         * the INSTANTSEND_QUORUM_CYCLE_BLOCKS cycle containing the tip). */
+        std::optional<std::vector<Crypto::Hash>> getInstantSendQuorum() const;
+
         static const char *masternodeStatusToString(MasternodeStateTracker::Status status);
 
         // Notification callbacks (called synchronously after block/tx commit; no coroutine context needed).
         void setBlockNotifyCallback(std::function<void(uint32_t, const Crypto::Hash &)> cb);
         void setTransactionNotifyCallback(std::function<void(const Crypto::Hash &)> cb);
 
-        // ChainLock API
-        bool addChainLockVote(const ChainLockVote &vote);
+        // ChainLock API (thread-safe: may be called from the P2P dispatcher, RPC and signer threads).
+        // Votes/locks are validated against the on-chain masternode set (registered signing key,
+        // quorum membership, distinct voters, height window) before they are stored. Only
+        // Added/Assembled results should be relayed.
+        MasternodeVoteResult addChainLockVote(const ChainLockVote &vote);
         bool addChainLock(const ChainLock &cl);
         bool hasChainLock(uint32_t height) const;
         std::optional<ChainLock> getChainLock(uint32_t height) const;
         bool isChainLockConflict(uint32_t height, const Crypto::Hash &blockHash) const;
 
-        // InstantSend API
-        bool addInstantSendVote(const InstantSendVote &vote);
+        // InstantSend API (thread-safe, same validation policy as ChainLock).
+        MasternodeVoteResult addInstantSendVote(const InstantSendVote &vote);
         bool addInstantSendLock(const InstantSendLock &lock);
         bool isInstantSendLocked(const Crypto::KeyImage &keyImage) const;
         bool isInstantSendConflict(const Crypto::KeyImage &keyImage, const Crypto::Hash &txHash) const;
         std::optional<InstantSendLock> getInstantSendLock(const Crypto::KeyImage &keyImage) const;
+        std::optional<InstantSendLock> getInstantSendLockByTxHash(const Crypto::Hash &txHash) const;
+
+        /* Deterministic coinbase transaction secret key used whenever a block pays a masternode
+         * reward: r = H("MNCB1" || height_LE4 || previousBlockHash). Every node can recompute it,
+         * which is what makes the winner's stealth output verifiable in consensus. */
+        static Crypto::SecretKey deriveMasternodeCoinbaseTxSecretKey(uint32_t height, const Crypto::Hash &previousBlockHash);
+
+        /* Standard CryptoNote one-time output key for the masternode payout address:
+         * P = Hs(r * A || outputIndex) * G + B, with A = payout view key, B = payout spend key. */
+        static bool deriveMasternodeRewardOutputKey(
+            const Crypto::PublicKey &payoutSpendKey,
+            const Crypto::PublicKey &payoutViewKey,
+            const Crypto::SecretKey &txSecretKey,
+            size_t outputIndex,
+            Crypto::PublicKey &outputKey);
 
         virtual std::time_t getStartTime() const;
 
@@ -335,6 +362,33 @@ namespace CryptoNote
         /* InstantSend lock collection and key-image lock storage. */
         InstantSendManager m_instantSendManager;
 
+        /* Guards m_chainLockManager and m_instantSendManager. They are touched from the P2P
+         * dispatcher (addBlock / handlers), the RPC threads and the MasternodeSigner threads.
+         * Lock order: m_chainMutex (if needed) BEFORE m_masternodeMutex. */
+        mutable std::mutex m_masternodeMutex;
+
+        /* Reads the tracker without taking m_chainMutex — caller must hold it (shared or unique). */
+        std::vector<Crypto::Hash> getActiveMasternodeSetUnlocked(uint32_t height) const;
+
+        std::optional<Crypto::Hash> getMasternodeRewardWinnerUnlocked(uint32_t height) const;
+
+        std::optional<std::vector<Crypto::Hash>> getChainLockQuorumUnlocked(uint32_t height) const;
+
+        std::optional<std::vector<Crypto::Hash>> getInstantSendQuorumUnlocked() const;
+
+        /* True if any transaction currently in the pool (other than `excludeTransactionHash`)
+         * spends `keyImage`. Used to keep a Register whose collateral is being spent out of the pool. */
+        bool hasKeyImageSpentInPool(const Crypto::KeyImage &keyImage, const Crypto::Hash &excludeTransactionHash) const;
+
+        /* Membership validation shared by vote and assembled-lock ingestion. Caller holds m_chainMutex. */
+        bool validateChainLockVoteMembership(
+            const ChainLockVote &vote,
+            const std::vector<Crypto::Hash> &quorum) const;
+
+        bool validateInstantSendVoteMembership(
+            const InstantSendVote &vote,
+            const std::vector<Crypto::Hash> &quorum) const;
+
         /* Optional callbacks set by the daemon to forward events to MasternodeSigner. */
         std::function<void(uint32_t, const Crypto::Hash &)> m_blockNotifyCallback;
         std::function<void(const Crypto::Hash &)> m_txNotifyCallback;
@@ -379,12 +433,15 @@ namespace CryptoNote
 
         void rebuildMasternodeStateFromMainChain();
 
+        /* `blockValidatorState` (optional): key images already spent by earlier transactions of the
+         * block being validated — a Register whose collateral is spent in the same block is invalid. */
         std::error_code validateMasternodeTransactionEvent(
             const CachedTransaction &cachedTransaction,
             uint64_t transactionFee,
             uint32_t nextBlockHeight,
             IBlockchainCache *validationCache,
-            bool checkPoolTokenReplay) const;
+            bool checkPoolTokenReplay,
+            const TransactionValidatorState *blockValidatorState = nullptr) const;
 
         std::error_code validateMasternodeTransactionEventWithTracker(
             const CachedTransaction &cachedTransaction,
@@ -392,7 +449,8 @@ namespace CryptoNote
             uint32_t nextBlockHeight,
             IBlockchainCache *validationCache,
             const MasternodeStateTracker &tracker,
-            bool checkPoolTokenReplay) const;
+            bool checkPoolTokenReplay,
+            const TransactionValidatorState *blockValidatorState = nullptr) const;
 
         bool hasMasternodePayload(const Transaction &transaction) const;
 
@@ -515,7 +573,12 @@ namespace CryptoNote
 
         size_t calculateCumulativeBlocksizeLimit(uint32_t height) const;
 
-        bool validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight);
+        /* `templateTracker` (optional): masternode state as it will be *after* the transactions
+         * already placed in the template, so stateful MN rules are checked in template order. */
+        bool validateBlockTemplateTransaction(
+            const CachedTransaction &cachedTransaction,
+            const uint64_t blockHeight,
+            const MasternodeStateTracker *templateTracker);
 
         void fillBlockTemplate(
             BlockTemplate &block,

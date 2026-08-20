@@ -35,28 +35,44 @@ namespace CryptoNote
         return Crypto::check_signature(sigHash, vote.signingKey, vote.signature);
     }
 
-    bool ChainLockManager::addVote(const ChainLockVote &vote, uint64_t threshold)
+    MasternodeVoteResult ChainLockManager::addVote(
+        const ChainLockVote &vote,
+        uint64_t threshold,
+        uint64_t maxPendingPerHeight,
+        std::time_t now)
     {
         // Ignore if already locked at this height.
         if (m_locks.count(vote.height))
         {
-            return false;
-        }
-
-        if (!verifyVote(vote))
-        {
-            return false;
+            return MasternodeVoteResult::Duplicate;
         }
 
         auto &pending = m_pendingVotes[vote.height];
 
-        // Deduplicate: one vote per masternodeId per (height, blockHash).
+        // One vote per masternode per height. A second vote with a different block hash is
+        // equivocation: it is ignored too (and must not be relayed), which also bounds the
+        // pending set to at most one entry per quorum member.
         for (const auto &existing : pending)
         {
-            if (existing.masternodeId == vote.masternodeId && existing.blockHash == vote.blockHash)
+            if (existing.masternodeId == vote.masternodeId)
             {
-                return false; // duplicate
+                return MasternodeVoteResult::Duplicate;
             }
+        }
+
+        if (pending.size() >= maxPendingPerHeight)
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // Signature check last: it is the expensive step.
+        if (!verifyVote(vote))
+        {
+            if (pending.empty())
+            {
+                m_pendingVotes.erase(vote.height);
+            }
+            return MasternodeVoteResult::Rejected;
         }
 
         pending.push_back(vote);
@@ -85,11 +101,12 @@ namespace CryptoNote
                 }
             }
             m_locks.emplace(vote.height, std::move(cl));
+            m_pendingLockReceivedAt[vote.height] = now;
             m_pendingVotes.erase(vote.height);
-            return true;
+            return MasternodeVoteResult::Assembled;
         }
 
-        return false;
+        return MasternodeVoteResult::Added;
     }
 
     bool ChainLockManager::hasLock(uint32_t height) const
@@ -107,14 +124,40 @@ namespace CryptoNote
         return it->second;
     }
 
-    bool ChainLockManager::isConflict(uint32_t height, const Crypto::Hash &blockHash) const
+    bool ChainLockManager::isConflict(
+        uint32_t height,
+        const Crypto::Hash &blockHash,
+        std::time_t now,
+        uint64_t pendingExpirySeconds) const
     {
         const auto it = m_locks.find(height);
         if (it == m_locks.end())
         {
             return false;
         }
-        return it->second.blockHash != blockHash;
+
+        if (it->second.blockHash == blockHash)
+        {
+            return false;
+        }
+
+        const auto pendingIt = m_pendingLockReceivedAt.find(height);
+        if (pendingIt != m_pendingLockReceivedAt.end())
+        {
+            if (now >= pendingIt->second
+                && static_cast<uint64_t>(now - pendingIt->second) > pendingExpirySeconds)
+            {
+                // Lock has been pending (block never seen) for too long: advisory only.
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    void ChainLockManager::markLockSatisfied(uint32_t height)
+    {
+        m_pendingLockReceivedAt.erase(height);
     }
 
     uint32_t ChainLockManager::highestLockedHeight() const
@@ -126,7 +169,7 @@ namespace CryptoNote
         return m_locks.rbegin()->first;
     }
 
-    bool ChainLockManager::addChainLock(const ChainLock &cl, uint64_t threshold)
+    bool ChainLockManager::addChainLock(const ChainLock &cl, uint64_t threshold, std::time_t now)
     {
         if (m_locks.count(cl.height))
         {
@@ -138,13 +181,21 @@ namespace CryptoNote
             return false;
         }
 
-        // Verify all votes refer to the same (height, blockHash) and have valid sigs.
+        // Verify all votes refer to the same (height, blockHash), come from distinct masternodes
+        // and have valid signatures.
+        std::vector<Crypto::Hash> seen;
+        seen.reserve(cl.votes.size());
         for (const auto &vote : cl.votes)
         {
             if (vote.height != cl.height || vote.blockHash != cl.blockHash)
             {
                 return false;
             }
+            if (std::find(seen.begin(), seen.end(), vote.masternodeId) != seen.end())
+            {
+                return false;
+            }
+            seen.push_back(vote.masternodeId);
             if (!verifyVote(vote))
             {
                 return false;
@@ -152,6 +203,7 @@ namespace CryptoNote
         }
 
         m_locks.emplace(cl.height, cl);
+        m_pendingLockReceivedAt[cl.height] = now;
         m_pendingVotes.erase(cl.height);
         return true;
     }
@@ -163,6 +215,19 @@ namespace CryptoNote
         {
             it = m_pendingVotes.erase(it);
         }
+    }
+
+    void ChainLockManager::pruneLocksBelow(uint32_t height)
+    {
+        m_locks.erase(m_locks.begin(), m_locks.lower_bound(height));
+        m_pendingLockReceivedAt.erase(m_pendingLockReceivedAt.begin(), m_pendingLockReceivedAt.lower_bound(height));
+    }
+
+    void ChainLockManager::removeAbove(uint32_t height)
+    {
+        m_locks.erase(m_locks.upper_bound(height), m_locks.end());
+        m_pendingLockReceivedAt.erase(m_pendingLockReceivedAt.upper_bound(height), m_pendingLockReceivedAt.end());
+        m_pendingVotes.erase(m_pendingVotes.upper_bound(height), m_pendingVotes.end());
     }
 
     std::string ChainLockManager::toJson() const
@@ -188,7 +253,7 @@ namespace CryptoNote
         return root.dump();
     }
 
-    bool ChainLockManager::fromJson(const std::string &json)
+    bool ChainLockManager::fromJson(const std::string &json, std::time_t now)
     {
         try
         {
@@ -226,6 +291,11 @@ namespace CryptoNote
             }
 
             m_locks = std::move(loaded);
+            m_pendingLockReceivedAt.clear();
+            for (const auto &[h, _] : m_locks)
+            {
+                m_pendingLockReceivedAt[h] = now;
+            }
             return true;
         }
         catch (...)

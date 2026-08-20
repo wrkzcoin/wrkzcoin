@@ -300,6 +300,10 @@ namespace CryptoNote
 
         size_t maxBlockCumulativeSize(uint64_t height) const;
 
+        /* `txSecretKeyOverride` (optional): use this transaction secret key instead of a random
+         * one. Core passes a deterministic key when a masternode reward output must be added so
+         * that every node can recompute the winner's one-time output key (see
+         * Core::deriveMasternodeCoinbaseTxSecretKey). */
         bool constructMinerTx(
             uint8_t blockMajorVersion,
             uint32_t height,
@@ -311,7 +315,8 @@ namespace CryptoNote
             const Crypto::PublicKey &publicSpendKey,
             Transaction &tx,
             const BinaryArray &extraNonce = BinaryArray(),
-            size_t maxOuts = 1) const;
+            size_t maxOuts = 1,
+            const Crypto::SecretKey *txSecretKeyOverride = nullptr) const;
 
         bool isFusionTransaction(const Transaction &transaction, uint32_t height) const;
 

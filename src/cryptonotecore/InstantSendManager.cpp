@@ -32,24 +32,30 @@ namespace CryptoNote
         return Crypto::check_signature(sigHash, vote.signingKey, vote.signature);
     }
 
-    bool InstantSendManager::addVote(
+    MasternodeVoteResult InstantSendManager::addVote(
         const InstantSendVote &vote,
         const std::vector<Crypto::KeyImage> &keyImages,
         uint64_t threshold,
         uint32_t currentHeight)
     {
+        if (keyImages.empty())
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // Already locked for this tx: nothing to do.
+        if (getLockByTxHash(vote.txHash).has_value())
+        {
+            return MasternodeVoteResult::Duplicate;
+        }
+
         // If any key image is already locked to a different tx, reject.
         for (const auto &ki : keyImages)
         {
             if (isConflict(ki, vote.txHash))
             {
-                return false;
+                return MasternodeVoteResult::Rejected;
             }
-        }
-
-        if (!verifyVote(vote))
-        {
-            return false;
         }
 
         auto &pending = m_pendingVotes[vote.txHash];
@@ -59,8 +65,17 @@ namespace CryptoNote
         {
             if (existing.masternodeId == vote.masternodeId)
             {
-                return false;
+                return MasternodeVoteResult::Duplicate;
             }
+        }
+
+        if (!verifyVote(vote))
+        {
+            if (pending.empty())
+            {
+                m_pendingVotes.erase(vote.txHash);
+            }
+            return MasternodeVoteResult::Rejected;
         }
 
         pending.push_back(vote);
@@ -83,10 +98,10 @@ namespace CryptoNote
             m_pendingVotes.erase(vote.txHash);
             m_pendingKeyImages.erase(vote.txHash);
             m_lockHeight.erase(vote.txHash);
-            return true;
+            return MasternodeVoteResult::Assembled;
         }
 
-        return false;
+        return MasternodeVoteResult::Added;
     }
 
     bool InstantSendManager::isLocked(const Crypto::KeyImage &keyImage) const
@@ -114,20 +129,50 @@ namespace CryptoNote
         return it->second;
     }
 
+    std::optional<InstantSendLock> InstantSendManager::getLockByTxHash(const Crypto::Hash &txHash) const
+    {
+        for (const auto &[ki, lock] : m_locks)
+        {
+            if (lock.txHash == txHash)
+            {
+                return lock;
+            }
+        }
+        return std::nullopt;
+    }
+
     bool InstantSendManager::addInstantSendLock(const InstantSendLock &lock, uint64_t threshold)
     {
+        if (lock.keyImages.empty())
+        {
+            return false;
+        }
+
         if (lock.votes.size() < threshold)
         {
             return false;
         }
 
-        // Verify all votes.
+        // Already known: don't re-store / re-relay.
+        if (getLockByTxHash(lock.txHash).has_value())
+        {
+            return false;
+        }
+
+        // Verify all votes: same tx, distinct masternodes, valid signatures.
+        std::vector<Crypto::Hash> seen;
+        seen.reserve(lock.votes.size());
         for (const auto &vote : lock.votes)
         {
             if (vote.txHash != lock.txHash)
             {
                 return false;
             }
+            if (std::find(seen.begin(), seen.end(), vote.masternodeId) != seen.end())
+            {
+                return false;
+            }
+            seen.push_back(vote.masternodeId);
             if (!verifyVote(vote))
             {
                 return false;
@@ -168,6 +213,18 @@ namespace CryptoNote
         m_pendingVotes.erase(txHash);
         m_pendingKeyImages.erase(txHash);
         m_lockHeight.erase(txHash);
+    }
+
+    void InstantSendManager::onKeyImageSpent(const Crypto::KeyImage &keyImage)
+    {
+        const auto it = m_locks.find(keyImage);
+        if (it == m_locks.end())
+        {
+            return;
+        }
+
+        const Crypto::Hash txHash = it->second.txHash;
+        onTxConfirmed(txHash);
     }
 
     void InstantSendManager::pruneExpired(uint32_t currentHeight, uint64_t expiryBlocks)
@@ -301,6 +358,11 @@ namespace CryptoNote
                     return false;
                 }
                 lock.votes.push_back(vote);
+            }
+
+            if (lock.keyImages.empty())
+            {
+                continue;
             }
 
             storeLock(lock);

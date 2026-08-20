@@ -248,13 +248,27 @@ namespace CryptoNote
         const Crypto::PublicKey &publicSpendKey,
         Transaction &tx,
         const BinaryArray &extraNonce /* = BinaryArray()*/,
-        size_t maxOuts /* = 1*/) const
+        size_t maxOuts /* = 1*/,
+        const Crypto::SecretKey *txSecretKeyOverride /* = nullptr */) const
     {
         tx.inputs.clear();
         tx.outputs.clear();
         tx.extra.clear();
 
-        KeyPair txkey = generateKeyPair();
+        KeyPair txkey;
+        if (txSecretKeyOverride != nullptr)
+        {
+            txkey.secretKey = *txSecretKeyOverride;
+            if (!Crypto::secret_key_to_public_key(txkey.secretKey, txkey.publicKey))
+            {
+                logger(ERROR, BRIGHT_RED) << "Invalid coinbase transaction secret key override";
+                return false;
+            }
+        }
+        else
+        {
+            txkey = generateKeyPair();
+        }
         addTransactionPublicKeyToExtra(tx.extra, txkey.publicKey);
         if (!extraNonce.empty())
         {

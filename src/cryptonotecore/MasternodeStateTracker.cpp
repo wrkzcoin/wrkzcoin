@@ -33,6 +33,7 @@ namespace CryptoNote
     void MasternodeStateTracker::registerMasternode(
         const Crypto::Hash &masternodeId,
         const Crypto::PublicKey &payoutKey,
+        const Crypto::PublicKey &payoutViewKey,
         bool bonded,
         uint64_t bondAmount,
         const Crypto::Hash &registrationTokenId,
@@ -45,9 +46,29 @@ namespace CryptoNote
         bool hasSigningKey,
         const Crypto::PublicKey &signingKey)
     {
+        /* A re-registration (after Revoke) resets the lifecycle/collateral/endpoint fields but
+         * deliberately KEEPS the sample windows, the reward/fairness history and the lifecycle
+         * anti-replay counter:
+         *  - health / attestation / reward samples simply age out of their windows, and keeping
+         *    them means the anti-replay rules ("newer than the last accepted heartbeat / attestation
+         *    by this verifier") keep holding across lives — a reset would re-open old signed
+         *    payloads for replay during the first MAX_AGE blocks of the new life;
+         *  - fairness history cannot be wiped by revoke + re-register;
+         *  - lastLifecycleHeight keeps old Deactivate/Revoke payloads dead forever. */
         State &state = m_states[masternodeId];
+        {
+            State fresh;
+            fresh.healthSamples = std::move(state.healthSamples);
+            fresh.attestationSamples = std::move(state.attestationSamples);
+            fresh.rewardSamples = std::move(state.rewardSamples);
+            fresh.lastPaidHeight = state.lastPaidHeight;
+            fresh.hasBeenPaid = state.hasBeenPaid;
+            fresh.lastLifecycleHeight = state.lastLifecycleHeight;
+            state = std::move(fresh);
+        }
         state.status = Status::Registered;
         state.payoutKey = payoutKey;
+        state.payoutViewKey = payoutViewKey;
         state.bonded = bonded;
         state.bondAmount = bondAmount;
         state.registrationTokenId = registrationTokenId;
@@ -150,7 +171,11 @@ namespace CryptoNote
         return it->second.status;
     }
 
-    void MasternodeStateTracker::recordHealthSample(const Crypto::Hash &masternodeId, uint32_t height, bool healthy)
+    void MasternodeStateTracker::recordHealthSample(
+        const Crypto::Hash &masternodeId,
+        uint32_t height,
+        bool healthy,
+        uint32_t payloadHeight)
     {
         const auto it = m_states.find(masternodeId);
         if (it == m_states.end())
@@ -159,6 +184,7 @@ namespace CryptoNote
         }
         State &state = it->second;
         state.healthSamples.push_back({height, healthy});
+        state.lastHeartbeatPayloadHeight = std::max(state.lastHeartbeatPayloadHeight, payloadHeight);
 
         const uint32_t windowStart = calculateWindowStart(height, MASTERNODE_HEALTH_WINDOW_BLOCKS);
         while (!state.healthSamples.empty() && state.healthSamples.front().height < windowStart)
@@ -171,7 +197,8 @@ namespace CryptoNote
         const Crypto::Hash &masternodeId,
         uint32_t height,
         const Crypto::PublicKey &verifierKey,
-        bool healthy)
+        bool healthy,
+        uint32_t payloadHeight)
     {
         const auto it = m_states.find(masternodeId);
         if (it == m_states.end())
@@ -179,7 +206,12 @@ namespace CryptoNote
             return;
         }
         State &state = it->second;
-        state.attestationSamples.push_back({height, verifierKey, healthy});
+        AttestationSample sample;
+        sample.height = height;
+        sample.verifierKey = verifierKey;
+        sample.healthy = healthy;
+        sample.payloadHeight = payloadHeight;
+        state.attestationSamples.push_back(sample);
 
         const uint32_t windowStart = calculateWindowStart(height, MASTERNODE_ATTESTATION_WINDOW_BLOCKS);
         while (!state.attestationSamples.empty() && state.attestationSamples.front().height < windowStart)
@@ -479,11 +511,27 @@ namespace CryptoNote
             return result;
         }
 
+        // floor(totalReward * percent / 100) without 128-bit arithmetic (portable to MSVC):
+        // totalReward = 100*q + r  =>  floor((100q + r) * p / 100) = q*p + floor(r*p / 100).
+        // q*p <= totalReward and r*p < 10,000, so nothing can overflow for percent <= 100.
+        uint64_t masternodeReward = 0;
+        {
+            const uint64_t q = totalReward / 100;
+            const uint64_t r = totalReward % 100;
+            masternodeReward = q * masternodePercent + (r * masternodePercent) / 100;
+        }
+
+        /* A zero-amount output is not a valid coinbase output, so a winner whose share rounds to
+         * zero gets nothing this block and the whole reward stays with the miner. */
+        if (masternodeReward == 0)
+        {
+            result.powReward = totalReward;
+            return result;
+        }
+
         result.hasMasternodeWinner = true;
         result.masternodeWinner = winner;
-        // Use __uint128_t to prevent overflow when totalReward * masternodePercent exceeds uint64_t.
-        result.masternodeReward = static_cast<uint64_t>(
-            (static_cast<__uint128_t>(totalReward) * masternodePercent) / 100);
+        result.masternodeReward = masternodeReward;
         result.powReward = totalReward - result.masternodeReward;
         return result;
     }
@@ -610,6 +658,77 @@ namespace CryptoNote
         return true;
     }
 
+    bool MasternodeStateTracker::getPayoutAddressKeys(
+        const Crypto::Hash &masternodeId,
+        Crypto::PublicKey &payoutSpendKey,
+        Crypto::PublicKey &payoutViewKey) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return false;
+        }
+
+        payoutSpendKey = it->second.payoutKey;
+        payoutViewKey = it->second.payoutViewKey;
+        return true;
+    }
+
+    uint32_t MasternodeStateTracker::getLastHeartbeatPayloadHeight(const Crypto::Hash &masternodeId) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return 0;
+        }
+
+        return it->second.lastHeartbeatPayloadHeight;
+    }
+
+    uint32_t MasternodeStateTracker::getLastLifecycleHeight(const Crypto::Hash &masternodeId) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return 0;
+        }
+
+        return it->second.lastLifecycleHeight;
+    }
+
+    void MasternodeStateTracker::recordLifecycleHeight(const Crypto::Hash &masternodeId, uint32_t payloadHeight)
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return;
+        }
+
+        it->second.lastLifecycleHeight = std::max(it->second.lastLifecycleHeight, payloadHeight);
+    }
+
+    uint32_t MasternodeStateTracker::getLastAttestationPayloadHeight(
+        const Crypto::Hash &masternodeId,
+        const Crypto::PublicKey &verifierKey) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return 0;
+        }
+
+        uint32_t last = 0;
+        for (const auto &sample : it->second.attestationSamples)
+        {
+            if (sample.verifierKey == verifierKey)
+            {
+                last = std::max(last, sample.payloadHeight);
+            }
+        }
+
+        return last;
+    }
+
     bool MasternodeStateTracker::hasUsedRegistrationToken(const Crypto::Hash &tokenId) const
     {
         for (const auto &[_, state] : m_states)
@@ -690,6 +809,10 @@ namespace CryptoNote
         const Crypto::KeyImage &keyImage,
         uint32_t currentHeight) const
     {
+        /* The same key image can legitimately appear in more than one record (a Revoked
+         * registration whose lock expired followed by a fresh registration with the same
+         * collateral). m_states is an unordered_map, so the answer must not depend on which
+         * record is visited first: the key image is locked if ANY matching record locks it. */
         for (const auto &[_, state] : m_states)
         {
             if (!state.collateralKeyImage.has_value() || *state.collateralKeyImage != keyImage)
@@ -701,11 +824,16 @@ namespace CryptoNote
             {
                 if (!state.deactivationHeight.has_value())
                 {
-                    return false;
+                    continue;
                 }
 
-                return static_cast<uint64_t>(currentHeight)
-                    < static_cast<uint64_t>(*state.deactivationHeight) + MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS;
+                if (static_cast<uint64_t>(currentHeight)
+                    < static_cast<uint64_t>(*state.deactivationHeight) + MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS)
+                {
+                    return true;
+                }
+
+                continue;
             }
 
             if (state.status == Status::Inactive || state.status == Status::Penalized)
@@ -715,10 +843,16 @@ namespace CryptoNote
                     return true;
                 }
 
-                return static_cast<uint64_t>(currentHeight)
-                    < static_cast<uint64_t>(*state.deactivationHeight) + MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS;
+                if (static_cast<uint64_t>(currentHeight)
+                    < static_cast<uint64_t>(*state.deactivationHeight) + MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS)
+                {
+                    return true;
+                }
+
+                continue;
             }
 
+            /* Registered / Active: locked for as long as the registration lives. */
             return true;
         }
 
@@ -876,6 +1010,9 @@ namespace CryptoNote
             item["last_paid_height"] = state.lastPaidHeight;
             item["has_been_paid"] = state.hasBeenPaid;
             item["payout_key"] = Common::podToHex(state.payoutKey);
+            item["payout_view_key"] = Common::podToHex(state.payoutViewKey);
+            item["last_lifecycle_height"] = state.lastLifecycleHeight;
+            item["last_heartbeat_payload_height"] = state.lastHeartbeatPayloadHeight;
             item["bonded"] = state.bonded;
             item["bond_amount"] = state.bondAmount;
             item["registration_token_id"] =
@@ -919,7 +1056,10 @@ namespace CryptoNote
             for (const auto &sample : state.attestationSamples)
             {
                 attestations.push_back(
-                    {{"h", sample.height}, {"v", Common::podToHex(sample.verifierKey)}, {"ok", sample.healthy}});
+                    {{"h", sample.height},
+                     {"v", Common::podToHex(sample.verifierKey)},
+                     {"ok", sample.healthy},
+                     {"p", sample.payloadHeight}});
             }
             item["attestations"] = std::move(attestations);
 
@@ -969,8 +1109,15 @@ namespace CryptoNote
             }
 
             State state;
-            state.status = static_cast<Status>(item.at("status").get<uint8_t>());
+            const auto rawStatus = item.at("status").get<uint8_t>();
+            if (rawStatus > static_cast<uint8_t>(Status::Revoked))
+            {
+                return false;
+            }
+            state.status = static_cast<Status>(rawStatus);
             state.lastPaidHeight = item.value("last_paid_height", 0u);
+            state.lastLifecycleHeight = item.value("last_lifecycle_height", 0u);
+            state.lastHeartbeatPayloadHeight = item.value("last_heartbeat_payload_height", 0u);
             state.hasBeenPaid = item.value("has_been_paid", false);
             state.bonded = item.at("bonded").get<bool>();
             state.bondAmount = item.at("bond_amount").get<uint64_t>();
@@ -1023,6 +1170,14 @@ namespace CryptoNote
                 return false;
             }
 
+            /* Required: the payout view key feeds the reward output derivation, so a snapshot
+             * without it (pre-v3 format) must be rejected and rebuilt from the chain. */
+            if (!item.contains("payout_view_key") || item.at("payout_view_key").is_null()
+                || !Common::podFromHex(item.at("payout_view_key").get<std::string>(), state.payoutViewKey))
+            {
+                return false;
+            }
+
             if (item.contains("last_endpoint_update_height") && !item.at("last_endpoint_update_height").is_null())
             {
                 state.lastEndpointUpdateHeight = item.at("last_endpoint_update_height").get<uint32_t>();
@@ -1071,6 +1226,7 @@ namespace CryptoNote
                         return false;
                     }
                     att.healthy = sample.at("ok").get<bool>();
+                    att.payloadHeight = sample.value("p", 0u);
                     state.attestationSamples.push_back(att);
                 }
             }
