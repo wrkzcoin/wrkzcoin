@@ -2284,27 +2284,7 @@ namespace CryptoNote
 
     Crypto::SecretKey Core::deriveMasternodeCoinbaseTxSecretKey(uint32_t height, const Crypto::Hash &previousBlockHash)
     {
-        /* r = Hs("MNCB1" || height_LE4 || previousBlockHash) — unique per (chain position), public,
-         * and recomputable by every validator. The coinbase tx public key is R = r*G. */
-        std::vector<uint8_t> preimage;
-        preimage.reserve(5 + sizeof(uint32_t) + sizeof(Crypto::Hash));
-        preimage.push_back('M');
-        preimage.push_back('N');
-        preimage.push_back('C');
-        preimage.push_back('B');
-        preimage.push_back('1');
-        for (size_t i = 0; i < sizeof(uint32_t); ++i)
-        {
-            preimage.push_back(static_cast<uint8_t>((height >> (8 * i)) & 0xff));
-        }
-        preimage.insert(preimage.end(), previousBlockHash.data, previousBlockHash.data + sizeof(Crypto::Hash));
-
-        Crypto::EllipticCurveScalar scalar;
-        Crypto::hashToScalar(preimage.data(), preimage.size(), scalar);
-
-        Crypto::SecretKey secret;
-        std::copy(std::begin(scalar.data), std::end(scalar.data), std::begin(secret.data));
-        return secret;
+        return MasternodeReward::deriveCoinbaseTxSecretKey(height, previousBlockHash);
     }
 
     bool Core::deriveMasternodeRewardOutputKey(
@@ -2314,13 +2294,8 @@ namespace CryptoNote
         size_t outputIndex,
         Crypto::PublicKey &outputKey)
     {
-        Crypto::KeyDerivation derivation;
-        if (!Crypto::generate_key_derivation(payoutViewKey, txSecretKey, derivation))
-        {
-            return false;
-        }
-
-        return Crypto::derive_public_key(derivation, outputIndex, payoutSpendKey, outputKey);
+        return MasternodeReward::deriveRewardOutputKey(
+            payoutSpendKey, payoutViewKey, txSecretKey, outputIndex, outputKey);
     }
 
     bool Core::validateChainLockVoteMembership(const ChainLockVote &vote, const std::vector<Crypto::Hash> &quorum) const

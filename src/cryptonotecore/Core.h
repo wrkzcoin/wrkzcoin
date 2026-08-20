@@ -22,6 +22,7 @@
 #include "ChainLockManager.h"
 #include "InstantSendManager.h"
 #include "MasternodeQuorum.h"
+#include "MasternodeReward.h"
 #include "MasternodeStateTracker.h"
 #include "MasternodeTx.h"
 #include "MessageQueue.h"
