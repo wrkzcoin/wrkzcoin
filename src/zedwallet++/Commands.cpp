@@ -82,7 +82,7 @@ std::vector<AdvancedCommand> allCommands()
             true),
         AdvancedCommand(
             "mn_revoke",
-            "[Masternode] Permanently revoke a masternode and release collateral (mn_revoke <mn_id_hex>)",
+            "[Masternode] Permanently revoke a masternode; collateral unlocks after the 21-day spend-lock (mn_revoke <mn_id_hex>)",
             false,
             true),
         AdvancedCommand("ab_add", "[Address Book] Add a person to your address book", true, true),
