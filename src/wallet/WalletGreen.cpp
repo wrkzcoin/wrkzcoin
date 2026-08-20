@@ -1647,7 +1647,8 @@ namespace CryptoNote
             }
 
             const uint64_t wgMinUnlockBlocks =
-                (m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                (CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3 > 0
+                 && m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3)
                     ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
                     : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 
@@ -2257,7 +2258,8 @@ namespace CryptoNote
             }
 
             const uint64_t wgMinUnlockBlocks2 =
-                (m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                (CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3 > 0
+                 && m_node.getLastKnownBlockHeight() >= CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3)
                     ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
                     : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 

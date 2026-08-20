@@ -46,9 +46,10 @@ namespace CryptoNote
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
-        /* After MASTERNODE_FEATURE_FORK_HEIGHT, ChainLock eliminates reorgs and
-         * InstantSend pre-confirms TXs, so the spend-lock window can be reduced.
-         * Recipients wait only ~3 blocks after confirmation instead of ~15. */
+        /* Once the masternode *reward* fork is active, ChainLock quorums are expected to be
+         * live (masternodes have had the whole feature→reward window to register and activate),
+         * so the spend-lock window can be reduced. Recipients wait only ~3 blocks after
+         * confirmation instead of ~15. Activation height: UNLOCK_TIME_HEIGHT_V3 (below). */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS_V2 = 3;
 
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
@@ -276,9 +277,26 @@ namespace CryptoNote
         /* Collateral spend lock after deactivation/revocation: 21 days. */
         const uint64_t MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS = 21 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
 
-        /* Masternode rollout fork heights. Set to 0 to keep feature disabled until configured. */
-        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 4600000;
-        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = MASTERNODE_FEATURE_FORK_HEIGHT + 30 * EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
+        /* Masternode rollout fork heights. Set MASTERNODE_FEATURE_FORK_HEIGHT to 0 to keep the
+         * feature disabled until configured.
+         *
+         * Feature fork (5,000,000): MN transactions accepted, state tracking + ChainLock/InstantSend start.
+         * Reward fork  (5,200,000): 70/30 reward split activates (~200,000 blocks ≈ 139 days later, giving
+         *                           operators time to register/activate and quorums time to form).
+         *
+         * Both heights MUST also appear in FORK_HEIGHTS[] below so that /getinfo upgrade_heights and the
+         * daemon fork countdown advertise them to older software. */
+        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 5000000;
+        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = 5200000;
+
+        /* Signed masternode payloads (heartbeat, attest, activate/deactivate/penalize/revoke,
+         * update-endpoint) embed the block height they were created at. A payload is only valid if
+         *   payload.height <= nextBlockHeight + MASTERNODE_SIGNED_PAYLOAD_FUTURE_TOLERANCE_BLOCKS
+         *   nextBlockHeight - payload.height <= MASTERNODE_SIGNED_PAYLOAD_MAX_AGE_BLOCKS
+         * and it is strictly newer than the last accepted payload of the same kind for that masternode
+         * (per verifier for attestations). This makes every signed payload single-use and unreplayable. */
+        const uint64_t MASTERNODE_SIGNED_PAYLOAD_MAX_AGE_BLOCKS = 120;
+        const uint64_t MASTERNODE_SIGNED_PAYLOAD_FUTURE_TOLERANCE_BLOCKS = 2;
 
         /* Reward split percent for masternode winner after reward fork activates. */
         const uint64_t MASTERNODE_REWARD_PERCENT = 70;
@@ -332,6 +350,10 @@ namespace CryptoNote
             MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT <= 100,
             "Invalid MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT");
 
+        /* Unlock-time V3 (3-block minimum unlock) activates together with the masternode reward fork.
+         * A value of 0 (feature disabled) keeps the V1 rule everywhere. */
+        const uint64_t UNLOCK_TIME_HEIGHT_V3 = MASTERNODE_REWARD_FORK_HEIGHT;
+
         /* ------------------------------------------------------------------ */
         /* ChainLock parameters                                                */
         /* ------------------------------------------------------------------ */
@@ -341,6 +363,31 @@ namespace CryptoNote
 
         /* Minimum votes required from the quorum to form a valid ChainLock (60%). */
         const uint64_t CHAINLOCK_THRESHOLD = 12;
+
+        /* Votes/locks are only accepted for heights in (top - MAX_AGE, top + FUTURE_WINDOW].
+         * The ChainLock quorum for height H is seeded with the hash of block H-1 (which voters and
+         * validators both know and nobody can grind without mining), so a node can only validate
+         * votes for heights up to top + 1. */
+        const uint64_t CHAINLOCK_VOTE_FUTURE_WINDOW_BLOCKS = 1;
+        const uint64_t CHAINLOCK_VOTE_MAX_AGE_BLOCKS = 60;
+
+        /* Upper bound on pending (not yet assembled) votes kept per height. One vote per
+         * masternode per height is accepted (a second vote with a different hash is equivocation
+         * and is dropped), so this only needs to exceed the quorum size. */
+        const uint64_t CHAINLOCK_MAX_PENDING_VOTES_PER_HEIGHT = CHAINLOCK_QUORUM_SIZE * 2;
+
+        /* Assembled ChainLocks older than this (relative to the tip) are dropped from memory /
+         * the snapshot; locks are only ever enforced at the tip, so history is not needed. */
+        const uint64_t CHAINLOCK_RETENTION_BLOCKS = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY;
+
+        /* Liveness valve: a ChainLock whose block we have not yet seen only blocks competing
+         * blocks for this long (wall clock). After that it is treated as advisory so that a
+         * bad/forged/stale lock can never stall a node indefinitely. */
+        const uint64_t CHAINLOCK_PENDING_LOCK_EXPIRY_SECONDS = 60 * 60;
+
+        /* Hard caps on wire-level collection sizes in ChainLock / InstantSend P2P messages. */
+        const uint64_t MASTERNODE_P2P_MAX_VOTES_PER_MESSAGE = 64;
+        const uint64_t MASTERNODE_P2P_MAX_KEY_IMAGES_PER_MESSAGE = 64;
 
         /* ------------------------------------------------------------------ */
         /* InstantSend parameters                                              */
@@ -357,6 +404,11 @@ namespace CryptoNote
 
         /* Maximum number of inputs a transaction may have to qualify for InstantSend. */
         const uint64_t INSTANTSEND_MAX_INPUTS = 10;
+
+        /* InstantSend quorums rotate every INSTANTSEND_QUORUM_CYCLE_BLOCKS blocks and are seeded
+         * with the hash of the block at the start of the cycle. Seeding with the tx hash would let
+         * the sender grind a tx until their own masternodes form the quorum. */
+        const uint64_t INSTANTSEND_QUORUM_CYCLE_BLOCKS = 60;
 
         static_assert(CHAINLOCK_THRESHOLD <= CHAINLOCK_QUORUM_SIZE, "CHAINLOCK_THRESHOLD must be <= CHAINLOCK_QUORUM_SIZE");
         static_assert(INSTANTSEND_THRESHOLD <= INSTANTSEND_QUORUM_SIZE, "INSTANTSEND_THRESHOLD must be <= INSTANTSEND_QUORUM_SIZE");
@@ -448,8 +500,9 @@ namespace CryptoNote
         static_assert(0 < UPGRADE_VOTING_THRESHOLD && UPGRADE_VOTING_THRESHOLD <= 100, "Bad UPGRADE_VOTING_THRESHOLD");
         static_assert(UPGRADE_VOTING_WINDOW > 1, "Bad UPGRADE_VOTING_WINDOW");
 
-        /* Block heights we are going to have hard forks at */
-        const uint64_t FORK_HEIGHTS[] = {
+        /* Block heights we are going to have hard forks at (constexpr so the entries can be
+         * cross-checked against the masternode fork constants at compile time) */
+        constexpr uint64_t FORK_HEIGHTS[] = {
             1,        // 0
             40000,    // 1
             100000,   // 2
@@ -472,10 +525,19 @@ namespace CryptoNote
             3800000,  // 19
             4300000,  // 20
             4500000,  // 21 prune capability + mixed full/pruned sync policy activation
+            5000000,  // 22 masternode feature fork (MASTERNODE_FEATURE_FORK_HEIGHT)
+            5200000,  // 23 masternode reward fork (MASTERNODE_REWARD_FORK_HEIGHT) + unlock-time V3
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
-        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 21;
+        const uint64_t SOFTWARE_SUPPORTED_FORK_INDEX = 23;
+
+        static_assert(
+            MASTERNODE_FEATURE_FORK_HEIGHT == 0 || FORK_HEIGHTS[22] == MASTERNODE_FEATURE_FORK_HEIGHT,
+            "FORK_HEIGHTS must advertise MASTERNODE_FEATURE_FORK_HEIGHT");
+        static_assert(
+            MASTERNODE_FEATURE_FORK_HEIGHT == 0 || FORK_HEIGHTS[23] == MASTERNODE_REWARD_FORK_HEIGHT,
+            "FORK_HEIGHTS must advertise MASTERNODE_REWARD_FORK_HEIGHT");
 
         const uint64_t FORK_HEIGHTS_SIZE = sizeof(FORK_HEIGHTS) / sizeof(*FORK_HEIGHTS);
 

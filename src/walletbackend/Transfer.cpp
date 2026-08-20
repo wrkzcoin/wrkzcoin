@@ -98,7 +98,8 @@ namespace SendTransaction
             }
             
             const uint64_t minUnlockBlocksV2 =
-                (daemon->networkBlockCount() >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+                (CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3 > 0
+                 && daemon->networkBlockCount() >= CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3)
                     ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
                     : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
 

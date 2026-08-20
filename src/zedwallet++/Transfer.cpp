@@ -341,7 +341,8 @@ bool confirmTransaction(
     {
         const auto [walletHeight, localHeight, networkHeight] = walletBackend->getSyncStatus();
         const uint64_t minUnlock =
-            (networkHeight >= CryptoNote::parameters::MASTERNODE_FEATURE_FORK_HEIGHT)
+            (CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3 > 0
+             && networkHeight >= CryptoNote::parameters::UNLOCK_TIME_HEIGHT_V3)
                 ? CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS_V2
                 : CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS;
         std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
