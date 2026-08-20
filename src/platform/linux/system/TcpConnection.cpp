@@ -12,6 +12,8 @@
 #include <stdexcept>
 #include <sys/epoll.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/socket.h>
 #include <system/ErrorMessage.h>
 #include <system/IpAddress.h>
 #include <system/InterruptedException.h>
@@ -380,6 +382,16 @@ namespace System
     {
         contextPair.readContext = nullptr;
         contextPair.writeContext = nullptr;
+
+        /* The Levin protocol is a strict request/response exchange of mostly
+         * small messages. Nagle holds back the trailing partial segment of a
+         * write until the previous one is acked, which combined with the peer's
+         * delayed ack adds a fixed stall to every round trip. Not fatal, but on
+         * a sync that is tens of thousands of round trips it adds up. Failure
+         * here is not worth aborting a working connection over. */
+        const int nodelay = 1;
+        setsockopt(socket, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
+
         epoll_event connectionEvent;
         connectionEvent.events = EPOLLONESHOT;
         connectionEvent.data.ptr = nullptr;
