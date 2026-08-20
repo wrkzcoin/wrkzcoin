@@ -5,6 +5,7 @@
 #include "MasternodeSigner.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <common/StringTools.h>
 #include <config/Constants.h>
 #include <config/CryptoNoteConfig.h>
@@ -32,9 +33,8 @@ bool parseMnSigningKey(
     {
         return false;
     }
-    // Derive public key from private key.
-    Crypto::secret_key_to_public_key(privateKey, publicKey);
-    return true;
+    // Derive public key from private key (fails for a non-canonical / out-of-range scalar).
+    return Crypto::secret_key_to_public_key(privateKey, publicKey);
 }
 
 MasternodeSigner::MasternodeSigner(
@@ -156,6 +156,13 @@ void MasternodeSigner::chainLockLoop()
                 const uint32_t height = item.height;
                 const Crypto::Hash &blockHash = item.blockHash;
 
+                // Never vote while catching up: blocks pushed during initial sync are historical
+                // and the rest of the network has long moved on (and the vote window rejects them).
+                if (!m_protocol.isSynchronized())
+                {
+                    continue;
+                }
+
                 // Check if already locked.
                 if (m_core.hasChainLock(height))
                 {
@@ -163,21 +170,21 @@ void MasternodeSigner::chainLockLoop()
                     continue;
                 }
 
-                // Get active set and compute quorum for this block.
-                const auto activeSet = m_core.getActiveMasternodeSet(height);
-
-                // Need at least CHAINLOCK_QUORUM_SIZE active MNs for a valid quorum.
-                if (activeSet.size() < CryptoNote::parameters::CHAINLOCK_QUORUM_SIZE)
+                // Quorum for this height (seeded by block height-1, computed by Core so that the
+                // signer and the validators always agree).
+                const auto quorum = m_core.getChainLockQuorum(height);
+                if (!quorum.has_value())
                 {
                     continue;
                 }
 
-                const auto quorum = CryptoNote::MasternodeQuorum::selectQuorum(
-                    activeSet,
-                    blockHash,
-                    CryptoNote::parameters::CHAINLOCK_QUORUM_SIZE);
+                // Need a full quorum of active MNs before ChainLocks are meaningful.
+                if (quorum->size() < CryptoNote::parameters::CHAINLOCK_QUORUM_SIZE)
+                {
+                    continue;
+                }
 
-                if (!CryptoNote::MasternodeQuorum::isInQuorum(m_masternodeId, quorum))
+                if (!CryptoNote::MasternodeQuorum::isInQuorum(m_masternodeId, *quorum))
                 {
                     continue; // not in quorum for this block
                 }
@@ -218,14 +225,16 @@ void MasternodeSigner::chainLockLoop()
 
 void MasternodeSigner::heartbeatLoop()
 {
-    // MN_BASE_PAYLOAD_SIZE = 4 (MN01) + 1 (type) + 32 (mnId) = 37
-    // MN_HEARTBEAT_PAYLOAD_SIZE = 37 + 1 (flag) + 64 (sig) = 102
-    constexpr size_t MN_BASE_PAYLOAD_SIZE = 37;
-    constexpr size_t MN_HEARTBEAT_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + 1 + sizeof(Crypto::Signature);
-    // Nonce contains: 0x7f (arb-data tag) + varint(102) = 0x66 + 102 bytes payload = 104 bytes
-    constexpr uint8_t NONCE_SIZE = static_cast<uint8_t>(1 + 1 + MN_HEARTBEAT_PAYLOAD_SIZE); // 104
+    // Heartbeat payload layout / size comes from MasternodeTx.h (single source of truth).
+    constexpr size_t MN_HEARTBEAT_PAYLOAD_SIZE = CryptoNote::MASTERNODE_HEARTBEAT_PAYLOAD_SIZE;
+    // Nonce contains: 0x7f (arb-data tag) + varint(payload size) + payload bytes.
+    static_assert(MN_HEARTBEAT_PAYLOAD_SIZE < 128, "heartbeat payload size must fit in a 1-byte varint");
+    constexpr uint8_t NONCE_SIZE = static_cast<uint8_t>(1 + 1 + MN_HEARTBEAT_PAYLOAD_SIZE);
+    static_assert(NONCE_SIZE < 128, "heartbeat nonce size must fit in a 1-byte varint");
 
-    uint32_t lastHeartbeatHeight = 0;
+    // Height of the last heartbeat *attempt* (accepted or not). Advancing it on every attempt keeps
+    // a persistently-rejected heartbeat from being retried (and logged) on every single block.
+    uint32_t lastHeartbeatAttemptHeight = 0;
 
     while (m_running)
     {
@@ -243,13 +252,19 @@ void MasternodeSigner::heartbeatLoop()
         const uint32_t height = m_latestBlockHeight.load();
 
         // Only submit every MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL blocks.
-        if (height < lastHeartbeatHeight + CryptoNote::parameters::MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL)
+        if (height < lastHeartbeatAttemptHeight + CryptoNote::parameters::MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL)
         {
             continue;
         }
 
         try
         {
+            // Don't heartbeat while syncing: the payload height would be stale by the time we catch up.
+            if (!m_protocol.isSynchronized())
+            {
+                continue;
+            }
+
             // Check the masternode is currently Active.
             const auto activeSet = m_core.getActiveMasternodeSet(height);
             const bool isActive = std::find(activeSet.begin(), activeSet.end(), m_masternodeId) != activeSet.end();
@@ -258,35 +273,35 @@ void MasternodeSigner::heartbeatLoop()
                 continue;
             }
 
-            // Build unsigned heartbeat payload: MN01 | 0x06 | masternodeId (32) | healthy (1)
-            std::vector<uint8_t> unsignedPayload;
-            unsignedPayload.reserve(MN_BASE_PAYLOAD_SIZE + 1);
-            unsignedPayload.push_back('M');
-            unsignedPayload.push_back('N');
-            unsignedPayload.push_back('0');
-            unsignedPayload.push_back('1');
-            unsignedPayload.push_back(static_cast<uint8_t>(CryptoNote::MasternodeTxType::Heartbeat));
-            unsignedPayload.insert(
-                unsignedPayload.end(), m_masternodeId.data, m_masternodeId.data + sizeof(m_masternodeId.data));
-            unsignedPayload.push_back(0x01); // healthy = true
+            lastHeartbeatAttemptHeight = height;
+
+            // Build unsigned heartbeat payload: MN01 | 0x06 | masternodeId (32) | height (4) | healthy (1).
+            // The creation height (next block height as we see it) makes the payload single-use.
+            const uint32_t payloadHeight = height + 1;
+            const std::vector<uint8_t> unsignedPayload =
+                CryptoNote::buildMasternodeHeartbeatUnsignedPayload(m_masternodeId, payloadHeight, true);
 
             // Sign with payout private key.
             const Crypto::Hash sigHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
             Crypto::Signature sig;
             Crypto::generate_signature(sigHash, m_payoutPublicKey, m_payoutPrivateKey, sig);
 
-            // Full MN01 heartbeat payload (102 bytes).
+            // Full MN01 heartbeat payload.
             std::vector<uint8_t> mnPayload = unsignedPayload;
             mnPayload.insert(mnPayload.end(), sig.data, sig.data + sizeof(sig.data));
+            if (mnPayload.size() != MN_HEARTBEAT_PAYLOAD_SIZE)
+            {
+                fprintf(stderr, "[mn-heartbeat] internal error: unexpected heartbeat payload size %zu\n", mnPayload.size());
+                continue;
+            }
 
             // Build the transaction extra field:
-            //   [0x02][varint(104)][0x7f][varint(102)][102 bytes payload]
-            // Payload (102) and nonce (104) both fit in one varint byte (< 128).
+            //   [0x02][varint(nonce size)][0x7f][varint(payload size)][payload bytes]
             std::vector<uint8_t> extra;
             extra.push_back(Constants::TX_EXTRA_NONCE_IDENTIFIER);  // 0x02
-            extra.push_back(NONCE_SIZE);                             // 104 = 0x68
+            extra.push_back(NONCE_SIZE);
             extra.push_back(Constants::TX_EXTRA_ARBITRARY_DATA_IDENTIFIER); // 0x7f
-            extra.push_back(static_cast<uint8_t>(MN_HEARTBEAT_PAYLOAD_SIZE)); // 102 = 0x66
+            extra.push_back(static_cast<uint8_t>(MN_HEARTBEAT_PAYLOAD_SIZE));
             extra.insert(extra.end(), mnPayload.begin(), mnPayload.end());
 
             // Build the zero-input, zero-output transaction.
@@ -299,11 +314,7 @@ void MasternodeSigner::heartbeatLoop()
 
             const auto txBinary = CryptoNote::toBinaryArray(tx);
             const auto [ok, errMsg] = m_core.addTransactionToPool(txBinary);
-            if (ok)
-            {
-                lastHeartbeatHeight = height;
-            }
-            else if (errMsg.find("already") == std::string::npos)
+            if (!ok && errMsg.find("already") == std::string::npos)
             {
                 // Log unexpected rejections (suppress the expected "already in pool" on restart).
                 fprintf(stderr,
@@ -339,21 +350,25 @@ void MasternodeSigner::instantSendLoop()
         {
             try
             {
-                const uint32_t height = m_core.getTopBlockIndex();
-                const auto activeSet = m_core.getActiveMasternodeSet(height);
-
-                // Qualify: need at least INSTANTSEND_QUORUM_SIZE active MNs.
-                if (activeSet.size() < CryptoNote::parameters::INSTANTSEND_QUORUM_SIZE)
+                if (!m_protocol.isSynchronized())
                 {
                     continue;
                 }
 
-                const auto quorum = CryptoNote::MasternodeQuorum::selectQuorum(
-                    activeSet,
-                    txHash,
-                    CryptoNote::parameters::INSTANTSEND_QUORUM_SIZE);
+                // Quorum for the current cycle (seeded by a block hash, computed by Core).
+                const auto quorum = m_core.getInstantSendQuorum();
+                if (!quorum.has_value())
+                {
+                    continue;
+                }
 
-                if (!CryptoNote::MasternodeQuorum::isInQuorum(m_masternodeId, quorum))
+                // Qualify: need a full quorum of active MNs.
+                if (quorum->size() < CryptoNote::parameters::INSTANTSEND_QUORUM_SIZE)
+                {
+                    continue;
+                }
+
+                if (!CryptoNote::MasternodeQuorum::isInQuorum(m_masternodeId, *quorum))
                 {
                     continue;
                 }
