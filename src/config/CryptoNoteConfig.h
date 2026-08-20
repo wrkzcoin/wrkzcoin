@@ -46,10 +46,9 @@ namespace CryptoNote
          * MINIMUM_UNLOCK_TIME_BLOCKS to be accepted. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS = 15;
 
-        /* Once the masternode *reward* fork is active, ChainLock quorums are expected to be
-         * live (masternodes have had the whole feature→reward window to register and activate),
-         * so the spend-lock window can be reduced. Recipients wait only ~3 blocks after
-         * confirmation instead of ~15. Activation height: UNLOCK_TIME_HEIGHT_V3 (below). */
+        /* Reduced unlock floor for a future fork once ChainLock finality has been observed working
+         * on mainnet (recipients would wait ~3 blocks after confirmation instead of ~15).
+         * Activation height: UNLOCK_TIME_HEIGHT_V3 (below) — currently 0 = not scheduled. */
         const uint64_t MINIMUM_UNLOCK_TIME_BLOCKS_V2 = 3;
 
         const uint64_t UNLOCK_TIME_HEIGHT = 1200000;
@@ -298,12 +297,22 @@ namespace CryptoNote
         const uint64_t MASTERNODE_SIGNED_PAYLOAD_MAX_AGE_BLOCKS = 120;
         const uint64_t MASTERNODE_SIGNED_PAYLOAD_FUTURE_TOLERANCE_BLOCKS = 2;
 
-        /* Reward split percent for masternode winner after reward fork activates. */
-        const uint64_t MASTERNODE_REWARD_PERCENT = 70;
+        /* Reward split percent for masternode winner after reward fork activates.
+         * Kept below half so that PoW — which still provides the actual reorg protection while
+         * ChainLock is advisory — keeps the majority of the block reward. Can be raised in a later
+         * fork once ChainLock finality has been observed working on mainnet. */
+        const uint64_t MASTERNODE_REWARD_PERCENT = 40;
+
+        /* The masternode share is only paid when at least this many masternodes are reward-eligible
+         * at that height; otherwise 100% of the reward goes to the PoW miner. This prevents a
+         * single early masternode from capturing the whole masternode budget and ties the reward
+         * split to a set large enough to form a ChainLock quorum. */
+        const uint64_t MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT = 20;
 
         /* Registration bond amount (atomic units). Set > 0 to enforce economic commitment for MN registration.
-         * 2,000,000,000 WRKZ × 100 (2 decimal places) = 200,000,000,000 atomic units */
-        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 200'000'000'000;
+         * 500,000,000 WRKZ × 100 (2 decimal places) = 50,000,000,000 atomic units (~0.25% of supply),
+         * sized so that a few hundred masternodes are possible and a 20-node quorum is a small sample. */
+        const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT = 50'000'000'000;
 
         /* Minimum collateral output amount (atomic units) required for masternode registration. */
         const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT = MASTERNODE_REGISTRATION_BOND_AMOUNT;
@@ -320,8 +329,12 @@ namespace CryptoNote
         /* Minimum blocks between accepted endpoint update transactions per masternode (7 days). */
         const uint64_t MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
 
-        /* External attestation controls (verifier-signed liveness checks). */
-        const bool MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true;
+        /* External attestation controls (verifier-signed liveness checks).
+         * Attestation is INFORMATIONAL for this release: with the verifier allowlist disabled any
+         * 24 keys could satisfy the threshold, so it is not used as an Activate / reward gate.
+         * Flip to true together with MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST + a curated
+         * verifier set if/when verifier infrastructure exists. */
+        const bool MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = false;
         const uint64_t MASTERNODE_ATTESTATION_WINDOW_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
         const uint64_t MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW = 24;
         const uint64_t MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT = 80;
@@ -350,9 +363,11 @@ namespace CryptoNote
             MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT <= 100,
             "Invalid MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT");
 
-        /* Unlock-time V3 (3-block minimum unlock) activates together with the masternode reward fork.
-         * A value of 0 (feature disabled) keeps the V1 rule everywhere. */
-        const uint64_t UNLOCK_TIME_HEIGHT_V3 = MASTERNODE_REWARD_FORK_HEIGHT;
+        /* Unlock-time V3 (3-block minimum unlock). DEFERRED: 0 = disabled, the 15-block V1 rule
+         * stays in force. Lowering the unlock floor only makes sense once ChainLock quorums have
+         * been observed working on mainnet; schedule it in a later fork (and add the height to
+         * FORK_HEIGHTS) at that point. */
+        const uint64_t UNLOCK_TIME_HEIGHT_V3 = 0;
 
         /* ------------------------------------------------------------------ */
         /* ChainLock parameters                                                */
@@ -526,7 +541,7 @@ namespace CryptoNote
             4300000,  // 20
             4500000,  // 21 prune capability + mixed full/pruned sync policy activation
             5000000,  // 22 masternode feature fork (MASTERNODE_FEATURE_FORK_HEIGHT)
-            5200000,  // 23 masternode reward fork (MASTERNODE_REWARD_FORK_HEIGHT) + unlock-time V3
+            5200000,  // 23 masternode reward fork (MASTERNODE_REWARD_FORK_HEIGHT)
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
