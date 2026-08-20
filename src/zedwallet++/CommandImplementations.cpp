@@ -1272,7 +1272,13 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
     Crypto::SecretKey signingPrivateKey;
     Crypto::generate_keys(signingPublicKey, signingPrivateKey);
 
-    /* Register payload (v3) — layout lives in cryptonotecore/MasternodeTx.h. */
+    // Generate a dedicated operator keypair for heartbeats (--mn-operator-key), so the wallet's
+    // spend key never has to be copied to the masternode server.
+    Crypto::PublicKey operatorPublicKey;
+    Crypto::SecretKey operatorPrivateKey;
+    Crypto::generate_keys(operatorPublicKey, operatorPrivateKey);
+
+    /* Register payload (v4) — layout lives in cryptonotecore/MasternodeTx.h. */
     CryptoNote::MasternodeRegisterFields registerFields;
     registerFields.masternodeId = masternodeId;
     registerFields.payoutKey = publicSpendKey;
@@ -1285,6 +1291,7 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
     registerFields.collateralOutputKey = collateralOutputKey;
     registerFields.endpointCommitment = endpointCommitment;
     registerFields.signingKey = signingPublicKey;
+    registerFields.operatorKey = operatorPublicKey;
     const std::vector<uint8_t> unsignedPayload = CryptoNote::buildMasternodeRegisterUnsignedPayload(registerFields);
 
     Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
@@ -1395,11 +1402,16 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
               << SuccessMsg(Common::podToHex(collateralKeyImage)) << std::endl;
     std::cout << InformationMsg("Endpoint commitment: ")
               << SuccessMsg(Common::podToHex(endpointCommitment)) << std::endl;
-    std::cout << InformationMsg("Signing public key:  ")
+    std::cout << InformationMsg("Signing public key:   ")
               << SuccessMsg(Common::podToHex(signingPublicKey)) << std::endl;
-    std::cout << WarningMsg("Signing private key: ") << WarningMsg(Common::podToHex(signingPrivateKey)) << std::endl;
-    std::cout << WarningMsg("IMPORTANT: Save the signing private key above. Pass it to your daemon with")  << std::endl;
-    std::cout << WarningMsg("           --mn-signing-key=<hex> to enable ChainLock/InstantSend signing.") << std::endl;
+    std::cout << WarningMsg("Signing private key:  ") << WarningMsg(Common::podToHex(signingPrivateKey)) << std::endl;
+    std::cout << InformationMsg("Operator public key:  ")
+              << SuccessMsg(Common::podToHex(operatorPublicKey)) << std::endl;
+    std::cout << WarningMsg("Operator private key: ") << WarningMsg(Common::podToHex(operatorPrivateKey)) << std::endl;
+    std::cout << WarningMsg("IMPORTANT: Save both private keys above. Pass them to your daemon with") << std::endl;
+    std::cout << WarningMsg("           --mn-signing-key=<hex>  (ChainLock/InstantSend voting) and") << std::endl;
+    std::cout << WarningMsg("           --mn-operator-key=<hex> (automatic heartbeats).") << std::endl;
+    std::cout << WarningMsg("           Your wallet spend key is NOT needed on the server.") << std::endl;
     std::cout << InformationMsg("This operation binds and locks the selected collateral output in consensus.")
               << std::endl;
     std::cout << WarningMsg("Recommendation: use a dedicated wallet for masternode registration.")

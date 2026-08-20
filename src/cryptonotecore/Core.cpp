@@ -1329,6 +1329,7 @@ namespace CryptoNote
                         payload.masternodeId,
                         payload.payoutKey,
                         payload.payoutViewKey,
+                        payload.operatorKey,
                         bonded,
                         payload.collateralAmount,
                         payload.registrationTokenId,
@@ -1498,6 +1499,12 @@ namespace CryptoNote
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
                 }
                 if (!payload.hasSigningKey || !check_key(payload.signingKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                /* Dedicated operator key for heartbeats, so the payout/owner key never has to
+                 * live on the masternode server. */
+                if (!payload.hasOperatorKey || !check_key(payload.operatorKey))
                 {
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
                 }
@@ -1744,13 +1751,14 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
-                /* Cheap checks above, signature next, and only then the O(pool) scan. */
-                Crypto::PublicKey ownerKey;
-                if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
+                /* Cheap checks above, signature next, and only then the O(pool) scan.
+                 * Heartbeats are signed by the masternode's OPERATOR key (not the payout key). */
+                Crypto::PublicKey operatorKey;
+                if (!tracker.getOperatorKey(payload.masternodeId, operatorKey))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
-                if (!check_signature(signingHash, ownerKey, payload.signature))
+                if (!check_signature(signingHash, operatorKey, payload.signature))
                 {
                     return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
                 }

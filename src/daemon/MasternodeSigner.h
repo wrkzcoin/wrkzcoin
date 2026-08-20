@@ -26,10 +26,10 @@ namespace CryptoNote
 //     NOTIFY_INSTANTSEND_VOTE if this node's MN is in the IS quorum for that TX.
 //   - A heartbeat thread (optional): woken on every new block, submits a zero-input
 //     heartbeat transaction every MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL blocks.
-//     Requires --mn-payout-key to be configured; the payout key signs the heartbeat.
+//     Requires --mn-operator-key to be configured; the operator key signs the heartbeat.
 //
 // ChainLock/InstantSend require --mn-signing-key.
-// Automated heartbeat requires --mn-payout-key.
+// Automated heartbeat requires --mn-operator-key.
 class MasternodeSigner
 {
   public:
@@ -39,9 +39,9 @@ class MasternodeSigner
         const Crypto::SecretKey &signingPrivateKey,
         const Crypto::PublicKey &signingPublicKey,
         const Crypto::Hash &masternodeId,
-        const Crypto::SecretKey &payoutPrivateKey,
-        const Crypto::PublicKey &payoutPublicKey,
-        bool hasPayoutKey);
+        const Crypto::SecretKey &operatorPrivateKey,
+        const Crypto::PublicKey &operatorPublicKey,
+        bool hasOperatorKey);
 
     ~MasternodeSigner();
 
@@ -68,10 +68,10 @@ class MasternodeSigner
     Crypto::PublicKey m_signingPublicKey;
     Crypto::Hash m_masternodeId;
 
-    // Payout key for automated heartbeat signing.
-    Crypto::SecretKey m_payoutPrivateKey;
-    Crypto::PublicKey m_payoutPublicKey;
-    bool m_hasPayoutKey {false};
+    // Operator key for automated heartbeat signing.
+    Crypto::SecretKey m_operatorPrivateKey;
+    Crypto::PublicKey m_operatorPublicKey;
+    bool m_hasOperatorKey {false};
 
     std::atomic<bool> m_running {false};
 

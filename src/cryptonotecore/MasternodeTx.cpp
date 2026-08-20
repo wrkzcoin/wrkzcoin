@@ -129,6 +129,7 @@ namespace CryptoNote
         appendPod(out, fields.endpointCommitment);
         appendPod(out, fields.signingKey);
         appendPod(out, fields.payoutViewKey);
+        appendPod(out, fields.operatorKey);
         return out;
     }
 
@@ -220,6 +221,10 @@ namespace CryptoNote
             readPod(data, offset, payload.payoutViewKey);
             offset += sizeof(Crypto::PublicKey);
             payload.hasPayoutViewKey = true;
+
+            readPod(data, offset, payload.operatorKey);
+            offset += sizeof(Crypto::PublicKey);
+            payload.hasOperatorKey = true;
 
             if (offset != MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE)
             {

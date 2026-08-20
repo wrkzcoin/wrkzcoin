@@ -57,6 +57,7 @@ namespace CryptoNote
             const Crypto::Hash &masternodeId,
             const Crypto::PublicKey &payoutKey,
             const Crypto::PublicKey &payoutViewKey,
+            const Crypto::PublicKey &operatorKey,
             bool bonded,
             uint64_t bondAmount,
             const Crypto::Hash &registrationTokenId,
@@ -137,6 +138,10 @@ namespace CryptoNote
             const Crypto::Hash &masternodeId,
             Crypto::PublicKey &payoutSpendKey,
             Crypto::PublicKey &payoutViewKey) const;
+
+        /* Operator key: signs heartbeats (lives on the masternode server; the payout/owner key
+         * that signs lifecycle transactions never has to leave the wallet). */
+        bool getOperatorKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &operatorKey) const;
 
         /* Creation height carried by the last accepted heartbeat payload (0 if none). */
         uint32_t getLastHeartbeatPayloadHeight(const Crypto::Hash &masternodeId) const;
@@ -226,6 +231,7 @@ namespace CryptoNote
             std::optional<uint32_t> lastEndpointUpdateHeight;
             Crypto::PublicKey payoutKey = Crypto::PublicKey {{0}};
             Crypto::PublicKey payoutViewKey = Crypto::PublicKey {{0}};
+            Crypto::PublicKey operatorKey = Crypto::PublicKey {{0}};
             bool hasSigningKey = false;
             Crypto::PublicKey signingKey = Crypto::PublicKey {{0}};
             /* Creation height of the last accepted Activate/Deactivate/Penalize/Revoke/UpdateEndpoint

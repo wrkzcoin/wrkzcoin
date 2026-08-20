@@ -35,11 +35,17 @@ namespace CryptoNote
      *
      *   header           = "MN01" | type(1) | masternodeId(32)                       (37 bytes)
      *
-     *   Register (v3)    = header | payoutKey(32) | tokenId(32) | tokenExpiry(4)
+     *   Register (v4)    = header | payoutKey(32) | tokenId(32) | tokenExpiry(4)
      *                      | collateralAmount(8) | collateralGlobalIndex(4)
      *                      | collateralKeyImage(32) | collateralOutputKey(32)
      *                      | endpointCommitment(32) | signingKey(32) | payoutViewKey(32)
-     *                      ‖ payoutSignature(64) | collateralProof(64)                  (405 bytes)
+     *                      | operatorKey(32)
+     *                      ‖ payoutSignature(64) | collateralProof(64)                  (437 bytes)
+     *
+     *   payoutKey / payoutViewKey : payout address (spend + view); payoutKey also signs lifecycle
+     *                               and endpoint-update payloads ("owner" key, stays in the wallet)
+     *   signingKey                : ChainLock / InstantSend votes (daemon, --mn-signing-key)
+     *   operatorKey               : heartbeats (daemon, --mn-operator-key)
      *
      *   Heartbeat        = header | height(4) | healthy(1) ‖ signature(64)            (106 bytes)
      *   Attest           = header | height(4) | verifierKey(32) | healthy(1) ‖ sig(64) (138 bytes)
@@ -57,7 +63,7 @@ namespace CryptoNote
         + sizeof(uint64_t) /* collateralAmount */ + sizeof(uint32_t) /* globalIndex */
         + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey) /* collateralOutputKey */
         + sizeof(Crypto::Hash) /* endpointCommitment */ + sizeof(Crypto::PublicKey) /* signingKey */
-        + sizeof(Crypto::PublicKey) /* payoutViewKey */;
+        + sizeof(Crypto::PublicKey) /* payoutViewKey */ + sizeof(Crypto::PublicKey) /* operatorKey */;
     constexpr size_t MASTERNODE_REGISTER_PAYLOAD_SIZE =
         MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE + 2 * sizeof(Crypto::Signature);
     constexpr size_t MASTERNODE_HEARTBEAT_UNSIGNED_PAYLOAD_SIZE = MASTERNODE_PAYLOAD_HEADER_SIZE + sizeof(uint32_t) + 1;
@@ -85,6 +91,8 @@ namespace CryptoNote
         Crypto::PublicKey payoutKey = Crypto::PublicKey {{0}};
         bool hasPayoutViewKey = false;
         Crypto::PublicKey payoutViewKey = Crypto::PublicKey {{0}};
+        bool hasOperatorKey = false;
+        Crypto::PublicKey operatorKey = Crypto::PublicKey {{0}};
         bool hasRegistrationToken = false;
         Crypto::Hash registrationTokenId = Crypto::Hash {{0}};
         uint32_t registrationExpiresAtHeight = 0;
@@ -148,6 +156,7 @@ namespace CryptoNote
         Crypto::PublicKey collateralOutputKey;
         Crypto::Hash endpointCommitment;
         Crypto::PublicKey signingKey;
+        Crypto::PublicKey operatorKey;
     };
 
     std::vector<uint8_t> buildMasternodeRegisterUnsignedPayload(const MasternodeRegisterFields &fields);

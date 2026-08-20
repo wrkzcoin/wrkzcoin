@@ -34,6 +34,7 @@ namespace CryptoNote
         const Crypto::Hash &masternodeId,
         const Crypto::PublicKey &payoutKey,
         const Crypto::PublicKey &payoutViewKey,
+        const Crypto::PublicKey &operatorKey,
         bool bonded,
         uint64_t bondAmount,
         const Crypto::Hash &registrationTokenId,
@@ -70,6 +71,7 @@ namespace CryptoNote
         state.status = Status::Registered;
         state.payoutKey = payoutKey;
         state.payoutViewKey = payoutViewKey;
+        state.operatorKey = operatorKey;
         state.bonded = bonded;
         state.bondAmount = bondAmount;
         state.registrationTokenId = registrationTokenId;
@@ -464,6 +466,13 @@ namespace CryptoNote
             return std::nullopt;
         }
 
+        /* The masternode share is only paid once the eligible set is large enough
+         * (MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT); below that the miner keeps everything. */
+        if (eligible.size() < parameters::MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT)
+        {
+            return std::nullopt;
+        }
+
         const auto winner = std::min_element(
             eligible.begin(),
             eligible.end(),
@@ -672,6 +681,18 @@ namespace CryptoNote
 
         payoutSpendKey = it->second.payoutKey;
         payoutViewKey = it->second.payoutViewKey;
+        return true;
+    }
+
+    bool MasternodeStateTracker::getOperatorKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &operatorKey) const
+    {
+        const auto it = m_states.find(masternodeId);
+        if (it == m_states.end())
+        {
+            return false;
+        }
+
+        operatorKey = it->second.operatorKey;
         return true;
     }
 
@@ -1012,6 +1033,7 @@ namespace CryptoNote
             item["has_been_paid"] = state.hasBeenPaid;
             item["payout_key"] = Common::podToHex(state.payoutKey);
             item["payout_view_key"] = Common::podToHex(state.payoutViewKey);
+            item["operator_key"] = Common::podToHex(state.operatorKey);
             item["last_lifecycle_height"] = state.lastLifecycleHeight;
             item["last_heartbeat_payload_height"] = state.lastHeartbeatPayloadHeight;
             item["bonded"] = state.bonded;
@@ -1171,10 +1193,16 @@ namespace CryptoNote
                 return false;
             }
 
-            /* Required: the payout view key feeds the reward output derivation, so a snapshot
-             * without it (pre-v3 format) must be rejected and rebuilt from the chain. */
+            /* Required: the payout view key feeds the reward output derivation and the operator key
+             * authorises heartbeats, so a snapshot without them (pre-v4 format) must be rejected
+             * and rebuilt from the chain. */
             if (!item.contains("payout_view_key") || item.at("payout_view_key").is_null()
                 || !Common::podFromHex(item.at("payout_view_key").get<std::string>(), state.payoutViewKey))
+            {
+                return false;
+            }
+            if (!item.contains("operator_key") || item.at("operator_key").is_null()
+                || !Common::podFromHex(item.at("operator_key").get<std::string>(), state.operatorKey))
             {
                 return false;
             }

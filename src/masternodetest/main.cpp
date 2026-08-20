@@ -175,6 +175,7 @@ namespace
         KeyPairT payout;
         KeyPairT view;
         KeyPairT signing;
+        KeyPairT op; // operator key (heartbeats)
         Crypto::KeyImage collateralKeyImage;
         Crypto::PublicKey collateralOutputKey;
         Crypto::Hash endpoint;
@@ -188,6 +189,7 @@ namespace
         mn.payout = makeKeys();
         mn.view = makeKeys();
         mn.signing = makeKeys();
+        mn.op = makeKeys();
         mn.collateralKeyImage = randomKeyImage();
         mn.collateralOutputKey = makeKeys().pub;
         mn.endpoint = randomHash();
@@ -196,6 +198,7 @@ namespace
             mn.id,
             mn.payout.pub,
             mn.view.pub,
+            mn.op.pub,
             collateral >= parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT,
             collateral,
             mn.token,
@@ -235,8 +238,8 @@ namespace
 static void testPayloadSizes()
 {
     CHECK(MASTERNODE_PAYLOAD_HEADER_SIZE == 37);
-    CHECK(MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE == 277);
-    CHECK(MASTERNODE_REGISTER_PAYLOAD_SIZE == 405);
+    CHECK(MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE == 309);
+    CHECK(MASTERNODE_REGISTER_PAYLOAD_SIZE == 437);
     CHECK(MASTERNODE_HEARTBEAT_PAYLOAD_SIZE == 106);
     CHECK(MASTERNODE_ATTEST_PAYLOAD_SIZE == 138);
     CHECK(MASTERNODE_ACTION_PAYLOAD_SIZE == 105);
@@ -250,6 +253,7 @@ static void testRegisterRoundTrip()
     const KeyPairT payout = makeKeys();
     const KeyPairT view = makeKeys();
     const KeyPairT signing = makeKeys();
+    const KeyPairT op = makeKeys();
     const KeyPairT collateral = makeKeys();
 
     MasternodeRegisterFields f;
@@ -264,6 +268,7 @@ static void testRegisterRoundTrip()
     f.collateralOutputKey = collateral.pub;
     f.endpointCommitment = randomHash();
     f.signingKey = signing.pub;
+    f.operatorKey = op.pub;
 
     const auto unsignedPayload = buildMasternodeRegisterUnsignedPayload(f);
     CHECK(unsignedPayload.size() == MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE);
@@ -288,6 +293,7 @@ static void testRegisterRoundTrip()
     CHECK(p.collateralOutputKey == f.collateralOutputKey);
     CHECK(p.hasEndpointCommitment && p.endpointCommitment == f.endpointCommitment);
     CHECK(p.hasSigningKey && p.signingKey == f.signingKey);
+    CHECK(p.hasOperatorKey && p.operatorKey == f.operatorKey);
     CHECK(!p.hasHeight);
     CHECK(p.hasSignature && bytesEqual(p.signature.data, payoutSig.data, sizeof(payoutSig.data)));
     CHECK(p.hasCollateralSignature && bytesEqual(p.collateralSignature.data, collateralProof.data, 64));
@@ -298,13 +304,16 @@ static void testRegisterRoundTrip()
     CHECK(getMasternodeTxSigningHash(p, signingHash));
     CHECK(Crypto::check_signature(signingHash, payout.pub, p.signature));
 
-    /* Old (v2, no payout view key) registration is rejected outright. */
-    std::vector<uint8_t> v2 = unsignedPayload;
-    v2.resize(v2.size() - sizeof(Crypto::PublicKey));
-    v2.insert(v2.end(), payoutSig.data, payoutSig.data + 64);
-    v2.insert(v2.end(), collateralProof.data, collateralProof.data + 64);
-    MasternodeTxPayload rejected;
-    CHECK(parse(v2, rejected) == MasternodeTxParseResult::Invalid);
+    /* Older layouts (v3 without operator key, v2 without payout view key) are rejected outright. */
+    for (size_t dropped : {size_t(1), size_t(2)})
+    {
+        std::vector<uint8_t> old = unsignedPayload;
+        old.resize(old.size() - dropped * sizeof(Crypto::PublicKey));
+        old.insert(old.end(), payoutSig.data, payoutSig.data + 64);
+        old.insert(old.end(), collateralProof.data, collateralProof.data + 64);
+        MasternodeTxPayload rejected;
+        CHECK(parse(old, rejected) == MasternodeTxParseResult::Invalid);
+    }
 }
 
 static void testSignedPayloadRoundTrips()
@@ -436,10 +445,12 @@ static void testTrackerLifecycle()
     CHECK(tracker.isBonded(mn.id));
     CHECK(tracker.hasCollateralBinding(mn.id));
 
-    Crypto::PublicKey spend, view, signing;
+    Crypto::PublicKey spend, view, signing, op;
     CHECK(tracker.getPayoutAddressKeys(mn.id, spend, view));
     CHECK(spend == mn.payout.pub && view == mn.view.pub);
     CHECK(tracker.getSigningKey(mn.id, signing) && signing == mn.signing.pub);
+    CHECK(tracker.getOperatorKey(mn.id, op) && op == mn.op.pub);
+    CHECK(!tracker.getOperatorKey(randomHash(), op));
 
     /* Registered -> Active -> Inactive -> Active (re-activate) -> Penalized -> Revoked */
     tracker.activateMasternode(mn.id);
@@ -504,8 +515,8 @@ static void testTrackerAntiReplayCounters()
     tracker.revokeMasternode(mn.id, 300);
     tracker.recordLifecycleHeight(mn.id, 301);
     tracker.registerMasternode(
-        mn.id, mn.payout.pub, mn.view.pub, true, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, randomHash(), 9999,
-        parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, 7, randomKeyImage(), makeKeys().pub, randomHash(), true,
+        mn.id, mn.payout.pub, mn.view.pub, mn.op.pub, true, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, randomHash(),
+        9999, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, 7, randomKeyImage(), makeKeys().pub, randomHash(), true,
         mn.signing.pub);
     CHECK(tracker.getStatus(mn.id) == Status::Registered);
     CHECK(tracker.getLastLifecycleHeight(mn.id) == 301);
@@ -548,9 +559,9 @@ static void testTrackerSpendLock()
      * Whatever the unordered_map iteration order, the key image must be reported locked. */
     const Crypto::Hash otherId = randomHash();
     tracker.registerMasternode(
-        otherId, makeKeys().pub, makeKeys().pub, true, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, randomHash(),
-        9999, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, 42, a.collateralKeyImage, a.collateralOutputKey,
-        randomHash(), true, makeKeys().pub);
+        otherId, makeKeys().pub, makeKeys().pub, makeKeys().pub, true, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT,
+        randomHash(), 9999, parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT, 42, a.collateralKeyImage,
+        a.collateralOutputKey, randomHash(), true, makeKeys().pub);
     CHECK(tracker.isCollateralKeyImageSpendLocked(a.collateralKeyImage, 2000 + lock + 10));
     CHECK(tracker.hasCollateralKeyImage(a.collateralKeyImage, 2000 + lock + 10));
 }
@@ -607,18 +618,30 @@ static void testTrackerFairness()
 {
     Tracker tracker;
     const uint32_t height = 5'300'000;
-
-    RegisteredMn a = registerRandom(tracker);
-    RegisteredMn b = registerRandom(tracker);
-    RegisteredMn c = registerRandom(tracker);
-    makeEligible(tracker, a, height);
-    makeEligible(tracker, b, height);
-    makeEligible(tracker, c, height);
-
-    const std::vector<Crypto::Hash> candidates {a.id, b.id, c.id};
-    CHECK(tracker.filterRewardEligible(candidates, height).size() == 3);
-
+    const size_t minEligible = static_cast<size_t>(parameters::MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT);
     const uint64_t totalReward = 1'000'003; // not a multiple of 100
+
+    /* Register one fewer than the minimum eligible set: everybody is eligible, but the split is
+     * not paid yet (miner keeps everything). */
+    std::vector<RegisteredMn> mns;
+    std::vector<Crypto::Hash> candidates;
+    for (size_t i = 0; i + 1 < minEligible; ++i)
+    {
+        mns.push_back(registerRandom(tracker));
+        makeEligible(tracker, mns.back(), height);
+        candidates.push_back(mns.back().id);
+    }
+    CHECK(tracker.filterRewardEligible(candidates, height).size() == minEligible - 1);
+    auto dFew = tracker.calculateRewardDistribution(totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    CHECK(!dFew.hasMasternodeWinner && dFew.powReward == totalReward && dFew.masternodeReward == 0);
+    CHECK(!tracker.selectFairRewardWinner(candidates, height).has_value());
+
+    /* One more eligible masternode reaches the minimum and the split switches on. */
+    mns.push_back(registerRandom(tracker));
+    makeEligible(tracker, mns.back(), height);
+    candidates.push_back(mns.back().id);
+    CHECK(tracker.filterRewardEligible(candidates, height).size() == minEligible);
+
     auto d1 = tracker.calculateRewardDistribution(totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
     CHECK(d1.hasMasternodeWinner && d1.masternodeWinner.has_value());
     CHECK(d1.masternodeReward == (totalReward * parameters::MASTERNODE_REWARD_PERCENT) / 100);
@@ -635,30 +658,34 @@ static void testTrackerFairness()
     auto d1again = tracker.calculateRewardDistribution(totalReward, height, candidates, parameters::MASTERNODE_REWARD_PERCENT);
     CHECK(d1again.masternodeWinner == d1.masternodeWinner);
 
-    /* After paying the winner, the next winner is a different (still never-paid) node. */
-    tracker.recordReward(*d1.masternodeWinner, height, d1.masternodeReward);
-    auto d2 = tracker.calculateRewardDistribution(totalReward, height + 1, candidates, parameters::MASTERNODE_REWARD_PERCENT);
-    CHECK(d2.hasMasternodeWinner && *d2.masternodeWinner != *d1.masternodeWinner);
-    tracker.recordReward(*d2.masternodeWinner, height + 1, d2.masternodeReward);
-    auto d3 = tracker.calculateRewardDistribution(totalReward, height + 2, candidates, parameters::MASTERNODE_REWARD_PERCENT);
-    CHECK(d3.hasMasternodeWinner && *d3.masternodeWinner != *d1.masternodeWinner && *d3.masternodeWinner != *d2.masternodeWinner);
-    tracker.recordReward(*d3.masternodeWinner, height + 2, d3.masternodeReward);
-
-    /* Everyone paid once: lowest cumulative reward wins, i.e. the rotation continues with the first one. */
-    auto d4 = tracker.calculateRewardDistribution(totalReward, height + 3, candidates, parameters::MASTERNODE_REWARD_PERCENT);
-    CHECK(d4.hasMasternodeWinner && *d4.masternodeWinner == *d1.masternodeWinner);
-    CHECK(tracker.getRewardAmountInFairnessWindow(*d1.masternodeWinner, height + 3) == d1.masternodeReward);
+    /* Paying winners one by one rotates through every eligible node exactly once (never-paid first,
+     * ascending id), then starts over with the first one (lowest cumulative reward, oldest payout). */
+    std::vector<Crypto::Hash> paid;
+    for (size_t i = 0; i < candidates.size(); ++i)
+    {
+        auto d = tracker.calculateRewardDistribution(totalReward, height + static_cast<uint32_t>(i), candidates, parameters::MASTERNODE_REWARD_PERCENT);
+        CHECK(d.hasMasternodeWinner && d.masternodeWinner.has_value());
+        CHECK(std::find(paid.begin(), paid.end(), *d.masternodeWinner) == paid.end());
+        CHECK(*d.masternodeWinner == sorted[i]);
+        tracker.recordReward(*d.masternodeWinner, height + static_cast<uint32_t>(i), d.masternodeReward);
+        paid.push_back(*d.masternodeWinner);
+    }
+    CHECK(paid.size() == candidates.size());
+    auto dWrap = tracker.calculateRewardDistribution(
+        totalReward, height + static_cast<uint32_t>(candidates.size()), candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    CHECK(dWrap.hasMasternodeWinner && *dWrap.masternodeWinner == sorted[0]);
+    CHECK(tracker.getRewardAmountInFairnessWindow(sorted[0], height + static_cast<uint32_t>(candidates.size())) == d1.masternodeReward);
 
     /* Large totals do not overflow the split. */
     const uint64_t huge = std::numeric_limits<uint64_t>::max() - 7;
-    auto dHuge = tracker.calculateRewardDistribution(huge, height + 4, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    auto dHuge = tracker.calculateRewardDistribution(huge, height + 100, candidates, parameters::MASTERNODE_REWARD_PERCENT);
     CHECK(dHuge.hasMasternodeWinner);
     CHECK(dHuge.masternodeReward == (huge / 100) * parameters::MASTERNODE_REWARD_PERCENT
                                        + ((huge % 100) * parameters::MASTERNODE_REWARD_PERCENT) / 100);
     CHECK(dHuge.masternodeReward + dHuge.powReward == huge);
 
     /* A share that rounds to zero means no masternode output (miner keeps everything). */
-    auto dZero = tracker.calculateRewardDistribution(1, height + 5, candidates, parameters::MASTERNODE_REWARD_PERCENT);
+    auto dZero = tracker.calculateRewardDistribution(1, height + 101, candidates, parameters::MASTERNODE_REWARD_PERCENT);
     CHECK(!dZero.hasMasternodeWinner && dZero.powReward == 1 && dZero.masternodeReward == 0);
 
     /* No candidates -> miner keeps everything. */
@@ -702,11 +729,17 @@ static void testTrackerJson()
     CHECK(restored.getPayoutAddressKeys(a.id, spend, view) && view == a.view.pub);
     CHECK(restored.isCollateralKeyImageSpendLocked(a.collateralKeyImage, height + 2));
 
-    /* Missing payout view key (pre-v3 snapshot) must be rejected. */
+    /* Missing payout view key (pre-v3 snapshot) or operator key (pre-v4) must be rejected. */
     nlohmann::json missingView = j;
     missingView["masternodes"][0].erase("payout_view_key");
     Tracker t2;
     CHECK(!t2.fromJson(missingView));
+    nlohmann::json missingOperator = j;
+    missingOperator["masternodes"][0].erase("operator_key");
+    Tracker t2b;
+    CHECK(!t2b.fromJson(missingOperator));
+    Crypto::PublicKey restoredOp;
+    CHECK(restored.getOperatorKey(a.id, restoredOp) && restoredOp == a.op.pub);
 
     /* Unknown status value must be rejected. */
     nlohmann::json badStatus = j;

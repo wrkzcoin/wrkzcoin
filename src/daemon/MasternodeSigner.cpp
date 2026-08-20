@@ -43,17 +43,17 @@ MasternodeSigner::MasternodeSigner(
     const Crypto::SecretKey &signingPrivateKey,
     const Crypto::PublicKey &signingPublicKey,
     const Crypto::Hash &masternodeId,
-    const Crypto::SecretKey &payoutPrivateKey,
-    const Crypto::PublicKey &payoutPublicKey,
-    bool hasPayoutKey):
+    const Crypto::SecretKey &operatorPrivateKey,
+    const Crypto::PublicKey &operatorPublicKey,
+    bool hasOperatorKey):
     m_core(core),
     m_protocol(protocol),
     m_signingPrivateKey(signingPrivateKey),
     m_signingPublicKey(signingPublicKey),
     m_masternodeId(masternodeId),
-    m_payoutPrivateKey(payoutPrivateKey),
-    m_payoutPublicKey(payoutPublicKey),
-    m_hasPayoutKey(hasPayoutKey)
+    m_operatorPrivateKey(operatorPrivateKey),
+    m_operatorPublicKey(operatorPublicKey),
+    m_hasOperatorKey(hasOperatorKey)
 {
 }
 
@@ -67,7 +67,7 @@ void MasternodeSigner::start()
     m_running = true;
     m_clThread = std::thread(&MasternodeSigner::chainLockLoop, this);
     m_isThread = std::thread(&MasternodeSigner::instantSendLoop, this);
-    if (m_hasPayoutKey)
+    if (m_hasOperatorKey)
     {
         m_heartbeatThread = std::thread(&MasternodeSigner::heartbeatLoop, this);
     }
@@ -281,10 +281,10 @@ void MasternodeSigner::heartbeatLoop()
             const std::vector<uint8_t> unsignedPayload =
                 CryptoNote::buildMasternodeHeartbeatUnsignedPayload(m_masternodeId, payloadHeight, true);
 
-            // Sign with payout private key.
+            // Sign with the operator private key.
             const Crypto::Hash sigHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
             Crypto::Signature sig;
-            Crypto::generate_signature(sigHash, m_payoutPublicKey, m_payoutPrivateKey, sig);
+            Crypto::generate_signature(sigHash, m_operatorPublicKey, m_operatorPrivateKey, sig);
 
             // Full MN01 heartbeat payload.
             std::vector<uint8_t> mnPayload = unsignedPayload;
