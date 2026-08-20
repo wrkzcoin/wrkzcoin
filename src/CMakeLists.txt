@@ -382,6 +382,19 @@ if (OPENSSL_FOUND)
     endif ()
 endif ()
 
+## cpp-httplib's gzip support is header only but needs zlib at link time.
+## Everything here either serves or consumes HTTP through it.
+if (ZLIB_FOUND)
+    target_link_libraries(Nigel ${ZLIB_LIBRARIES})
+    if (WRKZ_BUILD_EXECUTABLES)
+        target_link_libraries(miner ${ZLIB_LIBRARIES})
+        target_link_libraries(WalletApi ${ZLIB_LIBRARIES})
+        target_link_libraries(zedwallet++ ${ZLIB_LIBRARIES})
+        target_link_libraries(WalletService ${ZLIB_LIBRARIES})
+        target_link_libraries(Wrkzd ${ZLIB_LIBRARIES})
+    endif ()
+endif ()
+
 if (ENABLE_ZMQ AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(Wrkzd ${WRKZ_ZMQ_TARGET})
     target_compile_definitions(Wrkzd PRIVATE WRKZ_ENABLE_ZMQ=1)

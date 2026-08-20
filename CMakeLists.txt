@@ -545,6 +545,15 @@ if (NOT EMSCRIPTEN AND NOT (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
     endif ()
     if (ZLIB_FOUND)
         message(STATUS "Found ZLIB: ${ZLIB_LIBRARIES}")
+
+        ## Let cpp-httplib negotiate gzip on both the server and the client.
+        ## Wallet sync responses are hex encoded keys and hashes wrapped in
+        ## JSON, which compresses several fold. It is opt in per request - the
+        ## server only spends the CPU when a client sends Accept-Encoding: gzip,
+        ## and older clients that do not are served uncompressed as before.
+        add_definitions(-DCPPHTTPLIB_ZLIB_SUPPORT)
+        include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
+        message(STATUS "  HTTP gzip compression enabled for RPC")
     else ()
         message(STATUS "ZLIB not found (zlib1g-dev / zlib-devel not installed).")
         message(STATUS "  If the build fails with ZLIB_LIBRARY-NOTFOUND, install the zlib development package.")
