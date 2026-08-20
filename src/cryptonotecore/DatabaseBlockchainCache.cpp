@@ -2451,6 +2451,151 @@ namespace CryptoNote
         return true;
     }
 
+    std::unordered_map<Crypto::Hash, RawBlock>
+        DatabaseBlockchainCache::getRawBlocksByHashes(const std::vector<Crypto::Hash> &blockHashes) const
+    {
+        std::unordered_map<Crypto::Hash, RawBlock> result;
+
+        if (blockHashes.empty())
+        {
+            return result;
+        }
+
+        /* One round trip to turn every hash into a height. */
+        BlockchainReadBatch indexBatch;
+        for (const auto &hash : blockHashes)
+        {
+            indexBatch.requestBlockIndexByBlockHash(hash);
+        }
+
+        const auto indexes = readDatabase(indexBatch).getBlockIndexesByBlockHashes();
+
+        if (indexes.empty())
+        {
+            return result;
+        }
+
+        /* One more to fetch every block those heights point at. */
+        BlockchainReadBatch blockBatch;
+        for (const auto &entry : indexes)
+        {
+            blockBatch.requestRawBlock(entry.second);
+        }
+
+        auto rawBlocks = readDatabase(blockBatch).getRawBlocks();
+
+        for (const auto &entry : indexes)
+        {
+            const auto blockIt = rawBlocks.find(entry.second);
+
+            if (blockIt == rawBlocks.end())
+            {
+                continue;
+            }
+
+            result.emplace(entry.first, blockIt->second);
+        }
+
+        return result;
+    }
+
+    std::vector<WalletTypes::WalletBlockInfo> DatabaseBlockchainCache::getWalletSyncBlocks(
+        uint32_t startIndex,
+        uint32_t endIndex,
+        bool skipCoinbaseTransactions) const
+    {
+        std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
+
+        if (endIndex <= startIndex)
+        {
+            return walletBlocks;
+        }
+
+        /* One round trip for every block's header and transaction hash list,
+         * rather than one per block. */
+        BlockchainReadBatch blockBatch;
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            blockBatch.requestCachedBlock(index).requestTransactionHashesByBlock(index);
+        }
+
+        const auto blockResult = readDatabase(blockBatch);
+        const auto &cachedBlocks = blockResult.getCachedBlocks();
+        const auto &hashesByBlock = blockResult.getTransactionHashesByBlocks();
+
+        /* Then a single round trip for every transaction in the whole range. */
+        BlockchainReadBatch transactionBatch;
+        bool haveTransactions = false;
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto hashesIt = hashesByBlock.find(index);
+
+            if (hashesIt == hashesByBlock.end())
+            {
+                continue;
+            }
+
+            for (const auto &hash : hashesIt->second)
+            {
+                transactionBatch.requestCachedTransaction(hash);
+                haveTransactions = true;
+            }
+        }
+
+        const auto transactions = haveTransactions
+            ? readDatabase(transactionBatch).getCachedTransactions()
+            : std::unordered_map<Crypto::Hash, ExtendedTransactionInfo>();
+
+        walletBlocks.reserve(endIndex - startIndex);
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto blockIt = cachedBlocks.find(index);
+            const auto hashesIt = hashesByBlock.find(index);
+
+            /* Matches the per block reader, which reports a miss and is skipped
+             * by the caller rather than terminating the range. */
+            if (blockIt == cachedBlocks.end() || hashesIt == hashesByBlock.end())
+            {
+                continue;
+            }
+
+            const auto &transactionHashes = hashesIt->second;
+
+            WalletTypes::WalletBlockInfo walletBlock;
+            walletBlock.blockHeight = index;
+            walletBlock.blockHash = blockIt->second.blockHash;
+            walletBlock.blockTimestamp = blockIt->second.timestamp;
+
+            for (size_t i = 0; i < transactionHashes.size(); ++i)
+            {
+                const auto transactionIt = transactions.find(transactionHashes[i]);
+
+                if (transactionIt == transactions.end())
+                {
+                    continue;
+                }
+
+                if (i == 0)
+                {
+                    if (!skipCoinbaseTransactions)
+                    {
+                        walletBlock.coinbaseTransaction = toWalletRawCoinbaseTransaction(transactionIt->second);
+                    }
+
+                    continue;
+                }
+
+                walletBlock.transactions.push_back(toWalletRawTransaction(transactionIt->second));
+            }
+
+            walletBlocks.push_back(std::move(walletBlock));
+        }
+
+        return walletBlocks;
+    }
+
     std::vector<Crypto::Hash>
         DatabaseBlockchainCache::getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const
     {
