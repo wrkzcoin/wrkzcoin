@@ -7,8 +7,10 @@
 
 #pragma once
 
+#include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/Core.h>
 #include "cryptonotecore/CryptoNoteBasic.h"
+#include <stdexcept>
 
 #include <list>
 
@@ -256,6 +258,11 @@ namespace CryptoNote
             constexpr uint64_t VOTE_SIZE = 128;
             uint64_t voteCount = static_cast<uint64_t>(votes.size());
             s(voteCount, "vote_count");
+            /* Attacker-controlled count: bound it BEFORE allocating anything. */
+            if (voteCount > CryptoNote::parameters::MASTERNODE_P2P_MAX_VOTES_PER_MESSAGE)
+            {
+                throw std::runtime_error("NOTIFY_CHAINLOCK: too many votes");
+            }
             if (voteCount > 0)
             {
                 if (s.type() == ISerializer::OUTPUT)
@@ -333,6 +340,11 @@ namespace CryptoNote
 
             uint64_t kiCount = static_cast<uint64_t>(keyImages.size());
             s(kiCount, "ki_count");
+            /* Attacker-controlled count: bound it BEFORE allocating anything. */
+            if (kiCount > CryptoNote::parameters::MASTERNODE_P2P_MAX_KEY_IMAGES_PER_MESSAGE)
+            {
+                throw std::runtime_error("NOTIFY_INSTANTSEND_LOCK: too many key images");
+            }
             if (kiCount > 0)
             {
                 if (s.type() == ISerializer::OUTPUT)
@@ -356,6 +368,10 @@ namespace CryptoNote
 
             uint64_t voteCount = static_cast<uint64_t>(votes.size());
             s(voteCount, "vote_count");
+            if (voteCount > CryptoNote::parameters::MASTERNODE_P2P_MAX_VOTES_PER_MESSAGE)
+            {
+                throw std::runtime_error("NOTIFY_INSTANTSEND_LOCK: too many votes");
+            }
             if (voteCount > 0)
             {
                 if (s.type() == ISerializer::OUTPUT)
