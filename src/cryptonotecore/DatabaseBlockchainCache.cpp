@@ -28,6 +28,44 @@ namespace CryptoNote
 
         const CachedBlockInfo NULL_CACHED_BLOCK_INFO {Constants::NULL_HASH, 0, 0, 0, 0, 0};
 
+        /* A block whose timestamp is within this many seconds of now is treated
+         * as being at the tip of the chain, and is written durably. Anything
+         * older than this is history we are catching up on, and is written
+         * without an fsync - see shouldSyncBlockWrite(). */
+        const uint64_t BLOCK_WRITE_TIP_WINDOW_SECONDS = CryptoNote::parameters::DIFFICULTY_TARGET * 30;
+
+        /* Force a durable write at least this often regardless of timestamps, so
+         * that a wrong system clock cannot turn the whole of initial sync into
+         * one unbounded non-durable run. */
+        const uint32_t BLOCK_WRITE_FORCED_SYNC_INTERVAL = 1000;
+
+        /* Decide whether pushing this block should fsync the write-ahead log.
+         *
+         * Every batch is atomic either way, and the last block index is written
+         * in the same batch as the block itself, so a non-durable write can only
+         * ever cost us whole trailing blocks - never a partially applied one.
+         * Those blocks are simply re-requested from peers on the next start.
+         * Trading that for one fsync per block removes millions of fsyncs from
+         * an initial sync. */
+        bool shouldSyncBlockWrite(uint32_t blockIndex, uint64_t blockTimestamp)
+        {
+            if (blockIndex % BLOCK_WRITE_FORCED_SYNC_INTERVAL == 0)
+            {
+                return true;
+            }
+
+            const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+
+            /* Timestamps ahead of us are still tip blocks, just from a peer whose
+             * clock runs fast. Only blocks comfortably in the past are history. */
+            if (blockTimestamp >= now)
+            {
+                return true;
+            }
+
+            return (now - blockTimestamp) <= BLOCK_WRITE_TIP_WINDOW_SECONDS;
+        }
+
         bool requestPackedOutputs(
             IBlockchainCache::Amount amount,
             Common::ArrayView<uint32_t> globalIndexes,
@@ -1376,7 +1414,9 @@ namespace CryptoNote
 
         insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
 
-        auto res = database.write(batch);
+        const bool durable = shouldSyncBlockWrite(getTopBlockIndex() + 1, cachedBlock.getBlock().timestamp);
+
+        auto res = database.write(batch, durable);
         if (res)
         {
             logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash() << " write failed: " << res.message();

@@ -41,6 +41,8 @@ namespace CryptoNote
 
         std::error_code write(IWriteBatch &batch) override;
 
+        std::error_code write(IWriteBatch &batch, bool sync) override;
+
         std::error_code read(IReadBatch &batch) override;
 
         std::error_code readThreadSafe(IReadBatch &batch) override;
@@ -52,8 +54,6 @@ namespace CryptoNote
         void recreate() override;
 
       private:
-        std::error_code write(IWriteBatch &batch, bool sync);
-
         rocksdb::Options getDBOptions(const DataBaseConfig &config);
 
         std::string getDataDir(const DataBaseConfig &config);

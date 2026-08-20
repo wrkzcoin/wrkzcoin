@@ -140,6 +140,11 @@ std::error_code RocksDBWrapper::write(IWriteBatch &batch)
 
 std::error_code RocksDBWrapper::write(IWriteBatch &batch, bool sync)
 {
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
     rocksdb::WriteOptions writeOptions;
     writeOptions.sync = sync;
 
