@@ -6,8 +6,10 @@
 #include <rpc/RpcServer.h>
 //////////////////////////
 
+#include <algorithm>
 #include <iostream>
 #include <ctime>
+#include <thread>
 
 #include "version.h"
 
@@ -20,6 +22,35 @@
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/ParseExtra.h>
+
+namespace
+{
+    /* httplib dedicates a pool thread to a connection for as long as that
+     * connection stays alive, so enabling keep-alive on the clients means idle
+     * connections now hold threads that used to be released immediately. The
+     * default pool is only max(8, cores - 1), which a handful of syncing
+     * wallets can occupy on their own. Give the RPC server a wider floor and a
+     * shorter idle window so a slow client cannot starve the others. */
+    void applyServerTuning(httplib::Server &srv)
+    {
+        const unsigned int cores = std::thread::hardware_concurrency();
+
+        const size_t baseThreads = std::max<size_t>(32, cores > 0 ? cores * 2 : 0);
+        const size_t maxThreads = baseThreads * 8;
+
+        srv.new_task_queue = [baseThreads, maxThreads] {
+            return new httplib::ThreadPool(baseThreads, maxThreads);
+        };
+
+        /* Nagle turns a request/response protocol into a per-request stall. */
+        srv.set_tcp_nodelay(true);
+
+        /* Release an idle keep-alive connection's thread quickly, while still
+         * covering the gap between a wallet's back to back sync requests. */
+        srv.set_keep_alive_timeout(3);
+        srv.set_keep_alive_max_count(1000);
+    }
+} // namespace
 
 RpcServer::RpcServer(
     const uint16_t bindPort,
@@ -56,6 +87,7 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
+    applyServerTuning(m_server);
     m_server.set_address_family(AF_INET);
     m_server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
     m_server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
@@ -72,6 +104,7 @@ RpcServer::RpcServer(
 
     if (!m_ipv6Host.empty())
     {
+        applyServerTuning(m_ipv6Server);
         m_ipv6Server.set_address_family(AF_INET6);
         m_ipv6Server.set_ipv6_v6only(true);
         m_ipv6Server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
