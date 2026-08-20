@@ -64,6 +64,7 @@ namespace CryptoNote
             fresh.lastPaidHeight = state.lastPaidHeight;
             fresh.hasBeenPaid = state.hasBeenPaid;
             fresh.lastLifecycleHeight = state.lastLifecycleHeight;
+            fresh.lastHeartbeatPayloadHeight = state.lastHeartbeatPayloadHeight;
             state = std::move(fresh);
         }
         state.status = Status::Registered;
