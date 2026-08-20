@@ -1,5 +1,11 @@
 # Masternode Consensus Rollout (Draft Spec)
 
+> **Superseded.** This early planning note predates the implementation. Constant names, the 4-week gap,
+> the JSON-RPC method list and the `eligible` state described below were **not** implemented as written.
+> The authoritative, implementation-accurate specification is `DRAFT_MASTERNODE.md` at the repository root
+> (fork heights 5,000,000 / 5,200,000, payload formats, lifecycle rules, RPC reference). This page is kept
+> for historical context only.
+
 This document defines the staged masternode rollout plan for WrkzCoin.
 
 ## Scope
