@@ -875,28 +875,45 @@ std::tuple<Error, uint16_t> RpcServer::instantSendLock(
         return {Error(UNKNOWN_ERROR, "Invalid txhash parameter"), 400};
     }
 
-    // Check if any input of this tx is IS-locked.
-    const auto [found, txData] = m_core->getPoolTransaction(txHash);
     bool locked = false;
     std::string lockTxHash;
     size_t voteCount = 0;
+    nlohmann::json keyImages = nlohmann::json::array();
 
-    if (found)
+    // Fast path: a lock assembled for exactly this transaction (works whether or not the tx is
+    // still in our pool).
+    if (const auto lockOpt = m_core->getInstantSendLockByTxHash(txHash); lockOpt.has_value())
     {
-        const auto rawTx = CryptoNote::Core::getRawTransaction(
-            std::vector<uint8_t>(txData.begin(), txData.end()));
-        for (const auto &input : rawTx.keyInputs)
+        locked = true;
+        lockTxHash = Common::podToHex(lockOpt->txHash);
+        voteCount = lockOpt->votes.size();
+        for (const auto &ki : lockOpt->keyImages)
         {
-            if (m_core->isInstantSendLocked(input.keyImage))
+            keyImages.push_back(Common::podToHex(ki));
+        }
+    }
+    else
+    {
+        // Otherwise report whether any of this (pool) transaction's inputs is locked to another tx.
+        const auto [found, txData] = m_core->getPoolTransaction(txHash);
+        if (found)
+        {
+            const auto rawTx = CryptoNote::Core::getRawTransaction(
+                std::vector<uint8_t>(txData.begin(), txData.end()));
+            for (const auto &input : rawTx.keyInputs)
             {
-                locked = true;
-                const auto lockOpt = m_core->getInstantSendLock(input.keyImage);
-                if (lockOpt.has_value())
+                const auto conflictingLock = m_core->getInstantSendLock(input.keyImage);
+                if (conflictingLock.has_value())
                 {
-                    lockTxHash = Common::podToHex(lockOpt->txHash);
-                    voteCount = lockOpt->votes.size();
+                    locked = true;
+                    lockTxHash = Common::podToHex(conflictingLock->txHash);
+                    voteCount = conflictingLock->votes.size();
+                    for (const auto &ki : conflictingLock->keyImages)
+                    {
+                        keyImages.push_back(Common::podToHex(ki));
+                    }
+                    break;
                 }
-                break;
             }
         }
     }
@@ -904,7 +921,10 @@ std::tuple<Error, uint16_t> RpcServer::instantSendLock(
     nlohmann::json j;
     j["tx_hash"] = txHashStr;
     j["is_locked"] = locked;
+    /* `locked` is kept as an alias of `is_locked` for clients written against the draft spec. */
+    j["locked"] = locked;
     j["lock_tx_hash"] = locked ? lockTxHash : "";
+    j["key_images"] = keyImages;
     j["vote_count"] = voteCount;
     j["status"] = "OK";
     res.body = j.dump();
