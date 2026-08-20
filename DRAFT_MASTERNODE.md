@@ -3,11 +3,17 @@
 > **Status:** DRAFT — implementation under review on branch `test-mnodes-v2`; pending testnet soak and mainnet fork activation.
 > Fork activation heights are configured in `src/config/CryptoNoteConfig.h` and advertised through `FORK_HEIGHTS[]`.
 >
-> **Revision note (Aug 2026):** fork heights moved to 5,000,000 / 5,200,000; Register payload is now **v3**
-> (carries the payout *view* key); every other signed payload carries a creation **height** (anti-replay);
-> the masternode reward output is a standard one-time stealth output derived from a deterministic coinbase
-> tx key; ChainLock/InstantSend messages are validated against the on-chain masternode set before being
-> stored or relayed; lifecycle rules were fixed (Attest allowed while Registered, Revoke allowed from Registered).
+> **Revision note (Aug 2026):** fork heights moved to 5,000,000 / 5,200,000; Register payload is now **v4**
+> (carries the payout *view* key and a dedicated *operator* key for heartbeats); every other signed payload
+> carries a creation **height** (anti-replay); the masternode reward output is a standard one-time stealth
+> output derived from a deterministic coinbase tx key; ChainLock/InstantSend messages are validated against the
+> on-chain masternode set before being stored or relayed; lifecycle rules were fixed (Attest allowed while
+> Registered, Revoke allowed from Registered).
+>
+> **Economic parameters (Aug 2026 feasibility pass):** collateral **500,000,000 WRKZ** (~0.25 % of supply),
+> masternode share **40 %** of the block reward, paid only while **≥ 20** masternodes are reward-eligible,
+> attestation is **informational** (not an Activate/reward gate), the 3-block unlock-time reduction is
+> **deferred** to a later fork.
 
 ---
 
@@ -142,10 +148,12 @@ old software before each fork. A `static_assert` in `CryptoNoteConfig.h` keeps t
 - No reward split yet — 100% of block reward goes to PoW miner.
 
 **Stage 2 — Reward fork (height 5,200,000, ~139 days after Feature fork):**
-- 70% of block reward distributed to the selected masternode winner.
-- 30% of block reward goes to PoW miner.
+- 40% of block reward distributed to the selected masternode winner, **but only while at least
+  `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` (20) masternodes are reward-eligible**; otherwise 100% stays with the miner.
+- 60% of block reward goes to PoW miner.
 - Transaction fees always go 100% to the PoW miner regardless of fork stage.
-- The minimum transaction unlock time drops from 15 to 3 blocks (`UNLOCK_TIME_HEIGHT_V3 = MASTERNODE_REWARD_FORK_HEIGHT`).
+- The 15-block minimum unlock time is unchanged. The 3-block reduction (`MINIMUM_UNLOCK_TIME_BLOCKS_V2`) is
+  deferred to a later fork (`UNLOCK_TIME_HEIGHT_V3 = 0`) until ChainLock finality has been observed working on mainnet.
 
 > Setting `MASTERNODE_FEATURE_FORK_HEIGHT` to `0` disables the feature entirely (used for dev/test builds);
 > `MASTERNODE_REWARD_FORK_HEIGHT` must then be left as is (a `static_assert` rejects `0`). Testnet builds that
@@ -166,13 +174,14 @@ All values are defined in `src/config/CryptoNoteConfig.h` under `CryptoNote::par
 | `MASTERNODE_MIN_HEALTH_PERCENT` | 95% | Minimum heartbeat health to be reward-eligible |
 | `MASTERNODE_FAIRNESS_WINDOW_BLOCKS` | 10,080 (7 days) | Window used for fairness reward accounting |
 | `MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCKS` | 30,240 (21 days) | Collateral spend-lock after deactivation/revocation |
-| `MASTERNODE_REWARD_PERCENT` | 70% | Masternode share of distributable block reward |
-| `MASTERNODE_REGISTRATION_BOND_AMOUNT` | 200,000,000,000 atomic (2,000,000,000 WRKZ) | Minimum collateral output required at registration |
-| `MASTERNODE_COLLATERAL_LOCK_AMOUNT` | 200,000,000,000 atomic (2,000,000,000 WRKZ) | Same as bond amount (equal in current config) |
+| `MASTERNODE_REWARD_PERCENT` | 40% | Masternode share of distributable block reward (PoW keeps the majority while ChainLock is advisory) |
+| `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` | 20 | Masternode share is paid only when at least this many masternodes are reward-eligible; otherwise 100% to PoW |
+| `MASTERNODE_REGISTRATION_BOND_AMOUNT` | 50,000,000,000 atomic (500,000,000 WRKZ, ~0.25% of supply) | Minimum collateral output required at registration |
+| `MASTERNODE_COLLATERAL_LOCK_AMOUNT` | 50,000,000,000 atomic (500,000,000 WRKZ) | Same as bond amount (equal in current config) |
 | `MASTERNODE_REGISTRATION_TOKEN_TTL_BLOCKS` | 1,440 (1 day) | Registration token validity window |
 | `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` | 5 blocks | Minimum spacing between accepted heartbeat txs |
 | `MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS` | 10,080 (7 days) | Minimum spacing between accepted endpoint update txs |
-| `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` | true | Whether attestation threshold must be met for rewards |
+| `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` | **false** (informational) | When true, the attestation threshold gates Activate and rewards; left off until a curated verifier set exists |
 | `MASTERNODE_ATTESTATION_WINDOW_BLOCKS` | 10,080 (7 days) | Rolling window for attestation health |
 | `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` | 24 | Minimum attestation samples needed in window |
 | `MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT` | 80% | Minimum attestation health percentage |
@@ -214,11 +223,11 @@ Masternode operations are embedded in standard CryptoNote transactions via the `
 | Type byte | Name | Who sends (signature key) | Purpose |
 |-----------|------|---------------------------|---------|
 | `0x01` | **Register** | Operator wallet (payout key + collateral proof) | Lock collateral, commit endpoint, begin lifecycle |
-| `0x02` | **Activate** | Operator (payout key) | Registered/Inactive → Active (requires attestation threshold) |
+| `0x02` | **Activate** | Operator (payout key) | Registered/Inactive → Active (attestation threshold only if `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION`) |
 | `0x03` | **Deactivate** | Operator (payout key) | Active → Inactive; start spend-lock |
 | `0x04` | **Penalize** | Operator (payout key) — no governance key exists yet | Active/Inactive → Penalized |
 | `0x05` | **Revoke** | Operator (payout key) | Registered/Active/Inactive/Penalized → Revoked; start spend-lock |
-| `0x06` | **Heartbeat** | Operator daemon (payout key) | Report liveness (zero-input tx) |
+| `0x06` | **Heartbeat** | Operator daemon (**operator key**, `--mn-operator-key`) | Report liveness (zero-input tx) |
 | `0x07` | **Attest** | Verifier (any key unless allowlist enabled) | Independently attest liveness of a Registered or Active MN |
 | `0x08` | **UpdateEndpoint** | Operator (payout key) | Replace endpoint commitment in-place (7-day cooldown) |
 
@@ -252,19 +261,28 @@ never placed into block templates.
 | Activate / Deactivate / Penalize / Revoke | `height(4) ‖ sig(64)` | 105 bytes |
 | UpdateEndpoint | `height(4) \| newEndpointCommitment(32) ‖ sig(64)` | 137 bytes |
 
-### Register payload fields (v3 format)
+### Register payload fields (v4 format)
 
-The wallet `mn_register` command generates a **v3** Register payload. Compared with v2 it adds the **payout
-view key**, so the registration commits to a full payout *address* (spend + view key). That is what allows the
-coinbase to pay a standard one-time (stealth) output that the operator's wallet detects and can spend (see §14).
-Earlier v1/v2 layouts are no longer accepted (no mainnet registrations exist yet).
+The wallet `mn_register` command generates a **v4** Register payload. Compared with v2 it adds the **payout
+view key**, so the registration commits to a full payout *address* (spend + view key) — that is what allows the
+coinbase to pay a standard one-time (stealth) output that the operator's wallet detects and can spend (see §14) —
+and a dedicated **operator key** that signs heartbeats, so the wallet's spend key never has to be copied to the
+masternode server. Earlier v1/v2/v3 layouts are no longer accepted (no mainnet registrations exist yet).
+
+Key roles:
+
+| Key | Where it lives | Signs |
+|-----|----------------|-------|
+| Payout (spend) key + payout view key | wallet | Register, Activate, Deactivate, Penalize, Revoke, UpdateEndpoint; receives rewards |
+| Signing key (`--mn-signing-key`) | daemon | ChainLock / InstantSend votes |
+| Operator key (`--mn-operator-key`) | daemon | Heartbeats |
 
 | Field | Type | Notes |
 |-------|------|-------|
 | Magic `MN01` | 4 bytes | Identifies MN tx |
 | Type `0x01` | 1 byte | Register |
 | Masternode ID | 32 bytes (Hash) | Randomly chosen by operator |
-| Payout key | 32 bytes (PublicKey) | Wallet public **spend** key; signs lifecycle/heartbeat payloads; part of payout address |
+| Payout key | 32 bytes (PublicKey) | Wallet public **spend** key; signs lifecycle/update payloads; part of payout address |
 | Registration token ID | 32 bytes (Hash) | From daemon `mn_registration_string` command |
 | Token expiry height | 4 bytes (LE uint32) | Must be ≥ current block height |
 | Collateral amount | 8 bytes (LE uint64) | Must be ≥ `MASTERNODE_COLLATERAL_LOCK_AMOUNT` |
@@ -274,12 +292,13 @@ Earlier v1/v2 layouts are no longer accepted (no mainnet registrations exist yet
 | Endpoint commitment | 32 bytes (Hash) | `cn_fast_hash("MNIP1|<canonical_addr>")` |
 | Signing key | 32 bytes (PublicKey) | Dedicated key for ChainLock/InstantSend quorum votes (required) |
 | **Payout view key** | **32 bytes (PublicKey)** | **Wallet public view key; completes the payout address** |
+| **Operator key** | **32 bytes (PublicKey)** | **Dedicated heartbeat signing key (daemon, `--mn-operator-key`)** |
 | Payout key signature | 64 bytes (Signature) | Signs unsigned payload with payout (spend) key |
 | Collateral proof | 64 bytes | DLEQ proof binding collateral output key ↔ key image, over the unsigned payload hash |
 
-Total: 277 bytes unsigned + 128 bytes of signatures = 405 bytes.
+Total: 309 bytes unsigned + 128 bytes of signatures = 437 bytes.
 
-> **Note:** The signing private key is generated by the wallet and displayed once at registration. Save it securely — it must be provided to the daemon via `--mn-signing-key=<hex>` to enable ChainLock and InstantSend signing.
+> **Note:** The signing and operator private keys are generated by the wallet and displayed once at registration. Save them securely — they must be provided to the daemon via `--mn-signing-key=<hex>` (ChainLock/InstantSend voting) and `--mn-operator-key=<hex>` (automatic heartbeats). The wallet spend key is never needed on the server.
 
 ---
 
@@ -320,7 +339,7 @@ Consensus transition rules (`Core::validateMasternodeTransactionEventWithTracker
 
 | Tx | Allowed from | Notes |
 |----|--------------|-------|
-| Activate | Registered, Inactive | bonded + collateral binding + attestation threshold + payload height newer than last lifecycle payload |
+| Activate | Registered, Inactive | bonded + collateral binding + payload height newer than last lifecycle payload (+ attestation threshold only if `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION`) |
 | Deactivate | Active | starts spend-lock |
 | Penalize | Active, Inactive | starts spend-lock; currently self-signed (no governance key) |
 | Revoke | Registered, Active, Inactive, Penalized | starts spend-lock; the exit path for a registration that never activated |
@@ -333,7 +352,7 @@ Penalize or Revoke it stays locked for `MASTERNODE_DEACTIVATION_SPEND_LOCK_BLOCK
 transaction. Transactions that attempt to spend it during this period are rejected by consensus. If the same
 key image appears in more than one record (revoked then re-registered), it is locked if *any* record locks it.
 
-**Reward eligibility:** Only nodes in **Active** status that meet both the heartbeat health threshold and attestation threshold are considered for rewards.
+**Reward eligibility:** Only nodes in **Active** status that meet the heartbeat health threshold (and, when `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` is enabled, the attestation threshold) are considered for rewards; the masternode share is paid only while at least `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` (20) such nodes exist.
 
 **Quorum eligibility:** All **Active** masternodes with a registered signing key are eligible to be selected into ChainLock and InstantSend quorums, regardless of health or attestation status.
 
@@ -341,7 +360,7 @@ key image appears in more than one record (revoked then re-registered), it is lo
 
 ## 7. Collateral & Bond
 
-- The operator must hold an unspent output of at least **2,000,000,000 WRKZ** (200,000,000,000 atomic units) in their wallet.
+- The operator must hold an unspent output of at least **500,000,000 WRKZ** (50,000,000,000 atomic units, ~0.25% of supply) in their wallet.
 - This output's key image is committed on-chain in the Register transaction.
 - The consensus layer checks the key image against all previously registered masternodes to prevent double-registration.
 - The output is **not frozen at the network level** — but attempting to spend it while the masternode is active or within the spend-lock window will result in a transaction rejected from blocks.
@@ -382,25 +401,25 @@ The commitment uniqueness is enforced on-chain — no two active or pending mast
 
 ### Heartbeat Transactions
 
-A masternode daemon **automatically** submits a **Heartbeat** tx (type `0x06`) at most once per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks when `--mn-payout-key` is configured and the daemon is synchronized. No manual action or wallet is required. The tx includes:
+A masternode daemon **automatically** submits a **Heartbeat** tx (type `0x06`) at most once per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks when `--mn-operator-key` is configured and the daemon is synchronized. No manual action or wallet is required. The tx includes:
 - Masternode ID (32 bytes)
 - Creation height (4 bytes LE) — next block height as seen by the signer (anti-replay, see §5)
 - `healthy` flag (1 byte: `0x01` = healthy, `0x00` = unhealthy)
-- Signature over the unsigned payload using the payout key
+- Signature over the unsigned payload using the **operator key** committed at registration
 
 ### Zero-Input Heartbeat Format
 
-Heartbeat transactions are **zero-input, zero-output** by design — they carry no funds, pay no fee, and consume negligible block space (106-byte payload, ~115 bytes on the wire). Normal input/fee/PoW validation is bypassed for this tx type; authorization is cryptographically enforced via the payout-key signature in the `extra` field.
+Heartbeat transactions are **zero-input, zero-output** by design — they carry no funds, pay no fee, and consume negligible block space (106-byte payload, ~115 bytes on the wire). Normal input/fee/PoW validation is bypassed for this tx type; authorization is cryptographically enforced via the operator-key signature in the `extra` field.
 
 **Spam prevention layers** (enforced in consensus):
 1. Structural parse gate — extra must match the exact MN01 type `0x06` layout (106 bytes)
 2. Active status check — the MN must be in `Active` status at the time of the heartbeat
 3. Rate limiting — at most one heartbeat per `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks per MN ID
 4. Anti-replay — the payload height must be within the signed-payload window and strictly newer than the inclusion height of the previous accepted heartbeat
-5. Payout-key signature — only the registered payout-key holder can produce a valid heartbeat (checked before any pool scan)
+5. Operator-key signature — only the holder of the registered operator key can produce a valid heartbeat (checked before any pool scan)
 6. Mempool deduplication — a second heartbeat for the same MN ID is rejected if one is already in the pool; stale heartbeats are purged from the pool on every block and never enter block templates
 
-The 2B WRKZ collateral requirement makes spam attacks economically irrational even if all layers were bypassed.
+The 500M WRKZ collateral requirement makes spam attacks economically irrational even if all layers were bypassed.
 
 ### Health Calculation
 
@@ -438,7 +457,9 @@ With `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5`, each masternode submits at m
 
 ## 10. External Attestation
 
-In addition to self-reported heartbeats, external **verifier nodes** submit Attest transactions that independently rate the masternode's liveness. Attestations are accepted for masternodes in **Registered** or **Active** status — a freshly registered masternode needs `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` attestations before it can Activate.
+In addition to self-reported heartbeats, external **verifier nodes** can submit Attest transactions that independently rate the masternode's liveness. Attestations are accepted for masternodes in **Registered** or **Active** status.
+
+> **Status: informational.** `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` is `false` for this release: attestation samples are recorded and exposed over RPC, but they do **not** gate Activate or reward eligibility. The reason is that with the verifier allowlist disabled any 24 keys could satisfy the threshold, so the gate would add friction without security. When a curated verifier set exists, enable `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` together with `MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST` (a consensus change, i.e. a fork) and the rules below become binding.
 
 ### Attestation Transaction
 
@@ -458,7 +479,7 @@ Attestation samples are tracked separately from heartbeats in a `MASTERNODE_ATTE
 attest_health_percent = (healthy_attest_samples_in_window / total_attest_samples_in_window) * 100
 ```
 
-To be eligible for rewards, a masternode must have:
+When attestation is required (`MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true`), to be eligible for rewards (and to Activate) a masternode must have:
 - At least `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` (24) attestation samples in the window, AND
 - `attest_health_percent` ≥ `MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT` (80%)
 
@@ -526,9 +547,9 @@ The daemon derives the public key from the private key at startup, looks up the 
 
 2. **InstantSend loop** — Monitors the transaction mempool. For each qualifying transaction (≤ 10 inputs), checks whether this masternode is in the 10-node quorum (selected using the tx hash as seed). If in quorum, signs an `ISV1` vote and broadcasts it via P2P.
 
-3. **Heartbeat loop** *(requires `--mn-payout-key`)* — Monitors new blocks. Every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` (5) blocks, if the masternode is Active, builds and submits a zero-input heartbeat transaction signed with the payout private key. The transaction bypasses normal fee/PoW validation; signature and rate-limit checks ensure only legitimate operators can submit.
+3. **Heartbeat loop** *(requires `--mn-operator-key`)* — Monitors new blocks. Every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` (5) blocks, if the masternode is Active and the daemon is synchronized, builds and submits a zero-input heartbeat transaction signed with the operator private key. The transaction bypasses normal fee/PoW validation; signature, anti-replay and rate-limit checks ensure only the legitimate operator can submit.
 
-If `--mn-signing-key` is not provided, `MasternodeSigner` does not start. If `--mn-payout-key` is not provided, the heartbeat loop does not run (the node participates in quorums but does not auto-heartbeat).
+If `--mn-signing-key` is not provided, `MasternodeSigner` does not start. If `--mn-operator-key` is not provided, the heartbeat loop does not run (the node participates in quorums but does not auto-heartbeat).
 
 ---
 
@@ -703,8 +724,8 @@ to another transaction, `lock_tx_hash` names that other transaction.)
 ```
 Before Feature fork:   100% → PoW miner (masternodes not active)
 After Feature fork:    100% → PoW miner (masternodes register, no rewards yet)
-After Reward fork:      70% → Masternode winner
-                        30% → PoW miner
+After Reward fork:      40% → Masternode winner   (only while ≥ 20 masternodes are eligible)
+                        60% → PoW miner
 Transaction fees:      100% → PoW miner always
 ```
 
@@ -714,11 +735,12 @@ At each block after the Reward fork:
 
 1. All masternodes in **Active** status are collected as candidates.
 2. Candidates not meeting the heartbeat health threshold (95%) are excluded.
-3. Candidates not meeting the attestation threshold (80%, 24 samples) are excluded.
-4. Among remaining eligible candidates, the one with the **lowest total reward received in the last 7-day window** is selected as the winner.
-5. Ties are broken deterministically: never-paid nodes first, then lowest `last_paid_height`, then lexicographically smallest masternode ID.
+3. Candidates not meeting the attestation threshold (80%, 24 samples) are excluded — only when `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` is enabled (it is off).
+4. If fewer than `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` (20) candidates remain, there is no winner: the full reward goes to the PoW miner.
+5. Among remaining eligible candidates, the one with the **lowest total reward received in the last 7-day window** is selected as the winner.
+6. Ties are broken deterministically: never-paid nodes first, then lowest `last_paid_height`, then lexicographically smallest masternode ID.
 
-If no eligible candidate exists, the full reward goes to the PoW miner.
+If no eligible candidate exists (or too few), the full reward goes to the PoW miner. A winner whose 40% share would round to zero is likewise skipped.
 
 ### Reward Output
 
@@ -774,7 +796,7 @@ The state is also serializable via the key prefix `m/state` in `DBUtils.h`, used
 ### Prerequisites
 
 - A synced `wrkzd` daemon
-- A `zedwallet++` wallet with at least **2,000,000,000 WRKZ** in a single unspent output **plus a separate small unlocked output** to pay for the registration transaction (the Register tx must not spend the collateral output — consensus rejects it, and the wallet refuses to build such a transaction)
+- A `zedwallet++` wallet with at least **500,000,000 WRKZ** in a single unspent output **plus a separate small unlocked output** to pay for the registration transaction (the Register tx must not spend the collateral output — consensus rejects it, and the wallet refuses to build such a transaction)
 - A publicly reachable server with a static IP address (IPv4 or IPv6) and an open P2P port
 
 ### Step 1 — Generate a Registration Token (Daemon)
@@ -797,7 +819,7 @@ Masternode registration token:
 MNREG2:<mn_id_hex>:<token_id_hex>:<expires_at_height>
 
 Token expires at height: <height>
-Required collateral minimum: 2000000000.00 WRKZ (200000000000 atomic units)
+Required collateral minimum: 500000000.00 WRKZ (50000000000 atomic units)
 Wallet CLI command: mn_register MNREG2:... <addr:port | [ipv6]:port>
 ```
 
@@ -831,44 +853,43 @@ Or run `mn_register` interactively — you will be prompted for the token and en
 The wallet will:
 1. Parse and validate the token
 2. Canonicalize the endpoint and compute the commitment hash
-3. Select a qualifying collateral output (≥ 2,000,000,000 WRKZ)
-4. Generate a fresh signing key pair for ChainLock/InstantSend quorum participation
-5. Build the v3 Register payload (payout spend + view key, collateral binding, endpoint commitment, signing key) with dual signatures (payout key + collateral proof)
+3. Select a qualifying collateral output (≥ 500,000,000 WRKZ)
+4. Generate a fresh signing key pair (ChainLock/InstantSend votes) and a fresh operator key pair (heartbeats)
+5. Build the v4 Register payload (payout spend + view key, collateral binding, endpoint commitment, signing key, operator key) with dual signatures (payout key + collateral proof)
 6. Fund the transaction from **other** outputs only — it refuses to continue if the collateral output would be consumed
 7. Display a confirmation summary and prompt for approval
 8. Broadcast the transaction
-9. Print the **signing private key** — save it immediately for use with `--mn-signing-key`
+9. Print the **signing private key** and the **operator private key** — save both immediately for use with `--mn-signing-key` / `--mn-operator-key`
 
 ### Step 3 — Configure the Daemon
 
-Add the signing key and payout key to your daemon configuration:
+Add the signing key and operator key (both printed by `mn_register`) to your daemon configuration:
 
 ```ini
 mn-signing-key=<64-hex-chars printed at registration>
-mn-payout-key=<64-hex-chars of wallet spend private key>
+mn-operator-key=<64-hex-chars printed at registration>
 ```
 
 Or pass on the command line:
 
 ```bash
 wrkzd --mn-signing-key=<64-hex-chars> \
-      --mn-payout-key=<64-hex-chars>
+      --mn-operator-key=<64-hex-chars>
 ```
 
 - **`mn-signing-key`** — Enables ChainLock/InstantSend quorum participation. The public key was embedded in the Register tx.
-- **`mn-payout-key`** — Enables automated heartbeat submission. This is the spend private key of the wallet address used as the payout address during `mn_register`. You can export it from `zedwallet++` with `backup` (shows the private spend key).
+- **`mn-operator-key`** — Enables automated heartbeat submission. The public key was embedded in the Register tx. Your wallet spend key is **not** needed on the server.
 
 > **Key handling:** `--dump-config` and `--save-config` serialise these keys in plaintext. Keep config files
-> with `mn-signing-key` / `mn-payout-key` readable only by the daemon user.
+> with `mn-signing-key` / `mn-operator-key` readable only by the daemon user. If either key leaks, revoke and
+> re-register with fresh keys (the collateral follows the spend-lock rules in §7).
 
-### Step 4 — Get attested, then Activate (Wallet)
+### Step 4 — Activate (Wallet)
 
-Activation requires the attestation threshold (≥ `MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW` = 24 samples, ≥ 80 %
-healthy, within the 7-day window). Verifiers can attest a **Registered** masternode with `mn_attest`; with the
-verifier allowlist disabled any wallet can act as a verifier, and one verifier is rate-limited to one accepted
-attestation per 60 blocks per masternode (so a single verifier needs ~1 day to provide 24 samples).
+(Attestation is informational in this release — see §10 — so no attestations are needed before activating. If
+`MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` is enabled in a future fork, the attestation threshold must be met first.)
 
-After the Register tx is confirmed and the attestation threshold is met, submit an **Activate** transaction to move the masternode from `Registered` → `Active` status:
+After the Register tx is confirmed, submit an **Activate** transaction to move the masternode from `Registered` → `Active` status:
 
 ```
 mn_activate <mn_id_hex>
@@ -880,16 +901,16 @@ The wallet signs the action payload with the primary spend key (the payout key r
 
 ### Step 5 — Automated Heartbeat
 
-Once active, the daemon **automatically** submits heartbeat transactions. To enable automated heartbeat, add `--mn-payout-key` to your daemon startup:
+Once active, the daemon **automatically** submits heartbeat transactions. To enable automated heartbeat, add `--mn-operator-key` to your daemon startup:
 
 ```bash
 wrkzd --mn-signing-key=<signing-private-key-hex> \
-      --mn-payout-key=<payout-private-key-hex>
+      --mn-operator-key=<operator-private-key-hex>
 ```
 
-The `--mn-payout-key` is the spend private key of the wallet address registered as the payout address during `mn_register`. With this key configured, the daemon's `MasternodeSigner` thread automatically submits a zero-input, zero-fee heartbeat every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks (every ~5 minutes at 1-minute block time).
+The `--mn-operator-key` is the operator private key generated and printed by `mn_register` (its public half is committed on-chain). With this key configured, the daemon's `MasternodeSigner` thread automatically submits a zero-input, zero-fee heartbeat every `MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL` blocks (every ~5 minutes at 1-minute block time).
 
-> **Security note:** The payout private key gives the ability to sign heartbeats and lifecycle transactions for your masternode. Keep it secure and do not share it. It does **not** by itself allow spending the collateral UTXO (which requires the separate key pair embedded in the collateral output).
+> **Security note:** The operator key can only sign heartbeats — it cannot move collateral, rewards, or change the masternode's lifecycle. Lifecycle transactions (activate/deactivate/revoke/update endpoint) are signed by the wallet's spend key, which never needs to leave the wallet.
 
 ---
 
@@ -920,7 +941,7 @@ wrkzd --p2p-bind-ipv6-address :: --p2p-bind-port-ipv6 17855
 ### Health Maintenance
 
 - Keep your masternode online continuously.
-- Configure `--mn-payout-key` so the daemon auto-submits heartbeats every 5 blocks.
+- Configure `--mn-operator-key` so the daemon auto-submits heartbeats every 5 blocks.
 - Monitor `health_percent` via `masternodes` console command or `GET /masternodes` RPC.
 - A node falling below 95% health is excluded from reward selection until health recovers (there is no automatic deactivation).
 - Deactivating, penalizing or revoking a node starts the 21-day spend-lock on its collateral.
@@ -977,9 +998,9 @@ Returns a paginated list of masternode snapshots.
       "mn_id": "abcdef...",
       "state": "active",
       "bonded": true,
-      "bond_amount": 200000000000,
+      "bond_amount": 50000000000,
       "has_collateral": true,
-      "collateral_amount": 200000000000,
+      "collateral_amount": 50000000000,
       "collateral_global_output_index": 12345,
       "has_endpoint_commitment": true,
       "endpoint_commitment": "deadbeef...",
@@ -1127,7 +1148,7 @@ Activate a registered masternode, moving it from `Registered` → `Active` statu
 mn_activate abc...def
 ```
 
-Signed with the wallet's primary spend key (the payout key). The masternode must be in `Registered` or `Inactive` status, bonded, have a valid collateral binding, and meet the attestation threshold (§10). The payload carries the wallet's current network height (anti-replay).
+Signed with the wallet's primary spend key (the payout key). The masternode must be in `Registered` or `Inactive` status, bonded and have a valid collateral binding (plus the attestation threshold of §10 if `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION` is enabled). The payload carries the wallet's current network height (anti-replay).
 
 ### `mn_deactivate <mn_id_hex>`
 
@@ -1137,7 +1158,7 @@ Voluntarily deactivate an active masternode, moving it from `Active` → `Inacti
 mn_deactivate abc...def
 ```
 
-Use this for planned maintenance or temporary removal from the active set. To re-enter the active set run `mn_activate` again (the attestation threshold must still be met).
+Use this for planned maintenance or temporary removal from the active set. To re-enter the active set run `mn_activate` again.
 
 ### `mn_revoke <mn_id_hex>`
 
@@ -1218,7 +1239,8 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 - **Endpoint uniqueness is enforced** — same commitment hash cannot appear in two active registrations.
 - **Spend-lock is enforced** — collateral key image is tracked and spend attempts blocked while Registered/Active and for 21 days after Deactivate/Penalize/Revoke; the check is order-independent when a key image appears in several records.
 - **Signed payloads are single-use** — every heartbeat / attestation / lifecycle / endpoint-update payload carries a creation height and must be strictly newer than the previous accepted one of its kind; captured payloads cannot be replayed.
-- **Heartbeat signatures are verified** — only the holder of the payout key can submit heartbeats for a given masternode.
+- **Heartbeat signatures are verified** — only the holder of the registered operator key can submit heartbeats for a given masternode; lifecycle changes require the payout (owner) key.
+- **Reward split is gated on a minimum eligible set** — the masternode share (40%) is only paid while ≥ 20 masternodes are reward-eligible, so no single early node can capture the masternode budget.
 - **Attestation signatures are verified** — only the holder of the verifier key can submit attestations; per-verifier rate limiting prevents spam.
 - **Reward outputs are verifiable and spendable** — the winner's one-time output key is derived from a deterministic coinbase tx key and the registered payout address; every node recomputes it, and the operator's wallet detects it like any normal output.
 - **Sibling / alternative blocks are validated against the right state** — masternode state is replayed to the block's parent whenever the parent is not the current main-chain tip.
@@ -1228,7 +1250,7 @@ Only the `cn_fast_hash` of the preimage is stored on-chain. The uniqueness check
 
 | Limitation | Impact | Planned fix |
 |-----------|--------|-------------|
-| **Attestation is not a security boundary while the verifier allowlist is off** | Any 24 keys can attest; the Activate gate and reward gate only prove that someone paid 24 tx fees | Enable `MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST` with a curated set, or require verifiers to be other Active masternodes |
+| **Attestation is informational only** | `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = false`: attestations are recorded but do not gate Activate or rewards, because without a curated verifier set any 24 keys could satisfy the threshold | Enable the requirement together with `MASTERNODE_ATTESTATION_ENFORCE_VERIFIER_ALLOWLIST` (or verifiers = other Active masternodes) in a later fork |
 | **Penalize has no governance key** | It is self-signed like every other lifecycle tx, so it cannot be used to sanction misbehaving operators | Define a governance key set (or drop the type) before mainnet |
 | **No wallet `mn_update_endpoint` command** | Endpoint update operations require external tooling to build transactions | Add wallet command |
 | **No wallet-side collateral protection after registration** | `transfer` / `send_all` / `optimize` may pick the collateral; the daemon rejects the tx (`WRONG_FEE`) but the failure message is opaque | Persist collateral key images in the wallet and exclude them from spendable inputs |
@@ -1252,18 +1274,19 @@ Edit `src/config/CryptoNoteConfig.h` to change any parameter. Requires recompila
 const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 5000000;
 const uint64_t MASTERNODE_REWARD_FORK_HEIGHT  = 5200000;
 
-// Unlock-time V3 (min unlock 15 -> 3 blocks) activates with the reward fork
-const uint64_t UNLOCK_TIME_HEIGHT_V3 = MASTERNODE_REWARD_FORK_HEIGHT;
+// Unlock-time V3 (min unlock 15 -> 3 blocks): DEFERRED, 0 = not scheduled
+const uint64_t UNLOCK_TIME_HEIGHT_V3 = 0;
 
 // Signed payload anti-replay window
 const uint64_t MASTERNODE_SIGNED_PAYLOAD_MAX_AGE_BLOCKS = 120;
 const uint64_t MASTERNODE_SIGNED_PAYLOAD_FUTURE_TOLERANCE_BLOCKS = 2;
 
-// Reward split
-const uint64_t MASTERNODE_REWARD_PERCENT = 70; // percent of distributable reward to MN winner
+// Reward split (paid only while >= MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT masternodes are eligible)
+const uint64_t MASTERNODE_REWARD_PERCENT = 40; // percent of distributable reward to MN winner
+const uint64_t MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT = 20;
 
-// Collateral — 2,000,000,000 WRKZ × 100 (2 decimal places) = 200,000,000,000 atomic units
-const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT  = 200'000'000'000;
+// Collateral — 500,000,000 WRKZ × 100 (2 decimal places) = 50,000,000,000 atomic units (~0.25% of supply)
+const uint64_t MASTERNODE_REGISTRATION_BOND_AMOUNT  = 50'000'000'000;
 const uint64_t MASTERNODE_COLLATERAL_LOCK_AMOUNT     = MASTERNODE_REGISTRATION_BOND_AMOUNT;
 
 // Health
@@ -1286,7 +1309,7 @@ const uint64_t MASTERNODE_HEARTBEAT_MIN_BLOCK_INTERVAL = 5;
 const uint64_t MASTERNODE_ENDPOINT_UPDATE_COOLDOWN_BLOCKS = MASTERNODE_HEALTH_WINDOW_BLOCKS;
 
 // Attestation
-const bool     MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION                    = true;
+const bool     MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION                    = false; // informational for this release
 const uint64_t MASTERNODE_ATTESTATION_WINDOW_BLOCKS                       = MASTERNODE_HEALTH_WINDOW_BLOCKS;
 const uint64_t MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW                      = 24;
 const uint64_t MASTERNODE_MIN_ATTESTATION_HEALTH_PERCENT                  = 80;
@@ -1417,14 +1440,14 @@ No. The Register tx validation calls `hasEndpointCommitment`, which rejects any 
 | Allowed from | Active | Registered, Active, Inactive, Penalized |
 | Resulting status | Inactive | Revoked |
 | Spend-lock | Yes — 21 days | Yes — 21 days |
-| Re-activate allowed? | Yes — `mn_activate` again (attestation threshold applies) | No — register again (same collateral only after the spend-lock) |
+| Re-activate allowed? | Yes — `mn_activate` again | No — register again (same collateral only after the spend-lock) |
 | Typical use | Temporary removal / maintenance | Permanent exit |
 
 ---
 
 **Q: What happens to rewards while the masternode is in Registered status (before Activate)?**
 
-Nothing — a masternode in Registered status is not eligible for rewards. Only Active masternodes are considered for reward selection. The registration establishes the collateral commitment and lets verifiers start attesting, but rewards require an explicit Activate transaction (which itself requires the attestation threshold).
+Nothing — a masternode in Registered status is not eligible for rewards. Only Active masternodes are considered for reward selection. The registration establishes the collateral commitment, but rewards require an explicit Activate transaction.
 
 ---
 
@@ -1432,7 +1455,7 @@ Nothing — a masternode in Registered status is not eligible for rewards. Only 
 
 **Q: What if no masternode is eligible for a reward at a given block?**
 
-If no active masternode meets both the health threshold (≥ 95% heartbeat health) and the attestation threshold (≥ 80% attestation health with ≥ 24 samples), the full block reward goes to the PoW miner. No reward is held in reserve or rolled over.
+If fewer than `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` (20) active masternodes meet the health threshold (≥ 95% heartbeat health; plus the attestation threshold if that requirement is enabled), the full block reward goes to the PoW miner. No reward is held in reserve or rolled over.
 
 ---
 
@@ -1458,7 +1481,7 @@ Yes — this is by design. The **payout key** (where rewards are sent) is separa
 
 **Q: What is external attestation and do I need to worry about it?**
 
-External attestation is a second liveness check performed by independent **verifier nodes** that submit Attest transactions on-chain. To be reward-eligible your masternode must have ≥ 24 attestation samples in the last 7-day window with ≥ 80% healthy attestations. If `MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = true` (the current default), a masternode with zero attestation samples will not receive rewards even with 100% heartbeat health. As an operator you cannot control who attests to your node — verifier infrastructure needs to be operational on the network. If no verifiers are running and attestation is required, **no masternode will receive rewards**.
+External attestation is a second liveness check performed by independent **verifier nodes** that submit Attest transactions on-chain. In this release it is **informational only** (`MASTERNODE_REQUIRE_EXTERNAL_ATTESTATION = false`): attestations are recorded and visible over RPC but do not affect activation or rewards, so as an operator you do not need to worry about it. If the requirement is enabled in a later fork (together with a curated verifier allowlist), a masternode would need ≥ 24 attestation samples in the last 7-day window with ≥ 80% healthy attestations to activate and to be paid.
 
 ---
 
