@@ -9,6 +9,7 @@
 #include "DataBaseErrors.h"
 #include "rocksdb/cache.h"
 #include "rocksdb/db.h"
+#include "rocksdb/filter_policy.h"
 #include "rocksdb/table.h"
 #include <algorithm>
 
@@ -340,6 +341,26 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
 
     rocksdb::BlockBasedTableOptions tableOptions;
     tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize);
+
+    /* This workload is almost entirely point lookups - block hash to index,
+     * index to raw block, transaction hash to transaction. Without a bloom
+     * filter every one of those has to binary search the index block of each
+     * SST at every level before it can conclude the key is not there. Ten bits
+     * per key gives roughly a 1% false positive rate for a little over 1MB of
+     * filter per million keys. */
+    tableOptions.filter_policy.reset(rocksdb::NewBloomFilterPolicy(10));
+
+    /* Keep the index and filter blocks inside the block cache rather than
+     * outside it, so their memory is bounded by db-read-buffer-size instead of
+     * growing without limit as the chain does. Pinning the L0 ones avoids
+     * re-reading the most frequently consulted filters on every lookup. */
+    tableOptions.cache_index_and_filter_blocks = true;
+    tableOptions.pin_l0_filter_and_index_blocks_in_cache = true;
+
+    /* Most of our lookups are for keys that do exist, so RocksDB can skip
+     * building filters for the bottommost level and save that space. */
+    fOptions.optimize_filters_for_hits = true;
+
     std::shared_ptr<rocksdb::TableFactory> tfp(NewBlockBasedTableFactory(tableOptions));
     fOptions.table_factory = tfp;
 
