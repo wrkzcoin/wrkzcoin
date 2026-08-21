@@ -16,6 +16,17 @@ endif()
 
 add_subdirectory(miniupnpc)
 add_subdirectory(cryptopp)
+# Crypto++ exports its source directory as a PUBLIC include directory. That puts
+# its generically named headers (zlib.h, config.h, sha.h, ...) ahead of the
+# system ones for every consumer - with CPPHTTPLIB_ZLIB_SUPPORT enabled,
+# httplib's #include <zlib.h> then resolved to Crypto++'s ZlibCompressor header.
+# We include Crypto++ as <cryptopp/...> through the external/ include dir, so
+# the propagation is not needed.
+foreach(_wrkz_cryptopp_target IN ITEMS cryptopp-static cryptopp-shared)
+    if (TARGET ${_wrkz_cryptopp_target})
+        set_target_properties(${_wrkz_cryptopp_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
+    endif ()
+endforeach ()
 add_subdirectory(argon2)
 
 if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
