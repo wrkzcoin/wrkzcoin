@@ -9,6 +9,7 @@
 
 #if defined(_MSC_VER)
 #include <malloc.h>
+#include <tuple>
 #endif
 
 #include "multisig.h"

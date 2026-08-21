@@ -15,6 +15,9 @@
 #include "serialization/SerializationOverloads.h"
 
 #include <config/Constants.h>
+#include <exception>
+#include <functional>
+#include <utility>
 
 using namespace Common;
 using namespace Crypto;

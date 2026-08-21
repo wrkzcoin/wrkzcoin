@@ -18,7 +18,7 @@ namespace Logging
     }
 
     void LoggerGroup::
-        operator()(const std::string &category, Level level, boost::posix_time::ptime time, const std::string &body)
+        operator()(const std::string &category, Level level, std::chrono::system_clock::time_point time, const std::string &body)
     {
         if (level <= logLevel && disabledCategories.count(category) == 0)
         {

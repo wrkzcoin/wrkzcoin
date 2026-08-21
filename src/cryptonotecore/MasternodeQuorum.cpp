@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <crypto/hash.h>
+#include <utility>
 
 namespace CryptoNote
 {

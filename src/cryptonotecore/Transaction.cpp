@@ -9,13 +9,14 @@
 #include "TransactionUtils.h"
 #include "common/CryptoNoteTools.h"
 #include <common/CheckDifficulty.h>
-#include <walletbackend/Transfer.h>
+#include "TransactionPoW.h"
 
 #include <boost/optional.hpp>
 #include <config/CryptoNoteConfig.h>
 #include <memory>
 #include <numeric>
 #include <unordered_set>
+#include <variant>
 
 using namespace Crypto;
 
@@ -305,7 +306,7 @@ namespace CryptoNote
 
     void TransactionImpl::signInputKey(size_t index, const TransactionTypes::InputKeyInfo &info, const KeyPair &ephKeys)
     {
-        const auto &input = boost::get<KeyInput>(getInputChecked(transaction, index, TransactionTypes::InputType::Key));
+        const auto &input = std::get<KeyInput>(getInputChecked(transaction, index, TransactionTypes::InputType::Key));
         Hash prefixHash = getTransactionPrefixHash();
 
         std::vector<PublicKey> publicKeys;
@@ -377,7 +378,7 @@ namespace CryptoNote
     void TransactionImpl::generateTxProofOfWork(const uint64_t height)
     {
         checkIfSigning();
-        transaction.extra = SendTransaction::generateTransactionPoWHeight(transaction, transaction.extra, height);
+        transaction.extra = CryptoNote::generateTransactionPoWHeight(transaction, transaction.extra, height);
     }
 
     bool TransactionImpl::getExtraNonce(BinaryArray &nonce) const
@@ -416,7 +417,7 @@ namespace CryptoNote
 
     void TransactionImpl::getInput(size_t index, KeyInput &input) const
     {
-        input = boost::get<KeyInput>(getInputChecked(transaction, index, TransactionTypes::InputType::Key));
+        input = std::get<KeyInput>(getInputChecked(transaction, index, TransactionTypes::InputType::Key));
     }
 
     size_t TransactionImpl::getOutputCount() const
@@ -441,7 +442,7 @@ namespace CryptoNote
     void TransactionImpl::getOutput(size_t index, KeyOutput &output, uint64_t &amount) const
     {
         const auto &out = getOutputChecked(transaction, index, TransactionTypes::OutputType::Key);
-        output = boost::get<KeyOutput>(out.target);
+        output = std::get<KeyOutput>(out.target);
         amount = out.amount;
     }
 

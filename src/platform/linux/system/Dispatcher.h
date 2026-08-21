@@ -12,10 +12,10 @@
 #include <queue>
 #include <stack>
 
-#ifndef __GLIBC__
-
+/* __WORDSIZE: glibc defines it via <bits/wordsize.h>, musl provides it in
+   <bits/reg.h>, bionic has neither (see SIZEOF_PTHREAD_MUTEX_T below). */
+#if !defined(__GLIBC__) && !defined(__BIONIC__)
 #include <bits/reg.h>
-
 #endif
 
 namespace System
@@ -104,7 +104,11 @@ namespace System
         static const int SIZEOF_PTHREAD_MUTEX_T = 32;
 #endif
 #elif __aarch64__
+#if defined(__BIONIC__)
+        static const int SIZEOF_PTHREAD_MUTEX_T = 40;
+#else
         static const int SIZEOF_PTHREAD_MUTEX_T = 48;
+#endif
 #else
 
         static const int SIZEOF_PTHREAD_MUTEX_T = 24;

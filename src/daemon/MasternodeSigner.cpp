@@ -16,6 +16,7 @@
 #include <cryptonotecore/MasternodeTx.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolDefinitions.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
+#include <cstdio>
 #include <p2p/LevinProtocol.h>
 #include <serialization/SerializationTools.h>
 

@@ -8,7 +8,9 @@
 
 #include "ILogger.h"
 
+#include <chrono>
 #include <iostream>
+#include <memory>
 
 namespace Logging
 {
@@ -44,7 +46,7 @@ namespace Logging
 
         std::shared_ptr<ILogger> logger;
 
-        boost::posix_time::ptime timestamp;
+        std::chrono::system_clock::time_point timestamp;
 
         bool gotText;
     };

@@ -25,36 +25,36 @@ endif ()
 # Show cmake where the source files are
 # Note, if you add remove a source file, you will need to re-run cmake so it
 # can find the new file
-file(GLOB_RECURSE Common common/*)
-file(GLOB_RECURSE Config config/*)
-file(GLOB_RECURSE Crypto crypto/*)
-file(GLOB_RECURSE CryptoNoteCore cryptonotecore/* CryptoNoteConfig.h)
-file(GLOB_RECURSE CryptoNoteProtocol cryptonoteprotocol/*)
-file(GLOB_RECURSE CryptoTest cryptotest/*)
-file(GLOB_RECURSE Errors errors/*)
-file(GLOB_RECURSE Http http/*)
-file(GLOB_RECURSE JsonRpcServer jsonrpcserver/*)
-file(GLOB_RECURSE Logging logging/*)
-file(GLOB_RECURSE Logger logger/*)
-file(GLOB_RECURSE miner miner/*)
-file(GLOB_RECURSE Mnemonics mnemonics/*)
-file(GLOB_RECURSE Nigel nigel/*)
-file(GLOB_RECURSE NodeRpcProxy noderpcproxy/*)
-file(GLOB_RECURSE P2p p2p/*)
-file(GLOB_RECURSE Rpc rpc/*)
-file(GLOB_RECURSE Serialization serialization/*)
-file(GLOB_RECURSE SubWallets subwallets/*)
-file(GLOB_RECURSE Transfers transfers/*)
-file(GLOB_RECURSE Wrkzd daemon/*)
-file(GLOB_RECURSE Utilities utilities/*)
-file(GLOB_RECURSE Wallet wallet/*)
-file(GLOB_RECURSE WalletApi walletapi/*)
-file(GLOB_RECURSE WalletBackend walletbackend/*)
-file(GLOB_RECURSE WalletService walletservice/*)
-file(GLOB_RECURSE WalletUpgrader walletupgrader/*)
-file(GLOB_RECURSE zedwallet++ zedwallet++/*)
+file(GLOB_RECURSE Common CONFIGURE_DEPENDS common/*)
+file(GLOB_RECURSE Config CONFIGURE_DEPENDS config/*.cpp config/*.h)
+file(GLOB_RECURSE Crypto CONFIGURE_DEPENDS crypto/*)
+file(GLOB_RECURSE CryptoNoteCore CONFIGURE_DEPENDS cryptonotecore/*)
+file(GLOB_RECURSE CryptoNoteProtocol CONFIGURE_DEPENDS cryptonoteprotocol/*)
+file(GLOB_RECURSE CryptoTest CONFIGURE_DEPENDS cryptotest/*)
+file(GLOB_RECURSE Errors CONFIGURE_DEPENDS errors/*)
+file(GLOB_RECURSE Http CONFIGURE_DEPENDS http/*)
+file(GLOB_RECURSE JsonRpcServer CONFIGURE_DEPENDS jsonrpcserver/*)
+file(GLOB_RECURSE Logging CONFIGURE_DEPENDS logging/*)
+file(GLOB_RECURSE Logger CONFIGURE_DEPENDS logger/*)
+file(GLOB_RECURSE miner CONFIGURE_DEPENDS miner/*)
+file(GLOB_RECURSE Mnemonics CONFIGURE_DEPENDS mnemonics/*)
+file(GLOB_RECURSE Nigel CONFIGURE_DEPENDS nigel/*)
+file(GLOB_RECURSE NodeRpcProxy CONFIGURE_DEPENDS noderpcproxy/*)
+file(GLOB_RECURSE P2p CONFIGURE_DEPENDS p2p/*)
+file(GLOB_RECURSE Rpc CONFIGURE_DEPENDS rpc/*)
+file(GLOB_RECURSE Serialization CONFIGURE_DEPENDS serialization/*)
+file(GLOB_RECURSE SubWallets CONFIGURE_DEPENDS subwallets/*)
+file(GLOB_RECURSE Transfers CONFIGURE_DEPENDS transfers/*)
+file(GLOB_RECURSE Wrkzd CONFIGURE_DEPENDS daemon/*)
+file(GLOB_RECURSE Utilities CONFIGURE_DEPENDS utilities/*)
+file(GLOB_RECURSE Wallet CONFIGURE_DEPENDS wallet/*)
+file(GLOB_RECURSE WalletApi CONFIGURE_DEPENDS walletapi/*)
+file(GLOB_RECURSE WalletBackend CONFIGURE_DEPENDS walletbackend/*)
+file(GLOB_RECURSE WalletService CONFIGURE_DEPENDS walletservice/*)
+file(GLOB_RECURSE WalletUpgrader CONFIGURE_DEPENDS walletupgrader/*)
+file(GLOB_RECURSE zedwallet++ CONFIGURE_DEPENDS zedwallet++/*)
 if (WRKZ_BUILD_WALLET_CAPI)
-    file(GLOB_RECURSE WalletCAPI walletcapi/*)
+    file(GLOB_RECURSE WalletCAPI CONFIGURE_DEPENDS walletcapi/*)
 endif ()
 if (WRKZ_BUILD_WALLET_WASM)
     set(WalletWasmBridge
@@ -63,17 +63,18 @@ if (WRKZ_BUILD_WALLET_WASM)
 endif ()
 
 if (WIN32)
-    file(GLOB_RECURSE System system/* platform/windows/system/*)
+    file(GLOB_RECURSE System CONFIGURE_DEPENDS system/* platform/windows/system/*)
 elseif (ANDROID)
-    file(GLOB_RECURSE System system/* platform/android/system/* platform/posix/system/*)
+    # Android shares the Linux (epoll/ucontext) implementation; bionic specifics are #ifdef'd there.
+    file(GLOB_RECURSE System CONFIGURE_DEPENDS system/* platform/linux/system/* platform/posix/system/*)
 elseif (APPLE)
-    file(GLOB_RECURSE System system/* platform/osx/system/* platform/posix/system/*)
+    file(GLOB_RECURSE System CONFIGURE_DEPENDS system/* platform/osx/system/* platform/posix/system/*)
 else ()
-    file(GLOB_RECURSE System system/* platform/linux/system/* platform/posix/system/*)
+    file(GLOB_RECURSE System CONFIGURE_DEPENDS system/* platform/linux/system/* platform/posix/system/*)
 endif ()
 
 # Group the files together in IDEs
-source_group("" FILES $${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
+source_group("" FILES ${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
 
 # Define a group of files as a library to link against
 add_library(Common STATIC ${Common})
@@ -208,6 +209,64 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_executable(zedwallet++ ${zedwallet++} ${ZED_WALLET_SOURCES_OS})
 endif ()
 
+## Optional precompiled headers (opt-in: -DWRKZ_ENABLE_PCH=ON). Each listed
+## target precompiles the std/boost headers (plus json.hpp where JSON is
+## pervasive) that nearly every one of its translation units parses; the
+## COMPILE_LANGUAGE guard leaves the C sources alone (crypto/*.c, the osx
+## ucontext shim). Measured with MSVC 2022 on a 16-core machine, a clean
+## build of the src targets went from 7m50s to 13m49s with this PCH set
+## (each .pch is 150-280 MB), so it stays OFF by default. GCC/Clang load PCH
+## far more cheaply - measure there before enabling it in a build script.
+option(WRKZ_ENABLE_PCH "Use precompiled headers for the larger internal targets (measure first)" OFF)
+if (EMSCRIPTEN)
+    set(WRKZ_ENABLE_PCH OFF)
+endif ()
+if (WRKZ_ENABLE_PCH)
+    set(WRKZ_PCH_STD
+        algorithm array atomic cassert chrono condition_variable cstddef cstdint cstring
+        exception functional future iomanip iostream iterator limits list map memory mutex
+        numeric optional queue random set shared_mutex sstream stack stdexcept string
+        system_error thread tuple type_traits unordered_map unordered_set utility vector)
+    set(WRKZ_PCH_BOOST
+        boost/optional.hpp boost/uuid/uuid.hpp
+        boost/multi_index_container.hpp boost/multi_index/composite_key.hpp
+        boost/multi_index/hashed_index.hpp boost/multi_index/member.hpp
+        boost/multi_index/mem_fun.hpp boost/multi_index/ordered_index.hpp
+        boost/multi_index/random_access_index.hpp)
+
+    function(wrkz_pch target)
+        if (NOT TARGET ${target})
+            return()
+        endif ()
+        set(_hdrs "")
+        foreach(_h IN LISTS ARGN)
+            list(APPEND _hdrs "$<$<COMPILE_LANGUAGE:CXX>:<${_h}$<ANGLE-R>>")
+        endforeach ()
+        target_precompile_headers(${target} PRIVATE ${_hdrs})
+    endfunction ()
+
+    # std-only: no boost / json in these
+    foreach(_t IN ITEMS System Logging)
+        wrkz_pch(${_t} ${WRKZ_PCH_STD})
+    endforeach ()
+    # std + boost
+    foreach(_t IN ITEMS Common Serialization Utilities P2P)
+        wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST})
+    endforeach ()
+    # std + boost + json
+    foreach(_t IN ITEMS CryptoNoteCore Transfers Wallet WalletBackend Rpc)
+        wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST} json.hpp)
+    endforeach ()
+    if (WRKZ_BUILD_EXECUTABLES)
+        foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner)
+            wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST} json.hpp)
+        endforeach ()
+    endif ()
+    if (CCACHE_PROGRAM)
+        message(STATUS "PCH + ccache: set CCACHE_SLOPPINESS=pch_defines,time_macros so ccache can cache PCH compiles")
+    endif ()
+endif ()
+
 if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(System ws2_32)
     if (MSVC)
@@ -272,7 +331,11 @@ add_library(__filesystem INTERFACE)
 
 # Windows works out of the box
 if (APPLE)
-    target_link_libraries(__filesystem INTERFACE /usr/local/opt/llvm/lib/libc++fs.a)
+    # Only old Homebrew LLVM toolchains ship std::filesystem as a separate
+    # archive; current Xcode / osxcross libc++ has it built in.
+    if (EXISTS "/usr/local/opt/llvm/lib/libc++fs.a")
+        target_link_libraries(__filesystem INTERFACE /usr/local/opt/llvm/lib/libc++fs.a)
+    endif ()
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(__filesystem INTERFACE stdc++fs)
 endif ()
@@ -288,7 +351,8 @@ endif ()
 # Add the dependencies we need
 target_link_libraries(Common __filesystem)
 target_link_libraries(Crypto argon2)
-target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System WalletBackend)
+# Config: the masternode code uses the network-parameter helpers defined in src/config.
+target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System Config)
 target_link_libraries(Errors Crypto SubWallets Utilities)
 target_link_libraries(Logging Common ${WRKZ_BOOST_LINK_LIBS})
 target_link_libraries(Nigel Errors CryptoNoteCore)
@@ -379,6 +443,19 @@ if (OPENSSL_FOUND)
         target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
         target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
+    endif ()
+endif ()
+
+## cpp-httplib's gzip support is header only but needs zlib at link time.
+## Everything here either serves or consumes HTTP through it.
+if (ZLIB_FOUND)
+    target_link_libraries(Nigel ${ZLIB_LIBRARIES})
+    if (WRKZ_BUILD_EXECUTABLES)
+        target_link_libraries(miner ${ZLIB_LIBRARIES})
+        target_link_libraries(WalletApi ${ZLIB_LIBRARIES})
+        target_link_libraries(zedwallet++ ${ZLIB_LIBRARIES})
+        target_link_libraries(WalletService ${ZLIB_LIBRARIES})
+        target_link_libraries(Wrkzd ${ZLIB_LIBRARIES})
     endif ()
 endif ()
 

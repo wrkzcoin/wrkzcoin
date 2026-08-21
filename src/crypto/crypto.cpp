@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 namespace Crypto

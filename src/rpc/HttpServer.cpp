@@ -8,6 +8,7 @@
 
 #include <boost/scope_exit.hpp>
 #include <http/HttpParser.h>
+#include <memory>
 #include <system/InterruptedException.h>
 #include <system/IpAddress.h>
 #include <system/TcpStream.h>

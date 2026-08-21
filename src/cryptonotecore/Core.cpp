@@ -8,6 +8,7 @@
 
 #include <WalletTypes.h>
 #include <algorithm>
+#include <cerrno>
 #include <common/CryptoNoteTools.h>
 #include <common/FileSystemShim.h>
 #include <common/Math.h>
@@ -36,6 +37,7 @@
 #include <crypto/crypto.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
 #include <fstream>
+#include <iomanip>
 #include <numeric>
 #include <set>
 #include <system/Timer.h>
@@ -46,6 +48,7 @@
 #include <utilities/ParseExtra.h>
 #include <utilities/ThreadSafeQueue.h>
 #include <json.hpp>
+#include <variant>
 
 using namespace Crypto;
 
@@ -136,9 +139,9 @@ namespace CryptoNote
             {
                 for (const auto &input : transaction.inputs)
                 {
-                    if (input.type() == typeid(KeyInput))
+                    if (std::holds_alternative<KeyInput>(input))
                     {
-                        auto inserted = alreadySpentKeyImages.insert(boost::get<KeyInput>(input).keyImage);
+                        auto inserted = alreadySpentKeyImages.insert(std::get<KeyInput>(input).keyImage);
                         if (!inserted.second)
                         {
                             return true;
@@ -211,9 +214,9 @@ namespace CryptoNote
 
             for (const auto &input : cryptonoteTransaction.inputs)
             {
-                if (input.type() == typeid(KeyInput))
+                if (std::holds_alternative<KeyInput>(input))
                 {
-                    const KeyInput &in = boost::get<KeyInput>(input);
+                    const KeyInput &in = std::get<KeyInput>(input);
                     spentOutputs.spentKeyImages.insert(in.keyImage);
                 }
                 // BaseInput (coinbase) has no key image — skip silently.
@@ -506,8 +509,31 @@ namespace CryptoNote
     {
         throwIfNotInitialized();
 
+        /* This serves NOTIFY_REQUEST_GET_OBJECTS, so it is asked for hundreds of
+           blocks at a time and virtually all of them are on the main chain.
+           Resolve those in two batched database reads up front; anything left
+           over - alternative chain blocks, or blocks we simply do not have -
+           falls through to the per hash walk below. */
+        std::unordered_map<Crypto::Hash, RawBlock> mainChainBlocks;
+
+        if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]))
+        {
+            mainChainBlocks = dbCache->getRawBlocksByHashes(blockHashes);
+        }
+
         for (const auto &hash : blockHashes)
         {
+            const auto cached = mainChainBlocks.find(hash);
+            if (cached != mainChainBlocks.end())
+            {
+                blocks.push_back(std::move(cached->second));
+
+                /* Dropping the entry keeps a repeated hash in the request from
+                   picking up the block we just moved out of. */
+                mainChainBlocks.erase(cached);
+                continue;
+            }
+
             IBlockchainCache *blockchainSegment = findSegmentContainingBlock(hash);
             if (blockchainSegment == nullptr)
             {
@@ -873,17 +899,10 @@ namespace CryptoNote
 
             if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
-                for (uint64_t index = startIndex; index < endIndex; ++index)
-                {
-                    WalletTypes::WalletBlockInfo walletBlock;
-
-                    if (!dbCache->getWalletSyncBlock(static_cast<uint32_t>(index), skipCoinbaseTransactions, walletBlock))
-                    {
-                        continue;
-                    }
-
-                    walletBlocks.push_back(std::move(walletBlock));
-                }
+                walletBlocks = dbCache->getWalletSyncBlocks(
+                    static_cast<uint32_t>(startIndex),
+                    static_cast<uint32_t>(endIndex),
+                    skipCoinbaseTransactions);
             }
             else
             {
@@ -1073,7 +1092,7 @@ namespace CryptoNote
             WalletTypes::KeyOutput keyOutput;
 
             keyOutput.amount = output.amount;
-            keyOutput.key = boost::get<CryptoNote::KeyOutput>(output.target).key;
+            keyOutput.key = std::get<CryptoNote::KeyOutput>(output.target).key;
 
             transaction.keyOutputs.push_back(keyOutput);
         }
@@ -1110,7 +1129,7 @@ namespace CryptoNote
             WalletTypes::KeyOutput keyOutput;
 
             keyOutput.amount = output.amount;
-            keyOutput.key = boost::get<CryptoNote::KeyOutput>(output.target).key;
+            keyOutput.key = std::get<CryptoNote::KeyOutput>(output.target).key;
 
             transaction.keyOutputs.push_back(keyOutput);
         }
@@ -1118,7 +1137,7 @@ namespace CryptoNote
         /* Simplify the inputs */
         for (const auto &input : t.inputs)
         {
-            transaction.keyInputs.push_back(boost::get<CryptoNote::KeyInput>(input));
+            transaction.keyInputs.push_back(std::get<CryptoNote::KeyInput>(input));
         }
 
         return transaction;
@@ -2404,11 +2423,11 @@ namespace CryptoNote
                 const auto txHash = transaction.getTransactionHash();
                 for (const auto &input : tx.inputs)
                 {
-                    if (input.type() != typeid(KeyInput))
+                    if (!std::holds_alternative<KeyInput>(input))
                     {
                         continue;
                     }
-                    const auto &keyInput = boost::get<KeyInput>(input);
+                    const auto &keyInput = std::get<KeyInput>(input);
                     if (m_instantSendManager.isConflict(keyInput.keyImage, txHash))
                     {
                         logger(Logging::WARNING) << "Block " << blockStr
@@ -2481,7 +2500,7 @@ namespace CryptoNote
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
             }
 
-            if (coinbaseOutputs[1].target.type() != typeid(KeyOutput))
+            if (!std::holds_alternative<KeyOutput>(coinbaseOutputs[1].target))
             {
                 logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode reward output has invalid type";
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
@@ -2498,7 +2517,7 @@ namespace CryptoNote
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
             }
 
-            const auto &actualPayoutKey = boost::get<KeyOutput>(coinbaseOutputs[1].target).key;
+            const auto &actualPayoutKey = std::get<KeyOutput>(coinbaseOutputs[1].target).key;
             if (actualPayoutKey != expectedPayoutKey)
             {
                 logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode payout key mismatch";
@@ -3115,11 +3134,11 @@ namespace CryptoNote
             const auto txHash = cachedTransaction.getTransactionHash();
             for (const auto &input : tx.inputs)
             {
-                if (input.type() != typeid(KeyInput))
+                if (!std::holds_alternative<KeyInput>(input))
                 {
                     continue;
                 }
-                const auto &keyInput = boost::get<KeyInput>(input);
+                const auto &keyInput = std::get<KeyInput>(input);
                 if (m_instantSendManager.isConflict(keyInput.keyImage, txHash))
                 {
                     logger(Logging::WARNING) << "Transaction " << txHash
@@ -3164,16 +3183,16 @@ namespace CryptoNote
         uint64_t fee;
         const uint64_t lastTimestamp = chainsLeaves[0]->getLastTimestamps(1)[0];
 
-        if (auto validationResult =
-                validateTransaction(
-                    cachedTransaction,
-                    validatorState,
-                    chainsLeaves[0],
-                    m_transactionValidationThreadPool,
-                    fee,
-                    getTopBlockIndex(),
-                    lastTimestamp,
-                    true))
+        /* Argument order is (..., fee, blockIndex, blockTimestamp, isPoolTransaction). */
+        if (auto validationResult = validateTransaction(
+                cachedTransaction,
+                validatorState,
+                chainsLeaves[0],
+                m_transactionValidationThreadPool,
+                fee,
+                getTopBlockIndex(),
+                lastTimestamp,
+                true))
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
@@ -3658,12 +3677,12 @@ namespace CryptoNote
             masternodeTrackerOverride != nullptr ? *masternodeTrackerOverride : masternodeStateTracker;
         for (const auto &input : cachedTransaction.getTransaction().inputs)
         {
-            if (input.type() != typeid(KeyInput))
+            if (!std::holds_alternative<KeyInput>(input))
             {
                 continue;
             }
 
-            const auto &keyInput = boost::get<KeyInput>(input);
+            const auto &keyInput = std::get<KeyInput>(input);
             if (validationTracker.isCollateralKeyImageSpendLocked(keyInput.keyImage, nextBlockHeight))
             {
                 return error::TransactionValidationError::WRONG_FEE;
@@ -3762,12 +3781,12 @@ namespace CryptoNote
             return error::TransactionValidationError::INPUT_WRONG_COUNT;
         }
 
-        if (block.baseTransaction.inputs[0].type() != typeid(BaseInput))
+        if (!std::holds_alternative<BaseInput>(block.baseTransaction.inputs[0]))
         {
             return error::TransactionValidationError::INPUT_UNEXPECTED_TYPE;
         }
 
-        if (boost::get<BaseInput>(block.baseTransaction.inputs[0]).blockIndex != previousBlockIndex + 1)
+        if (std::get<BaseInput>(block.baseTransaction.inputs[0]).blockIndex != previousBlockIndex + 1)
         {
             return error::TransactionValidationError::BASE_INPUT_WRONG_BLOCK_INDEX;
         }
@@ -3796,9 +3815,9 @@ namespace CryptoNote
                 return error::TransactionValidationError::OUTPUT_ZERO_AMOUNT;
             }
 
-            if (output.target.type() == typeid(KeyOutput))
+            if (std::holds_alternative<KeyOutput>(output.target))
             {
-                if (!check_key(boost::get<KeyOutput>(output.target).key))
+                if (!check_key(std::get<KeyOutput>(output.target).key))
                 {
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
                 }
@@ -5446,14 +5465,14 @@ namespace CryptoNote
             if (transaction->getInputType(i) == TransactionTypes::InputType::Generating)
             {
                 BaseInputDetails baseDetails;
-                baseDetails.input = boost::get<BaseInput>(rawTransaction.inputs[i]);
+                baseDetails.input = std::get<BaseInput>(rawTransaction.inputs[i]);
                 baseDetails.amount = transaction->getOutputTotalAmount();
                 txInDetails = baseDetails;
             }
             else if (transaction->getInputType(i) == TransactionTypes::InputType::Key)
             {
                 KeyInputDetails txInToKeyDetails;
-                txInToKeyDetails.input = boost::get<KeyInput>(rawTransaction.inputs[i]);
+                txInToKeyDetails.input = std::get<KeyInput>(rawTransaction.inputs[i]);
                 std::vector<std::pair<Crypto::Hash, size_t>> outputReferences;
                 outputReferences.reserve(txInToKeyDetails.input.outputIndexes.size());
                 std::vector<uint32_t> globalIndexes =

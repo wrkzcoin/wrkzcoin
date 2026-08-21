@@ -3,6 +3,8 @@
 //
 // Please see the included LICENSE file for more information.
 
+#include "json.hpp"
+
 #include <string>
 #include <vector>
 #include <walletbackend/WalletBackend.h>

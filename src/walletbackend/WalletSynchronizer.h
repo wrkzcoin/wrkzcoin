@@ -9,6 +9,7 @@
 #include <memory>
 #include <nigel/Nigel.h>
 #include <subwallets/SubWallets.h>
+#include <tuple>
 #include <utilities/ThreadSafeDeque.h>
 #include <utilities/ThreadSafePriorityQueue.h>
 #include <walletbackend/BlockDownloader.h>

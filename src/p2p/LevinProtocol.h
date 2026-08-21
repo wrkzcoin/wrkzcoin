@@ -12,6 +12,7 @@
 
 #include <common/MemoryInputStream.h>
 #include <common/VectorOutputStream.h>
+#include <exception>
 
 namespace System
 {

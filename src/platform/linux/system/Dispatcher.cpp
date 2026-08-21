@@ -6,7 +6,7 @@
 
 #include "Dispatcher.h"
 
-#include "ErrorMessage.h"
+#include <system/ErrorMessage.h>
 
 #include <cassert>
 #include <fcntl.h>
@@ -19,6 +19,16 @@
 #include <ucontext.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#if defined(__ANDROID__) || defined(__BIONIC__)
+/* bionic has no ucontext API; these are provided by libucontext. */
+extern "C" {
+int getcontext(ucontext_t *ucp);
+int setcontext(const ucontext_t *ucp);
+void makecontext(ucontext_t *ucp, void (*func)(), int argc, ...);
+int swapcontext(ucontext_t *oucp, const ucontext_t *ucp);
+}
+#endif
 
 namespace System
 {

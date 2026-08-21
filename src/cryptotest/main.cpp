@@ -14,7 +14,9 @@
 #include <chrono>
 #include <config/CliHeader.h>
 #include <cxxopts.hpp>
+#include <exception>
 #include <iostream>
+#include <utility>
 
 #define PERFORMANCE_ITERATIONS 1000
 #define PERFORMANCE_ITERATIONS_LONG_MULTIPLIER 10

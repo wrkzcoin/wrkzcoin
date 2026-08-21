@@ -8,6 +8,7 @@
 // Please see the included LICENSE file for more information.
 
 ///////////////////////////////
+#include <cmath>
 #include <wallet/WalletGreen.h>
 ///////////////////////////////
 

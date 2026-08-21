@@ -9,6 +9,7 @@
 #include <common/CryptoNoteTools.h>
 #include <common/Varint.h>
 #include <config/CryptoNoteConfig.h>
+#include <variant>
 
 using namespace Crypto;
 using namespace CryptoNote;
@@ -74,11 +75,11 @@ uint64_t CachedTransaction::getTransactionFee() const
 
         for (auto &in : transaction.inputs)
         {
-            if (in.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(in))
             {
-                summaryInputAmount += boost::get<KeyInput>(in).amount;
+                summaryInputAmount += std::get<KeyInput>(in).amount;
             }
-            else if (in.type() == typeid(BaseInput))
+            else if (std::holds_alternative<BaseInput>(in))
             {
                 return 0;
             }

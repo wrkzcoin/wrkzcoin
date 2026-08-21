@@ -13,6 +13,9 @@
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <cstdio>
+#include <deque>
+#include <tuple>
 #include <utilities/ParseExtra.h>
 #include <cryptonotecore/BlockchainStorage.h>
 #include <cryptonotecore/CryptoNoteBasicImpl.h>
@@ -20,6 +23,7 @@
 #include <cryptonotecore/DBUtils.h>
 #include <cstdlib>
 #include <ctime>
+#include <variant>
 
 namespace CryptoNote
 {
@@ -77,6 +81,44 @@ namespace CryptoNote
         const uint32_t ONE_DAY_SECONDS = 60 * 60 * 24;
 
         const CachedBlockInfo NULL_CACHED_BLOCK_INFO {Constants::NULL_HASH, 0, 0, 0, 0, 0};
+
+        /* A block whose timestamp is within this many seconds of now is treated
+         * as being at the tip of the chain, and is written durably. Anything
+         * older than this is history we are catching up on, and is written
+         * without an fsync - see shouldSyncBlockWrite(). */
+        const uint64_t BLOCK_WRITE_TIP_WINDOW_SECONDS = CryptoNote::parameters::DIFFICULTY_TARGET * 30;
+
+        /* Force a durable write at least this often regardless of timestamps, so
+         * that a wrong system clock cannot turn the whole of initial sync into
+         * one unbounded non-durable run. */
+        const uint32_t BLOCK_WRITE_FORCED_SYNC_INTERVAL = 1000;
+
+        /* Decide whether pushing this block should fsync the write-ahead log.
+         *
+         * Every batch is atomic either way, and the last block index is written
+         * in the same batch as the block itself, so a non-durable write can only
+         * ever cost us whole trailing blocks - never a partially applied one.
+         * Those blocks are simply re-requested from peers on the next start.
+         * Trading that for one fsync per block removes millions of fsyncs from
+         * an initial sync. */
+        bool shouldSyncBlockWrite(uint32_t blockIndex, uint64_t blockTimestamp)
+        {
+            if (blockIndex % BLOCK_WRITE_FORCED_SYNC_INTERVAL == 0)
+            {
+                return true;
+            }
+
+            const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+
+            /* Timestamps ahead of us are still tip blocks, just from a peer whose
+             * clock runs fast. Only blocks comfortably in the past are history. */
+            if (blockTimestamp >= now)
+            {
+                return true;
+            }
+
+            return (now - blockTimestamp) <= BLOCK_WRITE_TIP_WINDOW_SECONDS;
+        }
 
         bool requestPackedOutputs(
             IBlockchainCache::Amount amount,
@@ -320,13 +362,13 @@ namespace CryptoNote
             size_t globalKeyOutputIndex = 0;
             for (size_t i = 0; i < txInfo.outputs.size(); ++i)
             {
-                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                if (!std::holds_alternative<KeyOutput>(txInfo.outputs[i]))
                 {
                     continue;
                 }
 
                 WalletTypes::KeyOutput output;
-                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.key = std::get<KeyOutput>(txInfo.outputs[i]).key;
                 output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
 
                 if (globalKeyOutputIndex < txInfo.globalIndexes.size())
@@ -351,13 +393,13 @@ namespace CryptoNote
             size_t globalKeyOutputIndex = 0;
             for (size_t i = 0; i < txInfo.outputs.size(); ++i)
             {
-                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                if (!std::holds_alternative<KeyOutput>(txInfo.outputs[i]))
                 {
                     continue;
                 }
 
                 WalletTypes::KeyOutput output;
-                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.key = std::get<KeyOutput>(txInfo.outputs[i]).key;
                 output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
 
                 if (globalKeyOutputIndex < txInfo.globalIndexes.size())
@@ -1224,7 +1266,7 @@ namespace CryptoNote
             poi.transactionIndex = transactionBlockIndex;
             poi.outputIndex = outputCount++;
 
-            if (output.target.type() == typeid(KeyOutput))
+            if (std::holds_alternative<KeyOutput>(output.target))
             {
                 keyIndexes[output.amount].push_back(poi);
                 auto outputCountForAmount = updateKeyOutputCount(output.amount, 1);
@@ -1240,7 +1282,7 @@ namespace CryptoNote
                 transactionCacheInfo.amountToKeyIndexes[output.amount].push_back(globalIndex);
 
                 KeyOutputInfo outputInfo;
-                outputInfo.publicKey = boost::get<KeyOutput>(output.target).key;
+                outputInfo.publicKey = std::get<KeyOutput>(output.target).key;
                 outputInfo.transactionHash = transactionCacheInfo.transactionHash;
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
@@ -1251,9 +1293,9 @@ namespace CryptoNote
 
         for (const auto &input : tx.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                transactionCacheInfo.keyInputs.push_back(boost::get<KeyInput>(input));
+                transactionCacheInfo.keyInputs.push_back(std::get<KeyInput>(input));
             }
         }
 
@@ -1426,7 +1468,9 @@ namespace CryptoNote
 
         insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
 
-        auto res = database.write(batch);
+        const bool durable = shouldSyncBlockWrite(getTopBlockIndex() + 1, cachedBlock.getBlock().timestamp);
+
+        auto res = database.write(batch, durable);
         if (res)
         {
             logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash() << " write failed: " << res.message();
@@ -1527,8 +1571,8 @@ namespace CryptoNote
                 }
 
                 auto &output = info.outputs[index.outputIndex];
-                assert(output.type() == typeid(KeyOutput));
-                publicKeys.push_back(boost::get<KeyOutput>(output).key);
+                assert(std::holds_alternative<KeyOutput>(output));
+                publicKeys.push_back(std::get<KeyOutput>(output).key);
 
                 return ExtractOutputKeysResult::SUCCESS;
             });
@@ -2459,6 +2503,151 @@ namespace CryptoNote
         }
 
         return true;
+    }
+
+    std::unordered_map<Crypto::Hash, RawBlock>
+        DatabaseBlockchainCache::getRawBlocksByHashes(const std::vector<Crypto::Hash> &blockHashes) const
+    {
+        std::unordered_map<Crypto::Hash, RawBlock> result;
+
+        if (blockHashes.empty())
+        {
+            return result;
+        }
+
+        /* One round trip to turn every hash into a height. */
+        BlockchainReadBatch indexBatch;
+        for (const auto &hash : blockHashes)
+        {
+            indexBatch.requestBlockIndexByBlockHash(hash);
+        }
+
+        const auto indexes = readDatabase(indexBatch).getBlockIndexesByBlockHashes();
+
+        if (indexes.empty())
+        {
+            return result;
+        }
+
+        /* One more to fetch every block those heights point at. */
+        BlockchainReadBatch blockBatch;
+        for (const auto &entry : indexes)
+        {
+            blockBatch.requestRawBlock(entry.second);
+        }
+
+        auto rawBlocks = readDatabase(blockBatch).getRawBlocks();
+
+        for (const auto &entry : indexes)
+        {
+            const auto blockIt = rawBlocks.find(entry.second);
+
+            if (blockIt == rawBlocks.end())
+            {
+                continue;
+            }
+
+            result.emplace(entry.first, blockIt->second);
+        }
+
+        return result;
+    }
+
+    std::vector<WalletTypes::WalletBlockInfo> DatabaseBlockchainCache::getWalletSyncBlocks(
+        uint32_t startIndex,
+        uint32_t endIndex,
+        bool skipCoinbaseTransactions) const
+    {
+        std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
+
+        if (endIndex <= startIndex)
+        {
+            return walletBlocks;
+        }
+
+        /* One round trip for every block's header and transaction hash list,
+         * rather than one per block. */
+        BlockchainReadBatch blockBatch;
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            blockBatch.requestCachedBlock(index).requestTransactionHashesByBlock(index);
+        }
+
+        const auto blockResult = readDatabase(blockBatch);
+        const auto &cachedBlocks = blockResult.getCachedBlocks();
+        const auto &hashesByBlock = blockResult.getTransactionHashesByBlocks();
+
+        /* Then a single round trip for every transaction in the whole range. */
+        BlockchainReadBatch transactionBatch;
+        bool haveTransactions = false;
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto hashesIt = hashesByBlock.find(index);
+
+            if (hashesIt == hashesByBlock.end())
+            {
+                continue;
+            }
+
+            for (const auto &hash : hashesIt->second)
+            {
+                transactionBatch.requestCachedTransaction(hash);
+                haveTransactions = true;
+            }
+        }
+
+        const auto transactions = haveTransactions
+            ? readDatabase(transactionBatch).getCachedTransactions()
+            : std::unordered_map<Crypto::Hash, ExtendedTransactionInfo>();
+
+        walletBlocks.reserve(endIndex - startIndex);
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto blockIt = cachedBlocks.find(index);
+            const auto hashesIt = hashesByBlock.find(index);
+
+            /* Matches the per block reader, which reports a miss and is skipped
+             * by the caller rather than terminating the range. */
+            if (blockIt == cachedBlocks.end() || hashesIt == hashesByBlock.end())
+            {
+                continue;
+            }
+
+            const auto &transactionHashes = hashesIt->second;
+
+            WalletTypes::WalletBlockInfo walletBlock;
+            walletBlock.blockHeight = index;
+            walletBlock.blockHash = blockIt->second.blockHash;
+            walletBlock.blockTimestamp = blockIt->second.timestamp;
+
+            for (size_t i = 0; i < transactionHashes.size(); ++i)
+            {
+                const auto transactionIt = transactions.find(transactionHashes[i]);
+
+                if (transactionIt == transactions.end())
+                {
+                    continue;
+                }
+
+                if (i == 0)
+                {
+                    if (!skipCoinbaseTransactions)
+                    {
+                        walletBlock.coinbaseTransaction = toWalletRawCoinbaseTransaction(transactionIt->second);
+                    }
+
+                    continue;
+                }
+
+                walletBlock.transactions.push_back(toWalletRawTransaction(transactionIt->second));
+            }
+
+            walletBlocks.push_back(std::move(walletBlock));
+        }
+
+        return walletBlocks;
     }
 
     std::vector<Crypto::Hash>

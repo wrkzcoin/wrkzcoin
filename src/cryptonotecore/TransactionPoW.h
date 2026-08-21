@@ -1,11 +1,19 @@
-// PowProgress.h — shared inline atomics for TX PoW progress reporting.
-// Transfer.cpp updates these; wallet_capi.cpp reads them.
+// Copyright (c) 2018-2026, The WrkzCoin developers
+//
+// Please see the included LICENSE file for more information.
+
 #pragma once
+
+#include <CryptoNote.h>
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <vector>
 
+/* Shared progress counters for the transaction proof-of-work search.
+   generateTransactionPoWHeight() updates them; wallet front-ends (wallet_capi)
+   read them to report progress. */
 namespace PowProgress
 {
     /// True while generateTransactionPoWHeight is running.
@@ -41,3 +49,15 @@ namespace PowProgress
         Guard &operator=(const Guard &) = delete;
     };
 } // namespace PowProgress
+
+namespace CryptoNote
+{
+    /* Appends the tx PoW nonce field to `extra` and searches, on all hardware
+       threads, for a nonce satisfying the transaction PoW difficulty in force
+       at `height`. Returns the completed extra. Used by the wallet backend when
+       building transactions and by TransactionImpl::generateTxProofOfWork. */
+    std::vector<uint8_t> generateTransactionPoWHeight(
+        CryptoNote::Transaction tx,
+        std::vector<uint8_t> extra,
+        const uint64_t height);
+} // namespace CryptoNote

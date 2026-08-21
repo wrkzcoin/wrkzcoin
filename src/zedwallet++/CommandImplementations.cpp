@@ -5,10 +5,19 @@
 // Please see the included LICENSE file for more information.
 
 ///////////////////////////////////////////////
+#include <cmath>
 #include <zedwallet++/CommandImplementations.h>
 ///////////////////////////////////////////////
 
-#include <arpa/inet.h>
+#ifdef _WIN32
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#endif
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
 #include <crypto/crypto.h>

@@ -58,7 +58,16 @@ namespace CryptoNote
 
         virtual void destroy() = 0;
 
+        /* Durable write - the batch is fsynced to disk before returning. */
         virtual std::error_code write(IWriteBatch &batch) = 0;
+
+        /* Write with explicit durability. With sync == false the batch is still
+         * written atomically and still goes to the write-ahead log, but the log
+         * is left in the operating system's page cache rather than being
+         * fsynced. A crash of this process loses nothing; a machine crash or
+         * power loss may lose whole trailing batches, never a partial one.
+         * Used to avoid an fsync per block while catching up on the chain. */
+        virtual std::error_code write(IWriteBatch &batch, bool sync) = 0;
 
         virtual std::error_code read(IReadBatch &batch) = 0;
 

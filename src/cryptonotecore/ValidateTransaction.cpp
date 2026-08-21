@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <variant>
 
 ValidateTransaction::ValidateTransaction(
     const CryptoNote::CachedTransaction &cachedTransaction,
@@ -287,9 +288,9 @@ bool ValidateTransaction::validateTransactionInputs()
     {
         uint64_t amount = 0;
 
-        if (input.type() == typeid(CryptoNote::KeyInput))
+        if (std::holds_alternative<CryptoNote::KeyInput>(input))
         {
-            const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
+            const CryptoNote::KeyInput &in = std::get<CryptoNote::KeyInput>(input);
             amount = in.amount;
 
             if (!ki.insert(in.keyImage).second)
@@ -402,9 +403,9 @@ bool ValidateTransaction::validateTransactionOutputs()
             }
         }
 
-        if (output.target.type() == typeid(CryptoNote::KeyOutput))
+        if (std::holds_alternative<CryptoNote::KeyOutput>(output.target))
         {
-            if (!check_key(boost::get<CryptoNote::KeyOutput>(output.target).key))
+            if (!check_key(std::get<CryptoNote::KeyOutput>(output.target).key))
             {
                 setTransactionValidationResult(
                     CryptoNote::error::TransactionValidationError::OUTPUT_INVALID_KEY,
@@ -618,13 +619,29 @@ bool ValidateTransaction::validateTransactionMixin()
 
 bool ValidateTransaction::validateTransactionPoW()
 {
-    const bool isFusion = m_currency.isFusionTransaction(
-        m_transaction, m_cachedTransaction.getTransactionBinaryArray().size(), m_blockHeight);
-
     if (m_blockHeight < CryptoNote::parameters::TRANSACTION_POW_HEIGHT)
     {
         return true;
     }
+
+    /* Transactions in blocks inside a checkpoints range are assumed valid - the
+     * proof of work is computed over the transaction prefix, which is committed
+     * in the transaction hash, which is committed in the block's merkle root,
+     * which is committed in the block hash we are checkpointing. Altering the
+     * transaction would therefore invalidate the checkpoint. This is the same
+     * reasoning used by validateTransactionInputsExpensive().
+     *
+     * Pool transactions are deliberately excluded: they are not covered by any
+     * checkpoint, and skipping their proof of work would remove the flood
+     * protection tx PoW exists to provide. Pool admission always pays for the
+     * hash, even while the node is still syncing below the last checkpoint. */
+    if (!m_isPoolTransaction && m_checkpoints.isInCheckpointZone(m_blockHeight + 1))
+    {
+        return true;
+    }
+
+    const bool isFusion = m_currency.isFusionTransaction(
+        m_transaction, m_cachedTransaction.getTransactionBinaryArray().size(), m_blockHeight);
 
     std::vector<uint8_t> data = toBinaryArray(static_cast<CryptoNote::TransactionPrefix>(m_transaction));
 
@@ -713,7 +730,7 @@ bool ValidateTransaction::validateTransactionInputsExpensive()
     {
         /* Validate each input on a separate thread in our thread pool */
         validationResult.push_back(m_threadPool.addJob([inputIndex, &input, &prefixHash, &cancelValidation, this] {
-            const CryptoNote::KeyInput &in = boost::get<CryptoNote::KeyInput>(input);
+            const CryptoNote::KeyInput &in = std::get<CryptoNote::KeyInput>(input);
             if (cancelValidation)
             {
                 return false; // fail the validation immediately if cancel requested

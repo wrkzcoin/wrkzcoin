@@ -20,9 +20,11 @@
 #include "serialization/CryptoNoteSerialization.h"
 #include "serialization/SerializationOverloads.h"
 
+#include <algorithm>
 #include <boost/functional/hash.hpp>
 #include <fstream>
 #include <tuple>
+#include <variant>
 
 namespace CryptoNote
 {
@@ -501,7 +503,7 @@ namespace CryptoNote
             poi.transactionIndex = transactionInBlockIndex;
             poi.outputIndex = outputCount++;
 
-            if (output.target.type() == typeid(KeyOutput))
+            if (std::holds_alternative<KeyOutput>(output.target))
             {
                 transactionCacheInfo.globalIndexes.push_back(
                     insertKeyOutputToGlobalIndex(output.amount, poi, blockIndex));
@@ -510,9 +512,9 @@ namespace CryptoNote
 
         for (const auto &input : tx.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                transactionCacheInfo.keyInputs.push_back(boost::get<KeyInput>(input));
+                transactionCacheInfo.keyInputs.push_back(std::get<KeyInput>(input));
             }
         }
 
@@ -1168,8 +1170,8 @@ namespace CryptoNote
                     return ExtractOutputKeysResult::OUTPUT_LOCKED;
                 }
 
-                assert(info.outputs[index.outputIndex].type() == typeid(KeyOutput));
-                publicKeys.push_back(boost::get<KeyOutput>(info.outputs[index.outputIndex]).key);
+                assert(std::holds_alternative<KeyOutput>(info.outputs[index.outputIndex]));
+                publicKeys.push_back(std::get<KeyOutput>(info.outputs[index.outputIndex]).key);
                 return ExtractOutputKeysResult::SUCCESS;
             });
     }

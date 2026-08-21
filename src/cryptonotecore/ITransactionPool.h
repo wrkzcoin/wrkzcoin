@@ -8,6 +8,8 @@
 
 #include "CachedTransaction.h"
 
+#include <tuple>
+
 namespace CryptoNote
 {
     struct TransactionValidatorState;

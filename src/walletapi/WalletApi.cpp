@@ -7,6 +7,7 @@
 #include <chrono>
 #include <common/SignalHandler.h>
 #include <config/CliHeader.h>
+#include <fstream>
 #include <iostream>
 #include <logger/Logger.h>
 #include <thread>

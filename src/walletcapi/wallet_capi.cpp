@@ -11,7 +11,7 @@
 #include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
-#include <walletbackend/PowProgress.h>
+#include <cryptonotecore/TransactionPoW.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
 

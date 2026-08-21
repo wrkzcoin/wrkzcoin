@@ -16,6 +16,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <logging/LoggerRef.h>
 #include <set>
+#include <variant>
 
 using namespace Logging;
 using namespace Crypto;
@@ -61,9 +62,9 @@ namespace CryptoNote
 
         for (const auto &in : tx.inputs)
         {
-            if (in.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(in))
             {
-                amount_in += boost::get<KeyInput>(in).amount;
+                amount_in += std::get<KeyInput>(in).amount;
             }
         }
 
@@ -119,7 +120,7 @@ namespace CryptoNote
     {
         for (const auto &in : tx.inputs)
         {
-            if (in.type() != typeid(KeyInput))
+            if (!std::holds_alternative<KeyInput>(in))
             {
                 return false;
             }
@@ -132,7 +133,7 @@ namespace CryptoNote
     {
         for (const TransactionOutput &out : tx.outputs)
         {
-            if (out.target.type() == typeid(KeyOutput))
+            if (std::holds_alternative<KeyOutput>(out.target))
             {
                 if (out.amount == 0)
                 {
@@ -143,7 +144,7 @@ namespace CryptoNote
                     return false;
                 }
 
-                if (!check_key(boost::get<KeyOutput>(out.target).key))
+                if (!check_key(std::get<KeyOutput>(out.target).key))
                 {
                     if (error)
                     {
@@ -173,9 +174,9 @@ namespace CryptoNote
         {
             uint64_t amount = 0;
 
-            if (in.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(in))
             {
-                amount = boost::get<KeyInput>(in).amount;
+                amount = std::get<KeyInput>(in).amount;
             }
 
             if (money > amount + money)
@@ -225,9 +226,9 @@ namespace CryptoNote
         uint64_t amount = 0;
         for (auto &input : transaction.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                amount += boost::get<KeyInput>(input).amount;
+                amount += std::get<KeyInput>(input).amount;
             }
         }
 
@@ -241,9 +242,9 @@ namespace CryptoNote
 
         for (auto &input : transaction.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                inputsAmounts.push_back(boost::get<KeyInput>(input).amount);
+                inputsAmounts.push_back(std::get<KeyInput>(input).amount);
             }
         }
 

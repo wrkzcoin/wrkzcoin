@@ -5,25 +5,16 @@
 
 #pragma once
 
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 #include <algorithm>
 #include <common/StringTools.h>
 #include <cstdint>
+#include <initializer_list>
 #include <iterator>
 
 namespace Crypto
 {
-    [[noreturn]] inline void throwHexParseError()
-    {
-#if defined(NLOHMANN_JSON_VERSION_MAJOR) && defined(NLOHMANN_JSON_VERSION_MINOR) \
-    && ((NLOHMANN_JSON_VERSION_MAJOR > 3) || (NLOHMANN_JSON_VERSION_MAJOR == 3 && NLOHMANN_JSON_VERSION_MINOR >= 12))
-        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!", nullptr);
-#else
-        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
-#endif
-    }
-
     struct EllipticCurvePoint
     {
         EllipticCurvePoint() {}
@@ -373,70 +364,27 @@ namespace Crypto
         return reinterpret_cast<const size_t &>(keyImage);
     }
 
-    inline void to_json(nlohmann::json &j, const Hash &h)
-    {
-        j = Common::podToHex(h);
-    }
+    /* JSON (de)serialisation. The bodies live in src/common/CryptoNoteJson.cpp so
+       this header only needs json_fwd.hpp rather than the full json.hpp. */
+    void to_json(nlohmann::json &j, const Hash &h);
 
-    inline void from_json(const nlohmann::json &j, Hash &h)
-    {
-        if (!Common::podFromHex(j.get<std::string>(), h.data))
-        {
-            throwHexParseError();
-        }
-    }
+    void from_json(const nlohmann::json &j, Hash &h);
 
-    inline void to_json(nlohmann::json &j, const PublicKey &p)
-    {
-        j = Common::podToHex(p);
-    }
+    void to_json(nlohmann::json &j, const PublicKey &p);
 
-    inline void from_json(const nlohmann::json &j, PublicKey &p)
-    {
-        if (!Common::podFromHex(j.get<std::string>(), p.data))
-        {
-            throwHexParseError();
-        }
-    }
+    void from_json(const nlohmann::json &j, PublicKey &p);
 
-    inline void to_json(nlohmann::json &j, const SecretKey &s)
-    {
-        j = Common::podToHex(s);
-    }
+    void to_json(nlohmann::json &j, const SecretKey &s);
 
-    inline void from_json(const nlohmann::json &j, SecretKey &s)
-    {
-        if (!Common::podFromHex(j.get<std::string>(), s.data))
-        {
-            throwHexParseError();
-        }
-    }
+    void from_json(const nlohmann::json &j, SecretKey &s);
 
-    inline void to_json(nlohmann::json &j, const KeyDerivation &k)
-    {
-        j = Common::podToHex(k);
-    }
+    void to_json(nlohmann::json &j, const KeyDerivation &k);
 
-    inline void from_json(const nlohmann::json &j, KeyDerivation &k)
-    {
-        if (!Common::podFromHex(j.get<std::string>(), k.data))
-        {
-            throwHexParseError();
-        }
-    }
+    void from_json(const nlohmann::json &j, KeyDerivation &k);
 
-    inline void to_json(nlohmann::json &j, const KeyImage &k)
-    {
-        j = Common::podToHex(k);
-    }
+    void to_json(nlohmann::json &j, const KeyImage &k);
 
-    inline void from_json(const nlohmann::json &j, KeyImage &k)
-    {
-        if (!Common::podFromHex(j.get<std::string>(), k.data))
-        {
-            throwHexParseError();
-        }
-    }
+    void from_json(const nlohmann::json &j, KeyImage &k);
 } // namespace Crypto
 
 namespace std

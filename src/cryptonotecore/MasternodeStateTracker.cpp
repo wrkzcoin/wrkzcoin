@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <common/StringTools.h>
+#include <common/int-util.h>
 #include <config/CryptoNoteConfig.h>
 
 namespace CryptoNote
@@ -481,9 +482,20 @@ namespace CryptoNote
 
         result.hasMasternodeWinner = true;
         result.masternodeWinner = winner;
-        // Use __uint128_t to prevent overflow when totalReward * masternodePercent exceeds uint64_t.
+        // Use 128-bit arithmetic to prevent overflow when totalReward * masternodePercent exceeds uint64_t.
+#if defined(_MSC_VER)
+        /* MSVC has no __uint128_t: same computation through the portable helpers in
+           common/int-util.h (low 64 bits of the 128-bit quotient, exactly like the cast below). */
+        uint64_t productHi = 0;
+        const uint64_t productLo = mul128(totalReward, masternodePercent, &productHi);
+        uint64_t quotientHi = 0;
+        uint64_t quotientLo = 0;
+        div128_32(productHi, productLo, 100, &quotientHi, &quotientLo);
+        result.masternodeReward = quotientLo;
+#else
         result.masternodeReward = static_cast<uint64_t>(
             (static_cast<__uint128_t>(totalReward) * masternodePercent) / 100);
+#endif
         result.powReward = totalReward - result.masternodeReward;
         return result;
     }

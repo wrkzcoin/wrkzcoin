@@ -8,6 +8,7 @@
 
 #include "ILogger.h"
 #include "LoggerMessage.h"
+#include <memory>
 
 namespace Logging
 {

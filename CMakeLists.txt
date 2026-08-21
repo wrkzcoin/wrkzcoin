@@ -1,5 +1,26 @@
-# We need 3.8 for set(CMAKE_CXX_STANDARD 20)
-cmake_minimum_required(VERSION 3.8)
+# 3.16 is needed for target_precompile_headers(); CONFIGURE_DEPENDS globs,
+# $CACHE{} and CMAKE_CXX_STANDARD 20 already required >= 3.12.
+cmake_minimum_required(VERSION 3.16)
+
+# MSVC: use the static CRT (/MT, /MTd) for every target, bundled externals
+# included. CMP0091 (CMake >= 3.15) replaces the old "/MD" -> "/MT" flag
+# substitution with this abstraction; the policy default makes externals that
+# declare an older cmake_minimum_required honour it as well.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
+
+# Boost discovery policies (CMake >= 3.27 / 3.30):
+#  - CMP0144 NEW: honour the upper-case BOOST_ROOT variable the cross-build
+#    toolchain files and scripts set.
+#  - CMP0167 OLD: keep CMake's FindBoost module. This project deliberately uses
+#    it in header-only mode (Boost_NO_BOOST_CMAKE below); switching to NEW
+#    would require a BoostConfig.cmake in every build prefix.
+if (POLICY CMP0144)
+    cmake_policy(SET CMP0144 NEW)
+endif ()
+if (POLICY CMP0167)
+    cmake_policy(SET CMP0167 OLD)
+endif ()
 
 find_program(CCACHE_PROGRAM ccache)
 if (CCACHE_PROGRAM)
@@ -13,7 +34,7 @@ else ()
     set (CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build, options are: Debug, Release, RelWithDebInfo")
 endif ()
 
-set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE TYPE INTERNAL)
+set(CMAKE_CONFIGURATION_TYPES Debug RelWithDebInfo Release CACHE STRING "Available build configurations")
 set(ARCH default CACHE STRING "CPU to build for: -march value or native")
 set(CONSENSUS_SAFE_BUILD ON CACHE BOOL "Use reproducible, consensus-safe compiler optimizations")
 set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distributed across different machines")
@@ -21,7 +42,7 @@ set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
 set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
-set(ROCKSDB_BUILD_PARALLEL_CAP "4" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided")
+set(ROCKSDB_BUILD_PARALLEL_CAP "8" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided (MAKEFLAGS -jN / CMAKE_BUILD_PARALLEL_LEVEL / ROCKSDB_BUILD_PARALLEL take precedence)")
 option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
 option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
@@ -71,8 +92,8 @@ set(VERSION "0.1")
 
 ## This section describes our general CMake setup options
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
-set(CMAKE_SKIP_INSTALL_RULES OFF FORCE)
-set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON FORCE)
+set(CMAKE_SKIP_INSTALL_RULES OFF)
+set(CMAKE_SKIP_PACKAGE_ALL_DEPENDENCY ON)
 set(CMAKE_SUPPRESS_REGENERATION ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -205,9 +226,7 @@ if (WIN32)
     if (MSVC)
         add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /D_VARIADIC_MAX=8 /D__SSE4_1__")
         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:10485760")
-        foreach (VAR CMAKE_C_FLAGS_DEBUG CMAKE_CXX_FLAGS_DEBUG CMAKE_C_FLAGS_RELWITHDEBINFO CMAKE_CXX_FLAGS_RELWITHDEBINFO CMAKE_C_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELEASE)
-            string(REPLACE "/MD" "/MT" ${VAR} "${${VAR}}")
-        endforeach ()
+        # Static CRT (/MT) is selected via CMAKE_MSVC_RUNTIME_LIBRARY at the top of this file.
         include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/msc)
     else ()
         include_directories(SYSTEM ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/mingw)
@@ -219,7 +238,7 @@ elseif (APPLE)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/osx)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
 elseif (ANDROID)
-    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/android)
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
     add_definitions(-D_GNU_SOURCE -D_XOPEN_SOURCE=700)
     add_definitions(-DBOOST_NO_CXX98_FUNCTION_BASE -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
@@ -299,16 +318,13 @@ if (NOT MSVC)
         endif ()
     endif ()
 
-    ## These options generate all those nice warnings we see while building
-    set(WARNINGS "-Wall -Wextra -Wpointer-arith -Wvla -Wwrite-strings  -Wno-error=extra -Wno-error=unused-function -Wno-error=sign-compare -Wno-error=strict-aliasing -Wno-error=type-limits -Wno-unused-parameter -Wno-error=unused-variable -Wno-error=undef -Wno-error=uninitialized -Wno-error=unused-result")
+    ## These options generate all those nice warnings we see while building.
+    ## -Werror is deliberately not enabled, so no -Wno-error=... overrides are needed.
+    set(WARNINGS "-Wall -Wextra -Wpointer-arith -Wvla -Wwrite-strings -Wno-unused-parameter")
     if (CMAKE_C_COMPILER_ID STREQUAL "Clang")
-        set(WARNINGS "${WARNINGS} -Wno-error=mismatched-tags -Wno-error=null-conversion -Wno-overloaded-shift-op-parentheses -Wno-error=shift-count-overflow -Wno-error=tautological-constant-out-of-range-compare -Wno-error=unused-private-field -Wno-error=unneeded-internal-declaration -Wno-error=unused-function -Wno-error=missing-braces -Wno-error=unused-command-line-argument")
+        set(WARNINGS "${WARNINGS} -Wno-overloaded-shift-op-parentheses")
     else ()
-        set(WARNINGS "${WARNINGS} -Wlogical-op -Wno-error=maybe-uninitialized -Wno-error=clobbered -Wno-error=unused-but-set-variable")
-    endif ()
-
-    if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
-        set(WARNINGS "${WARNINGS} -Wno-error=odr")
+        set(WARNINGS "${WARNINGS} -Wlogical-op")
     endif ()
     set(C_WARNINGS "-Waggregate-return -Wnested-externs -Wold-style-definition -Wstrict-prototypes -Wno-implicit-fallthrough")
     set(CXX_WARNINGS "-Wno-reorder -Wno-missing-field-initializers")
@@ -334,8 +350,9 @@ if (NOT MSVC)
     else ()
         set(MAES_FLAG "")
     endif ()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${STATICASSERTC_FLAG} ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 ${STATICASSERTCPP_FLAG} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
+    # The C++ standard flag comes from CMAKE_CXX_STANDARD / CMAKE_CXX_EXTENSIONS above.
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 ${WARNINGS} ${C_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${WARNINGS} ${CXX_WARNINGS} ${ARCH_FLAG} ${MAES_FLAG}")
 
     if (APPLE)
         if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -369,12 +386,18 @@ if (NOT MSVC)
         set(RELEASE_FLAGS "-Ofast -DNDEBUG -Wno-unused-variable")
     endif ()
 
-    if (NOT APPLE)
-        # There is a clang bug that does not allow to compile code that uses AES-NI intrinsics if -flto is enabled
-        if (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_BUILD_TYPE STREQUAL "Release")
-            # On linux, to build in lto mode, check that ld.gold linker is used: 'update-alternatives --install /usr/bin/ld ld /usr/bin/ld.gold HIGHEST_PRIORITY'
-            set(CMAKE_AR gcc-ar)
-            set(CMAKE_RANLIB gcc-ranlib)
+    ## Optional faster linker for GCC/Clang builds (mold, lld, gold). Opt-in:
+    ## the toolchain default is kept unless the requested linker proves to work.
+    set(WRKZ_LINKER "" CACHE STRING "Alternative linker (mold, lld, gold); empty = toolchain default")
+    if (WRKZ_LINKER)
+        set(CMAKE_REQUIRED_LINK_OPTIONS "-fuse-ld=${WRKZ_LINKER}")
+        check_cxx_source_compiles("int main() { return 0; }" WRKZ_LINKER_WORKS_${WRKZ_LINKER})
+        unset(CMAKE_REQUIRED_LINK_OPTIONS)
+        if (WRKZ_LINKER_WORKS_${WRKZ_LINKER})
+            add_link_options("-fuse-ld=${WRKZ_LINKER}")
+            message(STATUS "Linker: ${WRKZ_LINKER} (-fuse-ld=${WRKZ_LINKER})")
+        else ()
+            message(WARNING "WRKZ_LINKER=${WRKZ_LINKER} requested, but -fuse-ld=${WRKZ_LINKER} does not link here; keeping the toolchain default.")
         endif ()
     endif ()
 
@@ -545,6 +568,15 @@ if (NOT EMSCRIPTEN AND NOT (ANDROID AND WRKZ_ANDROID_DISABLE_OPENSSL))
     endif ()
     if (ZLIB_FOUND)
         message(STATUS "Found ZLIB: ${ZLIB_LIBRARIES}")
+
+        ## Let cpp-httplib negotiate gzip on both the server and the client.
+        ## Wallet sync responses are hex encoded keys and hashes wrapped in
+        ## JSON, which compresses several fold. It is opt in per request - the
+        ## server only spends the CPU when a client sends Accept-Encoding: gzip,
+        ## and older clients that do not are served uncompressed as before.
+        add_definitions(-DCPPHTTPLIB_ZLIB_SUPPORT)
+        include_directories(SYSTEM ${ZLIB_INCLUDE_DIRS})
+        message(STATUS "  HTTP gzip compression enabled for RPC")
     else ()
         message(STATUS "ZLIB not found (zlib1g-dev / zlib-devel not installed).")
         message(STATUS "  If the build fails with ZLIB_LIBRARY-NOTFOUND, install the zlib development package.")
@@ -566,11 +598,12 @@ endif ()
 # Borrowed from https://github.com/tarantool/tarantool/commit/6eab201af1843f53a833c8928dc58fceffa08147
 if (APPLE)
     find_program(HOMEBREW_EXECUTABLE brew)
-    execute_process(COMMAND ${HOMEBREW_EXECUTABLE} --prefix openssl
-            OUTPUT_VARIABLE HOMEBREW_OPENSSL
-            OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if (DEFINED HOMEBREW_OPENSSL)
-        if (NOT DEFINED OPENSSL_ROOT_DIR)
+    if (HOMEBREW_EXECUTABLE)
+        execute_process(COMMAND ${HOMEBREW_EXECUTABLE} --prefix openssl
+                OUTPUT_VARIABLE HOMEBREW_OPENSSL
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET)
+        if (HOMEBREW_OPENSSL AND NOT DEFINED OPENSSL_ROOT_DIR)
             message(STATUS "Setting OpenSSL root to ${HOMEBREW_OPENSSL}")
             set(OPENSSL_ROOT_DIR "${HOMEBREW_OPENSSL}")
         endif ()
@@ -711,8 +744,9 @@ endif ()
 add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
-## Skip for Emscripten — RocksDB is only used by the daemon, not wallet_wasm.
-if (NOT MSVC AND NOT EMSCRIPTEN)
+## RocksDB is only linked by the daemon: skip it (and its configure step) for
+## wallet-only builds (WRKZ_BUILD_EXECUTABLES=OFF) and for Emscripten.
+if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
     set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
     set(ROCKSDB_CMAKE_EXTRA_ARGS "")
@@ -759,26 +793,50 @@ if (NOT MSVC AND NOT EMSCRIPTEN)
         )
     endif ()
 
-    execute_process(
-        COMMAND ${CMAKE_COMMAND}
-            ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb
-            -DWITH_ZSTD=ON
-            -DWITH_SNAPPY=OFF
-            -DWITH_LIBURING=OFF
-            -DWITH_GFLAGS=0
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-            -DWITH_TESTS=OFF
-            -DWITH_TOOLS=OFF
-            -DPORTABLE=ON
-            -DUSE_RTTI=ON
-            -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
-            -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
-            ${ROCKSDB_CMAKE_EXTRA_ARGS}
-            -B${PROJECT_BINARY_DIR}/rocksdb
-        RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
+    set(ROCKSDB_CMAKE_ARGS
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/rocksdb
+        -DWITH_ZSTD=ON
+        -DWITH_SNAPPY=OFF
+        -DWITH_LIBURING=OFF
+        -DWITH_GFLAGS=0
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DWITH_TESTS=OFF
+        -DWITH_TOOLS=OFF
+        -DPORTABLE=ON
+        -DUSE_RTTI=ON
+        -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}
+        -DZSTD_LIBRARIES=${ROCKSDB_ZSTD_LIBRARY}
+        # Build RocksDB with the same compilers as the rest of the tree.
+        -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+        -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+        ${ROCKSDB_CMAKE_EXTRA_ARGS}
+        -B${PROJECT_BINARY_DIR}/rocksdb
     )
-    if (NOT ROCKSDB_CMAKE_CONFIGURE_RESULT EQUAL 0)
-        message(FATAL_ERROR "RocksDB CMake configure failed with code ${ROCKSDB_CMAKE_CONFIGURE_RESULT}")
-    endif()
+    # RocksDB's own configure is slow (dozens of try_compiles). Only re-run it
+    # when the sub-build has never been configured or our arguments changed;
+    # RocksDB's generated build system re-checks its own inputs at build time.
+    string(SHA1 _WRKZ_ROCKSDB_ARGS_HASH "${ROCKSDB_CMAKE_ARGS}")
+    set(_WRKZ_ROCKSDB_STAMP "${PROJECT_BINARY_DIR}/rocksdb/wrkz-configure.stamp")
+    set(_WRKZ_ROCKSDB_CONFIGURE TRUE)
+    if (EXISTS "${PROJECT_BINARY_DIR}/rocksdb/CMakeCache.txt" AND EXISTS "${_WRKZ_ROCKSDB_STAMP}")
+        file(READ "${_WRKZ_ROCKSDB_STAMP}" _WRKZ_ROCKSDB_PREV_HASH)
+        if (_WRKZ_ROCKSDB_PREV_HASH STREQUAL _WRKZ_ROCKSDB_ARGS_HASH)
+            set(_WRKZ_ROCKSDB_CONFIGURE FALSE)
+        endif ()
+    endif ()
+    if (_WRKZ_ROCKSDB_CONFIGURE)
+        execute_process(
+            COMMAND ${CMAKE_COMMAND} ${ROCKSDB_CMAKE_ARGS}
+            RESULT_VARIABLE ROCKSDB_CMAKE_CONFIGURE_RESULT
+        )
+        if (NOT ROCKSDB_CMAKE_CONFIGURE_RESULT EQUAL 0)
+            message(FATAL_ERROR "RocksDB CMake configure failed with code ${ROCKSDB_CMAKE_CONFIGURE_RESULT}")
+        endif ()
+        file(WRITE "${_WRKZ_ROCKSDB_STAMP}" "${_WRKZ_ROCKSDB_ARGS_HASH}")
+    else ()
+        message(STATUS "RocksDB: sub-build already configured with identical arguments, skipping configure")
+    endif ()
+    unset(_WRKZ_ROCKSDB_CONFIGURE)
+    unset(_WRKZ_ROCKSDB_PREV_HASH)
     set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a")
 endif ()

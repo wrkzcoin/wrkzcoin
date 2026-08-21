@@ -9,6 +9,7 @@
 #include "serialization/SerializationOverloads.h"
 
 #include <cassert>
+#include <utility>
 
 using namespace CryptoNote;
 

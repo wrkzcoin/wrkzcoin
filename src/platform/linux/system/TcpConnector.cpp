@@ -4,10 +4,10 @@
 //
 // Please see the included LICENSE file for more information.
 
-#include "TcpConnector.h"
+#include <system/TcpConnector.h>
 
 #include "Dispatcher.h"
-#include "ErrorMessage.h"
+#include <system/ErrorMessage.h>
 #include "TcpConnection.h"
 
 #include <cassert>

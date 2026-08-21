@@ -14,6 +14,7 @@
 #include "noderpcproxy/NodeRpcProxy.h"
 #include "wallet/WalletGreen.h"
 
+#include <cerrno>
 #include <future>
 #include <system/Context.h>
 

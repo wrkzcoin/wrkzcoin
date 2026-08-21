@@ -13,7 +13,9 @@
 #include <CryptoTypes.h>
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
+#include <exception>
 #include <fstream>
+#include <functional>
 #include <iostream>
 
 namespace PaymentService

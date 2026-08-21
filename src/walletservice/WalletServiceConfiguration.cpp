@@ -8,9 +8,13 @@
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
 #include <cxxopts.hpp>
+#include <exception>
 #include <fstream>
+#include <functional>
 #include <iomanip>
+#include <iostream>
 #include <logging/ILogger.h>
+#include <regex>
 #include <string>
 #include "json.hpp"
 
