@@ -7,9 +7,9 @@
 #pragma once
 
 #include "CryptoTypes.h"
-#include "json.hpp"
+#include "json_fwd.hpp"
 
-#include <boost/variant.hpp>
+#include <variant>
 #include <cstdint>
 #include <common/StringTools.h>
 #include <vector>
@@ -33,9 +33,9 @@ namespace CryptoNote
         Crypto::PublicKey key;
     };
 
-    typedef boost::variant<BaseInput, KeyInput> TransactionInput;
+    typedef std::variant<BaseInput, KeyInput> TransactionInput;
 
-    typedef boost::variant<KeyOutput> TransactionOutputTarget;
+    typedef std::variant<KeyOutput> TransactionOutputTarget;
 
     struct TransactionOutput
     {
@@ -116,47 +116,14 @@ namespace CryptoNote
 
     };
 
-    inline void to_json(nlohmann::json &j, const CryptoNote::KeyInput &k)
-    {
-        j = {{"amount", k.amount}, {"key_offsets", k.outputIndexes}, {"k_image", k.keyImage}};
-    }
+    /* JSON (de)serialisation for the wire types above. The bodies live in
+       src/common/CryptoNoteJson.cpp so this header only needs json_fwd.hpp. */
+    void to_json(nlohmann::json &j, const CryptoNote::KeyInput &k);
 
-    inline void from_json(const nlohmann::json &j, CryptoNote::KeyInput &k)
-    {
-        k.amount = j.at("amount").get<uint64_t>();
-        if (j.find("key_offsets") != j.end())
-        {
-            k.outputIndexes = j.at("key_offsets").get<std::vector<uint32_t>>();
-        }
-        k.keyImage = j.at("k_image").get<Crypto::KeyImage>();
-    }
+    void from_json(const nlohmann::json &j, CryptoNote::KeyInput &k);
 
-    inline void to_json(nlohmann::json &j, const CryptoNote::RawBlock &block)
-    {
-        std::vector<std::string> transactions;
+    void to_json(nlohmann::json &j, const CryptoNote::RawBlock &block);
 
-        for (const auto &transaction : block.transactions)
-        {
-            transactions.push_back(Common::toHex(transaction));
-        }
-
-        j = {{"block", Common::toHex(block.block)}, {"transactions", transactions}};
-    }
-
-    inline void from_json(const nlohmann::json &j, CryptoNote::RawBlock &block)
-    {
-        block.transactions.clear();
-
-        std::string blockString = j.at("block").get<std::string>();
-
-        block.block = Common::fromHex(blockString);
-
-        std::vector<std::string> transactions = j.at("transactions").get<std::vector<std::string>>();
-
-        for (const auto &transaction : transactions)
-        {
-            block.transactions.push_back(Common::fromHex(transaction));
-        }
-    }
+    void from_json(const nlohmann::json &j, CryptoNote::RawBlock &block);
 
 } // namespace CryptoNote

@@ -9,6 +9,7 @@
 #include "CryptoNote.h"
 #include "crypto/crypto.h"
 #include "wallet/WalletErrors.h"
+#include <iomanip>
 
 namespace CryptoNote
 {

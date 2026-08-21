@@ -11,6 +11,7 @@
 #include <nigel/Nigel.h>
 #include <serialization/SerializationTools.h>
 #include <subwallets/SubWallets.h>
+#include <tuple>
 #include <vector>
 
 namespace SendTransaction
@@ -141,11 +142,6 @@ namespace SendTransaction
         const uint64_t actualFee,
         const uint64_t height,
         const CryptoNote::Transaction tx);
-
-    std::vector<uint8_t> generateTransactionPoWHeight(
-        CryptoNote::Transaction tx,
-        std::vector<uint8_t> extra,
-        const uint64_t height);
 
     /* Template so we can do transaction, and transactionprefix */
     template<typename T> Crypto::Hash getTransactionHash(T tx)

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <common/StringTools.h>
+#include <common/int-util.h>
 #include <config/CryptoNoteConfig.h>
 
 namespace CryptoNote

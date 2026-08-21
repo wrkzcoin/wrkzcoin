@@ -7,7 +7,8 @@
 #pragma once
 
 #include <array>
-#include <boost/date_time/posix_time/posix_time.hpp>
+#include <chrono>
+#include <ostream>
 #include <string>
 
 #undef ERROR
@@ -66,7 +67,7 @@ namespace Logging
         virtual void operator()(
             const std::string &category,
             Level level,
-            boost::posix_time::ptime time,
+            std::chrono::system_clock::time_point time,
             const std::string &body) = 0;
     };
 

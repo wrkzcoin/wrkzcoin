@@ -7,6 +7,7 @@
 #include "UpgradeDetector.h"
 
 #include "IUpgradeDetector.h"
+#include <functional>
 
 namespace CryptoNote
 {

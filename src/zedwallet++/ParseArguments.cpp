@@ -4,6 +4,8 @@
 // Please see the included LICENSE file for more information.
 
 ///////////////////////////////////////
+#include <cerrno>
+#include <fstream>
 #include <zedwallet++/ParseArguments.h>
 ///////////////////////////////////////
 

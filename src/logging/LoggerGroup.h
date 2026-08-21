@@ -22,7 +22,7 @@ namespace Logging
         void removeLogger(ILogger &logger);
 
         virtual void
-            operator()(const std::string &category, Level level, boost::posix_time::ptime time, const std::string &body)
+            operator()(const std::string &category, Level level, std::chrono::system_clock::time_point time, const std::string &body)
                 override;
 
       protected:

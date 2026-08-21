@@ -10,6 +10,7 @@
 #include "IStreamSerializable.h"
 #include "NetNodeConfig.h"
 
+#include <deque>
 #include <functional>
 #include <list>
 #include <logging/LoggerRef.h>

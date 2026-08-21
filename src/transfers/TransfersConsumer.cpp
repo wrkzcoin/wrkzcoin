@@ -19,6 +19,7 @@
 #include <config/Constants.h>
 #include <future>
 #include <numeric>
+#include <tuple>
 
 using namespace Crypto;
 using namespace Logging;

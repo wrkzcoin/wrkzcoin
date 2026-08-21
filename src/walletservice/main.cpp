@@ -7,6 +7,7 @@
 #include "PaymentGateService.h"
 #include "version.h"
 
+#include <cerrno>
 #include <config/CliHeader.h>
 #include <iostream>
 #include <memory>
@@ -149,7 +150,10 @@ int runDaemon()
 {
 #ifdef WIN32
 
-    SERVICE_TABLE_ENTRY serviceTable[] {{"Payment Gate", serviceMain}, {NULL, NULL}};
+    /* SERVICE_TABLE_ENTRY::lpServiceName is a non-const LPSTR; a string literal
+       is not convertible to it under MSVC /permissive- (implied by C++20). */
+    static char serviceName[] = "Payment Gate";
+    SERVICE_TABLE_ENTRY serviceTable[] {{serviceName, serviceMain}, {NULL, NULL}};
 
     Logging::LoggerRef logRef(ppg->getLogger(), "RunService");
 

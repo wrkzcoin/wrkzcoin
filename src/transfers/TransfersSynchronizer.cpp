@@ -14,6 +14,8 @@
 #include "serialization/BinaryInputStreamSerializer.h"
 #include "serialization/BinaryOutputStreamSerializer.h"
 
+#include <utility>
+
 using namespace Common;
 using namespace Crypto;
 

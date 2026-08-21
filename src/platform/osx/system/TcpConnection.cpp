@@ -10,6 +10,7 @@
 
 #include <cassert>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/errno.h>
 #include <sys/event.h>
 #include <sys/socket.h>
@@ -311,6 +312,11 @@ namespace System
         {
             throw std::runtime_error("TcpConnection::TcpConnection, setsockopt failed, " + lastErrorMessage());
         }
+
+        /* See the linux implementation - Nagle adds a fixed stall to every
+         * Levin round trip, and sync is made of round trips. */
+        const int nodelay = 1;
+        setsockopt(connection, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof nodelay);
     }
 
 } // namespace System

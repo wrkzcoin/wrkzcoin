@@ -19,6 +19,7 @@
 #include <boost/multi_index_container.hpp>
 #include <map>
 #include <unordered_map>
+#include <utility>
 
 namespace CryptoNote
 {

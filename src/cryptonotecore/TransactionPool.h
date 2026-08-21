@@ -18,6 +18,7 @@
 #include <boost/multi_index_container.hpp>
 #include <logging/LoggerMessage.h>
 #include <logging/LoggerRef.h>
+#include <tuple>
 #include <unordered_map>
 
 namespace CryptoNote

@@ -4,6 +4,7 @@
 // Please see the included LICENSE file for more information.
 
 /////////////////////////////////////
+#include <cerrno>
 #include <walletapi/ParseArguments.h>
 /////////////////////////////////////
 

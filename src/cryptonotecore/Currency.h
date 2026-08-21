@@ -12,10 +12,12 @@
 #include "crypto/hash.h"
 #include "logging/LoggerRef.h"
 
+#include <boost/noncopyable.hpp>
 #include <boost/utility.hpp>
 #include <config/CryptoNoteConfig.h>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace CryptoNote

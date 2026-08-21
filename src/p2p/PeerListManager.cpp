@@ -7,6 +7,7 @@
 #include "serialization/SerializationOverloads.h"
 
 #include <algorithm>
+#include <exception>
 #include <system/Ipv4Address.h>
 #include <time.h>
 

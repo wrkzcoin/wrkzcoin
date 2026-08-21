@@ -12,6 +12,7 @@
 #include "IReadBatch.h"
 
 #include <boost/functional/hash.hpp>
+#include <functional>
 
 namespace std
 {

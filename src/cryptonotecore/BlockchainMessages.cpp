@@ -6,6 +6,9 @@
 
 #include "cryptonotecore/BlockchainMessages.h"
 
+#include <cassert>
+#include <utility>
+
 namespace CryptoNote
 {
     BlockchainMessage::BlockchainMessage(const NewBlock &message): type(Type::NewBlock), newBlock(std::move(message)) {}

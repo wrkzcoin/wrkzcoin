@@ -28,6 +28,21 @@ You can also override only RocksDB jobs at configure time:
 cmake -S . -B build -DROCKSDB_BUILD_PARALLEL=4
 ```
 
+## Build Speed
+
+- `-DWRKZ_ENABLE_PCH=ON` enables precompiled headers for the larger internal
+  targets. Measure before adopting it: on MSVC it made a clean build slower
+  (the per-target PCH files are 150-280 MB); GCC/Clang load PCH much more
+  cheaply. With ccache, set `CCACHE_SLOPPINESS=pch_defines,time_macros`.
+- `-DWRKZ_LINKER=mold` (or `lld`, `gold`) links with an alternative linker when
+  the toolchain supports `-fuse-ld=`; otherwise the default linker is kept.
+- The RocksDB sub-build is only configured once per build directory (or when
+  its arguments change), so re-running `cmake` is fast. Its auto-detected job
+  count is capped by `ROCKSDB_BUILD_PARALLEL_CAP` (default 8) unless
+  `ROCKSDB_BUILD_PARALLEL`, `CMAKE_BUILD_PARALLEL_LEVEL` or `make -jN` is used.
+- Wallet-only builds (`-DWRKZ_BUILD_EXECUTABLES=OFF`, e.g. the Android /
+  wallet_capi flows) skip zstd and RocksDB entirely.
+
 ## Build Modes
 
 ### Default (recommended for nodes / reproducible)
@@ -70,7 +85,7 @@ When changing target architecture/toolchain (for example x86_64 -> aarch64 or vi
 
 Minimum tooling:
 
-- CMake >= 3.8
+- CMake >= 3.16
 - C++ compiler:
   - GCC >= 7, or
   - Clang >= 6

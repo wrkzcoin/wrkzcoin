@@ -6,15 +6,22 @@
 #pragma once
 
 #include "WalletTypes.h"
-#include "httplib.h"
+#include "httplib_fwd.h"
+#include "json.hpp"
 
 #include <atomic>
 #include <config/CryptoNoteConfig.h>
 #include <logger/Logger.h>
+#include <memory>
+#include <optional>
 #include <rpc/CoreRpcServerCommandsDefinitions.h>
 #include <string>
 #include <thread>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 class Nigel
 {
@@ -97,6 +104,12 @@ class Nigel
 
     bool getDaemonInfo();
 
+    /* Validates the HTTP result, parses the JSON body and (optionally) checks
+       the "status":"OK" field. Lives in Nigel.cpp so this header does not need
+       the full httplib.h. */
+    std::optional<nlohmann::json>
+        parseJSONResponse(const httplib::Result &res, const std::string &failMessage, const bool verifyStatus) const;
+
     template<typename F>
     auto tryParseJSONResponse(
         const httplib::Result &res,
@@ -104,73 +117,21 @@ class Nigel
         const F parseFunc,
         const bool verifyStatus = true) const -> std::optional<decltype(parseFunc(nlohmann::json()))>
     {
-        if (res)
+        const auto j = parseJSONResponse(res, failMessage, verifyStatus);
+
+        if (!j)
         {
-            if (res->status == 200)
-            {
-                try
-                {
-                    nlohmann::json j = nlohmann::json::parse(res->body);
-
-                    Logger::logger.log(
-                        "Got response from daemon: " + j.dump(),
-                        Logger::TRACE,
-                        { Logger::SYNC, Logger::DAEMON }
-                    );
-
-                    if (verifyStatus)
-                    {
-                        const std::string status = j.at("status").get<std::string>();
-
-                        if (status != "OK")
-                        {
-                            Logger::logger.log(
-                                failMessage + " - Expected status \"OK\", got " + status,
-                                Logger::INFO,
-                                { Logger::SYNC, Logger::DAEMON }
-                            );
-
-                            return std::nullopt;
-                        }
-                    }
-
-                    return parseFunc(j);
-                }
-                catch (const nlohmann::json::exception &e)
-                {
-                    Logger::logger.log(
-                        failMessage + ": " + std::string(e.what()),
-                        Logger::INFO,
-                        { Logger::SYNC, Logger::DAEMON }
-                    );
-
-                    return std::nullopt;
-                }
-            }
-            else
-            {
-                std::stringstream stream;
-
-                stream << failMessage << " - got status code " << res->status;
-
-                if (res->body != "")
-                {
-                    stream << ", body: " << res->body;
-                }
-
-                Logger::logger.log(
-                    stream.str(),
-                    Logger::INFO,
-                    { Logger::SYNC, Logger::DAEMON }
-                );
-
-                return std::nullopt;
-            }
+            return std::nullopt;
         }
-        else
+
+        try
+        {
+            return parseFunc(*j);
+        }
+        catch (const nlohmann::json::exception &e)
         {
             Logger::logger.log(
-                failMessage + " - failed to open socket or timed out.",
+                failMessage + ": " + std::string(e.what()),
                 Logger::INFO,
                 { Logger::SYNC, Logger::DAEMON }
             );
@@ -188,7 +149,7 @@ class Nigel
     std::shared_ptr<httplib::Client> m_nodeClient = nullptr;
 
     /* Stores the HTTP headers included in all Nigel requests */
-    httplib::Headers m_requestHeaders;
+    std::vector<std::pair<std::string, std::string>> m_requestHeaders;
 
     /* Runs a background refresh on height, hashrate, etc */
     std::thread m_backgroundThread;

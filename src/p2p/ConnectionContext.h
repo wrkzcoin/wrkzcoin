@@ -64,6 +64,16 @@ namespace CryptoNote
         uint64_t m_last_sync_progress_ts = 0;
         std::chrono::steady_clock::time_point m_sync_chunk_start_time {};
         float m_sync_blocks_per_second = 0.0f;
+
+        /* True while we have asked the peer for the next batch of blocks before
+           finishing with the batch it already sent us, so that the transfer
+           overlaps validation instead of following it. */
+        bool m_pipelined_objects_outstanding = false;
+
+        /* Set when we abandon a batch we had already re-requested - the peer's
+           reply is still on its way and is no longer wanted, but it is not
+           misbehaviour and must not cost the peer its connection. */
+        bool m_discard_next_objects_response = false;
     };
 
     inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s)

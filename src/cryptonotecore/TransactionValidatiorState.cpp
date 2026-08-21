@@ -7,6 +7,8 @@
 
 #include "TransactionValidatiorState.h"
 
+#include <variant>
+
 namespace CryptoNote
 {
     void mergeStates(TransactionValidatorState &destination, const TransactionValidatorState &source)
@@ -26,9 +28,9 @@ namespace CryptoNote
         const auto &transaction = cachedTransaction.getTransaction();
         for (auto &input : transaction.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                const auto &in = boost::get<KeyInput>(input);
+                const auto &in = std::get<KeyInput>(input);
                 assert(state.spentKeyImages.count(in.keyImage) > 0);
                 state.spentKeyImages.erase(in.keyImage);
             }

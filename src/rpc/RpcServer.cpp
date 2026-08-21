@@ -4,11 +4,14 @@
 
 //////////////////////////
 #include <rpc/RpcServer.h>
+
+#include "httplib.h"
 //////////////////////////
 
 #include <algorithm>
 #include <iostream>
 #include <ctime>
+#include <thread>
 
 #include "version.h"
 
@@ -21,6 +24,36 @@
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/ParseExtra.h>
+#include <variant>
+
+namespace
+{
+    /* httplib dedicates a pool thread to a connection for as long as that
+     * connection stays alive, so enabling keep-alive on the clients means idle
+     * connections now hold threads that used to be released immediately. The
+     * default pool is only max(8, cores - 1), which a handful of syncing
+     * wallets can occupy on their own. Give the RPC server a wider floor and a
+     * shorter idle window so a slow client cannot starve the others. */
+    void applyServerTuning(httplib::Server &srv)
+    {
+        const unsigned int cores = std::thread::hardware_concurrency();
+
+        const size_t baseThreads = std::max<size_t>(32, cores > 0 ? cores * 2 : 0);
+        const size_t maxThreads = baseThreads * 8;
+
+        srv.new_task_queue = [baseThreads, maxThreads] {
+            return new httplib::ThreadPool(baseThreads, maxThreads);
+        };
+
+        /* Nagle turns a request/response protocol into a per-request stall. */
+        srv.set_tcp_nodelay(true);
+
+        /* Release an idle keep-alive connection's thread quickly, while still
+         * covering the gap between a wallet's back to back sync requests. */
+        srv.set_keep_alive_timeout(3);
+        srv.set_keep_alive_max_count(1000);
+    }
+} // namespace
 
 RpcServer::RpcServer(
     const uint16_t bindPort,
@@ -57,11 +90,15 @@ RpcServer::RpcServer(
     m_p2p(p2p),
     m_syncManager(syncManager)
 {
-    m_server.set_address_family(AF_INET);
-    m_server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
-    m_server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
-    m_server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
-    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+    m_server = std::make_unique<httplib::Server>();
+    m_ipv6Server = std::make_unique<httplib::Server>();
+
+    applyServerTuning(*m_server);
+    m_server->set_address_family(AF_INET);
+    m_server->set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+    m_server->set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+    m_server->set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+    m_server->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
         Logger::logger.log(
             "RPC server startup error: " + httplib::to_string(error),
             Logger::WARNING,
@@ -69,23 +106,24 @@ RpcServer::RpcServer(
         );
     });
 
-    setupRoutes(m_server);
+    setupRoutes(*m_server);
 
     if (!m_ipv6Host.empty())
     {
-        m_ipv6Server.set_address_family(AF_INET6);
-        m_ipv6Server.set_ipv6_v6only(true);
-        m_ipv6Server.set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
-        m_ipv6Server.set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
-        m_ipv6Server.set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
-        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        applyServerTuning(*m_ipv6Server);
+        m_ipv6Server->set_address_family(AF_INET6);
+        m_ipv6Server->set_ipv6_v6only(true);
+        m_ipv6Server->set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+        m_ipv6Server->set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+        m_ipv6Server->set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+        m_ipv6Server->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
             Logger::logger.log(
                 "RPC IPv6 server startup error: " + httplib::to_string(error),
                 Logger::WARNING,
                 { Logger::DAEMON_RPC }
             );
         });
-        setupRoutes(m_ipv6Server);
+        setupRoutes(*m_ipv6Server);
     }
 }
 
@@ -177,7 +215,7 @@ void RpcServer::setupRoutes(httplib::Server &srv)
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
-    m_server.Get("/json_rpc", jsonRpc)
+    m_server->Get("/json_rpc", jsonRpc)
             .Get("/info", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
@@ -221,7 +259,7 @@ void RpcServer::start()
 
 void RpcServer::listen()
 {
-    const auto isListening = m_server.listen(m_host, m_port);
+    const auto isListening = m_server->listen(m_host, m_port);
 
     if (!isListening)
     {
@@ -232,7 +270,7 @@ void RpcServer::listen()
 
 void RpcServer::listenIpv6()
 {
-    const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
+    const auto isListening = m_ipv6Server->listen(m_ipv6Host, m_port);
 
     if (!isListening)
     {
@@ -244,11 +282,11 @@ void RpcServer::listenIpv6()
 
 void RpcServer::stop()
 {
-    m_server.stop();
+    m_server->stop();
 
     if (!m_ipv6Host.empty())
     {
-        m_ipv6Server.stop();
+        m_ipv6Server->stop();
     }
 
     if (m_serverThread.joinable())
@@ -1926,16 +1964,16 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
     nlohmann::json vinArr = nlohmann::json::array();
     for (const auto &input : transaction.inputs)
     {
-        const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
+        const auto type = std::holds_alternative<CryptoNote::BaseInput>(input) ? "ff" : "02";
 
         nlohmann::json valueObj;
-        if (input.type() == typeid(CryptoNote::BaseInput))
+        if (std::holds_alternative<CryptoNote::BaseInput>(input))
         {
-            valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
+            valueObj["height"] = std::get<CryptoNote::BaseInput>(input).blockIndex;
         }
         else
         {
-            const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+            const auto keyInput = std::get<CryptoNote::KeyInput>(input);
             nlohmann::json offsets = nlohmann::json::array();
             for (const auto index : keyInput.outputIndexes)
             {
@@ -1956,7 +1994,7 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
     for (const auto &output : transaction.outputs)
     {
         nlohmann::json dataObj;
-        dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
+        dataObj["key"] = Common::podToHex(std::get<CryptoNote::KeyOutput>(output.target).key);
 
         nlohmann::json targetObj;
         targetObj["data"] = dataObj;
@@ -2015,9 +2053,9 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
 
         const uint64_t inputAmount = std::accumulate(tx.inputs.begin(), tx.inputs.end(), 0ull,
             [](const auto acc, const auto in) {
-                if (in.type() == typeid(CryptoNote::KeyInput))
+                if (std::holds_alternative<CryptoNote::KeyInput>(in))
                 {
-                    return acc + boost::get<CryptoNote::KeyInput>(in).amount;
+                    return acc + std::get<CryptoNote::KeyInput>(in).amount;
                 }
 
                 return acc;
@@ -2103,16 +2141,16 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
             nlohmann::json vinArr = nlohmann::json::array();
             for (const auto &input : prefix.txPrefix.inputs)
             {
-                const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
+                const auto type = std::holds_alternative<CryptoNote::BaseInput>(input) ? "ff" : "02";
 
                 nlohmann::json valueObj;
-                if (input.type() == typeid(CryptoNote::BaseInput))
+                if (std::holds_alternative<CryptoNote::BaseInput>(input))
                 {
-                    valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
+                    valueObj["height"] = std::get<CryptoNote::BaseInput>(input).blockIndex;
                 }
                 else
                 {
-                    const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+                    const auto keyInput = std::get<CryptoNote::KeyInput>(input);
                     nlohmann::json offsets = nlohmann::json::array();
                     for (const auto index : keyInput.outputIndexes)
                     {
@@ -2133,7 +2171,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksLite(
             for (const auto &output : prefix.txPrefix.outputs)
             {
                 nlohmann::json dataObj;
-                dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
+                dataObj["key"] = Common::podToHex(std::get<CryptoNote::KeyOutput>(output.target).key);
 
                 nlohmann::json targetObj;
                 targetObj["data"] = dataObj;
@@ -2279,16 +2317,16 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
         nlohmann::json vinArr = nlohmann::json::array();
         for (const auto &input : prefix.txPrefix.inputs)
         {
-            const auto type = input.type() == typeid(CryptoNote::BaseInput) ? "ff" : "02";
+            const auto type = std::holds_alternative<CryptoNote::BaseInput>(input) ? "ff" : "02";
 
             nlohmann::json valueObj;
-            if (input.type() == typeid(CryptoNote::BaseInput))
+            if (std::holds_alternative<CryptoNote::BaseInput>(input))
             {
-                valueObj["height"] = boost::get<CryptoNote::BaseInput>(input).blockIndex;
+                valueObj["height"] = std::get<CryptoNote::BaseInput>(input).blockIndex;
             }
             else
             {
-                const auto keyInput = boost::get<CryptoNote::KeyInput>(input);
+                const auto keyInput = std::get<CryptoNote::KeyInput>(input);
                 nlohmann::json offsets = nlohmann::json::array();
                 for (const auto &index : keyInput.outputIndexes)
                 {
@@ -2309,7 +2347,7 @@ std::tuple<Error, uint16_t> RpcServer::getPoolChanges(
         for (const auto &output : prefix.txPrefix.outputs)
         {
             nlohmann::json dataObj;
-            dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.target).key);
+            dataObj["key"] = Common::podToHex(std::get<CryptoNote::KeyOutput>(output.target).key);
 
             nlohmann::json targetObj;
             targetObj["data"] = dataObj;
@@ -2419,12 +2457,12 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
             nlohmann::json inputsArr = nlohmann::json::array();
             for (const auto &input : tx.inputs)
             {
-                const auto type = input.type() == typeid(CryptoNote::BaseInputDetails) ? "ff" : "02";
+                const auto type = std::holds_alternative<CryptoNote::BaseInputDetails>(input) ? "ff" : "02";
 
                 nlohmann::json dataObj;
-                if (input.type() == typeid(CryptoNote::BaseInputDetails))
+                if (std::holds_alternative<CryptoNote::BaseInputDetails>(input))
                 {
-                    const auto in = boost::get<CryptoNote::BaseInputDetails>(input);
+                    const auto in = std::get<CryptoNote::BaseInputDetails>(input);
                     nlohmann::json inputSubObj;
                     inputSubObj["height"] = in.input.blockIndex;
                     dataObj["amount"] = in.amount;
@@ -2432,7 +2470,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
                 }
                 else
                 {
-                    const auto in = boost::get<CryptoNote::KeyInputDetails>(input);
+                    const auto in = std::get<CryptoNote::KeyInputDetails>(input);
                     nlohmann::json offsets = nlohmann::json::array();
                     for (const auto &index : in.input.outputIndexes)
                     {
@@ -2462,7 +2500,7 @@ std::tuple<Error, uint16_t> RpcServer::queryBlocksDetailed(
             for (const auto &output : tx.outputs)
             {
                 nlohmann::json dataObj;
-                dataObj["key"] = Common::podToHex(boost::get<CryptoNote::KeyOutput>(output.output.target).key);
+                dataObj["key"] = Common::podToHex(std::get<CryptoNote::KeyOutput>(output.output.target).key);
 
                 nlohmann::json targetObj;
                 targetObj["data"] = dataObj;

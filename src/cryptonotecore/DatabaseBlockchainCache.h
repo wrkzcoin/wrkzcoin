@@ -28,6 +28,9 @@
 #include <cryptonotecore/BlockchainWriteBatch.h>
 #include <cryptonotecore/DatabaseCacheData.h>
 #include <cryptonotecore/IBlockchainCacheFactory.h>
+#include <deque>
+#include <functional>
+#include <tuple>
 #include <utility>
 
 namespace CryptoNote
@@ -241,6 +244,22 @@ namespace CryptoNote
             uint32_t blockIndex,
             bool skipCoinbaseTransactions,
             WalletTypes::WalletBlockInfo &walletBlock) const;
+
+        /* Resolves as many of the given block hashes to raw blocks as this cache
+         * holds, in two database round trips for the whole set rather than
+         * three point lookups per hash. Hashes this cache does not hold are
+         * simply absent from the result. */
+        std::unordered_map<Crypto::Hash, RawBlock>
+            getRawBlocksByHashes(const std::vector<Crypto::Hash> &blockHashes) const;
+
+        /* Batched equivalent of getWalletSyncBlock over the half open range
+         * [startIndex, endIndex). Costs two database round trips for the whole
+         * range instead of two per block. Blocks that are missing from the
+         * database are skipped, as they are by the single block reader. */
+        std::vector<WalletTypes::WalletBlockInfo> getWalletSyncBlocks(
+            uint32_t startIndex,
+            uint32_t endIndex,
+            bool skipCoinbaseTransactions) const;
 
         std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
 

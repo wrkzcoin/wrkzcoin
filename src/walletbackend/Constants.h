@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <config/CryptoNoteConfig.h>
 
 namespace Constants

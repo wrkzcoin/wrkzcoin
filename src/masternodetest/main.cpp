@@ -27,6 +27,7 @@
 #include <cryptonotecore/MasternodeReward.h>
 #include <cryptonotecore/MasternodeStateTracker.h>
 #include <cryptonotecore/MasternodeTx.h>
+#include <exception>
 #include <json.hpp>
 
 #include <algorithm>

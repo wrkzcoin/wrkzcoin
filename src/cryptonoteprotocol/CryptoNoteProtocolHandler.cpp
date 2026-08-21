@@ -16,6 +16,7 @@
 
 #include <boost/scope_exit.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <cmath>
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>
@@ -384,6 +385,8 @@ namespace CryptoNote
         context.m_sync_orphan_retries = 0;
         context.m_sync_blocks_per_second = 0.0f;
         context.m_sync_chunk_start_time = {};
+        context.m_pipelined_objects_outstanding = false;
+        context.m_discard_next_objects_response = false;
 
         if (context.m_state == CryptoNoteConnectionContext::state_befor_handshake && !is_initial)
         {
@@ -741,6 +744,17 @@ namespace CryptoNote
     {
         logger(Logging::TRACE) << context << "NOTIFY_RESPONSE_GET_OBJECTS";
 
+        /* We pipelined a request and then threw away the batch it belonged to,
+           so this reply answers a question we no longer have. The peer did
+           nothing wrong - drop the data, not the connection. */
+        if (context.m_discard_next_objects_response)
+        {
+            context.m_discard_next_objects_response = false;
+            logger(Logging::DEBUGGING) << context
+                                       << "Discarding a pipelined block response that was superseded";
+            return 1;
+        }
+
         if (context.m_last_response_height > arg.current_blockchain_height)
         {
             logger(Logging::ERROR) << context << "sent wrong NOTIFY_HAVE_OBJECTS: arg.m_current_blockchain_height="
@@ -807,29 +821,53 @@ namespace CryptoNote
             return 1;
         }
 
+        size_t rawBytes = 0;
+        for (const auto &rawBlock : rawBlocks)
         {
-            size_t rawBytes = 0;
-            for (const auto &rawBlock : rawBlocks)
+            rawBytes += rawBlock.block.size();
+            for (const auto &tx : rawBlock.transactions)
             {
-                rawBytes += rawBlock.block.size();
-                for (const auto &tx : rawBlock.transactions)
-                {
-                    rawBytes += tx.size();
-                }
+                rawBytes += tx.size();
             }
-
-            int result = processObjects(context, std::move(rawBlocks), cachedBlocks);
-            if (result != 0)
-            {
-                onSyncChunkFailure(context);
-                return result;
-            }
-
-            onSyncChunkSuccess(context, cachedBlocks.size(), rawBytes);
         }
 
+        /* Record the throughput sample before anything issues a new request -
+           request_missing_objects() restarts m_sync_chunk_start_time, and this
+           sample has to be measured against the request this reply answers. */
+        onSyncChunkSuccess(context, cachedBlocks.size(), rawBytes);
+
+        /* Ask for the next batch before validating and writing this one, so the
+           peer is transferring while we work instead of afterwards. Only when we
+           already know which blocks to ask for: with m_needed_objects empty,
+           request_missing_objects() would instead issue a chain request or
+           declare us synchronized, neither of which belongs here. */
+        const bool pipelined = !m_stop && !context.m_needed_objects.empty()
+                               && context.m_state == CryptoNoteConnectionContext::state_synchronizing;
+
+        if (pipelined)
+        {
+            request_missing_objects(context, true);
+        }
+
+        context.m_pipelined_objects_outstanding = pipelined;
+
+        int result = processObjects(context, std::move(rawBlocks), cachedBlocks);
+
+        context.m_pipelined_objects_outstanding = false;
+
+        if (result != 0)
+        {
+            onSyncChunkFailure(context);
+            return result;
+        }
+
+        /* The batch applied cleanly, so the peer is behaving. These are tracked
+           against applying blocks, not against merely receiving them. */
+        context.m_sync_failures = 0;
+        context.m_sync_orphan_retries = 0;
+
         logger(DEBUGGING, BRIGHT_GREEN) << "Local blockchain updated, new index = " << m_core.getTopBlockIndex();
-        if (!m_stop && context.m_state == CryptoNoteConnectionContext::state_synchronizing)
+        if (!m_stop && !pipelined && context.m_state == CryptoNoteConnectionContext::state_synchronizing)
         {
             request_missing_objects(context, true);
         }
@@ -937,6 +975,11 @@ namespace CryptoNote
                                       << addResult.message();
                 context.m_needed_objects.clear();
                 context.m_requested_objects.clear();
+
+                /* A pipelined request for the next batch is already in flight.
+                   Its reply is now unwanted, but the peer is not at fault. */
+                context.m_discard_next_objects_response = context.m_pipelined_objects_outstanding;
+
                 context.m_state = CryptoNoteConnectionContext::state_synchronizing;
                 NOTIFY_REQUEST_CHAIN::request req = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
                 req.block_ids = m_core.buildSparseChain();
@@ -950,6 +993,10 @@ namespace CryptoNote
                 context.m_state = CryptoNoteConnectionContext::state_idle;
                 context.m_needed_objects.clear();
                 context.m_requested_objects.clear();
+
+                /* As above - the pipelined reply is on its way and unwanted. */
+                context.m_discard_next_objects_response = context.m_pipelined_objects_outstanding;
+
                 return 1;
             }
 
@@ -1875,9 +1922,12 @@ namespace CryptoNote
     {
         context.m_sync_blocks_received += blocks;
         context.m_sync_bytes_received += bytes;
-        context.m_sync_failures = 0;
         context.m_last_sync_progress_ts = static_cast<uint64_t>(std::time(nullptr));
-        context.m_sync_orphan_retries = 0;
+
+        /* m_sync_failures and m_sync_orphan_retries are deliberately not reset
+           here. This runs as soon as a well formed chunk arrives, which is
+           before we know whether its blocks actually apply - the caller clears
+           them once the chunk has been added to the chain. */
 
         if (blocks > 0)
         {

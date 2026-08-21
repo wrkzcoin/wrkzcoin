@@ -8,6 +8,7 @@
 
 #include "common/ConsoleHandler.h"
 #include "daemon/DaemonConfiguration.h"
+#include "httplib.h"
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
 #include "rpc/JsonRpc.h"
 #include "rpc/RpcServer.h"

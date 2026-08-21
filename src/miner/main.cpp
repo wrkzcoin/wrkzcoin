@@ -5,7 +5,9 @@
 // Please see the included LICENSE file for more information.
 
 #include "MinerManager.h"
+#include "httplib.h"
 
+#include <memory>
 #include <system/Dispatcher.h>
 
 int main(int argc, char **argv)

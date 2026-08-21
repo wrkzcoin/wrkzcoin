@@ -8,6 +8,7 @@
 
 #include "WalletGreenTypes.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
+#include <functional>
 
 using namespace Crypto;
 using namespace Logging;

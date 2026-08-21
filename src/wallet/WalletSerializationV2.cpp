@@ -10,6 +10,8 @@
 #include "serialization/BinaryOutputStreamSerializer.h"
 #include "serialization/CryptoNoteSerialization.h"
 
+#include <utility>
+
 using namespace Common;
 using namespace Crypto;
 

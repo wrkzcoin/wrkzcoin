@@ -10,6 +10,7 @@
 /////////////////////
 
 #include <cctype>
+#include <cmath>
 #include <common/Base58.h>
 #include <common/CheckDifficulty.h>
 #include <common/CryptoNoteTools.h>
