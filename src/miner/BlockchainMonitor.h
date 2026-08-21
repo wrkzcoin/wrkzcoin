@@ -6,8 +6,9 @@
 #pragma once
 
 #include "CryptoTypes.h"
-#include "httplib.h"
+#include "httplib_fwd.h"
 
+#include <memory>
 #include <optional>
 #include <system/ContextGroup.h>
 #include <system/Dispatcher.h>

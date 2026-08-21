@@ -10,6 +10,9 @@
 #include "P2pProtocolTypes.h"
 
 #include <boost/uuid/uuid.hpp>
+#include <functional>
+#include <list>
+#include <utility>
 #include <vector>
 
 namespace CryptoNote

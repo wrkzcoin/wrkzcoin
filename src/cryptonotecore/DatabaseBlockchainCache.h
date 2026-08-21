@@ -28,6 +28,9 @@
 #include <cryptonotecore/BlockchainWriteBatch.h>
 #include <cryptonotecore/DatabaseCacheData.h>
 #include <cryptonotecore/IBlockchainCacheFactory.h>
+#include <deque>
+#include <functional>
+#include <tuple>
 #include <utility>
 
 namespace CryptoNote

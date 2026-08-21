@@ -11,6 +11,7 @@
 #include "crypto/crypto.h"
 
 #include <unordered_set>
+#include <variant>
 
 using namespace Crypto;
 
@@ -21,9 +22,9 @@ namespace CryptoNote
         std::unordered_set<Crypto::KeyImage> ki;
         for (const auto &in : tx.inputs)
         {
-            if (in.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(in))
             {
-                if (!ki.insert(boost::get<KeyInput>(in).keyImage).second)
+                if (!ki.insert(std::get<KeyInput>(in).keyImage).second)
                 {
                     return false;
                 }
@@ -37,9 +38,9 @@ namespace CryptoNote
 
     size_t getRequiredSignaturesCount(const TransactionInput &in)
     {
-        if (in.type() == typeid(KeyInput))
+        if (std::holds_alternative<KeyInput>(in))
         {
-            return boost::get<KeyInput>(in).outputIndexes.size();
+            return std::get<KeyInput>(in).outputIndexes.size();
         }
 
         return 0;
@@ -47,9 +48,9 @@ namespace CryptoNote
 
     uint64_t getTransactionInputAmount(const TransactionInput &in)
     {
-        if (in.type() == typeid(KeyInput))
+        if (std::holds_alternative<KeyInput>(in))
         {
-            return boost::get<KeyInput>(in).amount;
+            return std::get<KeyInput>(in).amount;
         }
 
         return 0;
@@ -57,12 +58,12 @@ namespace CryptoNote
 
     TransactionTypes::InputType getTransactionInputType(const TransactionInput &in)
     {
-        if (in.type() == typeid(KeyInput))
+        if (std::holds_alternative<KeyInput>(in))
         {
             return TransactionTypes::InputType::Key;
         }
 
-        if (in.type() == typeid(BaseInput))
+        if (std::holds_alternative<BaseInput>(in))
         {
             return TransactionTypes::InputType::Generating;
         }
@@ -98,7 +99,7 @@ namespace CryptoNote
 
     TransactionTypes::OutputType getTransactionOutputType(const TransactionOutputTarget &out)
     {
-        if (out.type() == typeid(KeyOutput))
+        if (std::holds_alternative<KeyOutput>(out))
         {
             return TransactionTypes::OutputType::Key;
         }
@@ -153,10 +154,10 @@ namespace CryptoNote
 
         for (const TransactionOutput &o : transaction.outputs)
         {
-            assert(o.target.type() == typeid(KeyOutput));
-            if (o.target.type() == typeid(KeyOutput))
+            assert(std::holds_alternative<KeyOutput>(o.target));
+            if (std::holds_alternative<KeyOutput>(o.target))
             {
-                if (is_out_to_acc(keys, boost::get<KeyOutput>(o.target), derivation, keyIndex))
+                if (is_out_to_acc(keys, std::get<KeyOutput>(o.target), derivation, keyIndex))
                 {
                     out.push_back(outputIndex);
                     amount += o.amount;

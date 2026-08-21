@@ -11,7 +11,7 @@
 #include <string>
 #include <unordered_map>
 
-#include "httplib.h"
+#include "httplib_fwd.h"
 #include "JsonHelper.h"
 #include "json.hpp"
 
@@ -205,10 +205,10 @@ class RpcServer
     //////////////////////////////
 
     /* Our IPv4 server instance */
-    httplib::Server m_server;
+    std::unique_ptr<httplib::Server> m_server;
 
     /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
-    httplib::Server m_ipv6Server;
+    std::unique_ptr<httplib::Server> m_ipv6Server;
 
     /* The server host (IPv4) */
     const std::string m_host;

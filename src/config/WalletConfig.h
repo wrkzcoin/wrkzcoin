@@ -6,6 +6,7 @@
 #pragma once
 
 #include <config/CryptoNoteConfig.h>
+#include <string_view>
 
 /* Make sure everything in here is const - or it won't compile! */
 namespace WalletConfig

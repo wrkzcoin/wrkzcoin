@@ -9,6 +9,7 @@
 #include <common/StringTools.h>
 #include <config/Constants.h>
 #include <fstream>
+#include <functional>
 
 using namespace Logging;
 

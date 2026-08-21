@@ -19,6 +19,7 @@
 
 #include <CryptoNote.h>
 #include <optional>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

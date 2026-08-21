@@ -4,7 +4,11 @@
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////
+#include <cerrno>
+#include <fstream>
 #include <walletapi/ApiDispatcher.h>
+
+#include "httplib.h"
 ////////////////////////////////////
 
 #include "json.hpp"
@@ -38,8 +42,11 @@ ApiDispatcher::ApiDispatcher(
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
-    m_server.set_address_family(AF_INET);
-    m_server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+    m_server = std::make_unique<httplib::Server>();
+    m_ipv6Server = std::make_unique<httplib::Server>();
+
+    m_server->set_address_family(AF_INET);
+    m_server->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
         std::cout << WarningMsg("API server startup error: ")
                   << WarningMsg(httplib::to_string(error)) << std::endl;
     });
@@ -56,17 +63,17 @@ ApiDispatcher::ApiDispatcher(
     /* Make sure to do this after initializing the salt above! */
     m_hashedPassword = hashPassword(rpcPassword);
 
-    setupRoutes(m_server);
+    setupRoutes(*m_server);
 
     if (!m_ipv6Host.empty())
     {
-        m_ipv6Server.set_address_family(AF_INET6);
-        m_ipv6Server.set_ipv6_v6only(true);
-        m_ipv6Server.set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+        m_ipv6Server->set_address_family(AF_INET6);
+        m_ipv6Server->set_ipv6_v6only(true);
+        m_ipv6Server->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
             std::cout << WarningMsg("IPv6 API server startup error: ")
                       << WarningMsg(httplib::to_string(error)) << std::endl;
         });
-        setupRoutes(m_ipv6Server);
+        setupRoutes(*m_ipv6Server);
     }
 }
 
@@ -300,12 +307,15 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
         .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
 }
 
+/* Out of line: the unique_ptr<httplib::Server> members need the complete type. */
+ApiDispatcher::~ApiDispatcher() = default;
+
 void ApiDispatcher::start()
 {
     if (!m_ipv6Host.empty())
     {
         m_ipv6Thread = std::thread([this]() {
-            const auto isListening = m_ipv6Server.listen(m_ipv6Host, m_port);
+            const auto isListening = m_ipv6Server->listen(m_ipv6Host, m_port);
 
             if (!isListening)
             {
@@ -316,7 +326,7 @@ void ApiDispatcher::start()
         });
     }
 
-    const auto isListening = m_server.listen(m_host, m_port);
+    const auto isListening = m_server->listen(m_host, m_port);
 
     if (!isListening)
     {
@@ -328,11 +338,11 @@ void ApiDispatcher::start()
 
 void ApiDispatcher::stop()
 {
-    m_server.stop();
+    m_server->stop();
 
     if (m_ipv6Thread.joinable())
     {
-        m_ipv6Server.stop();
+        m_ipv6Server->stop();
         m_ipv6Thread.join();
     }
 }

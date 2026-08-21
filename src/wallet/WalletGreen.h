@@ -12,9 +12,11 @@
 #include "transfers/BlockchainSynchronizer.h"
 #include "transfers/TransfersSynchronizer.h"
 
+#include <fstream>
 #include <queue>
 #include <system/Dispatcher.h>
 #include <system/Event.h>
+#include <tuple>
 #include <unordered_map>
 
 namespace CryptoNote

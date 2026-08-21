@@ -27,6 +27,7 @@
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <utilities/ThreadPool.h>

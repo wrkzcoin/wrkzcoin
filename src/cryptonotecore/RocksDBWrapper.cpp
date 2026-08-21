@@ -12,6 +12,7 @@
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/table.h"
 #include <algorithm>
+#include <stdexcept>
 
 using namespace CryptoNote;
 using namespace Logging;

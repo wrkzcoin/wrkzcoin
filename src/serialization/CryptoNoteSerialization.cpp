@@ -14,8 +14,7 @@
 #include "serialization/SerializationOverloads.h"
 
 #include <algorithm>
-#include <boost/variant/apply_visitor.hpp>
-#include <boost/variant/static_visitor.hpp>
+#include <variant>
 #include <common/CryptoNoteTools.h>
 #include <common/TransactionExtra.h>
 #include <config/CryptoNoteConfig.h>
@@ -31,7 +30,7 @@ namespace
 
     uint64_t getSignaturesCount(const TransactionInput &input)
     {
-        struct txin_signature_size_visitor : public boost::static_visitor<uint64_t>
+        struct txin_signature_size_visitor
         {
             uint64_t operator()(const BaseInput &txin) const
             {
@@ -44,10 +43,10 @@ namespace
             }
         };
 
-        return boost::apply_visitor(txin_signature_size_visitor(), input);
+        return std::visit(txin_signature_size_visitor(), input);
     }
 
-    struct BinaryVariantTagGetter : boost::static_visitor<uint8_t>
+    struct BinaryVariantTagGetter
     {
         uint8_t operator()(const CryptoNote::BaseInput)
         {
@@ -75,7 +74,7 @@ namespace
         }
     };
 
-    struct VariantSerializer : boost::static_visitor<>
+    struct VariantSerializer
     {
         VariantSerializer(CryptoNote::ISerializer &serializer, const std::string &name): s(serializer), name(name) {}
 
@@ -244,7 +243,7 @@ namespace CryptoNote
         //  serializer.beginArray(sigSize, "signatures");
 
         // ignore base transaction
-        if (serializer.type() == ISerializer::INPUT && !(sigSize == 1 && tx.inputs[0].type() == typeid(BaseInput)))
+        if (serializer.type() == ISerializer::INPUT && !(sigSize == 1 && std::holds_alternative<BaseInput>(tx.inputs[0])))
         {
             tx.signatures.resize(sigSize);
         }
@@ -301,11 +300,11 @@ namespace CryptoNote
         if (serializer.type() == ISerializer::OUTPUT)
         {
             BinaryVariantTagGetter tagGetter;
-            uint8_t tag = boost::apply_visitor(tagGetter, in);
+            uint8_t tag = std::visit(tagGetter, in);
             serializer.binary(&tag, sizeof(tag), "type");
 
             VariantSerializer visitor(serializer, "value");
-            boost::apply_visitor(visitor, in);
+            std::visit(visitor, in);
         }
         else
         {
@@ -339,11 +338,11 @@ namespace CryptoNote
         if (serializer.type() == ISerializer::OUTPUT)
         {
             BinaryVariantTagGetter tagGetter;
-            uint8_t tag = boost::apply_visitor(tagGetter, output);
+            uint8_t tag = std::visit(tagGetter, output);
             serializer.binary(&tag, sizeof(tag), "type");
 
             VariantSerializer visitor(serializer, "data");
-            boost::apply_visitor(visitor, output);
+            std::visit(visitor, output);
         }
         else
         {

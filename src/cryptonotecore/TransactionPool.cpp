@@ -10,6 +10,10 @@
 #include "common/TransactionExtra.h"
 #include "common/int-util.h"
 
+#include <functional>
+#include <tuple>
+#include <utility>
+
 namespace CryptoNote
 {
     /* Is the left hand side preferred over the right hand side? */

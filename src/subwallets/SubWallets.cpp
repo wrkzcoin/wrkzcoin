@@ -4,6 +4,7 @@
 // Please see the included LICENSE file for more information.
 
 //////////////////////////////////
+#include <cstdio>
 #include <subwallets/SubWallets.h>
 //////////////////////////////////
 

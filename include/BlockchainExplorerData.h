@@ -10,7 +10,7 @@
 #include "CryptoTypes.h"
 
 #include <array>
-#include <boost/variant.hpp>
+#include <variant>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -48,7 +48,7 @@ namespace CryptoNote
         TransactionOutputReferenceDetails output;
     };
 
-    typedef boost::variant<BaseInputDetails, KeyInputDetails> TransactionInputDetails;
+    typedef std::variant<BaseInputDetails, KeyInputDetails> TransactionInputDetails;
 
     struct TransactionExtraDetails
     {

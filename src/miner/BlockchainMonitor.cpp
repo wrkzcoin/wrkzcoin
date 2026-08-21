@@ -6,6 +6,7 @@
 #include "BlockchainMonitor.h"
 
 #include "common/StringTools.h"
+#include "httplib.h"
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
 #include "rpc/JsonRpc.h"
 

@@ -15,6 +15,7 @@
 
 #include <boost/scope_exit.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <cmath>
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>

@@ -13,12 +13,16 @@
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <cstdio>
+#include <deque>
+#include <tuple>
 #include <utilities/ParseExtra.h>
 #include <cryptonotecore/BlockchainStorage.h>
 #include <cryptonotecore/CryptoNoteBasicImpl.h>
 #include <cryptonotecore/DatabaseBlockchainCache.h>
 #include <cstdlib>
 #include <ctime>
+#include <variant>
 
 namespace CryptoNote
 {
@@ -308,13 +312,13 @@ namespace CryptoNote
             size_t globalKeyOutputIndex = 0;
             for (size_t i = 0; i < txInfo.outputs.size(); ++i)
             {
-                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                if (!std::holds_alternative<KeyOutput>(txInfo.outputs[i]))
                 {
                     continue;
                 }
 
                 WalletTypes::KeyOutput output;
-                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.key = std::get<KeyOutput>(txInfo.outputs[i]).key;
                 output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
 
                 if (globalKeyOutputIndex < txInfo.globalIndexes.size())
@@ -339,13 +343,13 @@ namespace CryptoNote
             size_t globalKeyOutputIndex = 0;
             for (size_t i = 0; i < txInfo.outputs.size(); ++i)
             {
-                if (txInfo.outputs[i].type() != typeid(KeyOutput))
+                if (!std::holds_alternative<KeyOutput>(txInfo.outputs[i]))
                 {
                     continue;
                 }
 
                 WalletTypes::KeyOutput output;
-                output.key = boost::get<KeyOutput>(txInfo.outputs[i]).key;
+                output.key = std::get<KeyOutput>(txInfo.outputs[i]).key;
                 output.amount = i < txInfo.outputAmounts.size() ? txInfo.outputAmounts[i] : 0;
 
                 if (globalKeyOutputIndex < txInfo.globalIndexes.size())
@@ -1212,7 +1216,7 @@ namespace CryptoNote
             poi.transactionIndex = transactionBlockIndex;
             poi.outputIndex = outputCount++;
 
-            if (output.target.type() == typeid(KeyOutput))
+            if (std::holds_alternative<KeyOutput>(output.target))
             {
                 keyIndexes[output.amount].push_back(poi);
                 auto outputCountForAmount = updateKeyOutputCount(output.amount, 1);
@@ -1228,7 +1232,7 @@ namespace CryptoNote
                 transactionCacheInfo.amountToKeyIndexes[output.amount].push_back(globalIndex);
 
                 KeyOutputInfo outputInfo;
-                outputInfo.publicKey = boost::get<KeyOutput>(output.target).key;
+                outputInfo.publicKey = std::get<KeyOutput>(output.target).key;
                 outputInfo.transactionHash = transactionCacheInfo.transactionHash;
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
@@ -1239,9 +1243,9 @@ namespace CryptoNote
 
         for (const auto &input : tx.inputs)
         {
-            if (input.type() == typeid(KeyInput))
+            if (std::holds_alternative<KeyInput>(input))
             {
-                transactionCacheInfo.keyInputs.push_back(boost::get<KeyInput>(input));
+                transactionCacheInfo.keyInputs.push_back(std::get<KeyInput>(input));
             }
         }
 
@@ -1517,8 +1521,8 @@ namespace CryptoNote
                 }
 
                 auto &output = info.outputs[index.outputIndex];
-                assert(output.type() == typeid(KeyOutput));
-                publicKeys.push_back(boost::get<KeyOutput>(output).key);
+                assert(std::holds_alternative<KeyOutput>(output));
+                publicKeys.push_back(std::get<KeyOutput>(output).key);
 
                 return ExtractOutputKeysResult::SUCCESS;
             });

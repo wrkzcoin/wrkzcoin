@@ -7,6 +7,7 @@
 #include <CryptoNote.h>
 #include <errors/Errors.h>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace Utilities

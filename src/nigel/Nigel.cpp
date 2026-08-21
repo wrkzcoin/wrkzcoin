@@ -5,6 +5,8 @@
 
 ////////////////////////
 #include <nigel/Nigel.h>
+
+#include "httplib.h"
 ////////////////////////
 
 #include <common/CryptoNoteTools.h>
@@ -12,6 +14,7 @@
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
+#include <sstream>
 #include <utilities/Utilities.h>
 #include <version.h>
 
@@ -46,6 +49,13 @@ inline std::string daemonBaseUrl(const std::string &host, const uint16_t port, c
     const bool needsIpv6Brackets = hostname.find(':') != std::string::npos && (hostname.empty() || hostname.front() != '[');
     const std::string formattedHost = needsIpv6Brackets ? ("[" + hostname + "]") : hostname;
     return std::string(ssl ? "https://" : "http://") + formattedHost + portStr + basePath;
+}
+
+/* Nigel stores its request headers without the httplib type so that Nigel.h
+   does not need the full httplib.h; build the real Headers at the call site. */
+inline httplib::Headers toHeaders(const std::vector<std::pair<std::string, std::string>> &headers)
+{
+    return httplib::Headers(headers.begin(), headers.end());
 }
 
 inline std::shared_ptr<httplib::Client> getClient(
@@ -229,6 +239,84 @@ inline httplib::Result emscriptenRequestJson(
 /* Constructors / Destructors */
 ////////////////////////////////
 
+std::optional<nlohmann::json>
+    Nigel::parseJSONResponse(const httplib::Result &res, const std::string &failMessage, const bool verifyStatus) const
+{
+    if (res)
+    {
+        if (res->status == 200)
+        {
+            try
+            {
+                nlohmann::json j = nlohmann::json::parse(res->body);
+
+                Logger::logger.log(
+                    "Got response from daemon: " + j.dump(),
+                    Logger::TRACE,
+                    { Logger::SYNC, Logger::DAEMON }
+                );
+
+                if (verifyStatus)
+                {
+                    const std::string status = j.at("status").get<std::string>();
+
+                    if (status != "OK")
+                    {
+                        Logger::logger.log(
+                            failMessage + " - Expected status \"OK\", got " + status,
+                            Logger::INFO,
+                            { Logger::SYNC, Logger::DAEMON }
+                        );
+
+                        return std::nullopt;
+                    }
+                }
+
+                return j;
+            }
+            catch (const nlohmann::json::exception &e)
+            {
+                Logger::logger.log(
+                    failMessage + ": " + std::string(e.what()),
+                    Logger::INFO,
+                    { Logger::SYNC, Logger::DAEMON }
+                );
+
+                return std::nullopt;
+            }
+        }
+        else
+        {
+            std::stringstream stream;
+
+            stream << failMessage << " - got status code " << res->status;
+
+            if (res->body != "")
+            {
+                stream << ", body: " << res->body;
+            }
+
+            Logger::logger.log(
+                stream.str(),
+                Logger::INFO,
+                { Logger::SYNC, Logger::DAEMON }
+            );
+
+            return std::nullopt;
+        }
+    }
+    else
+    {
+        Logger::logger.log(
+            failMessage + " - failed to open socket or timed out.",
+            Logger::INFO,
+            { Logger::SYNC, Logger::DAEMON }
+        );
+
+        return std::nullopt;
+    }
+}
+
 Nigel::Nigel(const std::string daemonHost, const uint16_t daemonPort, const bool daemonSSL):
     Nigel(daemonHost, daemonPort, daemonSSL, std::chrono::seconds(10))
 {
@@ -331,7 +419,7 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
         "POST",
         &requestBody);
 #else
-    const auto res = m_nodeClient->Post(endpoint, m_requestHeaders, requestBody, "application/json");
+    const auto res = m_nodeClient->Post(endpoint, toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
     /* Daemon doesn't support /getrawblocks, or pruned/raw-block path failed:
@@ -484,7 +572,7 @@ bool Nigel::getDaemonInfo()
         "GET",
         nullptr);
 #else
-    auto res = m_nodeClient->Get("/info", m_requestHeaders);
+    auto res = m_nodeClient->Get("/info", toHeaders(m_requestHeaders));
 #endif
 
     const auto parsedResponse = tryParseJSONResponse(res, "Failed to update daemon info", [this](const nlohmann::json j) {
@@ -590,7 +678,7 @@ bool Nigel::getTransactionsStatus(
         "POST",
         &requestBody);
 #else
-    auto res = m_nodeClient->Post("/get_transactions_status", m_requestHeaders, requestBody, "application/json");
+    auto res = m_nodeClient->Post("/get_transactions_status", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
     const auto parsedResponse = tryParseJSONResponse(res, "Failed to get transactions status", [&](const nlohmann::json j) {
@@ -631,7 +719,7 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
             "POST",
             &requestBody);
 #else
-        auto res = m_nodeClient->Post("/randomOutputs", m_requestHeaders, requestBody, "application/json");
+        auto res = m_nodeClient->Post("/randomOutputs", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
         const auto parsedResponse = tryParseJSONResponse(res, "Failed to get random outs", [](const nlohmann::json j) {
@@ -658,7 +746,7 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
             "POST",
             &requestBody);
 #else
-        auto res = m_nodeClient->Post("/getrandom_outs", m_requestHeaders, requestBody, "application/json");
+        auto res = m_nodeClient->Post("/getrandom_outs", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
         const auto parsedResponse = tryParseJSONResponse(res, "Failed to get random outs", [](const nlohmann::json j) {
@@ -691,7 +779,7 @@ std::tuple<bool, bool, std::string> Nigel::sendTransaction(const CryptoNote::Tra
         "POST",
         &requestBody);
 #else
-    auto res = m_nodeClient->Post("/sendrawtransaction", m_requestHeaders, requestBody, "application/json");
+    auto res = m_nodeClient->Post("/sendrawtransaction", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
     bool success = false;
@@ -740,7 +828,7 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
         "POST",
         &requestBody);
 #else
-    auto res = m_nodeClient->Post("/get_global_indexes_for_range", m_requestHeaders, requestBody, "application/json");
+    auto res = m_nodeClient->Post("/get_global_indexes_for_range", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>> result;

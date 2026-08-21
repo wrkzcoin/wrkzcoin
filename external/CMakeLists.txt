@@ -3,6 +3,11 @@ set(UPNPC_BUILD_SHARED OFF CACHE BOOL "Build shared library")
 set(UPNPC_BUILD_TESTS OFF CACHE BOOL "Build test executables")
 set(WITH_MD_LIBRARY OFF CACHE BOOL "Code Generation for static library")
 
+# CMake >= 4.0 refuses cmake_minimum_required() < 3.5, which the bundled
+# argon2 (2.6), cryptopp (2.8.6) and libzmq (3.0.2...) still declare. Treat
+# them as 3.5-era projects; older CMake ignores this variable.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 # Disable warnings
 if (NOT MSVC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -w -Wno-everything")
@@ -134,8 +139,8 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     unset(_WRKZ_PREV_WITH_LIBBSD)
 endif ()
 
-# ── zstd + RocksDB (daemon-only, skip for Emscripten WASM builds) ────────────
-if (NOT EMSCRIPTEN)
+# ── zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) ──
+if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     # zstd (new layout): CMake entrypoint lives under build/cmake
     set(ZSTD_BUILD_STATIC ON CACHE BOOL "Build static zstd" FORCE)
     set(ZSTD_BUILD_SHARED OFF CACHE BOOL "Disable shared zstd" FORCE)
@@ -146,9 +151,9 @@ if (NOT EMSCRIPTEN)
     set(WITH_SNAPPY OFF CACHE BOOL "Disable Snappy in RocksDB" FORCE)
 
     if (MSVC)
-        add_subdirectory(rocksDB EXCLUDE_FROM_ALL)
+        add_subdirectory(rocksdb EXCLUDE_FROM_ALL)
         set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
-    elseif (NOT MSVC)
+    else ()
         set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
             set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
@@ -198,12 +203,12 @@ if (NOT EMSCRIPTEN)
         unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)
     endif ()
 else ()
-    # Emscripten: only set folder property for targets that exist
+    # No daemon dependencies built: only set the folder property for the targets that exist
     set_property(TARGET upnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
 endif ()
 
 if (MSVC)
     set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
-elseif (NOT MSVC)
+else ()
     set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
 endif ()

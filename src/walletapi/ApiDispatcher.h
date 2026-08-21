@@ -5,9 +5,11 @@
 
 #pragma once
 
-#include "httplib.h"
+#include "httplib_fwd.h"
+#include "json.hpp"
 
 #include <cryptopp/modes.h>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <walletbackend/WalletBackend.h>
@@ -61,6 +63,8 @@ class ApiDispatcher
         const std::string rpcPassword,
         std::string corsHeader,
         unsigned int walletSyncThreads = std::thread::hardware_concurrency());
+
+    ~ApiDispatcher();
 
     /////////////////////////////
     /* Public member functions */
@@ -347,10 +351,10 @@ class ApiDispatcher
     std::shared_ptr<WalletBackend> m_walletBackend = nullptr;
 
     /* Our IPv4 server instance */
-    httplib::Server m_server;
+    std::unique_ptr<httplib::Server> m_server;
 
     /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
-    httplib::Server m_ipv6Server;
+    std::unique_ptr<httplib::Server> m_ipv6Server;
 
     /* The --rpc-password hashed with pbkdf2 */
     std::string m_hashedPassword;

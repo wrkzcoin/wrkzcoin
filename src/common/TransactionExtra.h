@@ -8,7 +8,7 @@
 
 #include <CryptoNote.h>
 #include <algorithm>
-#include <boost/variant.hpp>
+#include <variant>
 #include <vector>
 
 #define TX_EXTRA_PADDING_MAX_COUNT 255
@@ -49,7 +49,7 @@ namespace CryptoNote
     //   varint tag;
     //   varint size;
     //   varint data[];
-    typedef boost::variant<
+    typedef std::variant<
         TransactionExtraPadding,
         TransactionExtraPublicKey,
         TransactionExtraNonce,
@@ -60,7 +60,7 @@ namespace CryptoNote
     bool findTransactionExtraFieldByType(const std::vector<TransactionExtraField> &tx_extra_fields, T &field)
     {
         auto it = std::find_if(tx_extra_fields.begin(), tx_extra_fields.end(), [](const TransactionExtraField &f) {
-            return typeid(T) == f.type();
+            return std::holds_alternative<T>(f);
         });
 
         if (tx_extra_fields.end() == it)
@@ -68,7 +68,7 @@ namespace CryptoNote
             return false;
         }
 
-        field = boost::get<T>(*it);
+        field = std::get<T>(*it);
         return true;
     }
 

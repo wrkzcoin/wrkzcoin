@@ -7,6 +7,7 @@
 
 /////////////////////////
 #include "MinerManager.h"
+#include "httplib.h"
 /////////////////////////
 
 #include <common/CryptoNoteTools.h>

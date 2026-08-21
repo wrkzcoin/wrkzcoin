@@ -15,9 +15,13 @@
 #include <cxxopts.hpp>
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <fstream>
+#include <functional>
 #include <iomanip>
+#include <iostream>
 #include <logging/ILogger.h>
+#include <regex>
 
 namespace DaemonConfig
 {

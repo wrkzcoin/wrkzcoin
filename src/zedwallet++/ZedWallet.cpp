@@ -5,6 +5,7 @@
 
 #include <common/SignalHandler.h>
 #include <config/CliHeader.h>
+#include <fstream>
 #include <iostream>
 #include <utilities/ColouredMsg.h>
 #include <zedwallet++/Menu.h>

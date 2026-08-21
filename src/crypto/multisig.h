@@ -8,6 +8,8 @@
 
 #include "crypto.h"
 
+#include <tuple>
+
 namespace Crypto
 {
     namespace Multisig

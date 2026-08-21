@@ -4,10 +4,14 @@
 //
 // Please see the included LICENSE file for more information.
 
+#include "httplib.h"
 #include "version.h"
 #include "JsonHelper.h"
 
+#include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
+#include <boost/lexical_cast.hpp>
+#include <cmath>
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
 #include <cryptonotecore/Currency.h>

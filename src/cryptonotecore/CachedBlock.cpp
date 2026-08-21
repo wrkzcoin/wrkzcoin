@@ -11,6 +11,7 @@
 
 #include <common/Varint.h>
 #include <config/CryptoNoteConfig.h>
+#include <variant>
 
 using namespace Crypto;
 using namespace CryptoNote;
@@ -192,13 +193,13 @@ uint32_t CachedBlock::getBlockIndex() const
         else
         {
             const auto &in = block.baseTransaction.inputs[0];
-            if (in.type() != typeid(BaseInput))
+            if (!std::holds_alternative<BaseInput>(in))
             {
                 blockIndex = 0;
             }
             else
             {
-                blockIndex = boost::get<BaseInput>(in).blockIndex;
+                blockIndex = std::get<BaseInput>(in).blockIndex;
             }
         }
     }

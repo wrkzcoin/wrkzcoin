@@ -12,6 +12,7 @@
 #include "cryptonotecore/CryptoNoteBasic.h"
 #include "cryptonotecore/Difficulty.h"
 #include "cryptonoteprotocol/CryptoNoteProtocolDefinitions.h"
+#include "json.hpp"
 #include "serialization/BlockchainExplorerDataSerialization.h"
 #include "serialization/SerializationOverloads.h"
 

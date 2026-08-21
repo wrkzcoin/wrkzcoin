@@ -8,6 +8,7 @@
 #include <atomic>
 #include <nigel/Nigel.h>
 #include <subwallets/SubWallets.h>
+#include <tuple>
 #include <utilities/ThreadSafeDeque.h>
 #include <vector>
 #include <walletbackend/SynchronizationStatus.h>

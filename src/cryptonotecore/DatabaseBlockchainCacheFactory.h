@@ -8,6 +8,7 @@
 
 #include "IBlockchainCacheFactory.h"
 
+#include <cstdint>
 #include <logging/LoggerMessage.h>
 
 namespace CryptoNote
