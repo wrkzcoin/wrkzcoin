@@ -1462,13 +1462,20 @@ namespace CryptoNote
         vote.signature = arg.signature;
 
         auto &core = dynamic_cast<Core &>(m_core);
-        const bool assembled = core.addChainLockVote(vote);
+        const auto result = core.addChainLockVote(vote);
 
-        // Relay valid vote to all peers (flood).
+        // Relay only votes that were NEW and VALID for us. Rejected (bad sig / unknown MN / out of
+        // window) and duplicate votes are dropped here — relaying them would let a single bad vote
+        // flood the network and lets any cycle of peers bounce the same vote around forever.
+        if (result != MasternodeVoteResult::Added && result != MasternodeVoteResult::Assembled)
+        {
+            return 1;
+        }
+
         const auto buf = LevinProtocol::encode(arg);
         m_p2p->externalRelayNotifyToAll(NOTIFY_CHAINLOCK_VOTE::ID, buf, &context.m_connection_id);
 
-        if (assembled)
+        if (result == MasternodeVoteResult::Assembled)
         {
             // Broadcast the assembled ChainLock.
             const auto clOpt = core.getChainLock(arg.height);
@@ -1554,42 +1561,41 @@ namespace CryptoNote
         vote.signature = arg.signature;
 
         auto &core = dynamic_cast<Core &>(m_core);
-        const bool assembled = core.addInstantSendVote(vote);
+        const auto result = core.addInstantSendVote(vote);
 
-        // Relay valid vote.
+        // Relay only new, valid votes (see handle_notify_chainlock_vote).
+        if (result != MasternodeVoteResult::Added && result != MasternodeVoteResult::Assembled)
+        {
+            return 1;
+        }
+
         const auto buf = LevinProtocol::encode(arg);
         m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_VOTE::ID, buf, &context.m_connection_id);
 
-        if (assembled)
+        if (result == MasternodeVoteResult::Assembled)
         {
-            // Get the lock and broadcast it.
-            const auto [found, txData] = m_core.getPoolTransaction(arg.txHash);
-            if (found)
+            // Get the assembled lock and broadcast it.
+            const auto lockOpt = core.getInstantSendLockByTxHash(arg.txHash);
+            if (lockOpt.has_value())
             {
-                const auto rawTx = Core::getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
                 NOTIFY_INSTANTSEND_LOCK::request lockReq;
                 lockReq.txHash = arg.txHash;
-                for (const auto &input : rawTx.keyInputs)
+                for (const auto &keyImage : lockOpt->keyImages)
                 {
                     BinaryArray ki(sizeof(Crypto::KeyImage));
-                    std::copy_n(input.keyImage.data, sizeof(Crypto::KeyImage), ki.data());
+                    std::copy_n(keyImage.data, sizeof(Crypto::KeyImage), ki.data());
                     lockReq.keyImages.push_back(std::move(ki));
-
-                    const auto lockOpt = core.getInstantSendLock(input.keyImage);
-                    if (lockOpt.has_value() && lockReq.votes.empty())
-                    {
-                        for (const auto &v : lockOpt->votes)
-                        {
-                            BinaryArray entry(sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Signature));
-                            size_t offset = 0;
-                            std::copy_n(v.masternodeId.data, sizeof(Crypto::Hash), entry.data() + offset);
-                            offset += sizeof(Crypto::Hash);
-                            std::copy_n(v.signingKey.data, sizeof(Crypto::PublicKey), entry.data() + offset);
-                            offset += sizeof(Crypto::PublicKey);
-                            std::copy_n(v.signature.data, sizeof(Crypto::Signature), entry.data() + offset);
-                            lockReq.votes.push_back(std::move(entry));
-                        }
-                    }
+                }
+                for (const auto &v : lockOpt->votes)
+                {
+                    BinaryArray entry(sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Signature));
+                    size_t offset = 0;
+                    std::copy_n(v.masternodeId.data, sizeof(Crypto::Hash), entry.data() + offset);
+                    offset += sizeof(Crypto::Hash);
+                    std::copy_n(v.signingKey.data, sizeof(Crypto::PublicKey), entry.data() + offset);
+                    offset += sizeof(Crypto::PublicKey);
+                    std::copy_n(v.signature.data, sizeof(Crypto::Signature), entry.data() + offset);
+                    lockReq.votes.push_back(std::move(entry));
                 }
                 const auto lockBuf = LevinProtocol::encode(lockReq);
                 m_p2p->externalRelayNotifyToAll(NOTIFY_INSTANTSEND_LOCK::ID, lockBuf, nullptr);

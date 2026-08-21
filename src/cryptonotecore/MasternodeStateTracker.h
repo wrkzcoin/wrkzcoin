@@ -56,6 +56,8 @@ namespace CryptoNote
         void registerMasternode(
             const Crypto::Hash &masternodeId,
             const Crypto::PublicKey &payoutKey,
+            const Crypto::PublicKey &payoutViewKey,
+            const Crypto::PublicKey &operatorKey,
             bool bonded,
             uint64_t bondAmount,
             const Crypto::Hash &registrationTokenId,
@@ -80,13 +82,16 @@ namespace CryptoNote
 
         Status getStatus(const Crypto::Hash &masternodeId) const;
 
-        void recordHealthSample(const Crypto::Hash &masternodeId, uint32_t height, bool healthy);
+        /* `height` is the inclusion (block) height, `payloadHeight` the creation height carried by
+         * the signed payload (anti-replay counter). */
+        void recordHealthSample(const Crypto::Hash &masternodeId, uint32_t height, bool healthy, uint32_t payloadHeight);
 
         void recordAttestationSample(
             const Crypto::Hash &masternodeId,
             uint32_t height,
             const Crypto::PublicKey &verifierKey,
-            bool healthy);
+            bool healthy,
+            uint32_t payloadHeight);
 
         uint64_t getHealthPercent(const Crypto::Hash &masternodeId, uint32_t currentHeight) const;
 
@@ -127,6 +132,30 @@ namespace CryptoNote
         bool hasMasternode(const Crypto::Hash &masternodeId) const;
 
         bool getPayoutKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &payoutKey) const;
+
+        /* Payout address = (payoutKey = public spend key, payoutViewKey = public view key). */
+        bool getPayoutAddressKeys(
+            const Crypto::Hash &masternodeId,
+            Crypto::PublicKey &payoutSpendKey,
+            Crypto::PublicKey &payoutViewKey) const;
+
+        /* Operator key: signs heartbeats (lives on the masternode server; the payout/owner key
+         * that signs lifecycle transactions never has to leave the wallet). */
+        bool getOperatorKey(const Crypto::Hash &masternodeId, Crypto::PublicKey &operatorKey) const;
+
+        /* Creation height carried by the last accepted heartbeat payload (0 if none). */
+        uint32_t getLastHeartbeatPayloadHeight(const Crypto::Hash &masternodeId) const;
+
+        /* Creation height carried by the last accepted lifecycle/update payload (0 if none). */
+        uint32_t getLastLifecycleHeight(const Crypto::Hash &masternodeId) const;
+
+        void recordLifecycleHeight(const Crypto::Hash &masternodeId, uint32_t payloadHeight);
+
+        /* Creation height carried by the last accepted attestation payload from `verifierKey`
+         * still inside the attestation window (0 if none). */
+        uint32_t getLastAttestationPayloadHeight(
+            const Crypto::Hash &masternodeId,
+            const Crypto::PublicKey &verifierKey) const;
 
         bool hasUsedRegistrationToken(const Crypto::Hash &tokenId) const;
 
@@ -172,6 +201,7 @@ namespace CryptoNote
             uint32_t height;
             Crypto::PublicKey verifierKey;
             bool healthy;
+            uint32_t payloadHeight = 0;
         };
 
         struct RewardSample
@@ -200,8 +230,15 @@ namespace CryptoNote
             std::optional<Crypto::Hash> endpointCommitment;
             std::optional<uint32_t> lastEndpointUpdateHeight;
             Crypto::PublicKey payoutKey = Crypto::PublicKey {{0}};
+            Crypto::PublicKey payoutViewKey = Crypto::PublicKey {{0}};
+            Crypto::PublicKey operatorKey = Crypto::PublicKey {{0}};
             bool hasSigningKey = false;
             Crypto::PublicKey signingKey = Crypto::PublicKey {{0}};
+            /* Creation height of the last accepted Activate/Deactivate/Penalize/Revoke/UpdateEndpoint
+             * payload. Later payloads must carry a strictly greater height (anti-replay). */
+            uint32_t lastLifecycleHeight = 0;
+            /* Creation height of the last accepted heartbeat payload (anti-replay). */
+            uint32_t lastHeartbeatPayloadHeight = 0;
         };
 
         static bool hashLess(const Crypto::Hash &lhs, const Crypto::Hash &rhs);

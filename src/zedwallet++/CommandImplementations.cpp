@@ -23,6 +23,7 @@
 #include <crypto/crypto.h>
 #include <crypto/hash.h>
 #include <crypto/random.h>
+#include <cryptonotecore/MasternodeTx.h>
 #include <common/StringTools.h>
 #include <array>
 #include <errors/ValidateParameters.h>
@@ -1200,6 +1201,15 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
         return;
     }
 
+    /* The payout *address* (public spend + public view key) is committed on-chain so that the
+     * coinbase can pay a standard one-time output this wallet will detect and spend. */
+    Crypto::PublicKey publicViewKey;
+    if (!Crypto::secret_key_to_public_key(walletBackend->getPrivateViewKey(), publicViewKey))
+    {
+        std::cout << WarningMsg("Failed to derive the wallet public view key.") << std::endl;
+        return;
+    }
+
     const uint64_t minCollateralAmount = CryptoNote::parameters::MASTERNODE_COLLATERAL_LOCK_AMOUNT;
     const auto [inputsError, spendableInputs] = walletBackend->getSpendableInputs(primaryAddress);
     if (inputsError)
@@ -1266,54 +1276,27 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
     Crypto::SecretKey signingPrivateKey;
     Crypto::generate_keys(signingPublicKey, signingPrivateKey);
 
-    std::vector<uint8_t> unsignedPayload;
-    unsignedPayload.reserve(
-        4 + 1 + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
-        + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey)
-        + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) /* signingKey */);
-    unsignedPayload.push_back('M');
-    unsignedPayload.push_back('N');
-    unsignedPayload.push_back('0');
-    unsignedPayload.push_back('1');
-    unsignedPayload.push_back(static_cast<uint8_t>(1)); // Register
-    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        publicSpendKey.data,
-        publicSpendKey.data + sizeof(publicSpendKey.data));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        registrationTokenId.data,
-        registrationTokenId.data + sizeof(registrationTokenId.data));
-    unsignedPayload.push_back(static_cast<uint8_t>(expiresAtHeight & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 8) & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 16) & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((expiresAtHeight >> 24) & 0xff));
-    for (size_t i = 0; i < sizeof(uint64_t); ++i)
-    {
-        unsignedPayload.push_back(static_cast<uint8_t>((collateralAmount >> (8 * i)) & 0xff));
-    }
-    unsignedPayload.push_back(static_cast<uint8_t>(collateralGlobalOutputIndex & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 8) & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 16) & 0xff));
-    unsignedPayload.push_back(static_cast<uint8_t>((collateralGlobalOutputIndex >> 24) & 0xff));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        collateralKeyImage.data,
-        collateralKeyImage.data + sizeof(collateralKeyImage.data));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        collateralOutputKey.data,
-        collateralOutputKey.data + sizeof(collateralOutputKey.data));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        endpointCommitment.data,
-        endpointCommitment.data + sizeof(endpointCommitment.data));
-    // v2: append signing public key to unsigned payload
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        signingPublicKey.data,
-        signingPublicKey.data + sizeof(signingPublicKey.data));
+    // Generate a dedicated operator keypair for heartbeats (--mn-operator-key), so the wallet's
+    // spend key never has to be copied to the masternode server.
+    Crypto::PublicKey operatorPublicKey;
+    Crypto::SecretKey operatorPrivateKey;
+    Crypto::generate_keys(operatorPublicKey, operatorPrivateKey);
+
+    /* Register payload (v4) — layout lives in cryptonotecore/MasternodeTx.h. */
+    CryptoNote::MasternodeRegisterFields registerFields;
+    registerFields.masternodeId = masternodeId;
+    registerFields.payoutKey = publicSpendKey;
+    registerFields.payoutViewKey = publicViewKey;
+    registerFields.registrationTokenId = registrationTokenId;
+    registerFields.registrationExpiresAtHeight = expiresAtHeight;
+    registerFields.collateralAmount = collateralAmount;
+    registerFields.collateralGlobalOutputIndex = collateralGlobalOutputIndex;
+    registerFields.collateralKeyImage = collateralKeyImage;
+    registerFields.collateralOutputKey = collateralOutputKey;
+    registerFields.endpointCommitment = endpointCommitment;
+    registerFields.signingKey = signingPublicKey;
+    registerFields.operatorKey = operatorPublicKey;
+    const std::vector<uint8_t> unsignedPayload = CryptoNote::buildMasternodeRegisterUnsignedPayload(registerFields);
 
     Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
     Crypto::Signature signature;
@@ -1340,14 +1323,21 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
     const uint64_t registrationOutputAmount = WalletConfig::minimumSend;
     const uint64_t unlockedBalance = walletBackend->getTotalUnlockedBalance();
 
-    if (unlockedBalance < registrationOutputAmount)
+    /* The Register tx must be funded WITHOUT touching the collateral output: consensus rejects a
+     * registration that spends its own collateral. Make sure the wallet has some other unlocked
+     * funds (a tiny separate output is enough) before we even try to build the transaction. */
+    const uint64_t nonCollateralBalance = unlockedBalance > collateralAmount ? unlockedBalance - collateralAmount : 0;
+    if (nonCollateralBalance < registrationOutputAmount + WalletConfig::minimumFee)
     {
-        std::cout << WarningMsg("Insufficient unlocked balance for masternode registration.") << std::endl;
-        std::cout << InformationMsg("Required at least: ")
-                  << SuccessMsg(Utilities::formatAmount(registrationOutputAmount))
+        std::cout << WarningMsg("Insufficient unlocked balance (excluding the collateral output) for masternode registration.")
                   << std::endl;
-        std::cout << InformationMsg("Unlocked balance: ")
-                  << WarningMsg(Utilities::formatAmount(unlockedBalance))
+        std::cout << InformationMsg("The collateral output itself must NOT be spent by the registration transaction.")
+                  << std::endl;
+        std::cout << InformationMsg("Required at least (besides the collateral): ")
+                  << SuccessMsg(Utilities::formatAmount(registrationOutputAmount + WalletConfig::minimumFee))
+                  << std::endl;
+        std::cout << InformationMsg("Unlocked balance besides the collateral: ")
+                  << WarningMsg(Utilities::formatAmount(nonCollateralBalance))
                   << std::endl;
         return;
     }
@@ -1388,6 +1378,21 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
         return;
     }
 
+    /* Belt and braces: automatic input selection must not have picked the collateral output. */
+    for (const auto &usedInput : preparedTransaction.inputs)
+    {
+        if (usedInput.input.keyImage == collateralKeyImage)
+        {
+            std::cout << WarningMsg("The prepared registration transaction would spend the collateral output itself.")
+                      << std::endl;
+            std::cout << InformationMsg("Send a small separate amount to this wallet (or run ")
+                      << SuccessMsg("optimize")
+                      << InformationMsg(" so a non-collateral output exists), wait for it to unlock, then retry.")
+                      << std::endl;
+            return;
+        }
+    }
+
     std::cout << InformationMsg("Masternode ID: ") << SuccessMsg(Common::podToHex(masternodeId)) << std::endl;
     std::cout << InformationMsg("Registration token ID: ") << SuccessMsg(Common::podToHex(registrationTokenId))
               << std::endl;
@@ -1401,11 +1406,16 @@ void masternodeRegister(const std::shared_ptr<WalletBackend> walletBackend, cons
               << SuccessMsg(Common::podToHex(collateralKeyImage)) << std::endl;
     std::cout << InformationMsg("Endpoint commitment: ")
               << SuccessMsg(Common::podToHex(endpointCommitment)) << std::endl;
-    std::cout << InformationMsg("Signing public key:  ")
+    std::cout << InformationMsg("Signing public key:   ")
               << SuccessMsg(Common::podToHex(signingPublicKey)) << std::endl;
-    std::cout << WarningMsg("Signing private key: ") << WarningMsg(Common::podToHex(signingPrivateKey)) << std::endl;
-    std::cout << WarningMsg("IMPORTANT: Save the signing private key above. Pass it to your daemon with")  << std::endl;
-    std::cout << WarningMsg("           --mn-signing-key=<hex> to enable ChainLock/InstantSend signing.") << std::endl;
+    std::cout << WarningMsg("Signing private key:  ") << WarningMsg(Common::podToHex(signingPrivateKey)) << std::endl;
+    std::cout << InformationMsg("Operator public key:  ")
+              << SuccessMsg(Common::podToHex(operatorPublicKey)) << std::endl;
+    std::cout << WarningMsg("Operator private key: ") << WarningMsg(Common::podToHex(operatorPrivateKey)) << std::endl;
+    std::cout << WarningMsg("IMPORTANT: Save both private keys above. Pass them to your daemon with") << std::endl;
+    std::cout << WarningMsg("           --mn-signing-key=<hex>  (ChainLock/InstantSend voting) and") << std::endl;
+    std::cout << WarningMsg("           --mn-operator-key=<hex> (automatic heartbeats).") << std::endl;
+    std::cout << WarningMsg("           Your wallet spend key is NOT needed on the server.") << std::endl;
     std::cout << InformationMsg("This operation binds and locks the selected collateral output in consensus.")
               << std::endl;
     std::cout << WarningMsg("Recommendation: use a dedicated wallet for masternode registration.")
@@ -1502,19 +1512,11 @@ void masternodeAttest(const std::shared_ptr<WalletBackend> walletBackend, const 
         return;
     }
 
-    std::vector<uint8_t> unsignedPayload;
-    unsignedPayload.reserve(4 + 1 + sizeof(Crypto::Hash) + sizeof(Crypto::PublicKey) + 1);
-    unsignedPayload.push_back('M');
-    unsignedPayload.push_back('N');
-    unsignedPayload.push_back('0');
-    unsignedPayload.push_back('1');
-    unsignedPayload.push_back(static_cast<uint8_t>(7)); // Attest
-    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
-    unsignedPayload.insert(
-        unsignedPayload.end(),
-        verifierPublicKey.data,
-        verifierPublicKey.data + sizeof(verifierPublicKey.data));
-    unsignedPayload.push_back(healthy ? 1 : 0);
+    /* Attest payload: MN01 | 0x07 | masternodeId | height | verifierKey | healthy — the creation
+     * height (network block count == next block height) makes the payload single-use. */
+    const uint32_t attestHeight = static_cast<uint32_t>(walletBackend->getStatus().networkBlockCount);
+    const std::vector<uint8_t> unsignedPayload =
+        CryptoNote::buildMasternodeAttestUnsignedPayload(masternodeId, attestHeight, verifierPublicKey, healthy);
 
     Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
     Crypto::Signature signature;
@@ -1591,8 +1593,9 @@ void masternodeAttest(const std::shared_ptr<WalletBackend> walletBackend, const 
 }
 
 /* Shared implementation for Activate (type=2), Deactivate (type=3), and Revoke (type=5).
- * Each action TX payload is: MN01 | typeId | masternodeId[32] (37 bytes unsigned),
- * signed with the wallet's primary spend key (the MN payout key). */
+ * Each action TX payload is: MN01 | typeId | masternodeId[32] | height[4] (41 bytes unsigned),
+ * signed with the wallet's primary spend key (the MN payout key). The creation height makes the
+ * signed payload single-use (consensus rejects stale / replayed lifecycle payloads). */
 static void masternodeLifecycleAction(
     const std::shared_ptr<WalletBackend> walletBackend,
     const std::string &commandInput,
@@ -1644,15 +1647,10 @@ static void masternodeLifecycleAction(
         return;
     }
 
-    // Build action payload: MN01 | typeId | masternodeId[32]
-    std::vector<uint8_t> unsignedPayload;
-    unsignedPayload.reserve(4 + 1 + sizeof(Crypto::Hash));
-    unsignedPayload.push_back('M');
-    unsignedPayload.push_back('N');
-    unsignedPayload.push_back('0');
-    unsignedPayload.push_back('1');
-    unsignedPayload.push_back(typeId);
-    unsignedPayload.insert(unsignedPayload.end(), masternodeId.data, masternodeId.data + sizeof(masternodeId.data));
+    // Build action payload: MN01 | typeId | masternodeId[32] | height[4]
+    const uint32_t actionHeight = static_cast<uint32_t>(walletBackend->getStatus().networkBlockCount);
+    const std::vector<uint8_t> unsignedPayload = CryptoNote::buildMasternodeActionUnsignedPayload(
+        static_cast<CryptoNote::MasternodeTxType>(typeId), masternodeId, actionHeight);
 
     Crypto::Hash signingHash = Crypto::cn_fast_hash(unsignedPayload.data(), unsignedPayload.size());
     Crypto::Signature signature;

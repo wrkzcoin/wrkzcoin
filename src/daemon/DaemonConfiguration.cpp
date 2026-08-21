@@ -316,8 +316,8 @@ namespace DaemonConfig
             "Masternode signing private key (64 hex chars). Enables ChainLock/InstantSend signing.",
             cxxopts::value<std::string>()->default_value(""),
             "<hex>")(
-            "mn-payout-key",
-            "Masternode payout private key (64 hex chars). Enables automated heartbeat submission.",
+            "mn-operator-key",
+            "Masternode operator private key (64 hex chars, printed by mn_register). Enables automated heartbeat submission.",
             cxxopts::value<std::string>()->default_value(""),
             "<hex>")(
             "rpc-bind-ip",
@@ -651,9 +651,9 @@ namespace DaemonConfig
                 config.mnSigningKey = cli["mn-signing-key"].as<std::string>();
             }
 
-            if (cli.count("mn-payout-key") > 0)
+            if (cli.count("mn-operator-key") > 0)
             {
-                config.mnPayoutKey = cli["mn-payout-key"].as<std::string>();
+                config.mnOperatorKey = cli["mn-operator-key"].as<std::string>();
             }
 
             if (cli.count("rpc-bind-ip") > 0)
@@ -1099,9 +1099,9 @@ namespace DaemonConfig
                     config.mnSigningKey = cfgValue;
                     updated = true;
                 }
-                else if (cfgKey.compare("mn-payout-key") == 0)
+                else if (cfgKey.compare("mn-operator-key") == 0)
                 {
-                    config.mnPayoutKey = cfgValue;
+                    config.mnOperatorKey = cfgValue;
                     updated = true;
                 }
                 else if (cfgKey.compare("add-exclusive-node") == 0)
@@ -1566,9 +1566,9 @@ namespace DaemonConfig
             config.mnSigningKey = j["mn-signing-key"].get<std::string>();
         }
 
-        if (j.contains("mn-payout-key"))
+        if (j.contains("mn-operator-key"))
         {
-            config.mnPayoutKey = j["mn-payout-key"].get<std::string>();
+            config.mnOperatorKey = j["mn-operator-key"].get<std::string>();
         }
 
         if (j.contains("rpc-bind-ip"))
@@ -1780,7 +1780,7 @@ namespace DaemonConfig
         j["rpc-bind-ipv6-address"] = config.rpcBindIpv6Address;
         j["rpc-use-ipv6"] = config.rpcUseIpv6;
         j["mn-signing-key"] = config.mnSigningKey;
-        j["mn-payout-key"] = config.mnPayoutKey;
+        j["mn-operator-key"] = config.mnOperatorKey;
         j["rpc-bind-ip"] = config.rpcInterface;
         j["rpc-bind-port"] = config.rpcPort;
         j["add-exclusive-node"] = config.exclusiveNodes;

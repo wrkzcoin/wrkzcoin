@@ -1347,6 +1347,8 @@ namespace CryptoNote
                     tracker.registerMasternode(
                         payload.masternodeId,
                         payload.payoutKey,
+                        payload.payoutViewKey,
+                        payload.operatorKey,
                         bonded,
                         payload.collateralAmount,
                         payload.registrationTokenId,
@@ -1362,18 +1364,22 @@ namespace CryptoNote
                 return;
             case MasternodeTxType::Activate:
                 tracker.activateMasternode(payload.masternodeId);
+                tracker.recordLifecycleHeight(payload.masternodeId, payload.height);
                 return;
             case MasternodeTxType::Deactivate:
                 tracker.deactivateMasternode(payload.masternodeId, height);
+                tracker.recordLifecycleHeight(payload.masternodeId, payload.height);
                 return;
             case MasternodeTxType::Penalize:
                 tracker.penalizeMasternode(payload.masternodeId, height);
+                tracker.recordLifecycleHeight(payload.masternodeId, payload.height);
                 return;
             case MasternodeTxType::Revoke:
                 tracker.revokeMasternode(payload.masternodeId, height);
+                tracker.recordLifecycleHeight(payload.masternodeId, payload.height);
                 return;
             case MasternodeTxType::Heartbeat:
-                tracker.recordHealthSample(payload.masternodeId, height, payload.healthy);
+                tracker.recordHealthSample(payload.masternodeId, height, payload.healthy, payload.height);
                 return;
             case MasternodeTxType::Attest:
                 if (payload.hasVerifierKey)
@@ -1382,13 +1388,15 @@ namespace CryptoNote
                         payload.masternodeId,
                         height,
                         payload.verifierKey,
-                        payload.healthy);
+                        payload.healthy,
+                        payload.height);
                 }
                 return;
             case MasternodeTxType::UpdateEndpoint:
                 if (payload.hasNewEndpointCommitment)
                 {
                     tracker.updateEndpointCommitment(payload.masternodeId, payload.newEndpointCommitment, height);
+                    tracker.recordLifecycleHeight(payload.masternodeId, payload.height);
                 }
                 return;
             default:
@@ -1417,7 +1425,8 @@ namespace CryptoNote
         uint64_t transactionFee,
         uint32_t nextBlockHeight,
         IBlockchainCache *validationCache,
-        bool checkPoolTokenReplay) const
+        bool checkPoolTokenReplay,
+        const TransactionValidatorState *blockValidatorState) const
     {
         return validateMasternodeTransactionEventWithTracker(
             cachedTransaction,
@@ -1425,7 +1434,8 @@ namespace CryptoNote
             nextBlockHeight,
             validationCache,
             masternodeStateTracker,
-            checkPoolTokenReplay);
+            checkPoolTokenReplay,
+            blockValidatorState);
     }
 
     std::error_code Core::validateMasternodeTransactionEventWithTracker(
@@ -1434,7 +1444,8 @@ namespace CryptoNote
         uint32_t nextBlockHeight,
         IBlockchainCache *validationCache,
         const MasternodeStateTracker &tracker,
-        bool checkPoolTokenReplay) const
+        bool checkPoolTokenReplay,
+        const TransactionValidatorState *blockValidatorState) const
     {
         (void)transactionFee;
         MasternodeTxPayload payload;
@@ -1470,6 +1481,28 @@ namespace CryptoNote
 
         const bool exists = tracker.hasMasternode(payload.masternodeId);
         const auto status = tracker.getStatus(payload.masternodeId);
+
+        /* Anti-replay window for every signed non-Register payload: the embedded creation height
+         * must be recent, not (meaningfully) in the future, and strictly greater than the last
+         * accepted payload of the same kind (`minExclusive`). */
+        const auto signedHeightValid = [&](uint32_t minExclusive) -> bool {
+            if (!payload.hasHeight)
+            {
+                return false;
+            }
+            const uint64_t h = payload.height;
+            const uint64_t next = nextBlockHeight;
+            if (h > next + parameters::MASTERNODE_SIGNED_PAYLOAD_FUTURE_TOLERANCE_BLOCKS)
+            {
+                return false;
+            }
+            if (h + parameters::MASTERNODE_SIGNED_PAYLOAD_MAX_AGE_BLOCKS < next)
+            {
+                return false;
+            }
+            return h > minExclusive;
+        };
+
         switch (payload.type)
         {
             case MasternodeTxType::Register:
@@ -1478,10 +1511,33 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
                 }
-                // Validate optional signing key is a valid subgroup point (v2 registration).
-                if (payload.hasSigningKey && !check_key(payload.signingKey))
+                /* The payout *address* (spend + view key) is needed to build a standard one-time
+                 * reward output that the operator's wallet can actually detect and spend. */
+                if (!payload.hasPayoutViewKey || !check_key(payload.payoutViewKey))
                 {
                     return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                if (!payload.hasSigningKey || !check_key(payload.signingKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                /* Dedicated operator key for heartbeats, so the payout/owner key never has to
+                 * live on the masternode server. */
+                if (!payload.hasOperatorKey || !check_key(payload.operatorKey))
+                {
+                    return error::TransactionValidationError::OUTPUT_INVALID_KEY;
+                }
+                /* A Register tx must never consume its own collateral output. */
+                for (const auto &input : cachedTransaction.getTransaction().inputs)
+                {
+                    if (!std::holds_alternative<KeyInput>(input))
+                    {
+                        continue;
+                    }
+                    if (std::get<KeyInput>(input).keyImage == payload.collateralKeyImage)
+                    {
+                        return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                    }
                 }
                 if (!payload.hasRegistrationToken)
                 {
@@ -1559,6 +1615,19 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
                 }
+                /* ... and it must not be spent by an earlier transaction of the very same block
+                 * (the chain cache only knows about previous blocks) ... */
+                if (blockValidatorState != nullptr
+                    && blockValidatorState->spentKeyImages.count(payload.collateralKeyImage) != 0)
+                {
+                    return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                }
+                /* ... nor by another transaction already sitting in the pool. */
+                if (checkPoolTokenReplay
+                    && hasKeyImageSpentInPool(payload.collateralKeyImage, cachedTransaction.getTransactionHash()))
+                {
+                    return error::TransactionValidationError::INPUT_KEYIMAGE_ALREADY_SPENT;
+                }
                 std::vector<uint32_t> globalIndexes {payload.collateralGlobalOutputIndex};
                 std::vector<Crypto::PublicKey> keys;
                 const auto extractResult = validationCache->extractKeyOutputKeys(
@@ -1624,6 +1693,10 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
+                if (!signedHeightValid(tracker.getLastLifecycleHeight(payload.masternodeId)))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
                 {
                     Crypto::PublicKey ownerKey;
                     if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
@@ -1640,7 +1713,29 @@ namespace CryptoNote
             case MasternodeTxType::Deactivate:
             case MasternodeTxType::Penalize:
             case MasternodeTxType::Revoke:
-                if (!exists || status == MasternodeStateTracker::Status::Registered || status == MasternodeStateTracker::Status::Revoked)
+                if (!exists || status == MasternodeStateTracker::Status::Revoked)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                /* Registered (never activated) masternodes can only be Revoked — that is the
+                 * operator's exit path to release the collateral after the spend-lock. */
+                if (status == MasternodeStateTracker::Status::Registered && payload.type != MasternodeTxType::Revoke)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                /* Deactivate is only meaningful for an Active masternode. */
+                if (payload.type == MasternodeTxType::Deactivate && status != MasternodeStateTracker::Status::Active)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                /* Penalize only applies to Active / Inactive masternodes. */
+                if (payload.type == MasternodeTxType::Penalize
+                    && status != MasternodeStateTracker::Status::Active
+                    && status != MasternodeStateTracker::Status::Inactive)
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!signedHeightValid(tracker.getLastLifecycleHeight(payload.masternodeId)))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
@@ -1658,6 +1753,7 @@ namespace CryptoNote
                 }
                 break;
             case MasternodeTxType::Heartbeat:
+            {
                 if (!exists || status != MasternodeStateTracker::Status::Active)
                 {
                     return error::TransactionValidationError::WRONG_FEE;
@@ -1666,27 +1762,40 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
+                /* The heartbeat's creation height must be strictly greater than the creation
+                 * height of the last accepted heartbeat: a captured heartbeat can never be replayed
+                 * (comparing against the *payload* height, not the inclusion height, also covers
+                 * payloads that were accepted slightly ahead of their inclusion height). */
+                if (!signedHeightValid(tracker.getLastHeartbeatPayloadHeight(payload.masternodeId)))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                /* Cheap checks above, signature next, and only then the O(pool) scan.
+                 * Heartbeats are signed by the masternode's OPERATOR key (not the payout key). */
+                Crypto::PublicKey operatorKey;
+                if (!tracker.getOperatorKey(payload.masternodeId, operatorKey))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!check_signature(signingHash, operatorKey, payload.signature))
+                {
+                    return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
+                }
                 if (checkPoolTokenReplay
                     && hasMasternodeHeartbeatInPool(
                         payload.masternodeId, cachedTransaction.getTransactionHash()))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
-                {
-                    Crypto::PublicKey ownerKey;
-                    if (!tracker.getPayoutKey(payload.masternodeId, ownerKey))
-                    {
-                        return error::TransactionValidationError::WRONG_FEE;
-                    }
-
-                    if (!check_signature(signingHash, ownerKey, payload.signature))
-                    {
-                        return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
-                    }
-                }
                 break;
+            }
             case MasternodeTxType::Attest:
-                if (!exists || status != MasternodeStateTracker::Status::Active)
+            {
+                /* Attestations are accepted for Registered masternodes too: a fresh registration
+                 * needs MASTERNODE_MIN_ATTESTATIONS_IN_WINDOW attestations before it can Activate. */
+                if (!exists
+                    || (status != MasternodeStateTracker::Status::Active
+                        && status != MasternodeStateTracker::Status::Registered))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
@@ -1702,11 +1811,17 @@ namespace CryptoNote
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
+                if (!signedHeightValid(
+                        tracker.getLastAttestationPayloadHeight(payload.masternodeId, payload.verifierKey)))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
                 if (!check_signature(signingHash, payload.verifierKey, payload.signature))
                 {
                     return error::TransactionValidationError::INPUT_WRONG_SIGNATURES_COUNT;
                 }
                 break;
+            }
             case MasternodeTxType::UpdateEndpoint:
                 if (!exists || (status != MasternodeStateTracker::Status::Active
                                 && status != MasternodeStateTracker::Status::Registered))
@@ -1722,6 +1837,10 @@ namespace CryptoNote
                     return error::TransactionValidationError::WRONG_FEE;
                 }
                 if (!tracker.canAcceptEndpointUpdate(payload.masternodeId, nextBlockHeight))
+                {
+                    return error::TransactionValidationError::WRONG_FEE;
+                }
+                if (!signedHeightValid(tracker.getLastLifecycleHeight(payload.masternodeId)))
                 {
                     return error::TransactionValidationError::WRONG_FEE;
                 }
@@ -1874,6 +1993,33 @@ namespace CryptoNote
         return false;
     }
 
+    bool Core::hasKeyImageSpentInPool(const Crypto::KeyImage &keyImage, const Crypto::Hash &excludeTransactionHash) const
+    {
+        if (transactionPool == nullptr)
+        {
+            return false;
+        }
+
+        const auto poolTransactions = transactionPool->getPoolTransactions();
+        for (const auto &poolTx : poolTransactions)
+        {
+            if (poolTx.getTransactionHash() == excludeTransactionHash)
+            {
+                continue;
+            }
+
+            for (const auto &input : poolTx.getTransaction().inputs)
+            {
+                if (std::holds_alternative<KeyInput>(input) && std::get<KeyInput>(input).keyImage == keyImage)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     bool Core::hasMasternodeHeartbeatInPool(
         const Crypto::Hash &masternodeId,
         const Crypto::Hash &excludeTransactionHash) const
@@ -2011,19 +2157,27 @@ namespace CryptoNote
     size_t Core::getMasternodeCount() const
     {
         throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
         return masternodeStateTracker.getTrackedMasternodeIds().size();
+    }
+
+    std::vector<Crypto::Hash> Core::getActiveMasternodeSetUnlocked(uint32_t height) const
+    {
+        const auto candidates = getMasternodeRewardCandidates(height);
+        return masternodeStateTracker.filterRewardEligible(candidates, height);
     }
 
     std::vector<Crypto::Hash> Core::getActiveMasternodeSet(uint32_t height) const
     {
         throwIfNotInitialized();
-        const auto candidates = getMasternodeRewardCandidates(height);
-        return masternodeStateTracker.filterRewardEligible(candidates, height);
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        return getActiveMasternodeSetUnlocked(height);
     }
 
     std::vector<MasternodeStateTracker::Snapshot> Core::getMasternodeSnapshots(size_t offset, size_t limit) const
     {
         throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
         const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
         return masternodeStateTracker.getSnapshots(currentHeight, offset, limit);
     }
@@ -2031,6 +2185,7 @@ namespace CryptoNote
     std::optional<MasternodeStateTracker::Snapshot> Core::getMasternodeSnapshot(const Crypto::Hash &masternodeId) const
     {
         throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
         const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
         return masternodeStateTracker.getSnapshotById(masternodeId, currentHeight);
     }
@@ -2038,15 +2193,15 @@ namespace CryptoNote
     size_t Core::getMasternodeEligibleCount(uint32_t height) const
     {
         throwIfNotInitialized();
-        const auto candidates = getMasternodeRewardCandidates(height);
-        return masternodeStateTracker.filterRewardEligible(candidates, height).size();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        return getActiveMasternodeSetUnlocked(height).size();
     }
 
     Crypto::Hash Core::getMasternodeSetHash(uint32_t height) const
     {
         throwIfNotInitialized();
-        const auto candidates = getMasternodeRewardCandidates(height);
-        const auto eligible = masternodeStateTracker.filterRewardEligible(candidates, height);
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        const auto eligible = getActiveMasternodeSetUnlocked(height);
         if (eligible.empty())
         {
             return Constants::NULL_HASH;
@@ -2066,9 +2221,8 @@ namespace CryptoNote
         return Crypto::cn_fast_hash(blob.data(), blob.size());
     }
 
-    std::optional<Crypto::Hash> Core::getMasternodeRewardWinner(uint32_t height) const
+    std::optional<Crypto::Hash> Core::getMasternodeRewardWinnerUnlocked(uint32_t height) const
     {
-        throwIfNotInitialized();
         if (!isMasternodeRewardForkActive(height))
         {
             return std::nullopt;
@@ -2076,6 +2230,60 @@ namespace CryptoNote
 
         const auto candidates = getMasternodeRewardCandidates(height);
         return masternodeStateTracker.selectFairRewardWinner(candidates, height);
+    }
+
+    std::optional<Crypto::Hash> Core::getMasternodeRewardWinner(uint32_t height) const
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        return getMasternodeRewardWinnerUnlocked(height);
+    }
+
+    std::optional<std::vector<Crypto::Hash>> Core::getChainLockQuorumUnlocked(uint32_t height) const
+    {
+        if (chainsLeaves.empty() || height == 0)
+        {
+            return std::nullopt;
+        }
+
+        const uint32_t top = chainsLeaves[0]->getTopBlockIndex();
+        if (height - 1 > top)
+        {
+            return std::nullopt; // we don't know block height-1 yet, cannot derive the quorum
+        }
+
+        const Crypto::Hash seed = chainsLeaves[0]->getBlockHash(height - 1);
+        return MasternodeQuorum::selectQuorum(
+            getActiveMasternodeSetUnlocked(top), seed, parameters::CHAINLOCK_QUORUM_SIZE);
+    }
+
+    std::optional<std::vector<Crypto::Hash>> Core::getInstantSendQuorumUnlocked() const
+    {
+        if (chainsLeaves.empty())
+        {
+            return std::nullopt;
+        }
+
+        const uint32_t top = chainsLeaves[0]->getTopBlockIndex();
+        const uint32_t cycle = static_cast<uint32_t>(parameters::INSTANTSEND_QUORUM_CYCLE_BLOCKS);
+        const uint32_t cycleStart = cycle == 0 ? top : top - (top % cycle);
+        const Crypto::Hash seed = chainsLeaves[0]->getBlockHash(cycleStart);
+        return MasternodeQuorum::selectQuorum(
+            getActiveMasternodeSetUnlocked(top), seed, parameters::INSTANTSEND_QUORUM_SIZE);
+    }
+
+    std::optional<std::vector<Crypto::Hash>> Core::getChainLockQuorum(uint32_t height) const
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        return getChainLockQuorumUnlocked(height);
+    }
+
+    std::optional<std::vector<Crypto::Hash>> Core::getInstantSendQuorum() const
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> lock(m_chainMutex);
+        return getInstantSendQuorumUnlocked();
     }
 
     const char *Core::masternodeStatusToString(MasternodeStateTracker::Status status)
@@ -2101,25 +2309,25 @@ namespace CryptoNote
     // ChainLock API
     // -------------------------------------------------------------------------
 
-    bool Core::addChainLockVote(const ChainLockVote &vote)
+    Crypto::SecretKey Core::deriveMasternodeCoinbaseTxSecretKey(uint32_t height, const Crypto::Hash &previousBlockHash)
     {
-        throwIfNotInitialized();
-        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
-        const auto activeSet = getActiveMasternodeSet(currentHeight);
-        const auto blockHash = getBlockHashByIndex(vote.height);
+        return MasternodeReward::deriveCoinbaseTxSecretKey(height, previousBlockHash);
+    }
 
-        // Validate that the vote's blockHash matches what we know.
-        if (blockHash != vote.blockHash && vote.height <= currentHeight)
-        {
-            // We have this block — if hashes differ it's for a chain we don't recognise; drop.
-            return false;
-        }
+    bool Core::deriveMasternodeRewardOutputKey(
+        const Crypto::PublicKey &payoutSpendKey,
+        const Crypto::PublicKey &payoutViewKey,
+        const Crypto::SecretKey &txSecretKey,
+        size_t outputIndex,
+        Crypto::PublicKey &outputKey)
+    {
+        return MasternodeReward::deriveRewardOutputKey(
+            payoutSpendKey, payoutViewKey, txSecretKey, outputIndex, outputKey);
+    }
 
-        // Validate that the signer is in the ChainLock quorum for this height.
-        const auto quorum = MasternodeQuorum::selectQuorum(
-            activeSet, vote.blockHash, parameters::CHAINLOCK_QUORUM_SIZE);
-
-        // Validate the signer's signing key matches the on-chain registered signing key.
+    bool Core::validateChainLockVoteMembership(const ChainLockVote &vote, const std::vector<Crypto::Hash> &quorum) const
+    {
+        // The signer's signing key must match the on-chain registered signing key ...
         Crypto::PublicKey registeredSigningKey;
         if (!masternodeStateTracker.getSigningKey(vote.masternodeId, registeredSigningKey))
         {
@@ -2130,47 +2338,14 @@ namespace CryptoNote
             return false; // key mismatch
         }
 
-        if (!MasternodeQuorum::isInQuorum(vote.masternodeId, quorum))
-        {
-            return false; // not in quorum
-        }
-
-        return m_chainLockManager.addVote(vote, parameters::CHAINLOCK_THRESHOLD);
+        // ... and the masternode must be in the ChainLock quorum for this block.
+        return MasternodeQuorum::isInQuorum(vote.masternodeId, quorum);
     }
 
-    bool Core::addChainLock(const ChainLock &cl)
+    bool Core::validateInstantSendVoteMembership(
+        const InstantSendVote &vote,
+        const std::vector<Crypto::Hash> &quorum) const
     {
-        throwIfNotInitialized();
-        return m_chainLockManager.addChainLock(cl, parameters::CHAINLOCK_THRESHOLD);
-    }
-
-    bool Core::hasChainLock(uint32_t height) const
-    {
-        return m_chainLockManager.hasLock(height);
-    }
-
-    std::optional<ChainLock> Core::getChainLock(uint32_t height) const
-    {
-        return m_chainLockManager.getLock(height);
-    }
-
-    bool Core::isChainLockConflict(uint32_t height, const Crypto::Hash &blockHash) const
-    {
-        return m_chainLockManager.isConflict(height, blockHash);
-    }
-
-    // -------------------------------------------------------------------------
-    // InstantSend API
-    // -------------------------------------------------------------------------
-
-    bool Core::addInstantSendVote(const InstantSendVote &vote)
-    {
-        throwIfNotInitialized();
-        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
-        const auto activeSet = getActiveMasternodeSet(currentHeight);
-        const auto quorum = MasternodeQuorum::selectQuorum(
-            activeSet, vote.txHash, parameters::INSTANTSEND_QUORUM_SIZE);
-
         Crypto::PublicKey registeredSigningKey;
         if (!masternodeStateTracker.getSigningKey(vote.masternodeId, registeredSigningKey))
         {
@@ -2181,23 +2356,174 @@ namespace CryptoNote
             return false;
         }
 
-        if (!MasternodeQuorum::isInQuorum(vote.masternodeId, quorum))
+        return MasternodeQuorum::isInQuorum(vote.masternodeId, quorum);
+    }
+
+    MasternodeVoteResult Core::addChainLockVote(const ChainLockVote &vote)
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> chainLock(m_chainMutex);
+
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        if (!isMasternodeFeatureForkActive(currentHeight))
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // Height window: not too far in the future (we may lag a few blocks), not ancient.
+        if (static_cast<uint64_t>(vote.height) > static_cast<uint64_t>(currentHeight) + parameters::CHAINLOCK_VOTE_FUTURE_WINDOW_BLOCKS)
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+        if (static_cast<uint64_t>(vote.height) + parameters::CHAINLOCK_VOTE_MAX_AGE_BLOCKS < currentHeight)
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // Validate that the vote's blockHash matches what we know for that height.
+        if (vote.height <= currentHeight && getBlockHashByIndex(vote.height) != vote.blockHash)
+        {
+            // We have this block — if hashes differ it's for a chain we don't recognise; drop.
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // Quorum seeded by block height-1 (not by the voted hash, which a forger could grind).
+        const auto quorum = getChainLockQuorumUnlocked(vote.height);
+        if (!quorum.has_value() || !validateChainLockVoteMembership(vote, *quorum))
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_chainLockManager.addVote(
+            vote,
+            parameters::CHAINLOCK_THRESHOLD,
+            parameters::CHAINLOCK_MAX_PENDING_VOTES_PER_HEIGHT,
+            std::time(nullptr));
+    }
+
+    bool Core::addChainLock(const ChainLock &cl)
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> chainLock(m_chainMutex);
+
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        if (!isMasternodeFeatureForkActive(currentHeight))
         {
             return false;
         }
 
-        // Fetch the key images for this txHash from the pool.
-        std::vector<Crypto::KeyImage> keyImages;
-        const auto [found, txData] = getPoolTransaction(vote.txHash);
-        if (found)
+        if (cl.votes.size() < parameters::CHAINLOCK_THRESHOLD
+            || cl.votes.size() > parameters::CHAINLOCK_QUORUM_SIZE)
         {
-            const auto rawTx = getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
-            for (const auto &input : rawTx.keyInputs)
+            return false;
+        }
+
+        if (static_cast<uint64_t>(cl.height) > static_cast<uint64_t>(currentHeight) + parameters::CHAINLOCK_VOTE_FUTURE_WINDOW_BLOCKS)
+        {
+            return false;
+        }
+        if (static_cast<uint64_t>(cl.height) + parameters::CHAINLOCK_VOTE_MAX_AGE_BLOCKS < currentHeight)
+        {
+            return false;
+        }
+
+        // A lock for a height we already have must match our chain; we do not reorg on locks.
+        if (cl.height <= currentHeight && getBlockHashByIndex(cl.height) != cl.blockHash)
+        {
+            return false;
+        }
+
+        // Every vote must come from a distinct, registered, in-quorum masternode using its
+        // registered signing key. Signatures are verified by the manager afterwards.
+        const auto quorum = getChainLockQuorumUnlocked(cl.height);
+        if (!quorum.has_value())
+        {
+            return false;
+        }
+        std::vector<Crypto::Hash> seen;
+        seen.reserve(cl.votes.size());
+        for (const auto &vote : cl.votes)
+        {
+            if (vote.height != cl.height || vote.blockHash != cl.blockHash)
             {
-                keyImages.push_back(input.keyImage);
+                return false;
+            }
+            if (std::find(seen.begin(), seen.end(), vote.masternodeId) != seen.end())
+            {
+                return false;
+            }
+            seen.push_back(vote.masternodeId);
+            if (!validateChainLockVoteMembership(vote, *quorum))
+            {
+                return false;
             }
         }
 
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_chainLockManager.addChainLock(cl, parameters::CHAINLOCK_THRESHOLD, std::time(nullptr));
+    }
+
+    bool Core::hasChainLock(uint32_t height) const
+    {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_chainLockManager.hasLock(height);
+    }
+
+    std::optional<ChainLock> Core::getChainLock(uint32_t height) const
+    {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_chainLockManager.getLock(height);
+    }
+
+    bool Core::isChainLockConflict(uint32_t height, const Crypto::Hash &blockHash) const
+    {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_chainLockManager.isConflict(
+            height, blockHash, std::time(nullptr), parameters::CHAINLOCK_PENDING_LOCK_EXPIRY_SECONDS);
+    }
+
+    // -------------------------------------------------------------------------
+    // InstantSend API
+    // -------------------------------------------------------------------------
+
+    MasternodeVoteResult Core::addInstantSendVote(const InstantSendVote &vote)
+    {
+        throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> chainLock(m_chainMutex);
+
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        if (!isMasternodeFeatureForkActive(currentHeight))
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        // The transaction must be known (in our pool) and IS-eligible: a vote for an unknown tx
+        // cannot be bound to key images and would only ever produce an unusable lock.
+        std::vector<Crypto::KeyImage> keyImages;
+        const auto [found, txData] = getPoolTransaction(vote.txHash);
+        if (!found)
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+        const auto rawTx = getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
+        if (rawTx.keyInputs.empty() || rawTx.keyInputs.size() > parameters::INSTANTSEND_MAX_INPUTS)
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+        for (const auto &input : rawTx.keyInputs)
+        {
+            keyImages.push_back(input.keyImage);
+        }
+
+        // Quorum is per cycle and seeded by a block hash, never by the (sender-chosen) tx hash.
+        const auto quorum = getInstantSendQuorumUnlocked();
+        if (!quorum.has_value() || !validateInstantSendVoteMembership(vote, *quorum))
+        {
+            return MasternodeVoteResult::Rejected;
+        }
+
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
         return m_instantSendManager.addVote(
             vote, keyImages, parameters::INSTANTSEND_THRESHOLD, currentHeight);
     }
@@ -2205,22 +2531,95 @@ namespace CryptoNote
     bool Core::addInstantSendLock(const InstantSendLock &lock)
     {
         throwIfNotInitialized();
+        std::shared_lock<std::shared_mutex> chainLock(m_chainMutex);
+
+        const uint32_t currentHeight = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        if (!isMasternodeFeatureForkActive(currentHeight))
+        {
+            return false;
+        }
+
+        if (lock.keyImages.empty() || lock.keyImages.size() > parameters::INSTANTSEND_MAX_INPUTS)
+        {
+            return false;
+        }
+        if (lock.votes.size() < parameters::INSTANTSEND_THRESHOLD
+            || lock.votes.size() > parameters::INSTANTSEND_QUORUM_SIZE)
+        {
+            return false;
+        }
+
+        // The locked key images are never taken from the wire: the transaction must be in our pool
+        // and the lock must cover exactly its inputs (otherwise a lock could censor arbitrary
+        // key images that have nothing to do with the voted transaction).
+        const auto [found, txData] = getPoolTransaction(lock.txHash);
+        if (!found)
+        {
+            return false;
+        }
+        const auto rawTx = getRawTransaction(std::vector<uint8_t>(txData.begin(), txData.end()));
+        if (rawTx.keyInputs.size() != lock.keyImages.size())
+        {
+            return false;
+        }
+        for (const auto &input : rawTx.keyInputs)
+        {
+            if (std::find(lock.keyImages.begin(), lock.keyImages.end(), input.keyImage) == lock.keyImages.end())
+            {
+                return false;
+            }
+        }
+
+        const auto quorum = getInstantSendQuorumUnlocked();
+        if (!quorum.has_value())
+        {
+            return false;
+        }
+        std::vector<Crypto::Hash> seen;
+        seen.reserve(lock.votes.size());
+        for (const auto &vote : lock.votes)
+        {
+            if (vote.txHash != lock.txHash)
+            {
+                return false;
+            }
+            if (std::find(seen.begin(), seen.end(), vote.masternodeId) != seen.end())
+            {
+                return false;
+            }
+            seen.push_back(vote.masternodeId);
+            if (!validateInstantSendVoteMembership(vote, *quorum))
+            {
+                return false;
+            }
+        }
+
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
         return m_instantSendManager.addInstantSendLock(lock, parameters::INSTANTSEND_THRESHOLD);
     }
 
     bool Core::isInstantSendLocked(const Crypto::KeyImage &keyImage) const
     {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
         return m_instantSendManager.isLocked(keyImage);
     }
 
     bool Core::isInstantSendConflict(const Crypto::KeyImage &keyImage, const Crypto::Hash &txHash) const
     {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
         return m_instantSendManager.isConflict(keyImage, txHash);
     }
 
     std::optional<InstantSendLock> Core::getInstantSendLock(const Crypto::KeyImage &keyImage) const
     {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
         return m_instantSendManager.getLock(keyImage);
+    }
+
+    std::optional<InstantSendLock> Core::getInstantSendLockByTxHash(const Crypto::Hash &txHash) const
+    {
+        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+        return m_instantSendManager.getLockByTxHash(txHash);
     }
 
     std::vector<Crypto::Hash> Core::findBlockchainSupplement(
@@ -2307,24 +2706,43 @@ namespace CryptoNote
             return error::BlockValidationError::DIFFICULTY_OVERHEAD;
         }
 
+        /* Proof of work is checked BEFORE any masternode-state replay or transaction validation:
+         * both can be expensive (an alt-chain tracker rebuild replays every block since the fork)
+         * and must not be reachable with a block that did not pay for its PoW. */
+        if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
+        {
+            if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
+            {
+                logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
+                return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
+            }
+        }
+        else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
+        {
+            logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
+            return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
+        }
+
         MasternodeStateTracker validationMasternodeTracker;
         MasternodeStateTracker rewardMasternodeTracker;
         const bool useValidationMasternodeTracker =
             isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()) || isMasternodeRewardForkActive(cachedBlock.getBlockIndex());
         if (useValidationMasternodeTracker)
         {
-            if (cache == chainsLeaves[0])
+            if (cache == chainsLeaves[0] && addOnTop)
             {
-                /* Main chain: the global masternodeStateTracker is always kept current at
-                 * previousBlockIndex by applyMasternodeEventsFromBlock on each accepted block.
-                 * Copying it is O(masternodes) rather than O(blocks_since_fork), which avoids
-                 * a full chain replay on every block validation. */
+                /* Main chain tip: the global masternodeStateTracker is always kept current at
+                 * previousBlockIndex (== top) by applyMasternodeEventsFromBlock on each accepted
+                 * block. Copying it is O(masternodes) rather than O(blocks_since_fork), which
+                 * avoids a full chain replay on every block validation. */
                 rewardMasternodeTracker = masternodeStateTracker;
             }
             else
             {
-                /* Alternative chain segment: the global tracker reflects the main chain, not
-                 * this fork, so we must replay from the fork point to get correct state. */
+                /* Alternative chain segment, OR a sibling block whose parent is below the main
+                 * chain tip: the global tracker already includes events from blocks above
+                 * previousBlockIndex, so it is NOT the right state for this block. Replay from
+                 * the fork point up to previousBlockIndex instead. */
                 if (!buildMasternodeStateForChain(cache, previousBlockIndex, rewardMasternodeTracker))
                 {
                     logger(Logging::DEBUGGING) << "Failed to build branch-local masternode state for block " << blockStr;
@@ -2415,29 +2833,10 @@ namespace CryptoNote
                 return transactionValidationResult;
             }
 
-            // InstantSend enforcement: reject block transactions that conflict with IS locks.
-            // Only applies on the main chain where we maintain IS state.
-            if (cache == chainsLeaves[0] && isMasternodeFeatureForkActive(cachedBlock.getBlockIndex()))
-            {
-                const auto &tx = transaction.getTransaction();
-                const auto txHash = transaction.getTransactionHash();
-                for (const auto &input : tx.inputs)
-                {
-                    if (!std::holds_alternative<KeyInput>(input))
-                    {
-                        continue;
-                    }
-                    const auto &keyInput = std::get<KeyInput>(input);
-                    if (m_instantSendManager.isConflict(keyInput.keyImage, txHash))
-                    {
-                        logger(Logging::WARNING) << "Block " << blockStr
-                                                 << " contains transaction " << txHash
-                                                 << " that conflicts with an InstantSend lock on input "
-                                                 << Common::podToHex(keyInput.keyImage) << " — rejected";
-                        return error::BlockValidationError::TRANSACTION_INCONSISTENCY;
-                    }
-                }
-            }
+            /* InstantSend locks are a mempool-level policy (see addTransactionToPool), NOT a block
+             * validity rule: the lock set is local, non-consensus state, and a PoW-valid block that
+             * mines a competing spend must still be accepted. Any lock covering a key image spent
+             * by this block is dropped once the block is committed (see below). */
 
             if (useValidationMasternodeTracker)
             {
@@ -2506,21 +2905,50 @@ namespace CryptoNote
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
             }
 
-            Crypto::PublicKey expectedPayoutKey;
+            Crypto::PublicKey payoutSpendKey;
+            Crypto::PublicKey payoutViewKey;
             if (
                 !rewardDistribution.masternodeWinner.has_value()
                 || !(useValidationMasternodeTracker
-                         ? rewardMasternodeTracker.getPayoutKey(*rewardDistribution.masternodeWinner, expectedPayoutKey)
-                         : masternodeStateTracker.getPayoutKey(*rewardDistribution.masternodeWinner, expectedPayoutKey)))
+                         ? rewardMasternodeTracker.getPayoutAddressKeys(
+                             *rewardDistribution.masternodeWinner, payoutSpendKey, payoutViewKey)
+                         : masternodeStateTracker.getPayoutAddressKeys(
+                             *rewardDistribution.masternodeWinner, payoutSpendKey, payoutViewKey)))
             {
                 logger(Logging::DEBUGGING) << "Block " << blockStr << " winner payout key is missing";
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
             }
 
-            const auto &actualPayoutKey = std::get<KeyOutput>(coinbaseOutputs[1].target).key;
-            if (actualPayoutKey != expectedPayoutKey)
+            /* The coinbase must use the deterministic tx key so that every node can derive (and the
+             * operator's wallet can detect/spend) the winner's one-time output key. */
+            const Crypto::SecretKey coinbaseTxSecretKey = deriveMasternodeCoinbaseTxSecretKey(
+                cachedBlock.getBlockIndex(), cachedBlock.getBlock().previousBlockHash);
+            Crypto::PublicKey expectedTxPublicKey;
+            if (!Crypto::secret_key_to_public_key(coinbaseTxSecretKey, expectedTxPublicKey))
             {
-                logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode payout key mismatch";
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " failed to derive coinbase tx key";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+            const auto actualTxPublicKey =
+                Utilities::getTransactionPublicKeyFromExtra(cachedBlock.getBlock().baseTransaction.extra);
+            if (actualTxPublicKey != expectedTxPublicKey)
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr
+                                           << " coinbase tx public key is not the deterministic masternode key";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            Crypto::PublicKey expectedOutputKey;
+            if (!deriveMasternodeRewardOutputKey(payoutSpendKey, payoutViewKey, coinbaseTxSecretKey, 1, expectedOutputKey))
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " failed to derive masternode reward output key";
+                return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
+            }
+
+            const auto &actualOutputKey = std::get<KeyOutput>(coinbaseOutputs[1].target).key;
+            if (actualOutputKey != expectedOutputKey)
+            {
+                logger(Logging::DEBUGGING) << "Block " << blockStr << " masternode reward output key mismatch";
                 return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
             }
         }
@@ -2532,19 +2960,7 @@ namespace CryptoNote
             return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
         }
 
-        if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
-        {
-            if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
-            {
-                logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
-                return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
-            }
-        }
-        else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
-        {
-            logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
-            return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
-        }
+        /* (PoW / checkpoint verification happens earlier, right after the difficulty is known.) */
 
         auto ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE;
 
@@ -2558,12 +2974,21 @@ namespace CryptoNote
                 if (cache == chainsLeaves[0])
                 {
                     // ChainLock enforcement: if this height is locked to a different block, reject.
-                    if (isMasternodeFeatureForkActive(blockIndex)
-                        && m_chainLockManager.isConflict(blockIndex, blockHash))
+                    // (Locks whose block never showed up expire after
+                    // CHAINLOCK_PENDING_LOCK_EXPIRY_SECONDS so a bad lock cannot stall the node.)
+                    if (isMasternodeFeatureForkActive(blockIndex))
                     {
-                        logger(Logging::WARNING) << "Block " << blockStr
-                                                 << " conflicts with ChainLock — rejected";
-                        return error::BlockValidationError::CHAINLOCK_CONFLICT;
+                        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+                        if (m_chainLockManager.isConflict(
+                                blockIndex,
+                                blockHash,
+                                std::time(nullptr),
+                                parameters::CHAINLOCK_PENDING_LOCK_EXPIRY_SECONDS))
+                        {
+                            logger(Logging::WARNING) << "Block " << blockStr
+                                                     << " conflicts with ChainLock — rejected";
+                            return error::BlockValidationError::CHAINLOCK_CONFLICT;
+                        }
                     }
 
                     cache->pushBlock(
@@ -2619,17 +3044,36 @@ namespace CryptoNote
                         rebuildMasternodeStateFromMainChain();
                     }
 
-                    // Clear IS locks for transactions confirmed in this block.
-                    for (const auto &tx : transactions)
                     {
-                        m_instantSendManager.onTxConfirmed(tx.getTransactionHash());
-                    }
+                        std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
 
-                    // Prune expired IS locks and stale CL pending votes.
-                    m_instantSendManager.pruneExpired(
-                        cachedBlock.getBlockIndex(), parameters::INSTANTSEND_LOCK_EXPIRY_BLOCKS);
-                    m_chainLockManager.pruneBelow(
-                        cachedBlock.getBlockIndex() > 60 ? cachedBlock.getBlockIndex() - 60 : 0);
+                        // Clear IS locks for transactions confirmed in this block, and drop any
+                        // lock whose key image was spent by a *different* transaction: the chain
+                        // is authoritative, a local IS lock never overrides a committed block.
+                        for (const auto &tx : transactions)
+                        {
+                            m_instantSendManager.onTxConfirmed(tx.getTransactionHash());
+                        }
+                        for (const auto &spentKeyImage : validatorState.spentKeyImages)
+                        {
+                            m_instantSendManager.onKeyImageSpent(spentKeyImage);
+                        }
+
+                        // The lock for this height (if any) is now backed by a real block.
+                        m_chainLockManager.markLockSatisfied(cachedBlock.getBlockIndex());
+
+                        // Prune expired IS locks, stale CL pending votes and old assembled CL locks.
+                        m_instantSendManager.pruneExpired(
+                            cachedBlock.getBlockIndex(), parameters::INSTANTSEND_LOCK_EXPIRY_BLOCKS);
+                        m_chainLockManager.pruneBelow(
+                            cachedBlock.getBlockIndex() > parameters::CHAINLOCK_VOTE_MAX_AGE_BLOCKS
+                                ? cachedBlock.getBlockIndex() - static_cast<uint32_t>(parameters::CHAINLOCK_VOTE_MAX_AGE_BLOCKS)
+                                : 0);
+                        m_chainLockManager.pruneLocksBelow(
+                            cachedBlock.getBlockIndex() > parameters::CHAINLOCK_RETENTION_BLOCKS
+                                ? cachedBlock.getBlockIndex() - static_cast<uint32_t>(parameters::CHAINLOCK_RETENTION_BLOCKS)
+                                : 0);
+                    }
 
                     notifyObservers(
                         makeDelTransactionMessage(std::move(hashes), Messages::DeleteTransaction::Reason::InBlock));
@@ -2660,6 +3104,10 @@ namespace CryptoNote
 
                         updateBlockMedianSize();
 
+                        /* The masternode tracker must reflect the NEW main chain before the pool is
+                           re-validated against it (stateful MN rules). */
+                        rebuildMasternodeStateFromMainChain();
+
                         /* Take the current block spent key images and run them
                            against the pool to remove any transactions that may
                            be in the pool that would now be considered invalid */
@@ -2678,8 +3126,6 @@ namespace CryptoNote
                         }
 
                         ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED;
-
-                        rebuildMasternodeStateFromMainChain();
 
                         logger(Logging::INFO) << "Resolved: " << blockStr
                                               << ", Previous: " << chainsLeaves[endpointIndex]->getTopBlockIndex()
@@ -2816,6 +3262,16 @@ namespace CryptoNote
             }
             /* If the the transaction contains outputs that were spent in the new block, fail */
             else if (hasIntersections(blockTransactionsState, poolTxState))
+            {
+                isValid = false;
+            }
+            /* Masternode payloads are stateful (rate limits, lifecycle, anti-replay height window):
+               re-check them against the new chain tip so stale heartbeats / lifecycle txs never
+               linger in the pool and never make it into a block template. */
+            else if (
+                hasMasternodePayload(poolTx->getTransaction())
+                && validateMasternodeTransactionEvent(
+                    *poolTx, poolTx->getTransactionFee(), getTopBlockIndex() + 1, chainsLeaves[0], false))
             {
                 isValid = false;
             }
@@ -3132,6 +3588,7 @@ namespace CryptoNote
         {
             const auto &tx = cachedTransaction.getTransaction();
             const auto txHash = cachedTransaction.getTransactionHash();
+            std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
             for (const auto &input : tx.inputs)
             {
                 if (!std::holds_alternative<KeyInput>(input))
@@ -3275,6 +3732,12 @@ namespace CryptoNote
     {
         throwIfNotInitialized();
 
+        /* Template construction reads the masternode tracker (winner, template-time MN tx
+         * validation) and the chain; hold the chain lock (shared) for the whole build so a
+         * concurrent addBlock cannot mutate them underneath us. Nothing below takes m_chainMutex
+         * itself (only *Unlocked helpers are used). */
+        std::shared_lock<std::shared_mutex> chainLock(m_chainMutex);
+
         height = getTopBlockIndex() + 1;
         difficulty = getDifficultyForNextBlock();
 
@@ -3388,6 +3851,16 @@ namespace CryptoNote
         fillBlockTemplate(b, medianSize, currency.maxBlockCumulativeSize(height), height, transactionsSize, fee);
         const size_t coinbaseMaxOuts = isMasternodeRewardForkActive(height) ? 2 : 11;
 
+        /* When a masternode reward is due, the coinbase tx key is deterministic (derived from the
+         * height and previous block hash) so that every validator can recompute the winner's
+         * one-time output key. Pre-fork / no-winner templates keep a random key. */
+        const bool hasMasternodeWinner =
+            isMasternodeRewardForkActive(height) && getMasternodeRewardWinnerUnlocked(height).has_value();
+        const Crypto::SecretKey masternodeCoinbaseTxSecretKey =
+            hasMasternodeWinner ? deriveMasternodeCoinbaseTxSecretKey(height, b.previousBlockHash) : Crypto::SecretKey {};
+        const Crypto::SecretKey *coinbaseTxSecretKeyOverride =
+            hasMasternodeWinner ? &masternodeCoinbaseTxSecretKey : nullptr;
+
         /*
            two-phase miner transaction generation: we don't know exact block size until we prepare block, but we don't know
            reward until we know
@@ -3406,7 +3879,8 @@ namespace CryptoNote
             publicSpendKey,
             b.baseTransaction,
             extraNonce,
-            coinbaseMaxOuts);
+            coinbaseMaxOuts,
+            coinbaseTxSecretKeyOverride);
 
         if (!r)
         {
@@ -3432,7 +3906,8 @@ namespace CryptoNote
                 publicSpendKey,
                 b.baseTransaction,
                 extraNonce,
-                coinbaseMaxOuts);
+                coinbaseMaxOuts,
+                coinbaseTxSecretKeyOverride);
 
             if (!r)
             {
@@ -3522,24 +3997,43 @@ namespace CryptoNote
                         return {false, error};
                     }
 
-                    Crypto::PublicKey payoutKey;
+                    Crypto::PublicKey payoutSpendKey;
+                    Crypto::PublicKey payoutViewKey;
                     if (
                         !rewardDistribution.masternodeWinner.has_value()
-                        || !masternodeStateTracker.getPayoutKey(*rewardDistribution.masternodeWinner, payoutKey))
+                        || !masternodeStateTracker.getPayoutAddressKeys(
+                            *rewardDistribution.masternodeWinner, payoutSpendKey, payoutViewKey))
                     {
-                        std::string error = "Failed to resolve masternode payout key for reward winner";
+                        std::string error = "Failed to resolve masternode payout address for reward winner";
                         logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
                         return {false, error};
                     }
 
+                    if (!hasMasternodeWinner)
+                    {
+                        /* Winner appeared between template preparation steps (should not happen as
+                         * both derive from the same tracker state) — refuse to emit an unverifiable
+                         * coinbase rather than produce a block every node will reject. */
+                        std::string error = "Masternode winner/coinbase key state mismatch while building template";
+                        logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
+                        return {false, error};
+                    }
+
+                    Crypto::PublicKey rewardOutputKey;
+                    if (!deriveMasternodeRewardOutputKey(
+                            payoutSpendKey, payoutViewKey, masternodeCoinbaseTxSecretKey, 1, rewardOutputKey))
+                    {
+                        std::string error = "Failed to derive masternode reward output key";
+                        logger(Logging::ERROR, Logging::BRIGHT_RED) << error;
+                        return {false, error};
+                    }
+
+                    /* powReward + masternodeReward == totalReward already, so the coinbase is exactly
+                     * [miner output (index 0), masternode output (index 1)]; any further outputs the
+                     * miner-tx builder produced are dropped, not re-added. */
                     b.baseTransaction.outputs[0].amount = rewardDistribution.powReward;
                     b.baseTransaction.outputs[1].amount = rewardDistribution.masternodeReward;
-                    b.baseTransaction.outputs[1].target = KeyOutput {payoutKey};
-
-                    for (size_t i = 2; i < b.baseTransaction.outputs.size(); ++i)
-                    {
-                        b.baseTransaction.outputs[0].amount += b.baseTransaction.outputs[i].amount;
-                    }
+                    b.baseTransaction.outputs[1].target = KeyOutput {rewardOutputKey};
 
                     if (b.baseTransaction.outputs.size() > 2)
                     {
@@ -3689,6 +4183,8 @@ namespace CryptoNote
             }
         }
 
+        /* `state` accumulates the key images spent by the transactions validated so far in this
+         * block (for pool validation it only contains this transaction's own inputs). */
         if (masternodeTrackerOverride != nullptr)
         {
             return validateMasternodeTransactionEventWithTracker(
@@ -3697,10 +4193,12 @@ namespace CryptoNote
                 nextBlockHeight,
                 cache,
                 *masternodeTrackerOverride,
-                isPoolTransaction);
+                isPoolTransaction,
+                &state);
         }
 
-        return validateMasternodeTransactionEvent(cachedTransaction, fee, nextBlockHeight, cache, isPoolTransaction);
+        return validateMasternodeTransactionEvent(
+            cachedTransaction, fee, nextBlockHeight, cache, isPoolTransaction, &state);
     }
 
     uint32_t Core::findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const
@@ -4336,6 +4834,12 @@ namespace CryptoNote
 
         mainChain->rewind(blockIndex);
         rebuildMasternodeStateFromMainChain();
+        {
+            /* Locks above the rewind point refer to blocks we just dropped; keeping them would make
+             * the re-synced blocks at those heights look like ChainLock conflicts. */
+            std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+            m_chainLockManager.removeAbove(static_cast<uint32_t>(blockIndex));
+        }
         saveMasternodeStateSnapshot();
 
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
@@ -4360,9 +4864,13 @@ namespace CryptoNote
     {
         nlohmann::json root;
         root["top_height"] = chainsLeaves.empty() ? 0 : chainsLeaves[0]->getTopBlockIndex();
+        root["top_hash"] = chainsLeaves.empty() ? std::string() : Common::podToHex(chainsLeaves[0]->getTopBlockHash());
         root["state"] = masternodeStateTracker.toJson();
-        root["chainlocks"] = m_chainLockManager.toJson();
-        root["instantsend"] = m_instantSendManager.toJson();
+        {
+            std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+            root["chainlocks"] = m_chainLockManager.toJson();
+            root["instantsend"] = m_instantSendManager.toJson();
+        }
         const std::string blob = root.dump();
 
         if (!chainsLeaves.empty())
@@ -4454,29 +4962,43 @@ namespace CryptoNote
             return false;
         }
 
-        // Restore ChainLock data if present (field may be absent in older snapshots).
-        if (root.contains("chainlocks"))
+        /* Same height is not enough after a reorg/rewind+resync: the snapshot must describe the
+         * block that is actually our tip. */
+        if (root.contains("top_hash") && root.at("top_hash").is_string())
         {
-            try
+            if (root.at("top_hash").get<std::string>() != Common::podToHex(chainsLeaves[0]->getTopBlockHash()))
             {
-                m_chainLockManager.fromJson(root.at("chainlocks").get<std::string>());
-            }
-            catch (const std::exception &e)
-            {
-                logger(Logging::WARNING) << "Failed to restore ChainLock data from snapshot: " << e.what();
+                return false;
             }
         }
 
-        // Restore InstantSend locks if present (field may be absent in older snapshots).
-        if (root.contains("instantsend"))
         {
-            try
+            std::lock_guard<std::mutex> mnLock(m_masternodeMutex);
+
+            // Restore ChainLock data if present (field may be absent in older snapshots).
+            if (root.contains("chainlocks"))
             {
-                m_instantSendManager.fromJson(root.at("instantsend").get<std::string>());
+                try
+                {
+                    m_chainLockManager.fromJson(root.at("chainlocks").get<std::string>(), std::time(nullptr));
+                }
+                catch (const std::exception &e)
+                {
+                    logger(Logging::WARNING) << "Failed to restore ChainLock data from snapshot: " << e.what();
+                }
             }
-            catch (const std::exception &e)
+
+            // Restore InstantSend locks if present (field may be absent in older snapshots).
+            if (root.contains("instantsend"))
             {
-                logger(Logging::WARNING) << "Failed to restore InstantSend data from snapshot: " << e.what();
+                try
+                {
+                    m_instantSendManager.fromJson(root.at("instantsend").get<std::string>());
+                }
+                catch (const std::exception &e)
+                {
+                    logger(Logging::WARNING) << "Failed to restore InstantSend data from snapshot: " << e.what();
+                }
             }
         }
 
@@ -4864,7 +5386,10 @@ namespace CryptoNote
 
     /* A transaction that is valid at the time it was added to the pool, is not
        neccessarily valid now, if the network rules changed. */
-    bool Core::validateBlockTemplateTransaction(const CachedTransaction &cachedTransaction, const uint64_t blockHeight)
+    bool Core::validateBlockTemplateTransaction(
+        const CachedTransaction &cachedTransaction,
+        const uint64_t blockHeight,
+        const MasternodeStateTracker *templateTracker)
     {
         /* Not used in revalidateAfterHeightChange() */
         TransactionValidatorState state;
@@ -4884,7 +5409,30 @@ namespace CryptoNote
 
         const auto result = txValidator.revalidateAfterHeightChange();
 
-        return result.valid;
+        if (!result.valid)
+        {
+            return false;
+        }
+
+        /* Masternode payload txs must also satisfy the stateful MN rules *in template order*
+           (the tracker passed in already reflects the MN txs placed in the template so far),
+           otherwise the template would contain a tx every node rejects. */
+        if (hasMasternodePayload(cachedTransaction.getTransaction()))
+        {
+            const auto mnResult = validateMasternodeTransactionEventWithTracker(
+                cachedTransaction,
+                cachedTransaction.getTransactionFee(),
+                static_cast<uint32_t>(blockHeight),
+                chainsLeaves[0],
+                templateTracker != nullptr ? *templateTracker : masternodeStateTracker,
+                true);
+            if (mnResult)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     void Core::fillBlockTemplate(
@@ -4904,12 +5452,22 @@ namespace CryptoNote
 
         TransactionSpentInputsChecker spentInputsChecker;
 
+        /* Masternode state as it evolves while we place MN transactions into the template: block
+           validation applies MN events sequentially, so two MN txs for the same masternode (e.g.
+           Deactivate + Heartbeat) must be judged against each other here, not against the tip. */
+        const bool trackMasternodeState = isMasternodeFeatureForkActive(static_cast<uint32_t>(height));
+        MasternodeStateTracker templateTracker;
+        if (trackMasternodeState)
+        {
+            templateTracker = masternodeStateTracker;
+        }
+
         /* Go get our regular and fusion transactions from the transaction pool */
         auto [regularTransactions, fusionTransactions] = transactionPool->getPoolTransactionsForBlockTemplate();
 
         /* Define our lambda function for checking and adding transactions to a block template */
         const auto addTransactionToBlockTemplate =
-            [this, &spentInputsChecker, maxTotalSize, height, &transactionsSize, &fee, &block](
+            [this, &spentInputsChecker, maxTotalSize, height, &transactionsSize, &fee, &block, trackMasternodeState, &templateTracker](
                 const CachedTransaction &transaction) {
                 /* If the current set of transactions included in the blocktemplate plus the transaction
                    we just passed in exceed the maximum size of a block, it won't fit so we'll move on */
@@ -4919,9 +5477,16 @@ namespace CryptoNote
                 }
 
                 /* Check to validate that the transaction is valid for a block at this height */
-                if (!validateBlockTemplateTransaction(transaction, height))
+                if (!validateBlockTemplateTransaction(transaction, height, trackMasternodeState ? &templateTracker : nullptr))
                 {
-                    transactionPool->removeTransaction(transaction.getTransactionHash());
+                    /* Only drop it from the pool when it is invalid against the chain tip itself;
+                       a tx that is merely incompatible with something already placed in THIS
+                       template (e.g. a second MN tx for the same masternode) may still be fine later. */
+                    if (!trackMasternodeState || !hasMasternodePayload(transaction.getTransaction())
+                        || !validateBlockTemplateTransaction(transaction, height, nullptr))
+                    {
+                        transactionPool->removeTransaction(transaction.getTransactionHash());
+                    }
 
                     return false;
                 }
@@ -4935,6 +5500,15 @@ namespace CryptoNote
                     fee += transaction.getTransactionFee();
 
                     block.transactionHashes.emplace_back(transaction.getTransactionHash());
+
+                    if (trackMasternodeState && hasMasternodePayload(transaction.getTransaction()))
+                    {
+                        applyMasternodeEventFromTransactionToTracker(
+                            transaction.getTransaction(),
+                            transaction.getTransactionFee(),
+                            static_cast<uint32_t>(height),
+                            templateTracker);
+                    }
 
                     return true;
                 }

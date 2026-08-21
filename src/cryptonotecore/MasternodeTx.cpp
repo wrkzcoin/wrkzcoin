@@ -16,26 +16,6 @@ namespace CryptoNote
         constexpr uint8_t MN_MAGIC_1 = 'N';
         constexpr uint8_t MN_MAGIC_2 = '0';
         constexpr uint8_t MN_MAGIC_3 = '1';
-        constexpr size_t MN_BASE_PAYLOAD_SIZE = 4 + 1 + sizeof(Crypto::Hash);
-        constexpr size_t MN_SIG_PAYLOAD_SIZE = sizeof(Crypto::Signature);
-        // Unsigned portion of a Register payload (no signing key — legacy v1).
-        constexpr size_t MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 =
-            MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
-            + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage) + sizeof(Crypto::PublicKey)
-            + sizeof(Crypto::Hash);
-        constexpr size_t MN_REGISTER_PAYLOAD_SIZE_V1 =
-            MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 + MN_SIG_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
-
-        // Unsigned portion of a Register payload including the dedicated signing key (v2).
-        constexpr size_t MN_REGISTER_UNSIGNED_PAYLOAD_SIZE =
-            MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1 + sizeof(Crypto::PublicKey); // + signingKey
-        constexpr size_t MN_REGISTER_PAYLOAD_SIZE = MN_REGISTER_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
-        constexpr size_t MN_HEARTBEAT_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + 1 + MN_SIG_PAYLOAD_SIZE;
-        constexpr size_t MN_ATTEST_UNSIGNED_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + 1;
-        constexpr size_t MN_ATTEST_PAYLOAD_SIZE = MN_ATTEST_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
-        constexpr size_t MN_ACTION_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
-        constexpr size_t MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::Hash);
-        constexpr size_t MN_UPDATE_ENDPOINT_PAYLOAD_SIZE = MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE + MN_SIG_PAYLOAD_SIZE;
 
         uint32_t readUint32LE(const std::vector<uint8_t> &data, size_t offset)
         {
@@ -56,6 +36,101 @@ namespace CryptoNote
                    | (static_cast<uint64_t>(data[offset + 6]) << 48)
                    | (static_cast<uint64_t>(data[offset + 7]) << 56);
         }
+
+        void appendUint32LE(std::vector<uint8_t> &out, uint32_t value)
+        {
+            for (size_t i = 0; i < sizeof(uint32_t); ++i)
+            {
+                out.push_back(static_cast<uint8_t>((value >> (8 * i)) & 0xff));
+            }
+        }
+
+        void appendUint64LE(std::vector<uint8_t> &out, uint64_t value)
+        {
+            for (size_t i = 0; i < sizeof(uint64_t); ++i)
+            {
+                out.push_back(static_cast<uint8_t>((value >> (8 * i)) & 0xff));
+            }
+        }
+
+        template<typename Pod> void appendPod(std::vector<uint8_t> &out, const Pod &pod)
+        {
+            out.insert(out.end(), pod.data, pod.data + sizeof(pod.data));
+        }
+
+        template<typename Pod> void readPod(const std::vector<uint8_t> &data, size_t offset, Pod &pod)
+        {
+            std::copy_n(data.begin() + offset, sizeof(pod.data), pod.data);
+        }
+    }
+
+    std::vector<uint8_t> buildMasternodePayloadHeader(MasternodeTxType type, const Crypto::Hash &masternodeId)
+    {
+        std::vector<uint8_t> out;
+        out.reserve(MASTERNODE_PAYLOAD_HEADER_SIZE);
+        out.push_back(MN_MAGIC_0);
+        out.push_back(MN_MAGIC_1);
+        out.push_back(MN_MAGIC_2);
+        out.push_back(MN_MAGIC_3);
+        out.push_back(static_cast<uint8_t>(type));
+        appendPod(out, masternodeId);
+        return out;
+    }
+
+    std::vector<uint8_t>
+        buildMasternodeActionUnsignedPayload(MasternodeTxType type, const Crypto::Hash &masternodeId, uint32_t height)
+    {
+        auto out = buildMasternodePayloadHeader(type, masternodeId);
+        appendUint32LE(out, height);
+        return out;
+    }
+
+    std::vector<uint8_t>
+        buildMasternodeHeartbeatUnsignedPayload(const Crypto::Hash &masternodeId, uint32_t height, bool healthy)
+    {
+        auto out = buildMasternodeActionUnsignedPayload(MasternodeTxType::Heartbeat, masternodeId, height);
+        out.push_back(healthy ? 1 : 0);
+        return out;
+    }
+
+    std::vector<uint8_t> buildMasternodeAttestUnsignedPayload(
+        const Crypto::Hash &masternodeId,
+        uint32_t height,
+        const Crypto::PublicKey &verifierKey,
+        bool healthy)
+    {
+        auto out = buildMasternodeActionUnsignedPayload(MasternodeTxType::Attest, masternodeId, height);
+        appendPod(out, verifierKey);
+        out.push_back(healthy ? 1 : 0);
+        return out;
+    }
+
+    std::vector<uint8_t> buildMasternodeUpdateEndpointUnsignedPayload(
+        const Crypto::Hash &masternodeId,
+        uint32_t height,
+        const Crypto::Hash &newEndpointCommitment)
+    {
+        auto out = buildMasternodeActionUnsignedPayload(MasternodeTxType::UpdateEndpoint, masternodeId, height);
+        appendPod(out, newEndpointCommitment);
+        return out;
+    }
+
+    std::vector<uint8_t> buildMasternodeRegisterUnsignedPayload(const MasternodeRegisterFields &fields)
+    {
+        auto out = buildMasternodePayloadHeader(MasternodeTxType::Register, fields.masternodeId);
+        out.reserve(MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE);
+        appendPod(out, fields.payoutKey);
+        appendPod(out, fields.registrationTokenId);
+        appendUint32LE(out, fields.registrationExpiresAtHeight);
+        appendUint64LE(out, fields.collateralAmount);
+        appendUint32LE(out, fields.collateralGlobalOutputIndex);
+        appendPod(out, fields.collateralKeyImage);
+        appendPod(out, fields.collateralOutputKey);
+        appendPod(out, fields.endpointCommitment);
+        appendPod(out, fields.signingKey);
+        appendPod(out, fields.payoutViewKey);
+        appendPod(out, fields.operatorKey);
+        return out;
     }
 
     MasternodeTxParseResult
@@ -79,7 +154,7 @@ namespace CryptoNote
             return MasternodeTxParseResult::NotFound;
         }
 
-        if (data.size() < MN_BASE_PAYLOAD_SIZE)
+        if (data.size() < MASTERNODE_PAYLOAD_HEADER_SIZE)
         {
             error = "Masternode payload is truncated";
             return MasternodeTxParseResult::Invalid;
@@ -102,176 +177,145 @@ namespace CryptoNote
                 return MasternodeTxParseResult::Invalid;
         }
 
+        payload = MasternodeTxPayload {};
         payload.type = type;
-        std::copy_n(data.begin() + 5, sizeof(Crypto::Hash), payload.masternodeId.data);
-        payload.healthy = true;
-        payload.hasPayoutKey = false;
-        payload.hasRegistrationToken = false;
-        payload.registrationTokenId = Crypto::Hash {{0}};
-        payload.registrationExpiresAtHeight = 0;
-        payload.hasCollateral = false;
-        payload.collateralAmount = 0;
-        payload.collateralGlobalOutputIndex = 0;
-        payload.collateralKeyImage = Crypto::KeyImage {{0}};
-        payload.collateralOutputKey = Crypto::PublicKey {{0}};
-        payload.hasEndpointCommitment = false;
-        payload.endpointCommitment = Crypto::Hash {{0}};
-        payload.hasNewEndpointCommitment = false;
-        payload.newEndpointCommitment = Crypto::Hash {{0}};
-        payload.hasSigningKey = false;
-        payload.signingKey = Crypto::PublicKey {{0}};
-        payload.hasVerifierKey = false;
-        payload.verifierKey = Crypto::PublicKey {{0}};
-        payload.hasCollateralSignature = false;
-        payload.hasSignature = false;
-        payload.unsignedPayload.clear();
+        readPod(data, 5, payload.masternodeId);
 
         if (type == MasternodeTxType::Register)
         {
-            // Accept both v1 (no signingKey) and v2 (with signingKey) payloads.
-            const bool isV2 = (data.size() == MN_REGISTER_PAYLOAD_SIZE);
-            const bool isV1 = (data.size() == MN_REGISTER_PAYLOAD_SIZE_V1);
-            if (!isV1 && !isV2)
+            if (data.size() != MASTERNODE_REGISTER_PAYLOAD_SIZE)
             {
                 error = "Register payload has invalid size";
                 return MasternodeTxParseResult::Invalid;
             }
 
-            const size_t unsignedSize = isV2 ? MN_REGISTER_UNSIGNED_PAYLOAD_SIZE : MN_REGISTER_UNSIGNED_PAYLOAD_SIZE_V1;
-
+            size_t offset = MASTERNODE_PAYLOAD_HEADER_SIZE;
+            readPod(data, offset, payload.payoutKey);
             payload.hasPayoutKey = true;
-            std::copy_n(data.begin() + MN_BASE_PAYLOAD_SIZE, sizeof(Crypto::PublicKey), payload.payoutKey.data);
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey),
-                sizeof(Crypto::Hash),
-                payload.registrationTokenId.data);
-            payload.registrationExpiresAtHeight = readUint32LE(
-                data,
-                MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash));
+            offset += sizeof(Crypto::PublicKey);
+
+            readPod(data, offset, payload.registrationTokenId);
+            offset += sizeof(Crypto::Hash);
+            payload.registrationExpiresAtHeight = readUint32LE(data, offset);
+            offset += sizeof(uint32_t);
             payload.hasRegistrationToken = true;
-            payload.collateralAmount = readUint64LE(
-                data,
-                MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t));
-            payload.collateralGlobalOutputIndex = readUint32LE(
-                data,
-                MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash) + sizeof(uint32_t)
-                    + sizeof(uint64_t));
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash)
-                    + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t),
-                sizeof(Crypto::KeyImage),
-                payload.collateralKeyImage.data);
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash)
-                    + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage),
-                sizeof(Crypto::PublicKey),
-                payload.collateralOutputKey.data);
-            const size_t endpointOffset =
-                MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey) + sizeof(Crypto::Hash)
-                + sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Crypto::KeyImage)
-                + sizeof(Crypto::PublicKey);
-            std::copy_n(data.begin() + endpointOffset, sizeof(Crypto::Hash), payload.endpointCommitment.data);
-            payload.hasEndpointCommitment = true;
+
+            payload.collateralAmount = readUint64LE(data, offset);
+            offset += sizeof(uint64_t);
+            payload.collateralGlobalOutputIndex = readUint32LE(data, offset);
+            offset += sizeof(uint32_t);
+            readPod(data, offset, payload.collateralKeyImage);
+            offset += sizeof(Crypto::KeyImage);
+            readPod(data, offset, payload.collateralOutputKey);
+            offset += sizeof(Crypto::PublicKey);
             payload.hasCollateral = true;
 
-            if (isV2)
+            readPod(data, offset, payload.endpointCommitment);
+            offset += sizeof(Crypto::Hash);
+            payload.hasEndpointCommitment = true;
+
+            readPod(data, offset, payload.signingKey);
+            offset += sizeof(Crypto::PublicKey);
+            payload.hasSigningKey = true;
+
+            readPod(data, offset, payload.payoutViewKey);
+            offset += sizeof(Crypto::PublicKey);
+            payload.hasPayoutViewKey = true;
+
+            readPod(data, offset, payload.operatorKey);
+            offset += sizeof(Crypto::PublicKey);
+            payload.hasOperatorKey = true;
+
+            if (offset != MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE)
             {
-                // signingKey follows endpointCommitment in the unsigned portion
-                std::copy_n(
-                    data.begin() + endpointOffset + sizeof(Crypto::Hash),
-                    sizeof(Crypto::PublicKey),
-                    payload.signingKey.data);
-                payload.hasSigningKey = true;
+                error = "Register payload layout mismatch";
+                return MasternodeTxParseResult::Invalid;
             }
 
-            std::copy_n(data.begin() + unsignedSize, sizeof(Crypto::Signature), payload.signature.data);
+            readPod(data, offset, payload.signature);
             payload.hasSignature = true;
-            std::copy_n(
-                data.begin() + unsignedSize + sizeof(Crypto::Signature),
-                sizeof(Crypto::Signature),
-                payload.collateralSignature.data);
+            offset += sizeof(Crypto::Signature);
+            readPod(data, offset, payload.collateralSignature);
             payload.hasCollateralSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + unsignedSize);
+
+            payload.unsignedPayload.assign(data.begin(), data.begin() + MASTERNODE_REGISTER_UNSIGNED_PAYLOAD_SIZE);
+            return MasternodeTxParseResult::Valid;
         }
-        else if (type == MasternodeTxType::Heartbeat)
+
+        /* Every other payload type carries the creation height right after the header. */
+        size_t unsignedSize = 0;
+        size_t expectedSize = 0;
+        switch (type)
         {
-            if (data.size() != MN_HEARTBEAT_PAYLOAD_SIZE)
-            {
-                error = "Heartbeat payload has invalid size";
-                return MasternodeTxParseResult::Invalid;
-            }
-
-            if (data[MN_BASE_PAYLOAD_SIZE] > 1)
-            {
-                error = "Heartbeat health flag must be 0 or 1";
-                return MasternodeTxParseResult::Invalid;
-            }
-
-            payload.healthy = data[MN_BASE_PAYLOAD_SIZE] == 1;
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE + 1,
-                sizeof(Crypto::Signature),
-                payload.signature.data);
-            payload.hasSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_BASE_PAYLOAD_SIZE + 1);
+            case MasternodeTxType::Heartbeat:
+                unsignedSize = MASTERNODE_HEARTBEAT_UNSIGNED_PAYLOAD_SIZE;
+                expectedSize = MASTERNODE_HEARTBEAT_PAYLOAD_SIZE;
+                break;
+            case MasternodeTxType::Attest:
+                unsignedSize = MASTERNODE_ATTEST_UNSIGNED_PAYLOAD_SIZE;
+                expectedSize = MASTERNODE_ATTEST_PAYLOAD_SIZE;
+                break;
+            case MasternodeTxType::UpdateEndpoint:
+                unsignedSize = MASTERNODE_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE;
+                expectedSize = MASTERNODE_UPDATE_ENDPOINT_PAYLOAD_SIZE;
+                break;
+            default:
+                unsignedSize = MASTERNODE_ACTION_UNSIGNED_PAYLOAD_SIZE;
+                expectedSize = MASTERNODE_ACTION_PAYLOAD_SIZE;
+                break;
         }
-        else if (type == MasternodeTxType::Attest)
-        {
-            if (data.size() != MN_ATTEST_PAYLOAD_SIZE)
-            {
-                error = "Attest payload has invalid size";
-                return MasternodeTxParseResult::Invalid;
-            }
 
-            std::copy_n(data.begin() + MN_BASE_PAYLOAD_SIZE, sizeof(Crypto::PublicKey), payload.verifierKey.data);
-            payload.hasVerifierKey = true;
-
-            const size_t healthyOffset = MN_BASE_PAYLOAD_SIZE + sizeof(Crypto::PublicKey);
-            if (data[healthyOffset] > 1)
-            {
-                error = "Attest health flag must be 0 or 1";
-                return MasternodeTxParseResult::Invalid;
-            }
-            payload.healthy = data[healthyOffset] == 1;
-
-            std::copy_n(
-                data.begin() + MN_ATTEST_UNSIGNED_PAYLOAD_SIZE,
-                sizeof(Crypto::Signature),
-                payload.signature.data);
-            payload.hasSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_ATTEST_UNSIGNED_PAYLOAD_SIZE);
-        }
-        else if (type == MasternodeTxType::UpdateEndpoint)
-        {
-            if (data.size() != MN_UPDATE_ENDPOINT_PAYLOAD_SIZE)
-            {
-                error = "UpdateEndpoint payload has invalid size";
-                return MasternodeTxParseResult::Invalid;
-            }
-
-            std::copy_n(
-                data.begin() + MN_BASE_PAYLOAD_SIZE,
-                sizeof(Crypto::Hash),
-                payload.newEndpointCommitment.data);
-            payload.hasNewEndpointCommitment = true;
-            std::copy_n(
-                data.begin() + MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE,
-                sizeof(Crypto::Signature),
-                payload.signature.data);
-            payload.hasSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_UPDATE_ENDPOINT_UNSIGNED_PAYLOAD_SIZE);
-        }
-        else if (data.size() != MN_ACTION_PAYLOAD_SIZE)
+        if (data.size() != expectedSize)
         {
             error = "Masternode payload has invalid size";
             return MasternodeTxParseResult::Invalid;
         }
-        else
+
+        size_t offset = MASTERNODE_PAYLOAD_HEADER_SIZE;
+        payload.height = readUint32LE(data, offset);
+        payload.hasHeight = true;
+        offset += sizeof(uint32_t);
+
+        if (type == MasternodeTxType::Heartbeat)
         {
-            std::copy_n(data.begin() + MN_BASE_PAYLOAD_SIZE, sizeof(Crypto::Signature), payload.signature.data);
-            payload.hasSignature = true;
-            payload.unsignedPayload.assign(data.begin(), data.begin() + MN_BASE_PAYLOAD_SIZE);
+            if (data[offset] > 1)
+            {
+                error = "Heartbeat health flag must be 0 or 1";
+                return MasternodeTxParseResult::Invalid;
+            }
+            payload.healthy = data[offset] == 1;
+            offset += 1;
         }
+        else if (type == MasternodeTxType::Attest)
+        {
+            readPod(data, offset, payload.verifierKey);
+            payload.hasVerifierKey = true;
+            offset += sizeof(Crypto::PublicKey);
+
+            if (data[offset] > 1)
+            {
+                error = "Attest health flag must be 0 or 1";
+                return MasternodeTxParseResult::Invalid;
+            }
+            payload.healthy = data[offset] == 1;
+            offset += 1;
+        }
+        else if (type == MasternodeTxType::UpdateEndpoint)
+        {
+            readPod(data, offset, payload.newEndpointCommitment);
+            payload.hasNewEndpointCommitment = true;
+            offset += sizeof(Crypto::Hash);
+        }
+
+        if (offset != unsignedSize)
+        {
+            error = "Masternode payload layout mismatch";
+            return MasternodeTxParseResult::Invalid;
+        }
+
+        readPod(data, unsignedSize, payload.signature);
+        payload.hasSignature = true;
+        payload.unsignedPayload.assign(data.begin(), data.begin() + unsignedSize);
 
         return MasternodeTxParseResult::Valid;
     }

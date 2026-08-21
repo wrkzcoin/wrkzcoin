@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "MasternodeQuorum.h"
+
 #include <CryptoTypes.h>
 #include <cstdint>
 #include <map>
@@ -35,6 +37,9 @@ namespace CryptoNote
     // Manages InstantSend vote collection, lock assembly, and double-spend detection.
     //
     // Thread-safety: NOT internally synchronized (same as ChainLockManager).
+    //
+    // Trust model: only signatures against the embedded keys are verified here. Masternode
+    // membership / quorum checks are the caller's (Core) responsibility.
     class InstantSendManager
     {
       public:
@@ -44,12 +49,11 @@ namespace CryptoNote
         // Verify an InstantSend vote's signature.
         static bool verifyVote(const InstantSendVote &vote);
 
-        // Add an incoming vote.
-        // `keyImages` is the list of input key images in the transaction.
+        // Add an incoming (already membership-validated) vote.
+        // `keyImages` is the list of input key images in the transaction (must be non-empty).
         // `threshold` is the minimum votes required.
         // `currentHeight` is the current blockchain tip height.
-        // Returns true if this vote pushed txHash to >= threshold and a lock was assembled.
-        bool addVote(
+        MasternodeVoteResult addVote(
             const InstantSendVote &vote,
             const std::vector<Crypto::KeyImage> &keyImages,
             uint64_t threshold,
@@ -64,12 +68,21 @@ namespace CryptoNote
         // Returns the IS lock for the given key image, if one exists.
         std::optional<InstantSendLock> getLock(const Crypto::KeyImage &keyImage) const;
 
-        // Directly store an assembled lock (received from a peer broadcast).
-        // Validates all signatures. Returns true if stored.
+        // Returns the IS lock for the given transaction hash, if one exists.
+        std::optional<InstantSendLock> getLockByTxHash(const Crypto::Hash &txHash) const;
+
+        // Directly store an assembled lock (received from a peer broadcast). The caller MUST have
+        // validated quorum membership of every vote already. Validates signatures, distinctness,
+        // non-empty key images and conflicts. Returns true if stored (false if malformed,
+        // conflicting, or already known).
         bool addInstantSendLock(const InstantSendLock &lock, uint64_t threshold);
 
         // Clear IS locks for a confirmed transaction.
         void onTxConfirmed(const Crypto::Hash &txHash);
+
+        // A block spent `keyImage` with some transaction: drop whatever lock covered it (the chain
+        // is authoritative; a local IS lock must never make a PoW-valid block unacceptable).
+        void onKeyImageSpent(const Crypto::KeyImage &keyImage);
 
         // Remove locks and pending votes for txs that have not confirmed within expiry.
         void pruneExpired(uint32_t currentHeight, uint64_t expiryBlocks);
