@@ -9,7 +9,10 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
-include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
+# Crypto++ is included as <cryptopp/...> through the external/ include dir above.
+# Its own directory must NOT be on the include path: it ships generically named
+# headers (zlib.h, config.h, sha.h, ...) that shadow system headers - with
+# CPPHTTPLIB_ZLIB_SUPPORT on, httplib's #include <zlib.h> picked up Crypto++'s.
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 if (DEFINED Boost_INCLUDE_DIRS AND NOT "${Boost_INCLUDE_DIRS}" STREQUAL "")
