@@ -8,7 +8,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <istream>
 #include <map>
+#include <ostream>
 #include <string>
 #include <vector>
 

@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <chrono>
 #include <config/CliHeader.h>
+#include <cstdlib>
 #include <cxxopts.hpp>
 #include <exception>
 #include <iostream>

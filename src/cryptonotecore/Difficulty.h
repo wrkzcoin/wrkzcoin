@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <stdint.h>
 #include <vector>
 

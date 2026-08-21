@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstdint>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <string>

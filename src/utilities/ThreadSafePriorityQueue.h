@@ -4,9 +4,14 @@
 
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <queue>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 template<typename T, typename Comparison = std::less<T>> class ThreadSafePriorityQueue
 {

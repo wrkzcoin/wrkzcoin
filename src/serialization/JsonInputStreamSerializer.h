@@ -10,6 +10,7 @@
 #include "JsonInputValueSerializer.h"
 
 #include <iosfwd>
+#include <istream>
 #include <string>
 #include <vector>
 

@@ -12,6 +12,7 @@
 #include "system/InterruptedException.h"
 
 #include <queue>
+#include <utility>
 
 namespace CryptoNote
 {

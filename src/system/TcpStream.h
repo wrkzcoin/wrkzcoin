@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <ios>
 #include <streambuf>
 
 namespace System

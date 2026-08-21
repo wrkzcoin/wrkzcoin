@@ -9,13 +9,18 @@
 #include "common/ScopeExit.h"
 #include "system/MemoryMappedFile.h"
 
+#include <algorithm>
 #include <cassert>
 #include <common/FileSystemShim.h>
 #include <crypto/random.h>
 #include <cstdint>
+#include <iterator>
+#include <stdexcept>
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <type_traits>
+#include <utility>
 
 namespace Common
 {

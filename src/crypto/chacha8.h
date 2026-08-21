@@ -9,6 +9,7 @@
 
 #include <crypto/hash.h>
 #include <crypto/random.h>
+#include <cstring>
 #include <string>
 
 constexpr inline int CHACHA8_KEY_SIZE = 32;

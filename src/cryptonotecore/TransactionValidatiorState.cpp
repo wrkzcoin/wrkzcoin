@@ -7,6 +7,7 @@
 
 #include "TransactionValidatiorState.h"
 
+#include <cassert>
 #include <variant>
 
 namespace CryptoNote
