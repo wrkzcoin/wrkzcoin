@@ -360,6 +360,13 @@ target_link_libraries(Logging Common ${WRKZ_BOOST_LINK_LIBS})
 target_link_libraries(Nigel Errors CryptoNoteCore)
 target_link_libraries(NodeRpcProxy Rpc)
 target_link_libraries(P2P upnpc-static Serialization System CryptoNoteCore)
+if (WIN32)
+    # NetNode.cpp uses boost::uuids::random_generator, whose Windows entropy
+    # provider calls BCryptGenRandom. Boost only emits the auto-link pragma for
+    # MSVC, so MinGW needs bcrypt named here — as a P2P dependency it lands
+    # after libP2P.a on the link line, which static resolution requires.
+    target_link_libraries(P2P bcrypt)
+endif ()
 target_link_libraries(Rpc P2P Utilities CryptoNoteCore)
 target_link_libraries(Serialization Common Crypto)
 target_link_libraries(SubWallets Common Logger)
