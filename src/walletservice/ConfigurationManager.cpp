@@ -13,6 +13,7 @@
 #include <CryptoTypes.h>
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
+#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <functional>

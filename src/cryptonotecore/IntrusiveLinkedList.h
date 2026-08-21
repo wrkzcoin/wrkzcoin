@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cassert>
+
 namespace CryptoNote
 {
     // Value must have public method IntrusiveLinkedList<Value>::hook& getHook()

@@ -9,7 +9,10 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
-include_directories(${CMAKE_SOURCE_DIR}/external/cryptopp)
+# Crypto++ is included as <cryptopp/...> through the external/ include dir above.
+# Its own directory must NOT be on the include path: it ships generically named
+# headers (zlib.h, config.h, sha.h, ...) that shadow system headers - with
+# CPPHTTPLIB_ZLIB_SUPPORT on, httplib's #include <zlib.h> picked up Crypto++'s.
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 if (DEFINED Boost_INCLUDE_DIRS AND NOT "${Boost_INCLUDE_DIRS}" STREQUAL "")
@@ -361,6 +364,13 @@ target_link_libraries(Logging Common ${WRKZ_BOOST_LINK_LIBS})
 target_link_libraries(Nigel Errors CryptoNoteCore)
 target_link_libraries(NodeRpcProxy Rpc)
 target_link_libraries(P2P upnpc-static Serialization System CryptoNoteCore)
+if (WIN32)
+    # NetNode.cpp uses boost::uuids::random_generator, whose Windows entropy
+    # provider calls BCryptGenRandom. Boost only emits the auto-link pragma for
+    # MSVC, so MinGW needs bcrypt named here — as a P2P dependency it lands
+    # after libP2P.a on the link line, which static resolution requires.
+    target_link_libraries(P2P bcrypt)
+endif ()
 target_link_libraries(Rpc P2P Utilities CryptoNoteCore)
 target_link_libraries(Serialization Common Crypto)
 target_link_libraries(SubWallets Common Logger)

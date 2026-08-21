@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstring>
+#include <iterator>
 #include <list>
 #include <map>
 #include <set>
@@ -18,6 +19,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace CryptoNote

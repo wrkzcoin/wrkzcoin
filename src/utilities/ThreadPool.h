@@ -4,11 +4,16 @@
 
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <functional>
 #include <future>
 #include <mutex>
 #include <queue>
 #include <thread>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace Utilities

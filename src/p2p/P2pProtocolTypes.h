@@ -9,6 +9,7 @@
 #include <common/StringTools.h>
 #include <cstdint>
 #include <string.h>
+#include <string>
 #include <tuple>
 
 struct NetworkAddress

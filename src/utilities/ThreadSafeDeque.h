@@ -5,10 +5,17 @@
 
 #pragma once
 
+#include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <deque>
+#include <functional>
 #include <iostream>
 #include <mutex>
+#include <numeric>
+#include <stdexcept>
+#include <utility>
+#include <vector>
 
 template<typename T> class ThreadSafeDeque
 {

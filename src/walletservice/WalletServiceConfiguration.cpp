@@ -7,6 +7,7 @@
 
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
+#include <cstdlib>
 #include <cxxopts.hpp>
 #include <exception>
 #include <fstream>

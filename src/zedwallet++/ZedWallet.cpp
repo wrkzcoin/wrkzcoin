@@ -5,6 +5,7 @@
 
 #include <common/SignalHandler.h>
 #include <config/CliHeader.h>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <utilities/ColouredMsg.h>

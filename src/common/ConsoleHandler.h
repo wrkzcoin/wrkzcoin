@@ -14,6 +14,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifndef _WIN32

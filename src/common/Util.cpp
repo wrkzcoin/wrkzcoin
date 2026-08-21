@@ -9,6 +9,7 @@
 #include <common/FileSystemShim.h>
 #include <config/CryptoNoteConfig.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #if defined(_WIN32) || defined(WIN32)

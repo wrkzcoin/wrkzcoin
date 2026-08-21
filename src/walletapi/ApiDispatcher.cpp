@@ -5,6 +5,7 @@
 
 ////////////////////////////////////
 #include <cerrno>
+#include <cstdlib>
 #include <fstream>
 #include <walletapi/ApiDispatcher.h>
 

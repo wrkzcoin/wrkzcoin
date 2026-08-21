@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
+#include <thread>
 
 template<typename T> class Event
 {

@@ -14,6 +14,7 @@
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/NetworkParameters.h>
+#include <cstdlib>
 #include <cxxopts.hpp>
 #include <algorithm>
 #include <cctype>

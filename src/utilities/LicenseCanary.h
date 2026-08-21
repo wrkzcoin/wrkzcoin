@@ -3,6 +3,7 @@
 // Please see the included LICENSE file for more information.
 
 #include <string>
+#include <string_view>
 
 constexpr std::string_view canary = "TurtleCoin";
 

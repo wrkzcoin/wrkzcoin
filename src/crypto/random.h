@@ -2,7 +2,10 @@
 
 #pragma once
 
+#include <cstdint>
+#include <limits>
 #include <random>
+#include <vector>
 
 namespace Random
 {

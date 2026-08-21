@@ -12,6 +12,7 @@
 #include "argon2.h"
 
 #include <CryptoTypes.h>
+#include <cstring>
 #include <stddef.h>
 
 // Standard Cryptonight Definitions

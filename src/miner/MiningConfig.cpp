@@ -14,6 +14,7 @@
 #include <common/Util.h>
 #include <config/CliHeader.h>
 #include <config/CryptoNoteConfig.h>
+#include <cstdlib>
 #include <cxxopts.hpp>
 #include <errors/ValidateParameters.h>
 #include <iostream>

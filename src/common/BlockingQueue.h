@@ -8,9 +8,11 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <utility>
 
 template<typename T, typename Container = std::deque<T>> class BlockingQueue
 {

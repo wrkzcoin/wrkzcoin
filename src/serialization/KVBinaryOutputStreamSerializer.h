@@ -10,6 +10,7 @@
 #include "MemoryStream.h"
 
 #include <common/IOutputStream.h>
+#include <utility>
 #include <vector>
 
 namespace CryptoNote

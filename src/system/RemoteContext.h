@@ -11,6 +11,7 @@
 #include <system/Dispatcher.h>
 #include <system/Event.h>
 #include <system/InterruptedException.h>
+#include <utility>
 
 namespace System
 {

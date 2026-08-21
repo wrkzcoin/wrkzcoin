@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace Miner
 {
     enum class MinerEventType : uint8_t

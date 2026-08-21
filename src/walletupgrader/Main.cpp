@@ -3,6 +3,7 @@
 // Please see the included LICENSE file for more information.
 
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 
 #include <config/CliHeader.h>

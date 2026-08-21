@@ -6,6 +6,7 @@
 
 #include "UpgradeManager.h"
 
+#include <cassert>
 #include <config/CryptoNoteConfig.h>
 #include <functional>
 
