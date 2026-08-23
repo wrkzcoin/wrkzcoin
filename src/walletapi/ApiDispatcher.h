@@ -8,6 +8,7 @@
 #include "httplib_fwd.h"
 #include "json.hpp"
 
+#include <common/Notifier.h>
 #include <cryptopp/modes.h>
 #include <memory>
 #include <mutex>
@@ -62,7 +63,9 @@ class ApiDispatcher
         const bool rpcUseIpv6,
         const std::string rpcPassword,
         std::string corsHeader,
-        unsigned int walletSyncThreads = std::thread::hardware_concurrency());
+        unsigned int walletSyncThreads = std::thread::hardware_concurrency(),
+        const std::string txNotify = "",
+        const bool notifyDuringSync = false);
 
     ~ApiDispatcher();
 
@@ -344,11 +347,20 @@ class ApiDispatcher
     /* Registers all HTTP routes on the given server instance */
     void setupRoutes(httplib::Server &srv);
 
+    /* Subscribes the --tx-notify hook to the freshly opened/created/imported
+       wallet backend (no-op when no hook is configured or no wallet is open). */
+    void attachTransactionNotifier();
+
     //////////////////////////////
     /* Private member variables */
     //////////////////////////////
 
     std::shared_ptr<WalletBackend> m_walletBackend = nullptr;
+
+    /* --tx-notify sink; shared so event callbacks can outlive a wallet close */
+    std::shared_ptr<Tools::Notifier> m_txNotifier;
+
+    bool m_notifyDuringSync = false;
 
     /* Our IPv4 server instance */
     std::unique_ptr<httplib::Server> m_server;

@@ -163,6 +163,9 @@ void PaymentGateService::runWalletService(const CryptoNote::Currency &currency, 
 {
     PaymentService::WalletConfiguration walletConfiguration {
         config.serviceConfig.containerFile, config.serviceConfig.containerPassword, config.serviceConfig.syncFromZero};
+    walletConfiguration.txNotify = config.serviceConfig.txNotify;
+    walletConfiguration.txConfirmedNotify = config.serviceConfig.txConfirmedNotify;
+    walletConfiguration.notifyDuringSync = config.serviceConfig.notifyDuringSync;
 
     std::unique_ptr<CryptoNote::WalletGreen> wallet(new CryptoNote::WalletGreen(*dispatcher, currency, node, logger));
 

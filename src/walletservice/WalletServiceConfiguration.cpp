@@ -106,6 +106,20 @@ namespace PaymentService
             cxxopts::value<int>()->default_value(std::to_string(config.bindPort)),
             "<port>");
 
+        options.add_options("Notifications")(
+            "tx-notify",
+            "Run a command or POST to an http(s):// URL for every new wallet transaction. "
+            "Placeholders: %s hash, %h height (0 = unconfirmed), %a amount, %f fee, %p payment id, %c confirmed 0/1",
+            cxxopts::value<std::string>()->default_value(config.txNotify),
+            "<cmd|url>")(
+            "tx-confirmed-notify",
+            "Same as tx-notify but fired once when a transaction gets into a block",
+            cxxopts::value<std::string>()->default_value(config.txConfirmedNotify),
+            "<cmd|url>")(
+            "notify-during-sync",
+            "Also fire tx notifications while the wallet is far behind the daemon (default: suppressed)",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+
         options.add_options("RPC")(
             "enable-cors",
             "Adds header 'Access-Control-Allow-Origin' to the RPC responses. Uses the value specified as the domain. "
@@ -200,6 +214,21 @@ namespace PaymentService
             if (cli.count("bind-address") > 0)
             {
                 config.bindAddress = cli["bind-address"].as<std::string>();
+            }
+
+            if (cli.count("tx-notify") > 0)
+            {
+                config.txNotify = cli["tx-notify"].as<std::string>();
+            }
+
+            if (cli.count("tx-confirmed-notify") > 0)
+            {
+                config.txConfirmedNotify = cli["tx-confirmed-notify"].as<std::string>();
+            }
+
+            if (cli.count("notify-during-sync") > 0)
+            {
+                config.notifyDuringSync = cli["notify-during-sync"].as<bool>();
             }
 
             if (cli.count("bind-port") > 0)
@@ -395,6 +424,21 @@ namespace PaymentService
                     config.bindAddress = cfgValue;
                     updated = true;
                 }
+                else if (cfgKey.compare("tx-notify") == 0)
+                {
+                    config.txNotify = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("tx-confirmed-notify") == 0)
+                {
+                    config.txConfirmedNotify = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("notify-during-sync") == 0)
+                {
+                    config.notifyDuringSync = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("bind-port") == 0)
                 {
                     try
@@ -519,6 +563,21 @@ namespace PaymentService
             config.bindAddress = j["bind-address"].get<std::string>();
         }
 
+        if (j.contains("tx-notify"))
+        {
+            config.txNotify = j["tx-notify"].get<std::string>();
+        }
+
+        if (j.contains("tx-confirmed-notify"))
+        {
+            config.txConfirmedNotify = j["tx-confirmed-notify"].get<std::string>();
+        }
+
+        if (j.contains("notify-during-sync"))
+        {
+            config.notifyDuringSync = j["notify-during-sync"].get<bool>();
+        }
+
         if (j.contains("bind-port"))
         {
             config.bindPort = j["bind-port"].get<int>();
@@ -558,6 +617,9 @@ namespace PaymentService
         j["container-password"] = config.containerPassword;
         j["bind-address"] = config.bindAddress;
         j["bind-port"] = config.bindPort;
+        j["tx-notify"] = config.txNotify;
+        j["tx-confirmed-notify"] = config.txConfirmedNotify;
+        j["notify-during-sync"] = config.notifyDuringSync;
         j["enable-cors"] = config.corsHeader;
         j["rpc-legacy-security"] = config.legacySecurity;
         j["rpc-password"] = config.rpcPassword;

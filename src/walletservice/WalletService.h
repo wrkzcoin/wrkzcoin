@@ -22,8 +22,10 @@
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
+#include <common/Notifier.h>
 #include <fstream>
 #include <memory>
+#include <unordered_set>
 #include <wallet/WalletGreen.h>
 
 namespace CryptoNote
@@ -42,6 +44,9 @@ namespace PaymentService
         std::string secretSpendKey;
         std::string mnemonicSeed;
         uint64_t scanHeight;
+        std::string txNotify;
+        std::string txConfirmedNotify;
+        bool notifyDuringSync;
     };
 
     void generateNewWallet(
@@ -182,6 +187,20 @@ namespace PaymentService
       private:
         void refresh();
 
+        /* --tx-notify / --tx-confirmed-notify plumbing (see refresh()). */
+        void initNotifiers();
+
+        void stopNotifiers();
+
+        void onTransactionEvent(size_t transactionId, bool created);
+
+        bool shouldNotifyTransaction(const CryptoNote::WalletTransaction &transaction) const;
+
+        void sendTransactionNotification(
+            Tools::Notifier &notifier,
+            const std::string &event,
+            const CryptoNote::WalletTransaction &transaction) const;
+
         void reset(const uint64_t scanHeight);
 
         void loadWallet();
@@ -239,6 +258,17 @@ namespace PaymentService
         uint32_t m_node_fee;
 
         std::map<std::string, size_t> transactionIdIndex;
+
+        std::unique_ptr<Tools::Notifier> m_txNotifier;
+
+        std::unique_ptr<Tools::Notifier> m_txConfirmedNotifier;
+
+        /* Outgoing transfers still being sent (state CREATED); announced once
+           they succeed, dropped if they fail. */
+        std::unordered_set<size_t> m_pendingSend;
+
+        /* Transactions announced while unconfirmed; emptied as they confirm. */
+        std::unordered_set<size_t> m_awaitingConfirmation;
     };
 
 } // namespace PaymentService

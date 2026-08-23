@@ -87,6 +87,14 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
   - `pip install pyzmq`
   - `python scripts/zmq_sub_test.py --endpoint tcp://127.0.0.1:17857 --topics hashblock chain_main`
 
+### Notification Hooks (Monero-style `--block-notify` / `--tx-notify`)
+
+- Daemon: `--block-notify`, `--reorg-notify`, `--tx-notify`; wallets: `--tx-notify` (`Wrkz-service` also `--tx-confirmed-notify`).
+- Each takes an `http(s)://` URL (JSON POST) or a command template (`%s` hash, `%h` height, ...), e.g.
+  - `Wrkzd --block-notify https://example.com/hooks/block`
+  - `Wrkzd --block-notify "curl -s -X POST https://example.com/hook -d hash=%s -d height=%h"`
+- Delivery is asynchronous (own worker thread, bounded queue, 10 s timeout) and never blocks the node. Details in [NETWORKING.md](NETWORKING.md#notification-hooks---block-notify---tx-notify-).
+
 Build requirements and static/portable notes are in [COMPILE.md](COMPILE.md).
 
 ### A note for contributing developers

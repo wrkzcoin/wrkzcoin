@@ -8,6 +8,7 @@
 
 #include "DaemonCommandsHandler.h"
 #include "DaemonConfiguration.h"
+#include "ChainNotifier.h"
 #include "MasternodeSigner.h"
 #include "ZmqPublisher.h"
 #include "common/CryptoNoteTools.h"
@@ -653,6 +654,28 @@ int main(int argc, char *argv[])
         }
 #endif
 
+        /* Monero-style --block-notify / --reorg-notify / --tx-notify hooks.
+           Delivery runs on its own worker threads; the dispatcher only enqueues. */
+        std::unique_ptr<Daemon::ChainNotifier> chainNotifier;
+        if (!config.blockNotify.empty() || !config.reorgNotify.empty() || !config.txNotify.empty())
+        {
+            chainNotifier = std::make_unique<Daemon::ChainNotifier>(
+                dispatcher,
+                *ccore,
+                *cprotocol,
+                logManager,
+                config.blockNotify,
+                config.reorgNotify,
+                config.txNotify,
+                config.notifyDuringSync);
+
+            if (!chainNotifier->start())
+            {
+                logger(WARNING) << "No usable notification hook configured. Continuing without notifications.";
+                chainNotifier.reset();
+            }
+        }
+
         /* Get the RPC IP address and port we are bound to */
         auto [ip, port] = rpcServer.getConnectionInfo();
 
@@ -769,6 +792,12 @@ int main(int argc, char *argv[])
         dch.wait_for_background_compaction();
 
         // stop components
+        if (chainNotifier)
+        {
+            logger(INFO) << "Stopping chain notifier...";
+            chainNotifier->stop();
+        }
+
         if (zmqPublisher)
         {
             logger(INFO) << "Stopping ZMQ publisher...";

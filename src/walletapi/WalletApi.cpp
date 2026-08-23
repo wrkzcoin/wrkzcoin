@@ -55,7 +55,7 @@ int main(int argc, char **argv)
         /* Init the API */
         api = std::make_shared<ApiDispatcher>(
             config.port, config.rpcBindIp, config.rpcBindIpv6Address, config.rpcUseIpv6,
-            config.rpcPassword, config.corsHeader, config.threads);
+            config.rpcPassword, config.corsHeader, config.threads, config.txNotify, config.notifyDuringSync);
 
         /* Launch the API */
         apiThread = std::thread(&ApiDispatcher::start, api.get());
