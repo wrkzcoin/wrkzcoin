@@ -205,6 +205,24 @@ namespace DaemonConfig
             "<address>")(
             "no-zmq",
             "Disable ZMQ publisher even if zmq-pub is set",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "block-notify",
+            "Run a command or POST to an http(s):// URL for each new main-chain block. "
+            "Command placeholders: %s block hash, %h height (no shell; quotes group arguments)",
+            cxxopts::value<std::string>()->default_value(config.blockNotify),
+            "<cmd|url>")(
+            "reorg-notify",
+            "Run a command or POST to an http(s):// URL on every chain reorganisation. "
+            "Placeholders: %s split height, %h new height, %n new blocks, %d discarded blocks",
+            cxxopts::value<std::string>()->default_value(config.reorgNotify),
+            "<cmd|url>")(
+            "tx-notify",
+            "Run a command or POST to an http(s):// URL for each transaction entering the pool. "
+            "Placeholders: %s transaction hash",
+            cxxopts::value<std::string>()->default_value(config.txNotify),
+            "<cmd|url>")(
+            "notify-during-sync",
+            "Also fire *-notify hooks while the node is still synchronizing (default: suppressed)",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
 
         options.add_options("Network")(
@@ -646,6 +664,26 @@ namespace DaemonConfig
             if (cli.count("no-zmq") > 0)
             {
                 config.noZmq = cli["no-zmq"].as<bool>();
+            }
+
+            if (cli.count("block-notify") > 0)
+            {
+                config.blockNotify = cli["block-notify"].as<std::string>();
+            }
+
+            if (cli.count("reorg-notify") > 0)
+            {
+                config.reorgNotify = cli["reorg-notify"].as<std::string>();
+            }
+
+            if (cli.count("tx-notify") > 0)
+            {
+                config.txNotify = cli["tx-notify"].as<std::string>();
+            }
+
+            if (cli.count("notify-during-sync") > 0)
+            {
+                config.notifyDuringSync = cli["notify-during-sync"].as<bool>();
             }
 
             if (cli.count("transaction-validation-threads") > 0)
@@ -1109,6 +1147,26 @@ namespace DaemonConfig
                     config.noZmq = cfgValue.at(0) == '1';
                     updated = true;
                 }
+                else if (cfgKey.compare("block-notify") == 0)
+                {
+                    config.blockNotify = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("reorg-notify") == 0)
+                {
+                    config.reorgNotify = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("tx-notify") == 0)
+                {
+                    config.txNotify = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("notify-during-sync") == 0)
+                {
+                    config.notifyDuringSync = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("transaction-validation-threads") == 0)
                 {
                     try
@@ -1524,6 +1582,26 @@ namespace DaemonConfig
             config.noZmq = j["no-zmq"].get<bool>();
         }
 
+        if (j.contains("block-notify"))
+        {
+            config.blockNotify = j["block-notify"].get<std::string>();
+        }
+
+        if (j.contains("reorg-notify"))
+        {
+            config.reorgNotify = j["reorg-notify"].get<std::string>();
+        }
+
+        if (j.contains("tx-notify"))
+        {
+            config.txNotify = j["tx-notify"].get<std::string>();
+        }
+
+        if (j.contains("notify-during-sync"))
+        {
+            config.notifyDuringSync = j["notify-during-sync"].get<bool>();
+        }
+
         if (j.contains("transaction-validation-threads"))
         {
             config.transactionValidationThreads = j["transaction-validation-threads"].get<int>();
@@ -1637,6 +1715,10 @@ namespace DaemonConfig
         j["rpc-trust-proxy"] = config.rpcTrustProxy;
         j["zmq-pub"] = config.zmqPub;
         j["no-zmq"] = config.noZmq;
+        j["block-notify"] = config.blockNotify;
+        j["reorg-notify"] = config.reorgNotify;
+        j["tx-notify"] = config.txNotify;
+        j["notify-during-sync"] = config.notifyDuringSync;
         j["transaction-validation-threads"] = config.transactionValidationThreads;
         j["prune"] = config.prune;
         j["prune-depth"] = config.pruneDepth;

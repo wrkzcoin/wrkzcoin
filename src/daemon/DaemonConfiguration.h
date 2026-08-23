@@ -81,6 +81,10 @@ namespace DaemonConfig
             rpcTrustProxy = false;
             zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
             noZmq = false;
+            blockNotify = "";
+            reorgNotify = "";
+            txNotify = "";
+            notifyDuringSync = false;
             skipBootCompaction = false;
             autoPruneMinGapBlocks = 120;
             autoCompactionMinGapBlocks = 720;
@@ -193,6 +197,16 @@ namespace DaemonConfig
         std::string zmqPub;
 
         bool noZmq;
+
+        /* Monero-style notification hooks: an http(s):// URL (JSON POST) or a
+           command template (%s hash, %h height, ...). Empty = disabled. */
+        std::string blockNotify;
+
+        std::string reorgNotify;
+
+        std::string txNotify;
+
+        bool notifyDuringSync;
 
         bool skipBootCompaction;
 
