@@ -567,6 +567,7 @@ namespace PaymentService
         {
             wallet.stop();
             refreshContext.wait();
+            stopNotifiers();
             wallet.shutdown();
         }
     }
@@ -577,9 +578,211 @@ namespace PaymentService
         loadTransactionIdIndex();
 
         getNodeFee();
+        initNotifiers();
         refreshContext.spawn([this] { refresh(); });
 
         inited = true;
+    }
+
+    void WalletService::initNotifiers()
+    {
+        auto logFn = [this](Tools::Notifier::LogLevel level, const std::string &message) {
+            logger(level == Tools::Notifier::LogLevel::Warning ? Logging::WARNING : Logging::INFO) << message;
+        };
+
+        if (!config.txNotify.empty())
+        {
+            m_txNotifier = std::make_unique<Tools::Notifier>("tx-notify", config.txNotify, logFn);
+        }
+
+        if (!config.txConfirmedNotify.empty())
+        {
+            m_txConfirmedNotifier =
+                std::make_unique<Tools::Notifier>("tx-confirmed-notify", config.txConfirmedNotify, logFn);
+        }
+
+        if ((m_txNotifier && m_txNotifier->enabled()) || (m_txConfirmedNotifier && m_txConfirmedNotifier->enabled()))
+        {
+            logger(Logging::INFO) << "Transaction notifications enabled"
+                                  << (config.notifyDuringSync ? " (including during sync)"
+                                                              : " (suppressed while far behind the daemon)");
+        }
+    }
+
+    void WalletService::stopNotifiers()
+    {
+        if (m_txNotifier)
+        {
+            m_txNotifier->stop();
+        }
+
+        if (m_txConfirmedNotifier)
+        {
+            m_txConfirmedNotifier->stop();
+        }
+    }
+
+    bool WalletService::shouldNotifyTransaction(const CryptoNote::WalletTransaction &transaction) const
+    {
+        if (config.notifyDuringSync)
+        {
+            return true;
+        }
+
+        /* Pool transactions only show up once we are live; confirmed ones are
+           announced unless they are far behind the daemon tip (rescan). */
+        if (transaction.blockHeight == CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT)
+        {
+            return true;
+        }
+
+        const uint32_t daemonHeight = node.getLastKnownBlockHeight();
+        return transaction.blockHeight + CryptoNote::WALLET_NOTIFY_SYNC_LAG_BLOCKS >= daemonHeight;
+    }
+
+    void WalletService::sendTransactionNotification(
+        Tools::Notifier &notifier,
+        const std::string &event,
+        const CryptoNote::WalletTransaction &transaction) const
+    {
+        const bool confirmed = transaction.blockHeight != CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT;
+        const std::string hash = Common::podToHex(transaction.hash);
+        const std::string height = std::to_string(confirmed ? transaction.blockHeight : 0);
+        const std::string amount = std::to_string(transaction.totalAmount);
+        const std::string fee = std::to_string(transaction.fee);
+        const std::string paymentId = getPaymentIdStringFromExtra(transaction.extra);
+        const std::string confirmedFlag = confirmed ? "1" : "0";
+
+        Tools::Notifier::Notification n;
+        n.event = event;
+        n.placeholders = {
+            {'s', hash}, {'h', height}, {'a', amount}, {'f', fee}, {'p', paymentId}, {'c', confirmedFlag}};
+        n.fields = {
+            {"hash", hash, true},
+            {"height", height, false},
+            {"amount", amount, false},
+            {"fee", fee, false},
+            {"paymentId", paymentId, true},
+            {"confirmed", confirmed ? "true" : "false", false},
+            {"timestamp", std::to_string(transaction.timestamp), false},
+            {"unlockTime", std::to_string(transaction.unlockTime), false}};
+        notifier.notify(std::move(n));
+    }
+
+    void WalletService::onTransactionEvent(size_t transactionId, bool created)
+    {
+        const bool wantNew = m_txNotifier && m_txNotifier->enabled();
+        const bool wantConfirmed = m_txConfirmedNotifier && m_txConfirmedNotifier->enabled();
+
+        if (!wantNew && !wantConfirmed)
+        {
+            return;
+        }
+
+        CryptoNote::WalletTransaction transaction;
+        try
+        {
+            transaction = wallet.getTransaction(transactionId);
+        }
+        catch (const std::exception &e)
+        {
+            logger(Logging::DEBUGGING) << "Notification skipped, cannot load transaction " << transactionId << ": "
+                                       << e.what();
+            return;
+        }
+
+        const bool confirmed = transaction.blockHeight != CryptoNote::WALLET_UNCONFIRMED_TRANSACTION_HEIGHT;
+        const bool active = transaction.state == CryptoNote::WalletTransactionState::SUCCEEDED;
+
+        /* Announce a transaction the first time it is known to be real:
+           incoming (SUCCEEDED on creation) or outgoing once it was sent. */
+        const auto announce = [&]() {
+            if (wantNew)
+            {
+                sendTransactionNotification(*m_txNotifier, "tx", transaction);
+            }
+
+            if (!wantConfirmed)
+            {
+                return;
+            }
+
+            if (confirmed)
+            {
+                sendTransactionNotification(*m_txConfirmedNotifier, "tx_confirmed", transaction);
+            }
+            else
+            {
+                m_awaitingConfirmation.insert(transactionId);
+            }
+        };
+
+        if (created)
+        {
+            if (!shouldNotifyTransaction(transaction))
+            {
+                return;
+            }
+
+            if (transaction.state == CryptoNote::WalletTransactionState::CREATED)
+            {
+                /* Outgoing transfer being sent; announced when it succeeds. */
+                m_pendingSend.insert(transactionId);
+                return;
+            }
+
+            if (active)
+            {
+                announce();
+            }
+
+            return;
+        }
+
+        const auto pending = m_pendingSend.find(transactionId);
+        if (pending != m_pendingSend.end())
+        {
+            if (transaction.state == CryptoNote::WalletTransactionState::CREATED)
+            {
+                return;
+            }
+
+            m_pendingSend.erase(pending);
+
+            if (active)
+            {
+                announce();
+            }
+
+            return;
+        }
+
+        /* Other updates: only interesting for the confirmed hook, and only once. */
+        if (!wantConfirmed)
+        {
+            return;
+        }
+
+        const auto it = m_awaitingConfirmation.find(transactionId);
+        if (it == m_awaitingConfirmation.end())
+        {
+            return;
+        }
+
+        if (!active)
+        {
+            /* Cancelled / deleted before it ever confirmed. */
+            m_awaitingConfirmation.erase(it);
+            return;
+        }
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        m_awaitingConfirmation.erase(it);
+        sendTransactionNotification(*m_txConfirmedNotifier, "tx_confirmed", transaction);
     }
 
     void WalletService::getNodeFee()
@@ -1684,6 +1887,11 @@ namespace PaymentService
                     size_t transactionId = event.transactionCreated.transactionIndex;
                     transactionIdIndex.emplace(
                         Common::podToHex(wallet.getTransaction(transactionId).hash), transactionId);
+                    onTransactionEvent(transactionId, true);
+                }
+                else if (event.type == CryptoNote::TRANSACTION_UPDATED)
+                {
+                    onTransactionEvent(event.transactionUpdated.transactionIndex, false);
                 }
             }
         }

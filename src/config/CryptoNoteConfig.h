@@ -443,6 +443,11 @@ namespace CryptoNote
 
     const int ZMQ_PUB_DEFAULT_PORT = 17857;
 
+    /* Wallet --tx-notify hooks stay quiet for transactions whose block is more
+       than this many blocks behind the daemon (i.e. during a rescan), unless
+       --notify-during-sync is given. ~24h at the 60s block target. */
+    const uint32_t WALLET_NOTIFY_SYNC_LAG_BLOCKS = 1440;
+
     const int SERVICE_DEFAULT_PORT = 7856;
 
     const size_t P2P_LOCAL_WHITE_PEERLIST_LIMIT = 1000;

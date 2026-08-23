@@ -94,6 +94,16 @@ namespace PaymentService
 
         /* Height to begin scanning at (on initial import) */
         uint64_t scanHeight;
+
+        /* Monero-style --tx-notify: http(s):// URL (JSON POST) or command
+           template run for every new wallet transaction. Empty = disabled. */
+        std::string txNotify;
+
+        /* Same, fired once when a transaction becomes confirmed. */
+        std::string txConfirmedNotify;
+
+        /* Fire notifications while the wallet is far behind the daemon. */
+        bool notifyDuringSync = false;
     };
 
     bool updateConfigFormat(const std::string configFile, WalletServiceConfiguration &config);
