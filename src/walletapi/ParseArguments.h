@@ -40,6 +40,13 @@ struct ApiConfig
     bool noConsole = false;
 
     unsigned int threads;
+
+    /* Monero-style --tx-notify: http(s):// URL (JSON POST) or command template
+       run for every transaction that gets confirmed for the open wallet. */
+    std::string txNotify;
+
+    /* Also fire while the wallet is far behind the daemon (rescan). */
+    bool notifyDuringSync = false;
 };
 
 ApiConfig parseArguments(int argc, char **argv);

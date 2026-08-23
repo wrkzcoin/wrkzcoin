@@ -27,7 +27,8 @@ ApiConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false, rpcUseIpv6 = false;
+    bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false, rpcUseIpv6 = false,
+         notifyDuringSync = false;
 
     int logLevel;
 
@@ -86,6 +87,17 @@ ApiConfig parseArguments(int argc, char **argv)
         ("rpc-use-ipv6",
          "Enable IPv6 support for the API service",
          cxxopts::value<bool>(rpcUseIpv6)->default_value("false")->implicit_value("true"));
+
+    options.add_options("Notifications")
+        ("tx-notify",
+         "Run a command or POST to an http(s):// URL for every transaction confirmed for the open wallet. "
+         "Placeholders: %s hash, %h height, %a amount, %f fee, %p payment id",
+         cxxopts::value<std::string>(config.txNotify),
+         "<cmd|url>")
+
+        ("notify-during-sync",
+         "Also fire tx-notify while the wallet is far behind the daemon (default: suppressed)",
+         cxxopts::value<bool>(notifyDuringSync)->default_value("false")->implicit_value("true"));
 
     options.add_options("RPC")(
         "enable-cors",
@@ -163,6 +175,11 @@ ApiConfig parseArguments(int argc, char **argv)
     if (rpcUseIpv6)
     {
         config.rpcUseIpv6 = true;
+    }
+
+    if (notifyDuringSync)
+    {
+        config.notifyDuringSync = true;
     }
 
     if (threads == 0)

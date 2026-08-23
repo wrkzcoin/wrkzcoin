@@ -4,6 +4,7 @@
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
@@ -36,13 +37,40 @@ ApiDispatcher::ApiDispatcher(
     const bool rpcUseIpv6,
     const std::string rpcPassword,
     const std::string corsHeader,
-    unsigned int walletSyncThreads):
+    unsigned int walletSyncThreads,
+    const std::string txNotify,
+    const bool notifyDuringSync):
+    m_notifyDuringSync(notifyDuringSync),
     m_port(bindPort),
     m_host(rpcBindIp),
     m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
+    if (!txNotify.empty())
+    {
+        m_txNotifier = std::make_shared<Tools::Notifier>(
+            "tx-notify", txNotify, [](Tools::Notifier::LogLevel level, const std::string &message) {
+                Logger::logger.log(
+                    message,
+                    level == Tools::Notifier::LogLevel::Warning ? Logger::WARNING : Logger::INFO,
+                    {Logger::TRANSACTIONS});
+            });
+
+        if (m_txNotifier->enabled())
+        {
+            std::cout << "Transaction notifications enabled ("
+                      << (m_txNotifier->isWebhook() ? "webhook " : "command ") << m_txNotifier->spec() << ")"
+                      << (m_notifyDuringSync ? ", including during sync" : ", suppressed while far behind the daemon")
+                      << std::endl;
+        }
+        else
+        {
+            std::cout << WarningMsg("--tx-notify value is not usable, notifications disabled: ") << WarningMsg(txNotify)
+                      << std::endl;
+        }
+    }
+
     m_server = std::make_unique<httplib::Server>();
     m_ipv6Server = std::make_unique<httplib::Server>();
 
@@ -309,7 +337,70 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
 }
 
 /* Out of line: the unique_ptr<httplib::Server> members need the complete type. */
-ApiDispatcher::~ApiDispatcher() = default;
+ApiDispatcher::~ApiDispatcher()
+{
+    if (m_txNotifier)
+    {
+        m_txNotifier->stop();
+    }
+}
+
+void ApiDispatcher::attachTransactionNotifier()
+{
+    if (!m_txNotifier || !m_txNotifier->enabled() || !m_walletBackend || !m_walletBackend->m_eventHandler)
+    {
+        return;
+    }
+
+    /* Captured by value so a callback racing a closeWallet() never touches a
+       destroyed dispatcher member; the backend is held weakly so the wallet
+       can still be released while a notification is in flight. */
+    const std::shared_ptr<Tools::Notifier> notifier = m_txNotifier;
+    const std::weak_ptr<WalletBackend> weakBackend = m_walletBackend;
+    const bool notifyDuringSync = m_notifyDuringSync;
+
+    m_walletBackend->m_eventHandler->onTransaction.subscribe(
+        [notifier, weakBackend, notifyDuringSync](const WalletTypes::Transaction tx) {
+            if (!notifyDuringSync)
+            {
+                const auto backend = weakBackend.lock();
+                if (!backend)
+                {
+                    return;
+                }
+
+                /* onTransaction fires from block processing, so during a rescan
+                   it replays history. Stay quiet when far behind the daemon. */
+                const auto status = backend->getSyncStatus();
+                const uint64_t daemonHeight = std::max(std::get<1>(status), std::get<2>(status));
+                if (tx.blockHeight + CryptoNote::WALLET_NOTIFY_SYNC_LAG_BLOCKS < daemonHeight)
+                {
+                    return;
+                }
+            }
+
+            const std::string hash = Common::podToHex(tx.hash);
+            const std::string height = std::to_string(tx.blockHeight);
+            const std::string amount = std::to_string(tx.totalAmount());
+            const std::string fee = std::to_string(tx.fee);
+            const std::string paymentId = tx.paymentID;
+
+            Tools::Notifier::Notification n;
+            n.event = "tx";
+            n.placeholders = {{'s', hash}, {'h', height}, {'a', amount}, {'f', fee}, {'p', paymentId}, {'c', "1"}};
+            n.fields = {
+                {"hash", hash, true},
+                {"height", height, false},
+                {"amount", amount, false},
+                {"fee", fee, false},
+                {"paymentId", paymentId, true},
+                {"confirmed", "true", false},
+                {"timestamp", std::to_string(tx.timestamp), false},
+                {"unlockTime", std::to_string(tx.unlockTime), false},
+                {"isCoinbase", tx.isCoinbaseTransaction ? "true" : "false", false}};
+            notifier->notify(std::move(n));
+        });
+}
 
 void ApiDispatcher::start()
 {
@@ -513,6 +604,8 @@ std::tuple<Error, uint16_t> ApiDispatcher::openWallet(const httplib::Request &re
     std::tie(error, m_walletBackend) =
         WalletBackend::openWallet(filename, password, daemonHost, daemonPort, daemonSSL, m_walletSyncThreads);
 
+    attachTransactionNotifier();
+
     return {error, 200};
 }
 
@@ -546,6 +639,8 @@ std::tuple<Error, uint16_t>
         daemonSSL,
         m_walletSyncThreads);
 
+    attachTransactionNotifier();
+
     return {error, 200};
 }
 
@@ -569,6 +664,8 @@ std::tuple<Error, uint16_t>
 
     std::tie(error, m_walletBackend) = WalletBackend::importWalletFromSeed(
         mnemonicSeed, filename, password, scanHeight, daemonHost, daemonPort, daemonSSL, m_walletSyncThreads);
+
+    attachTransactionNotifier();
 
     return {error, 200};
 }
@@ -603,6 +700,8 @@ std::tuple<Error, uint16_t>
         daemonSSL,
         m_walletSyncThreads);
 
+    attachTransactionNotifier();
+
     return {error, 200};
 }
 
@@ -616,6 +715,8 @@ std::tuple<Error, uint16_t> ApiDispatcher::createWallet(const httplib::Request &
 
     std::tie(error, m_walletBackend) =
         WalletBackend::createWallet(filename, password, daemonHost, daemonPort, daemonSSL, m_walletSyncThreads);
+
+    attachTransactionNotifier();
 
     return {error, 200};
 }
