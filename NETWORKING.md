@@ -84,6 +84,62 @@ The ZMQ publisher broadcasts new block and transaction events. Useful for downst
 
 ---
 
+## Notification Hooks (`--block-notify`, `--tx-notify`, ...)
+
+Monero-style push hooks. Each flag takes **either** an `http://` / `https://` URL (the event is POSTed as a JSON object) **or** a command template (run directly, *without a shell*; quotes group arguments, `%`-placeholders are substituted per argument, `%%` is a literal percent). Empty = disabled.
+
+### Daemon (`Wrkzd`)
+
+| Flag | Fires on | Placeholders | JSON body |
+|------|----------|--------------|-----------|
+| `--block-notify <cmd\|url>` | every new main-chain block (and each replacement block after a reorg) | `%s` block hash, `%h` height | `{"event":"block","height":N,"hash":"..."}` |
+| `--reorg-notify <cmd\|url>` | every chain reorganisation | `%s` split height, `%h` new height, `%n` new blocks, `%d` discarded blocks | `{"event":"reorg","split_height":N,"new_height":N,"new_blocks":N,"discarded_blocks":N}` |
+| `--tx-notify <cmd\|url>` | every transaction entering the mempool | `%s` tx hash | `{"event":"tx","hash":"..."}` |
+| `--notify-during-sync` | — | — | also fire while the node is still synchronizing (default: suppressed until synced) |
+
+All three are also accepted in the daemon config file (`block-notify`, `reorg-notify`, `tx-notify`, `notify-during-sync`).
+
+### Wallet service (`Wrkz-service`)
+
+| Flag | Fires on | Placeholders |
+|------|----------|--------------|
+| `--tx-notify <cmd\|url>` | every new wallet transaction when first seen: incoming (pool or block) and outgoing once sent | `%s` hash, `%h` height (0 = unconfirmed), `%a` amount (atomic, signed), `%f` fee, `%p` payment id, `%c` confirmed 0/1 |
+| `--tx-confirmed-notify <cmd\|url>` | once per transaction, when it gets into a block | same as above |
+| `--notify-during-sync` | — | also fire for transactions more than `WALLET_NOTIFY_SYNC_LAG_BLOCKS` (1440) blocks behind the daemon, i.e. during a rescan (default: suppressed) |
+
+JSON body: `{"event":"tx"|"tx_confirmed","hash":"...","height":N,"amount":N,"fee":N,"paymentId":"...","confirmed":bool,"timestamp":N,"unlockTime":N}`.
+
+### wallet-api
+
+| Flag | Fires on | Placeholders |
+|------|----------|--------------|
+| `--tx-notify <cmd\|url>` | every transaction **confirmed in a block** for the open wallet (wallet-api does not scan the pool for incoming transfers) | `%s` hash, `%h` height, `%a` amount, `%f` fee, `%p` payment id |
+| `--notify-during-sync` | — | same rescan suppression rule as the wallet service |
+
+JSON body as for the wallet service plus `"isCoinbase":bool`; `confirmed` is always `true`.
+
+### Examples
+
+```
+# built-in webhook (no external tools needed)
+Wrkzd --block-notify https://example.com/hooks/wrkz-block
+Wrkz-service ... --tx-notify http://127.0.0.1:9000/tx --tx-confirmed-notify http://127.0.0.1:9000/tx-confirmed
+
+# Monero-compatible command form
+Wrkzd --block-notify "/usr/local/bin/on-block.sh %s"
+Wrkzd --block-notify "curl -s -X POST https://example.com/hook -d hash=%s -d height=%h"
+```
+
+### Behaviour and guarantees
+
+- **Never blocks the node/wallet.** Events are queued in memory and delivered from a dedicated worker thread; the daemon's dispatcher and the wallet's sync loop only enqueue. The queue is bounded (1024 entries); when a receiver is too slow, excess notifications are dropped and counted (`dropped=` is logged on shutdown).
+- **Timeouts.** Each delivery has a 10 s budget: hung commands are killed, slow HTTP calls are aborted. Transport failures on webhooks get one retry; HTTP 4xx/5xx responses are final.
+- **Fire-and-forget.** There is no persistent retry queue; receivers should treat notifications as hints and reconcile through RPC (same model as Monero / ZMQ).
+- **HTTPS** webhooks require a build with OpenSSL (`CPPHTTPLIB_OPENSSL_SUPPORT`); otherwise the hook is disabled with a warning at startup.
+- Commands run with the privileges of the daemon/wallet process. Child stdout/stderr are inherited.
+
+---
+
 ## Ban System (`ban` command)
 
 The in-memory ban list supports **both IPv4 and IPv6** addresses:
