@@ -500,8 +500,7 @@ namespace ContainerTests
 
                 for (auto it = lowerBound; it != m_byBlockIndex.end(); ++it)
                 {
-                    other.m_byBlockIndex.emplace(it->first, it->second);
-                    other.m_byKeyImage.emplace(it->second, it->first);
+                    other.insert(it->first, it->second);
                     m_byKeyImage.erase(it->second);
                 }
 
@@ -635,6 +634,24 @@ namespace ContainerTests
 
                 BoostSpentKeyImages originalUpper;
                 ReplacementSpentKeyImages replacementUpper;
+
+                /* Seed the target with key images already live in the
+                   source, so the split has to skip duplicates on the
+                   receiving side rather than desync its two maps. */
+                if (!live.empty())
+                {
+                    const size_t seedCount = 1 + (rng() % 2);
+
+                    for (size_t i = 0; i < seedCount; i++)
+                    {
+                        const Crypto::KeyImage seedImage = live[rng() % live.size()];
+                        const uint32_t seedBlock = static_cast<uint32_t>(rng() % 8);
+
+                        originalUpper.get<BlockIndexTag>().insert(
+                            SpentKeyImageEntry {seedBlock, seedImage});
+                        replacementUpper.insert(seedBlock, seedImage);
+                    }
+                }
 
                 auto &imagesIndex = original.get<BlockIndexTag>();
                 auto lowerBound = imagesIndex.lower_bound(pivot);

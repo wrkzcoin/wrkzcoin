@@ -377,11 +377,7 @@ namespace CryptoNote
     void BlockchainCache::splitSpentKeyImages(BlockchainCache &newCache, uint32_t splitBlockIndex)
     {
         // Key images with blockIndex == splitBlockIndex remain in upper segment
-        auto &imagesIndex = spentKeyImages.get<BlockIndexTag>();
-        auto lowerBound = imagesIndex.lower_bound(splitBlockIndex);
-
-        newCache.spentKeyImages.get<BlockIndexTag>().insert(lowerBound, imagesIndex.end());
-        imagesIndex.erase(lowerBound, imagesIndex.end());
+        spentKeyImages.splitInto(newCache.spentKeyImages, splitBlockIndex);
 
         logger(Logging::DEBUGGING) << "Spent key images split completed";
     }
@@ -404,16 +400,14 @@ namespace CryptoNote
 
     void BlockchainCache::removePaymentId(const Crypto::Hash &transactionHash, BlockchainCache &newCache)
     {
-        auto &index = paymentIds.get<TransactionHashTag>();
-        auto it = index.find(transactionHash);
+        const auto entry = paymentIds.extract(transactionHash);
 
-        if (it == index.end())
+        if (!entry)
         {
             return;
         }
 
-        newCache.paymentIds.insert(*it);
-        index.erase(it);
+        newCache.paymentIds.insert(*entry);
     }
 
     void BlockchainCache::splitBlocks(BlockchainCache &newCache, uint32_t splitBlockIndex)
@@ -448,7 +442,7 @@ namespace CryptoNote
         // to prevent fail when pushing block from DatabaseBlockchainCache.
         // In case of pushing external block double spend within block
         // should be checked by Core.
-        spentKeyImages.get<BlockIndexTag>().insert(SpentKeyImage {blockIndex, keyImage});
+        spentKeyImages.insert(blockIndex, keyImage);
     }
 
     std::vector<Crypto::Hash> BlockchainCache::getTransactionHashes() const
@@ -537,7 +531,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "Payment id found: " << paymentIdTransactionHash.paymentId;
 
         paymentIdTransactionHash.transactionHash = cachedTransaction.getTransactionHash();
-        paymentIds.insert(std::move(paymentIdTransactionHash));
+        paymentIds.insert(paymentIdTransactionHash);
         logger(Logging::DEBUGGING) << "Transaction " << cachedTransaction.getTransactionHash() << " successfully added";
     }
 
@@ -564,18 +558,18 @@ namespace CryptoNote
             return parent->checkIfSpent(keyImage, blockIndex);
         }
 
-        auto it = spentKeyImages.get<KeyImageTag>().find(keyImage);
-        if (it == spentKeyImages.get<KeyImageTag>().end())
+        const auto spentAt = spentKeyImages.spentAtBlock(keyImage);
+        if (!spentAt)
         {
             return parent != nullptr ? parent->checkIfSpent(keyImage, blockIndex) : false;
         }
 
-        return it->blockIndex <= blockIndex;
+        return *spentAt <= blockIndex;
     }
 
     bool BlockchainCache::checkIfSpent(const Crypto::KeyImage &keyImage) const
     {
-        if (spentKeyImages.get<KeyImageTag>().count(keyImage) != 0)
+        if (spentKeyImages.contains(keyImage))
         {
             return true;
         }
@@ -997,9 +991,13 @@ namespace CryptoNote
         if (s.type() == ISerializer::OUTPUT)
         {
             writeSequence<CachedTransactionInfo>(transactions.begin(), transactions.end(), "transactions", s);
-            writeSequence<SpentKeyImage>(spentKeyImages.begin(), spentKeyImages.end(), "spent_key_images", s);
+            const auto spentKeyImageEntries = spentKeyImages.entries();
+            writeSequence<SpentKeyImage>(
+                spentKeyImageEntries.begin(), spentKeyImageEntries.end(), "spent_key_images", s);
             writeSequence<CachedBlockInfo>(blockInfos.begin(), blockInfos.end(), "block_hash_indexes", s);
-            writeSequence<PaymentIdTransactionHashPair>(paymentIds.begin(), paymentIds.end(), "payment_id_indexes", s);
+            const auto paymentIdEntries = paymentIds.entries();
+            writeSequence<PaymentIdTransactionHashPair>(
+                paymentIdEntries.begin(), paymentIdEntries.end(), "payment_id_indexes", s);
 
             s(keyOutputsGlobalIndexes, "key_outputs_global_indexes");
         }
@@ -1013,11 +1011,23 @@ namespace CryptoNote
 
             readSequence<CachedTransactionInfo>(
                 std::inserter(restoredTransactions, restoredTransactions.end()), "transactions", s);
+            std::vector<SpentKeyImage> restoredSpentKeyImageEntries;
             readSequence<SpentKeyImage>(
-                std::inserter(restoredSpentKeyImages, restoredSpentKeyImages.end()), "spent_key_images", s);
+                std::back_inserter(restoredSpentKeyImageEntries), "spent_key_images", s);
+
+            for (const auto &entry : restoredSpentKeyImageEntries)
+            {
+                restoredSpentKeyImages.insert(entry.blockIndex, entry.keyImage);
+            }
             readSequence<CachedBlockInfo>(std::back_inserter(restoredBlockHashIndex), "block_hash_indexes", s);
+            std::vector<PaymentIdTransactionHashPair> restoredPaymentIdEntries;
             readSequence<PaymentIdTransactionHashPair>(
-                std::inserter(restoredPaymentIds, restoredPaymentIds.end()), "payment_id_indexes", s);
+                std::back_inserter(restoredPaymentIdEntries), "payment_id_indexes", s);
+
+            for (const auto &entry : restoredPaymentIdEntries)
+            {
+                restoredPaymentIds.insert(entry);
+            }
 
             s(restoredKeyOutputsGlobalIndexes, "key_outputs_global_indexes");
 
@@ -1283,14 +1293,10 @@ namespace CryptoNote
             transactionHashes = parent->getTransactionHashesByPaymentId(paymentId);
         }
 
-        auto &index = paymentIds.get<PaymentIdTag>();
-        auto range = index.equal_range(paymentId);
+        const auto matching = paymentIds.transactionHashesFor(paymentId);
 
-        transactionHashes.reserve(transactionHashes.size() + std::distance(range.first, range.second));
-        for (auto it = range.first; it != range.second; ++it)
-        {
-            transactionHashes.push_back(it->transactionHash);
-        }
+        transactionHashes.reserve(transactionHashes.size() + matching.size());
+        transactionHashes.insert(transactionHashes.end(), matching.begin(), matching.end());
 
         logger(Logging::DEBUGGING) << "Found " << transactionHashes.size() << " transactions with payment id "
                                    << paymentId;
@@ -1486,12 +1492,9 @@ namespace CryptoNote
     TransactionValidatorState BlockchainCache::fillOutputsSpentByBlock(uint32_t blockIndex) const
     {
         TransactionValidatorState spentOutputs;
-        auto &keyImagesIndex = spentKeyImages.get<BlockIndexTag>();
-
-        auto range = keyImagesIndex.equal_range(blockIndex);
-        for (auto it = range.first; it != range.second; ++it)
+        for (const auto &keyImage : spentKeyImages.keyImagesSpentAt(blockIndex))
         {
-            spentOutputs.spentKeyImages.insert(it->keyImage);
+            spentOutputs.spentKeyImages.insert(keyImage);
         }
 
         return spentOutputs;
