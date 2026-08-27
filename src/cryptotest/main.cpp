@@ -10,6 +10,8 @@
 #include "crypto/crypto.h"
 #include "crypto/multisig.h"
 
+#include "ContainerTests.h"
+
 #include <assert.h>
 #include <chrono>
 #include <config/CliHeader.h>
@@ -373,6 +375,8 @@ int main(int argc, char **argv)
     try
     {
         std::cout << getProjectCLIHeader() << std::endl;
+
+        ContainerTests::runAll();
 
         std::cout << std::endl << "Test Crypto Primitives" << std::endl << std::endl;
 
