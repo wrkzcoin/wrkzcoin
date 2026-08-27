@@ -18,6 +18,16 @@ namespace ContainerTests
        precisely why it is being written now. */
     void testTransactionPoolContainer(uint64_t seed, uint64_t iterations);
 
+    /* BlockchainCache::spentKeyImages - an ordered_non_unique index on block
+       index beside a hashed_unique index on key image. The ordered index is
+       used for the segment split (lower_bound, range insert, range erase), so
+       the test exercises that as well as the point lookups. */
+    void testSpentKeyImagesContainer(uint64_t seed, uint64_t iterations);
+
+    /* BlockchainCache::paymentIds - a hashed_non_unique index on payment id
+       beside a hashed_unique index on transaction hash. */
+    void testPaymentIdContainer(uint64_t seed, uint64_t iterations);
+
     /* Runs every container test with the default seed and iteration count. */
     void runAll();
 } // namespace ContainerTests
