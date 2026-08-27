@@ -108,9 +108,11 @@ namespace CryptoNote
             return false;
         }
 
-        /* Everything is the same! Return true because we've gotta return
-         * something.. */
-        return true;
+        /* Equal on every criterion. Return false so that equivalent
+         * transactions compare equivalent rather than each comparing
+         * "less than" the other - a strict weak ordering is required by
+         * every ordered container this comparator is handed to. */
+        return false;
     }
 
     const Crypto::Hash &TransactionPool::PendingTransactionInfo::getTransactionHash() const
