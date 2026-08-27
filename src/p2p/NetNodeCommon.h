@@ -9,7 +9,7 @@
 #include "CryptoNote.h"
 #include "P2pProtocolTypes.h"
 
-#include <boost/uuid/uuid.hpp>
+#include <array>
 #include <functional>
 #include <list>
 #include <utility>
@@ -26,7 +26,7 @@ namespace CryptoNote
         virtual void relay_notify_to_all(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) = 0;
+            const std::array<uint8_t, 16> *excludeConnection) = 0;
 
         virtual bool invoke_notify_to_peer(
             int command,
@@ -42,12 +42,12 @@ namespace CryptoNote
         virtual void externalRelayNotifyToAll(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) = 0;
+            const std::array<uint8_t, 16> *excludeConnection) = 0;
 
         virtual void externalRelayNotifyToList(
             int command,
             const BinaryArray &data_buff,
-            const std::list<boost::uuids::uuid> relayList) = 0;
+            const std::list<std::array<uint8_t, 16>> relayList) = 0;
 
         virtual bool ban_host(uint32_t ip, uint64_t seconds) = 0;
 
@@ -63,7 +63,7 @@ namespace CryptoNote
         virtual void relay_notify_to_all(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) override
+            const std::array<uint8_t, 16> *excludeConnection) override
         {
         }
 
@@ -88,14 +88,14 @@ namespace CryptoNote
         virtual void externalRelayNotifyToAll(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) override
+            const std::array<uint8_t, 16> *excludeConnection) override
         {
         }
 
         virtual void externalRelayNotifyToList(
             int command,
             const BinaryArray &data_buff,
-            const std::list<boost::uuids::uuid> relayList) override
+            const std::list<std::array<uint8_t, 16>> relayList) override
         {
         }
 

@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace CryptoNote
 {
@@ -105,6 +106,43 @@ namespace CryptoNote
             }
         }
 
+        // Walks the parallel (value, present) arrays returned by the database.
+        // Replaces boost::combine + boost::get<N>, which were this header's
+        // only reason to need Boost.
+        class RawResultCursor
+        {
+          public:
+            RawResultCursor(const std::vector<std::string> &values, const std::vector<bool> &states):
+                m_values(values),
+                m_states(states),
+                m_index(0)
+            {
+            }
+
+            const std::string &value() const
+            {
+                return m_values[m_index];
+            }
+
+            bool present() const
+            {
+                return m_states[m_index];
+            }
+
+            RawResultCursor &operator++()
+            {
+                ++m_index;
+                return *this;
+            }
+
+          private:
+            const std::vector<std::string> &m_values;
+
+            const std::vector<bool> &m_states;
+
+            size_t m_index;
+        };
+
         template<class Key, class Value, class Iterator>
         void deserializeValues(
             std::unordered_map<Key, Value> &map,
@@ -113,9 +151,9 @@ namespace CryptoNote
         {
             for (auto iter = map.begin(); iter != map.end(); ++serializedValuesIter)
             {
-                if (boost::get<1>(*serializedValuesIter))
+                if (serializedValuesIter.present())
                 {
-                    DB::deserialize(boost::get<0>(*serializedValuesIter), iter->second, name);
+                    DB::deserialize(serializedValuesIter.value(), iter->second, name);
                     ++iter;
                 }
                 else
@@ -130,9 +168,9 @@ namespace CryptoNote
         {
             if (pair.second)
             {
-                if (boost::get<1>(*serializedValuesIter))
+                if (serializedValuesIter.present())
                 {
-                    DB::deserialize(boost::get<0>(*serializedValuesIter), pair.first, name);
+                    DB::deserialize(serializedValuesIter.value(), pair.first, name);
                 }
                 else
                 {

@@ -75,4 +75,23 @@ namespace Utilities
         return str;
     }
 
+    /* Replaces every occurrence of 'from' with 'to', in place. Matches
+       boost::replace_all: matches do not overlap, and scanning resumes after
+       the inserted text so 'to' is never rescanned. */
+    void replaceAll(std::string &str, const std::string &from, const std::string &to)
+    {
+        if (from.empty())
+        {
+            return;
+        }
+
+        size_t pos = 0;
+
+        while ((pos = str.find(from, pos)) != std::string::npos)
+        {
+            str.replace(pos, from.length(), to);
+            pos += to.length();
+        }
+    }
+
 } // namespace Utilities

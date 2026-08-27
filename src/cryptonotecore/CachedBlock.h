@@ -8,7 +8,7 @@
 #pragma once
 
 #include <CryptoNote.h>
-#include <boost/optional.hpp>
+#include <optional>
 
 namespace CryptoNote
 {
@@ -38,25 +38,25 @@ namespace CryptoNote
       private:
         const BlockTemplate &block;
 
-        mutable boost::optional<BinaryArray> blockHashingBinaryArray;
+        mutable std::optional<BinaryArray> blockHashingBinaryArray;
 
-        mutable boost::optional<BinaryArray> parentBlockBinaryArray;
+        mutable std::optional<BinaryArray> parentBlockBinaryArray;
 
-        mutable boost::optional<BinaryArray> parentBlockHashingBinaryArray;
+        mutable std::optional<BinaryArray> parentBlockHashingBinaryArray;
 
-        mutable boost::optional<BinaryArray> parentBlockBinaryArrayHeaderOnly;
+        mutable std::optional<BinaryArray> parentBlockBinaryArrayHeaderOnly;
 
-        mutable boost::optional<BinaryArray> parentBlockHashingBinaryArrayHeaderOnly;
+        mutable std::optional<BinaryArray> parentBlockHashingBinaryArrayHeaderOnly;
 
-        mutable boost::optional<uint32_t> blockIndex;
+        mutable std::optional<uint32_t> blockIndex;
 
-        mutable boost::optional<Crypto::Hash> transactionTreeHash;
+        mutable std::optional<Crypto::Hash> transactionTreeHash;
 
-        mutable boost::optional<Crypto::Hash> blockHash;
+        mutable std::optional<Crypto::Hash> blockHash;
 
-        mutable boost::optional<Crypto::Hash> blockLongHash;
+        mutable std::optional<Crypto::Hash> blockLongHash;
 
-        mutable boost::optional<Crypto::Hash> auxiliaryBlockHeaderHash;
+        mutable std::optional<Crypto::Hash> auxiliaryBlockHeaderHash;
     };
 
 } // namespace CryptoNote

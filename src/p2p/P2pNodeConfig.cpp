@@ -65,7 +65,7 @@ namespace CryptoNote
         return whiteListConnectionsPercent;
     }
 
-    boost::uuids::uuid P2pNodeConfig::getNetworkId() const
+    std::array<uint8_t, 16> P2pNodeConfig::getNetworkId() const
     {
         return networkId;
     }

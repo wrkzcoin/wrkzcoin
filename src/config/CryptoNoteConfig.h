@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
+#include <array>
 #include <crypto/hash.h>
 #include <cstddef>
 #include <cstdint>
@@ -494,7 +494,7 @@ namespace CryptoNote
 
     const std::string LICENSE_URL = "https://github.com/wrkzcoin/wrkzcoin/blob/master/LICENSE";
 
-    const static boost::uuids::uuid CRYPTONOTE_NETWORK = {
+    const static std::array<uint8_t, 16> CRYPTONOTE_NETWORK = {
         {0xb5, 0x0c, 0x4a, 0x6c, 0xcf, 0x52, 0x57, 0x41, 0x65, 0xf9, 0x91, 0xa4, 0xb6, 0xc1, 0x43, 0xe9}};
 
     const char *const SEED_NODES[] = {

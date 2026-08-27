@@ -8,7 +8,6 @@
 
 #include "DBUtils.h"
 
-#include <boost/range/combine.hpp>
 #include <config/Constants.h>
 
 using namespace CryptoNote;
@@ -295,8 +294,7 @@ void BlockchainReadBatch::submitRawResult(const std::vector<std::string> &values
 {
     assert(state.size() == values.size());
     assert(values.size() == resultStates.size());
-    auto range = boost::combine(values, resultStates);
-    auto iter = range.begin();
+    DB::RawResultCursor iter(values, resultStates);
 
     DB::deserializeValues(state.spentKeyImagesByBlock, iter, DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX);
     DB::deserializeValues(state.blockIndexesBySpentKeyImages, iter, DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX);

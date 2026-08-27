@@ -18,6 +18,7 @@
 #include <boost/multi_index_container.hpp>
 #include <logging/LoggerMessage.h>
 #include <logging/LoggerRef.h>
+#include <optional>
 #include <tuple>
 #include <unordered_map>
 
@@ -67,7 +68,7 @@ namespace CryptoNote
 
             CachedTransaction cachedTransaction;
 
-            boost::optional<Crypto::Hash> paymentId;
+            std::optional<Crypto::Hash> paymentId;
 
             const Crypto::Hash &getTransactionHash() const;
         };
@@ -104,12 +105,12 @@ namespace CryptoNote
 
         struct PaymentIdHasher
         {
-            size_t operator()(const boost::optional<Crypto::Hash> &paymentId) const;
+            size_t operator()(const std::optional<Crypto::Hash> &paymentId) const;
         };
 
         typedef boost::multi_index::hashed_non_unique<
             boost::multi_index::tag<PaymentIdTag>,
-            BOOST_MULTI_INDEX_MEMBER(PendingTransactionInfo, boost::optional<Crypto::Hash>, paymentId),
+            BOOST_MULTI_INDEX_MEMBER(PendingTransactionInfo, std::optional<Crypto::Hash>, paymentId),
             PaymentIdHasher>
             PaymentIdIndex;
 

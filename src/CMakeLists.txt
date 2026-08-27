@@ -231,7 +231,7 @@ if (WRKZ_ENABLE_PCH)
         numeric optional queue random set shared_mutex sstream stack stdexcept string
         system_error thread tuple type_traits unordered_map unordered_set utility vector)
     set(WRKZ_PCH_BOOST
-        boost/optional.hpp boost/uuid/uuid.hpp
+        boost/uuid/uuid.hpp
         boost/multi_index_container.hpp boost/multi_index/composite_key.hpp
         boost/multi_index/hashed_index.hpp boost/multi_index/member.hpp
         boost/multi_index/mem_fun.hpp boost/multi_index/ordered_index.hpp

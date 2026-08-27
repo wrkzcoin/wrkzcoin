@@ -21,7 +21,6 @@
 #include "serialization/SerializationOverloads.h"
 
 #include <algorithm>
-#include <boost/functional/hash.hpp>
 #include <fstream>
 #include <tuple>
 #include <variant>

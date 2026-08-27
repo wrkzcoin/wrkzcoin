@@ -265,7 +265,7 @@ namespace CryptoNote
             {
                 const auto &block = blocks[i].block;
 
-                if (!block.is_initialized())
+                if (!block.has_value())
                 {
                     ++emptyBlockCount;
                     continue;

@@ -11,7 +11,6 @@
 #include "serialization/BinaryOutputStreamSerializer.h"
 #include "serialization/CryptoNoteSerialization.h"
 
-#include <boost/utility/value_init.hpp>
 
 namespace Logging
 {

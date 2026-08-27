@@ -10,7 +10,7 @@
 #include "crypto/hash.h"
 #include "p2p/PendingLiteBlock.h"
 
-#include <boost/uuid/uuid.hpp>
+#include <array>
 #include <chrono>
 #include <deque>
 #include <optional>
@@ -22,7 +22,7 @@ namespace CryptoNote
     struct CryptoNoteConnectionContext
     {
         uint8_t version;
-        boost::uuids::uuid m_connection_id;
+        std::array<uint8_t, 16> m_connection_id {};
         uint32_t m_remote_ip = 0;
         uint32_t m_remote_port = 0;
         std::string m_remote_ipv6; // non-empty for pure IPv6 connections (m_remote_ip == 0)
