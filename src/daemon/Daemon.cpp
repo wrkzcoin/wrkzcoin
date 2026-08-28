@@ -719,7 +719,9 @@ int main(int argc, char *argv[])
             ip = "127.0.0.1";
         }
 
-        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
+        /* Empty unless the IPC listener actually came up, so the console never
+           gets pointed at a socket that failed to bind */
+        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config, rpcServer.getIpcPath());
         dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)
