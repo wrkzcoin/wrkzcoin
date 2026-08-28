@@ -1,11 +1,18 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 # vim: tabstop=8 shiftwidth=8 expandtab
-# $Id: setupmingw32.py,v 1.8 2012/05/23 08:50:10 nanard Exp $
-# the MiniUPnP Project (c) 2007-2014 Thomas Bernard
-# http://miniupnp.tuxfamily.org/ or http://miniupnp.free.fr/
+# $Id: setupmingw32.py,v 1.16 2024/06/22 19:23:20 nanard Exp $
+# the MiniUPnP Project (c) 2007-2024 Thomas Bernard
+# https://miniupnp.tuxfamily.org/ or http://miniupnp.free.fr/
 #
 # python script to build the miniupnpc module under windows (using mingw32)
 #
+import sys
+
+if (sys.version_info.major * 10 +  sys.version_info.minor) >= 35:
+        compat_lib = ["legacy_stdio_definitions"]
+else:
+        compat_lib = []
+
 try:
         from setuptools import setup, Extension
 except ImportError:
@@ -13,16 +20,24 @@ except ImportError:
 from distutils import sysconfig
 sysconfig.get_config_vars()["OPT"] = ''
 sysconfig.get_config_vars()["CFLAGS"] = ''
+
+lic = open('LICENSE').read()
+# follow the symbolic link manually if needed
+if lic.startswith('../'):
+        lic = open(lic).read()
+
 setup(name="miniupnpc",
       version=open('VERSION').read().strip(),
       author='Thomas BERNARD',
       author_email='miniupnp@free.fr',
-      license=open('LICENSE').read(),
-      url='http://miniupnp.free.fr/',
-      description='miniUPnP client',
+      license=lic,
+      url='https://miniupnp.tuxfamily.org/',
+      description='MiniUPnP IGD client',
+      long_description=open('DESCRIPTION').read().strip(),
+      long_description_content_type='text/plain',
       ext_modules=[
-         Extension(name="miniupnpc", sources=["miniupnpcmodule.c"],
-                   libraries=["ws2_32", "iphlpapi"],
-                   extra_objects=["libminiupnpc.a"])
+         Extension(name="miniupnpc", sources=["src/miniupnpcmodule.c"],
+                   libraries=["ws2_32", "iphlpapi"] + compat_lib,
+                   include_dirs=['include'], extra_objects=["miniupnpc.lib"])
       ])
 

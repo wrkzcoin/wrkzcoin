@@ -1,6 +1,11 @@
 set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
 set(UPNPC_BUILD_SHARED OFF CACHE BOOL "Build shared library")
 set(UPNPC_BUILD_TESTS OFF CACHE BOOL "Build test executables")
+# miniupnpc >= 2.2 builds upnpc/listdevices samples by default and names the
+# sample executable "upnpc-static" - the same name its 2.1 static library used.
+# We only want the library, so keep the samples off.
+set(UPNPC_BUILD_SAMPLE OFF CACHE BOOL "Build sample executables")
+set(UPNPC_NO_INSTALL ON CACHE BOOL "Disable miniupnpc installation rules")
 set(WITH_MD_LIBRARY OFF CACHE BOOL "Code Generation for static library")
 
 # CMake >= 4.0 refuses cmake_minimum_required() < 3.5, which the bundled
@@ -163,9 +168,9 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
 
     if (MSVC)
         add_subdirectory(rocksdb EXCLUDE_FROM_ALL)
-        set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
     else ()
-        set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
             set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
             set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
@@ -215,11 +220,11 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     endif ()
 else ()
     # No daemon dependencies built: only set the folder property for the targets that exist
-    set_property(TARGET upnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
+    set_property(TARGET libminiupnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
 endif ()
 
 if (MSVC)
-    set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
 else ()
-    set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
 endif ()
