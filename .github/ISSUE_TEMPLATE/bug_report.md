@@ -26,7 +26,7 @@ about: Create a report to help us improve
 Please insert your build commands here. Example:
 
 mkdir build && cd build
-cmake .. -DBOOST_ROOT=/home/wrkzcoin/boost_1_68_0
+cmake ..
 make -j4
 ```
 

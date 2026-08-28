@@ -8,14 +8,13 @@
 
 namespace ContainerTests
 {
-    /* Differential test: drives a boost::multi_index container and the
-       hand-rolled replacement that supersedes it through one identical
-       randomised operation sequence, and compares their observable state
-       after every step. Calls exit(1) on the first divergence, printing the
-       seed so the run can be reproduced.
+    /* Drives the container under test and a naive reference model through one
+       identical randomised operation sequence, comparing their observable
+       state after every step. Calls exit(1) on the first divergence, printing
+       the seed so the run can be reproduced.
 
-       This can only be written while Boost is still a dependency, which is
-       precisely why it is being written now. */
+       The model is a plain vector walked by linear scan, so it shares no
+       machinery with the hash maps and ordered maps it is checking. */
     void testTransactionPoolContainer(uint64_t seed, uint64_t iterations);
 
     /* BlockchainCache::spentKeyImages - an ordered_non_unique index on block

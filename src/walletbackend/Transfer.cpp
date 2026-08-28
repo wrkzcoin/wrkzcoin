@@ -1270,10 +1270,10 @@ namespace SendTransaction
 
         setupTX.unlockTime = unlockTime;
 
-        /* Convert from key inputs to the boost uglyness */
+        /* Convert from key inputs to the serialization input type */
         setupTX.inputs = keyInputToTransactionInput(transactionInputs);
 
-        /* We can't really remove boost from here yet and simplify our data types
+        /* This conversion could be simplified by reworking the data types
            since we take a hash of the transaction prefix. Once we've got this
            working, maybe we can work some magic. TODO */
         setupTX.outputs = keyOutputToTransactionOutput(result.outputs);
