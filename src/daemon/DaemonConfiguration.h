@@ -77,7 +77,7 @@ namespace DaemonConfig
             rpcMaxRequestBodyBytes = 2 * 1024 * 1024;
             rpcMaxRequestsPerMinute = 240;
             rpcMaxGlobalIndexesRange = 5000;
-            rpcMaxBlockCount = 100;
+            rpcMaxBlockCount = 1000;
             rpcTrustProxy = false;
             zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
             noZmq = false;

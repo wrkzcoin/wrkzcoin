@@ -25,6 +25,14 @@ namespace CryptoNote
 
         virtual const std::optional<CachedTransaction> tryGetTransaction(const Crypto::Hash &hash) const = 0;
 
+        /* Borrowing variant of tryGetTransaction. Returns nullptr when the
+           transaction is not in the pool. Callers that only need to inspect
+           a transaction should prefer this - the optional returning form
+           deep copies the transaction and its binary array, which is very
+           expensive when sweeping the whole pool. The pointer has the same
+           lifetime guarantees as the reference from getTransaction(). */
+        virtual const CachedTransaction *tryGetTransactionRef(const Crypto::Hash &hash) const = 0;
+
         virtual bool removeTransaction(const Crypto::Hash &hash) = 0;
 
         virtual size_t getFusionTransactionCount() const = 0;
@@ -47,6 +55,10 @@ namespace CryptoNote
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const = 0;
 
         virtual void flush() = 0;
+
+        /* Hashes dropped to keep the pool inside its size budget since this was
+           last called. The caller is expected to notify observers for them. */
+        virtual std::vector<Crypto::Hash> takeEvictedTransactions() = 0;
     };
 
 } // namespace CryptoNote

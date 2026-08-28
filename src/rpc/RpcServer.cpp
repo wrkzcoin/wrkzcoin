@@ -528,6 +528,18 @@ bool RpcServer::isRateLimited(const std::string &clientIp)
     const uint64_t windowStart = now - (now % 60);
 
     std::lock_guard<std::mutex> lock(m_rateLimitMutex);
+
+    /* The map is keyed by remote address, so without this it grows without
+       bound - one entry per address that ever touched the node, which an
+       attacker on a large address range controls directly. Entries from an
+       older window carry no state worth keeping, so drop them when we roll
+       over into a new one. */
+    if (windowStart != m_rateLimitWindowStart)
+    {
+        m_rateLimitByIp.clear();
+        m_rateLimitWindowStart = windowStart;
+    }
+
     auto &entry = m_rateLimitByIp[clientIp];
 
     if (entry.first != windowStart)
@@ -890,6 +902,11 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         ? getBoolFromJSON(body, "skipCoinbaseTransactions")
         : false;
 
+    /* Opt in, so wallets that predate the flag keep receiving key_offsets */
+    const bool skipInputKeyOffsets = hasMember(body, "skipInputKeyOffsets")
+        ? getBoolFromJSON(body, "skipInputKeyOffsets")
+        : false;
+
     std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
     std::optional<WalletTypes::TopBlock> topBlockInfo;
 
@@ -921,6 +938,16 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
                 nlohmann::json outObj;
                 outObj["key"] = Common::podToHex(output.key);
                 outObj["amount"] = output.amount;
+
+                /* We already have this from the database. Sending it saves the
+                   wallet a whole extra /get_global_indexes_for_range round trip
+                   for every block that turns out to contain one of its outputs.
+                   Wallets that don't know the field ignore it. */
+                if (output.globalOutputIndex)
+                {
+                    outObj["globalIndex"] = *output.globalOutputIndex;
+                }
+
                 cbOutputs.push_back(outObj);
             }
             nlohmann::json cbTx;
@@ -940,21 +967,36 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
                 nlohmann::json outObj;
                 outObj["key"] = Common::podToHex(output.key);
                 outObj["amount"] = output.amount;
+
+                if (output.globalOutputIndex)
+                {
+                    outObj["globalIndex"] = *output.globalOutputIndex;
+                }
+
                 txOutputs.push_back(outObj);
             }
 
             nlohmann::json txInputs = nlohmann::json::array();
             for (const auto &input : transaction.keyInputs)
             {
-                nlohmann::json offsets = nlohmann::json::array();
-                for (const auto &offset : input.outputIndexes)
-                {
-                    offsets.push_back(offset);
-                }
                 nlohmann::json inputObj;
                 inputObj["amount"] = input.amount;
-                inputObj["key_offsets"] = offsets;
                 inputObj["k_image"] = Common::podToHex(input.keyImage);
+
+                /* The ring member offsets are only needed to build a spend, and
+                   a syncing wallet builds its own from get_random_outs. They are
+                   a large slice of the response body, so a wallet that has said
+                   it doesn't want them gets them omitted. */
+                if (!skipInputKeyOffsets)
+                {
+                    nlohmann::json offsets = nlohmann::json::array();
+                    for (const auto &offset : input.outputIndexes)
+                    {
+                        offsets.push_back(offset);
+                    }
+                    inputObj["key_offsets"] = offsets;
+                }
+
                 txInputs.push_back(inputObj);
             }
 

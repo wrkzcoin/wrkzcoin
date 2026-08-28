@@ -7,6 +7,7 @@
 
 #include <crypto/crypto.h>
 #include <subwallets/SubWallet.h>
+#include <unordered_set>
 
 class SubWallets
 {
@@ -178,13 +179,24 @@ class SubWallets
     /////////////////////////////
 
     /* The public spend keys, used for verifying if a transaction is
-       ours */
+       ours. Kept as a vector because order matters to callers that iterate
+       it - use isOurSpendKey() for membership tests, which is what the
+       synchronizer does once per output of every transaction it scans. */
     std::vector<Crypto::PublicKey> m_publicSpendKeys;
+
+    /* Constant time membership test against m_publicSpendKeys. A linear scan
+       is fine for a single address wallet but becomes comparable to the key
+       derivation itself for a wallet service instance holding thousands. */
+    bool isOurSpendKey(const Crypto::PublicKey &spendKey) const;
 
   private:
     //////////////////////////////
     /* Private member functions */
     //////////////////////////////
+
+    /* Rebuilds m_publicSpendKeyLookup from m_publicSpendKeys. Called from
+       every site that adds or removes a subwallet. */
+    void refreshPublicSpendKeyLookup();
 
     void throwIfViewWallet() const;
 
@@ -218,6 +230,9 @@ class SubWallets
 
     /* A mapping of key images to the subwallet public spend key that owns them */
     std::unordered_map<Crypto::KeyImage, Crypto::PublicKey> m_keyImageOwners;
+
+    /* Mirrors m_publicSpendKeys for membership tests - see isOurSpendKey() */
+    std::unordered_set<Crypto::PublicKey> m_publicSpendKeyLookup;
 
     /* Need a mutex for accessing inputs, transactions, and locked
        transactions, etc as these are modified on multiple threads */

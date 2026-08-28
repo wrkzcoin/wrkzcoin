@@ -256,11 +256,16 @@ namespace CryptoNote
         /* Batched equivalent of getWalletSyncBlock over the half open range
          * [startIndex, endIndex). Costs two database round trips for the whole
          * range instead of two per block. Blocks that are missing from the
-         * database are skipped, as they are by the single block reader. */
+         * database are skipped, as they are by the single block reader.
+         *
+         * The range is additionally cut short once maxResponseBytes worth of
+         * block data has been assembled, so a large block count stays safe
+         * during a transaction flood. At least one block is always returned. */
         std::vector<WalletTypes::WalletBlockInfo> getWalletSyncBlocks(
             uint32_t startIndex,
             uint32_t endIndex,
-            bool skipCoinbaseTransactions) const;
+            bool skipCoinbaseTransactions,
+            uint64_t maxResponseBytes) const;
 
         std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
 

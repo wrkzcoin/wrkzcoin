@@ -258,4 +258,9 @@ class RpcServer
 
     std::mutex m_rateLimitMutex;
     std::unordered_map<std::string, std::pair<uint64_t, uint32_t>> m_rateLimitByIp;
+
+    /* The window m_rateLimitByIp holds counts for. When the window rolls over
+       the map is cleared rather than left to accumulate an entry per address
+       seen since the node started. */
+    uint64_t m_rateLimitWindowStart = 0;
 };

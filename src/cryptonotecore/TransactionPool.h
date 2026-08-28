@@ -33,6 +33,8 @@ namespace CryptoNote
 
         virtual const std::optional<CachedTransaction> tryGetTransaction(const Crypto::Hash &hash) const override;
 
+        virtual const CachedTransaction *tryGetTransactionRef(const Crypto::Hash &hash) const override;
+
         virtual bool removeTransaction(const Crypto::Hash &hash) override;
 
         virtual size_t getFusionTransactionCount() const override;
@@ -55,6 +57,9 @@ namespace CryptoNote
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const override;
 
         virtual void flush() override;
+
+        /* Hashes evicted by the most recent pushTransaction call, if any */
+        virtual std::vector<Crypto::Hash> takeEvictedTransactions() override;
 
       private:
         TransactionValidatorState poolState;
@@ -99,6 +104,35 @@ namespace CryptoNote
 
            Callers must hold m_transactionsMutex. */
         std::vector<const PendingTransactionInfo *> transactionsByPriority() const;
+
+        /* Running total of the serialized size of every pooled transaction,
+           maintained on push and remove so the size cap can be enforced
+           without walking the pool. */
+        uint64_t m_poolSizeBytes = 0;
+
+        /* Drops the least profitable transactions until the pool fits inside
+           CRYPTONOTE_MEMPOOL_MAX_SIZE_BYTES. Returns the hashes evicted so
+           the caller can notify observers outside the lock.
+
+           Callers must hold m_transactionsMutex. */
+        std::vector<Crypto::Hash> evictToFitLocked();
+
+        /* Whether the candidate is less profitable than everything already
+           pooled - such a transaction would be evicted immediately, so it is
+           rejected instead of displacing a better one.
+
+           Callers must hold m_transactionsMutex. */
+        bool isLeastProfitableLocked(const PendingTransactionInfo &candidate) const;
+
+        /* removeTransaction without taking the lock, so eviction can reuse it.
+
+           Callers must hold m_transactionsMutex. */
+        bool removeTransactionLocked(const Crypto::Hash &hash);
+
+        /* Hashes evicted to stay inside the size budget, drained by
+           takeEvictedTransactions() so the caller can notify observers without
+           holding m_transactionsMutex. */
+        std::vector<Crypto::Hash> m_evictedTransactions;
 
         mutable std::mutex m_transactionsMutex;
 

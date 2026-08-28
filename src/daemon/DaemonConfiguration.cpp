@@ -192,7 +192,9 @@ namespace DaemonConfig
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxGlobalIndexesRange)),
             "#")(
             "rpc-max-block-count",
-            "Maximum allowed blockCount for wallet/raw-block sync RPC methods",
+            "Maximum allowed blockCount for wallet/raw-block sync RPC methods. Larger values let wallets sync in "
+            "fewer, bigger requests, which matters most for remote wallets bounded by --rpc-max-requests-per-minute. "
+            "Responses are additionally capped by size, so raising this is safe during a transaction flood",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxBlockCount)),
             "#")(
             "rpc-trust-proxy",

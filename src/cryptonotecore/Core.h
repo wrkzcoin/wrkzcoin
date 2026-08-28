@@ -412,7 +412,7 @@ namespace CryptoNote
         void copyTransactionsToPool(IBlockchainCache *alt);
 
         void checkAndRemoveInvalidPoolTransactions(
-            const TransactionValidatorState blockTransactionsState);
+            const TransactionValidatorState &blockTransactionsState);
 
         bool isTransactionInChain(const Crypto::Hash &txnHash);
 

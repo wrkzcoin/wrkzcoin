@@ -91,13 +91,21 @@ namespace WalletTypes
 
         size_t memoryUsage() const
         {
+            /* item by const reference - taking it by value deep copied every
+               transaction in the block just to ask how big it was. */
             const size_t txUsage = std::accumulate(
-                transactions.begin(), transactions.end(), sizeof(transactions), [](const auto acc, const auto item) {
-                    return acc + item.memoryUsage();
-                });
-            return coinbaseTransaction ? coinbaseTransaction->memoryUsage()
-                                       : sizeof(coinbaseTransaction) + txUsage + sizeof(blockHeight) + sizeof(blockHash)
-                                             + sizeof(blockTimestamp);
+                transactions.begin(),
+                transactions.end(),
+                sizeof(transactions),
+                [](const size_t acc, const RawTransaction &item) { return acc + item.memoryUsage(); });
+
+            /* The coinbase is additional to the block's transactions, not an
+               alternative to them - returning it alone made any block with a
+               coinbase report a small fraction of its real size. */
+            const size_t coinbaseUsage =
+                coinbaseTransaction ? coinbaseTransaction->memoryUsage() : sizeof(coinbaseTransaction);
+
+            return coinbaseUsage + txUsage + sizeof(blockHeight) + sizeof(blockHash) + sizeof(blockTimestamp);
         }
     };
 

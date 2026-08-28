@@ -299,6 +299,12 @@ namespace CryptoNote
             return true;
         }
 
+        /* Rough per transaction cost, used only to decide how many blocks'
+         * transaction bodies it is safe to pull out of the database at once.
+         * Deliberately on the small side so the real byte budget, applied once
+         * the blocks are assembled, stays the binding limit. */
+        constexpr uint64_t ESTIMATED_WALLET_SYNC_TRANSACTION_BYTES = 512;
+
         WalletTypes::RawTransaction toWalletRawTransaction(const CachedTransactionInfo &txInfo)
         {
             WalletTypes::RawTransaction tx;
@@ -2588,7 +2594,8 @@ namespace CryptoNote
     std::vector<WalletTypes::WalletBlockInfo> DatabaseBlockchainCache::getWalletSyncBlocks(
         uint32_t startIndex,
         uint32_t endIndex,
-        bool skipCoinbaseTransactions) const
+        bool skipCoinbaseTransactions,
+        uint64_t maxResponseBytes) const
     {
         std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
 
@@ -2608,6 +2615,34 @@ namespace CryptoNote
         const auto blockResult = readDatabase(blockBatch);
         const auto &cachedBlocks = blockResult.getCachedBlocks();
         const auto &hashesByBlock = blockResult.getTransactionHashesByBlocks();
+
+        /* Transaction counts are known now the header batch is in, so decide how
+         * far the range can actually go before reading any transaction bodies.
+         * Reading the whole range first and trimming afterwards would let a
+         * flood of large blocks balloon our memory before we ever look at the
+         * budget. The first block is always included so sync cannot stall. */
+        const uint64_t transactionBudget =
+            std::max<uint64_t>(1, maxResponseBytes / ESTIMATED_WALLET_SYNC_TRANSACTION_BYTES);
+
+        uint32_t cappedEndIndex = startIndex;
+        uint64_t transactionsSoFar = 0;
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto hashesIt = hashesByBlock.find(index);
+
+            const uint64_t blockTransactions = hashesIt == hashesByBlock.end() ? 0 : hashesIt->second.size();
+
+            if (index != startIndex && transactionsSoFar + blockTransactions > transactionBudget)
+            {
+                break;
+            }
+
+            transactionsSoFar += blockTransactions;
+            cappedEndIndex = index + 1;
+        }
+
+        endIndex = cappedEndIndex;
 
         /* Then a single round trip for every transaction in the whole range. */
         BlockchainReadBatch transactionBatch;
@@ -2634,6 +2669,8 @@ namespace CryptoNote
             : std::unordered_map<Crypto::Hash, ExtendedTransactionInfo>();
 
         walletBlocks.reserve(endIndex - startIndex);
+
+        uint64_t responseBytes = 0;
 
         for (uint32_t index = startIndex; index < endIndex; ++index)
         {
@@ -2676,7 +2713,16 @@ namespace CryptoNote
                 walletBlock.transactions.push_back(toWalletRawTransaction(transactionIt->second));
             }
 
+            responseBytes += walletBlock.memoryUsage();
+
             walletBlocks.push_back(std::move(walletBlock));
+
+            /* Budget is checked after appending so the first block always goes
+             * out, however large it is. */
+            if (responseBytes >= maxResponseBytes)
+            {
+                break;
+            }
         }
 
         return walletBlocks;
