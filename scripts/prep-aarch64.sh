@@ -16,8 +16,6 @@ TARGET_TRIPLE="${TARGET_TRIPLE:-aarch64-linux-gnu}"
 TOOLCHAIN_DIR="${TOOLCHAIN_DIR:-$HOME/toolchain/aarch64-linux-gnu}"
 PREFIX_DIR="${CROSS_PREFIX:-$TOOLCHAIN_DIR/prefix}"
 JOBS="${JOBS:-$(nproc)}"
-BOOST_VERSION="${BOOST_VERSION:-1.84.0}"
-BOOST_VERSION_U="${BOOST_VERSION//./_}"
 OPENSSL_VERSION="${OPENSSL_VERSION:-1.1.1w}"
 
 mkdir -p "$TOOLCHAIN_DIR"
@@ -75,55 +73,7 @@ else
   echo "Found."
 fi
 
-echo -n "Checking for Boost ${BOOST_VERSION} date_time (aarch64 target)... "
-_boost_lib_existing="$(find "$PREFIX_DIR/lib" "$PREFIX_DIR/lib64" -maxdepth 1 -type f -name 'libboost_date_time*.a' 2>/dev/null | head -n1 || true)"
-if [ -z "${_boost_lib_existing}" ]; then
-  echo "Not found. Building..."
-  BOOST_TAR="boost_${BOOST_VERSION_U}.tar.gz"
-  BOOST_SRC="boost_${BOOST_VERSION_U}"
-  if [ ! -f "$BOOST_TAR" ]; then
-    wget "https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_TAR}"
-  fi
-  rm -rf "$BOOST_SRC"
-  tar zxf "$BOOST_TAR"
-  cd "$BOOST_SRC"
-  ./bootstrap.sh
-  cat > tools/build/src/user-config.jam <<EOF
-using gcc : aarch64 : ${TARGET_TRIPLE}-g++ ;
-EOF
-  ./b2 -j"$JOBS" \
-    --user-config=tools/build/src/user-config.jam \
-    toolset=gcc-aarch64 \
-    target-os=linux \
-    address-model=64 \
-    link=static \
-    runtime-link=static \
-    variant=release \
-    --layout=system \
-    --with-date_time \
-    install \
-    --prefix="$PREFIX_DIR"
-  cd "$TOOLCHAIN_DIR"
-  echo "Done."
-else
-  echo "Found: ${_boost_lib_existing}"
-fi
 
-if [ ! -f "$PREFIX_DIR/include/boost/version.hpp" ]; then
-  _versioned_boost_include="$(find "$PREFIX_DIR/include" -maxdepth 1 -type d -name 'boost-*' | head -n1 || true)"
-  if [ -n "${_versioned_boost_include}" ] && [ -f "${_versioned_boost_include}/boost/version.hpp" ]; then
-    ln -sfn "$_versioned_boost_include/boost" "$PREFIX_DIR/include/boost"
-    echo "Normalized Boost headers at $PREFIX_DIR/include/boost"
-  fi
-fi
-
-_boost_lib_final="$(find "$PREFIX_DIR/lib" "$PREFIX_DIR/lib64" -maxdepth 1 -type f -name 'libboost_date_time*.a' 2>/dev/null | head -n1 || true)"
-if [ ! -f "$PREFIX_DIR/include/boost/version.hpp" ] || [ -z "${_boost_lib_final}" ]; then
-  echo "Boost installation verification failed."
-  echo "Expected headers: $PREFIX_DIR/include/boost/version.hpp"
-  echo "Expected libs: $PREFIX_DIR/lib/libboost_date_time*.a or $PREFIX_DIR/lib64/libboost_date_time*.a"
-  exit 1
-fi
 
 export CC="/usr/bin/${TARGET_TRIPLE}-gcc"
 export CPP="/usr/bin/${TARGET_TRIPLE}-cpp"
@@ -134,7 +84,6 @@ export LD="/usr/bin/${TARGET_TRIPLE}-ld"
 export STRIP="/usr/bin/${TARGET_TRIPLE}-strip"
 
 export CROSS_PREFIX="$PREFIX_DIR"
-export BOOST_ROOT="$PREFIX_DIR"
 export OPENSSL_ROOT_DIR="$PREFIX_DIR"
 export CMAKE_PREFIX_PATH="$PREFIX_DIR"
 export CUSTOM_TOOLCHAIN_FILE="../scripts/cross-aarch64.cmake"
@@ -143,7 +92,6 @@ echo
 echo "Environment prepared for Linux aarch64 cross-build."
 echo "CC=$CC"
 echo "CXX=$CXX"
-echo "BOOST_ROOT=$BOOST_ROOT"
 echo "OPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR"
 echo "CUSTOM_TOOLCHAIN_FILE=$CUSTOM_TOOLCHAIN_FILE"
 

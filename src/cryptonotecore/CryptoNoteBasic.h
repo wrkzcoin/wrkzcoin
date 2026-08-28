@@ -7,7 +7,6 @@
 #pragma once
 
 #include <CryptoNote.h>
-#include <boost/utility/value_init.hpp>
 
 namespace CryptoNote
 {

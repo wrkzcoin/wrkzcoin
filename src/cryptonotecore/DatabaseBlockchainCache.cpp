@@ -8,13 +8,13 @@
 #include "BlockchainUtils.h"
 #include "crypto/hash.h"
 
-#include <boost/iterator/iterator_facade.hpp>
 #include <common/CryptoNoteTools.h>
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
 #include <cstdio>
 #include <deque>
+#include <iterator>
 #include <tuple>
 #include <utilities/ParseExtra.h>
 #include <cryptonotecore/BlockchainStorage.h>
@@ -255,10 +255,10 @@ namespace CryptoNote
             return static_cast<uint64_t>((timestamp / ONE_DAY_SECONDS) * ONE_DAY_SECONDS);
         }
 
-        std::pair<boost::optional<uint32_t>, bool>
+        std::pair<std::optional<uint32_t>, bool>
             requestClosestBlockIndexByTimestamp(uint64_t timestamp, IDataBase &database)
         {
-            std::pair<boost::optional<uint32_t>, bool> result = {{}, false};
+            std::pair<std::optional<uint32_t>, bool> result = {{}, false};
 
             BlockchainReadBatch readBatch;
             readBatch.requestClosestTimestampBlockIndex(timestamp);
@@ -449,13 +449,23 @@ namespace CryptoNote
             }
         }
 
-        class DbOutputConstIterator :
-            public boost::iterator_facade<
-                DbOutputConstIterator,
-                const PackedOutIndex,
-                boost::random_access_traversal_tag /*boost::forward_traversal_tag*/>
+        /* Random-access iterator over the key outputs for one amount, each
+           fetched from the database on dereference. Replaces
+           boost::iterator_facade, which synthesised these operators from
+           dereference/equal/increment/decrement/advance/distance_to. */
+        class DbOutputConstIterator
         {
           public:
+            using iterator_category = std::random_access_iterator_tag;
+
+            using value_type = PackedOutIndex;
+
+            using difference_type = std::ptrdiff_t;
+
+            using pointer = const PackedOutIndex *;
+
+            using reference = const PackedOutIndex &;
+
             DbOutputConstIterator(
                 std::function<PackedOutIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever_,
                 IBlockchainCache::Amount amount_,
@@ -466,37 +476,109 @@ namespace CryptoNote
             {
             }
 
-            const PackedOutIndex &dereference() const
+            reference operator*() const
             {
                 cachedValue = retriever(amount, globalOutputIndex);
                 return cachedValue;
             }
 
-            bool equal(const DbOutputConstIterator &other) const
+            pointer operator->() const
+            {
+                return &**this;
+            }
+
+            /* By value: a reference would point into a temporary iterator's
+               cachedValue. std::lower_bound does not use this, but the
+               random-access requirements include it. */
+            value_type operator[](difference_type n) const
+            {
+                return retriever(amount, globalOutputIndex + static_cast<uint32_t>(n));
+            }
+
+            DbOutputConstIterator &operator++()
+            {
+                ++globalOutputIndex;
+                return *this;
+            }
+
+            DbOutputConstIterator operator++(int)
+            {
+                DbOutputConstIterator copy = *this;
+                ++globalOutputIndex;
+                return copy;
+            }
+
+            DbOutputConstIterator &operator--()
+            {
+                --globalOutputIndex;
+                return *this;
+            }
+
+            DbOutputConstIterator operator--(int)
+            {
+                DbOutputConstIterator copy = *this;
+                --globalOutputIndex;
+                return copy;
+            }
+
+            DbOutputConstIterator &operator+=(difference_type n)
+            {
+                assert(n >= -static_cast<difference_type>(globalOutputIndex));
+                globalOutputIndex += static_cast<uint32_t>(n);
+                return *this;
+            }
+
+            DbOutputConstIterator &operator-=(difference_type n)
+            {
+                return *this += -n;
+            }
+
+            DbOutputConstIterator operator+(difference_type n) const
+            {
+                DbOutputConstIterator copy = *this;
+                return copy += n;
+            }
+
+            DbOutputConstIterator operator-(difference_type n) const
+            {
+                DbOutputConstIterator copy = *this;
+                return copy -= n;
+            }
+
+            difference_type operator-(const DbOutputConstIterator &other) const
+            {
+                return static_cast<difference_type>(globalOutputIndex)
+                       - static_cast<difference_type>(other.globalOutputIndex);
+            }
+
+            bool operator==(const DbOutputConstIterator &other) const
             {
                 return globalOutputIndex == other.globalOutputIndex;
             }
 
-            void increment()
+            bool operator!=(const DbOutputConstIterator &other) const
             {
-                ++globalOutputIndex;
+                return !(*this == other);
             }
 
-            void decrement()
+            bool operator<(const DbOutputConstIterator &other) const
             {
-                --globalOutputIndex;
+                return globalOutputIndex < other.globalOutputIndex;
             }
 
-            void advance(difference_type n)
+            bool operator>(const DbOutputConstIterator &other) const
             {
-                assert(n >= -static_cast<difference_type>(globalOutputIndex));
-                globalOutputIndex += static_cast<uint32_t>(n);
+                return other < *this;
             }
 
-            difference_type distance_to(const DbOutputConstIterator &to) const
+            bool operator<=(const DbOutputConstIterator &other) const
             {
-                return static_cast<difference_type>(to.globalOutputIndex)
-                       - static_cast<difference_type>(globalOutputIndex);
+                return !(other < *this);
+            }
+
+            bool operator>=(const DbOutputConstIterator &other) const
+            {
+                return !(*this < other);
             }
 
           private:
@@ -608,13 +690,13 @@ namespace CryptoNote
                 version = static_cast<uint32_t>(std::atoi(values[0].c_str()));
             }
 
-            boost::optional<uint32_t> getDbSchemeVersion()
+            std::optional<uint32_t> getDbSchemeVersion()
             {
                 return version;
             }
 
           private:
-            boost::optional<uint32_t> version;
+            std::optional<uint32_t> version;
         };
 
         class DatabaseVersionWriteBatch : public IWriteBatch
@@ -842,9 +924,9 @@ namespace CryptoNote
         logger(Logging::TRACE) << "Delete successfull";
 
         // invalidate top block index and hash
-        topBlockIndex = boost::none;
-        topBlockHash = boost::none;
-        transactionsCount = boost::none;
+        topBlockIndex = std::nullopt;
+        topBlockHash = std::nullopt;
+        transactionsCount = std::nullopt;
 
         logger(Logging::DEBUGGING) << "split completed";
         // return new cache
@@ -983,9 +1065,9 @@ namespace CryptoNote
         logger(Logging::TRACE) << "Delete successful";
 
         // invalidate top block index and hash
-        topBlockIndex = boost::none;
-        topBlockHash = boost::none;
-        transactionsCount = boost::none;
+        topBlockIndex = std::nullopt;
+        topBlockHash = std::nullopt;
+        transactionsCount = std::nullopt;
     }
 
     // returns hash of pushed block
@@ -1259,7 +1341,7 @@ namespace CryptoNote
 
         if (!newKeyAmounts.empty())
         {
-            assert(keyOutputAmountsCount.is_initialized());
+            assert(keyOutputAmountsCount.has_value());
             batch.insertKeyOutputAmounts(newKeyAmounts, *keyOutputAmountsCount);
         }
 

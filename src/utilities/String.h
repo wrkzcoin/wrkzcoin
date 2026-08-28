@@ -2,6 +2,8 @@
 //
 // Please see the included LICENSE file for more information.
 
+#pragma once
+
 #include <string>
 #include <vector>
 
@@ -20,4 +22,6 @@ namespace Utilities
     std::vector<std::string> split(const std::string &str, char delimiter);
 
     std::string removePrefix(const std::string &str, const std::string &prefix);
+
+    void replaceAll(std::string &str, const std::string &from, const std::string &to);
 } // namespace Utilities

@@ -91,8 +91,7 @@ echo "OSXCROSS_SDK=$OSXCROSS_SDK"
 echo "OSXCROSS_DEPLOYMENT_TARGET=$OSXCROSS_DEPLOYMENT_TARGET"
 echo
 echo "Dependency note:"
-echo "Provide target Boost/OpenSSL for macOS and export:"
-echo "  BOOST_ROOT=<path>"
+echo "Provide target OpenSSL for macOS and export:"
 echo "  OPENSSL_ROOT_DIR=<path>"
 echo "  CMAKE_PREFIX_PATH=<path>"
 

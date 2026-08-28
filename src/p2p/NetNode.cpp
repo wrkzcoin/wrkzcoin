@@ -22,23 +22,7 @@
 #include "version.h"
 
 #include <algorithm>
-#include <boost/foreach.hpp>
-#include <boost/utility/value_init.hpp>
-
-
-// clang-format off
-// see https://github.com/boostorg/random/issues/49
-#if BOOST_VERSION == 106900
-#ifndef BOOST_PENDING_INTEGER_LOG2_HPP
-#define BOOST_PENDING_INTEGER_LOG2_HPP
-#include <boost/integer/integer_log2.hpp>
-#endif /* BOOST_PENDING_INTEGER_LOG2_HPP */
-#endif /* BOOST_VERSION */
-
-#include <boost/uuid/random_generator.hpp>
-// clang-format on
-
-#include <boost/uuid/uuid_io.hpp>
+#include <array>
 #include <config/CryptoNoteConfig.h>
 #include <crypto/random.h>
 #include <fstream>
@@ -62,6 +46,16 @@ using namespace CryptoNote;
 
 namespace
 {
+    /* Generates a random 16-byte connection id, replacing
+       boost::uuids::random_generator. Connection ids are local bookkeeping -
+       they never go on the wire. */
+    std::array<uint8_t, 16> randomConnectionId()
+    {
+        std::array<uint8_t, 16> id {};
+        Random::randomBytes(id.size(), id.data());
+        return id;
+    }
+
     constexpr size_t PEER_SELECTION_RECENCY_WINDOW = 256;
     constexpr size_t PEER_SELECTION_MAX_TRIES = 16;
 
@@ -233,14 +227,14 @@ namespace CryptoNote
         typedef typename Command::response Response;
         int command = Command::ID;
 
-        Request req = boost::value_initialized<Request>();
+        Request req {};
 
         if (!LevinProtocol::decode(reqBuf, req))
         {
             throw std::runtime_error("Failed to load_from_binary in command " + std::to_string(command));
         }
 
-        Response res = boost::value_initialized<Response>();
+        Response res {};
         int ret = handler(command, req, res, ctx);
         resBuf = LevinProtocol::encode(res);
         return ret;
@@ -410,10 +404,10 @@ namespace CryptoNote
     void NodeServer::externalRelayNotifyToAll(
         int command,
         const BinaryArray &data_buff,
-        const boost::uuids::uuid *excludeConnection)
+        const std::array<uint8_t, 16> *excludeConnection)
     {
-        const boost::uuids::uuid excludeId =
-            excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+        const std::array<uint8_t, 16> excludeId =
+            excludeConnection ? *excludeConnection : std::array<uint8_t, 16> {};
 
         m_dispatcher.remoteSpawn([this, command, data_buff, excludeId] {
             relay_notify_to_all(command, data_buff, &excludeId);
@@ -424,7 +418,7 @@ namespace CryptoNote
     void NodeServer::externalRelayNotifyToList(
         int command,
         const BinaryArray &data_buff,
-        const std::list<boost::uuids::uuid> relayList)
+        const std::list<std::array<uint8_t, 16>> relayList)
     {
         m_dispatcher.remoteSpawn([this, command, data_buff, relayList] {
             forEachConnection([&](P2pConnectionContext &conn) {
@@ -772,7 +766,7 @@ namespace CryptoNote
         if (rsp.node_data.network_id != m_network_id)
         {
             logger(Logging::DEBUGGING) << context << "COMMAND_HANDSHAKE Failed, wrong network! ("
-                                       << rsp.node_data.network_id << "), closing connection.";
+                                       << Common::podToHex(rsp.node_data.network_id) << "), closing connection.";
             return false;
         }
 
@@ -829,7 +823,7 @@ namespace CryptoNote
 
     bool NodeServer::timedSync()
     {
-        COMMAND_TIMED_SYNC::request arg = boost::value_initialized<COMMAND_TIMED_SYNC::request>();
+        COMMAND_TIMED_SYNC::request arg {};
         m_payload_handler.get_payload_sync_data(arg.payload_data);
         auto cmdBuf = LevinProtocol::encode<COMMAND_TIMED_SYNC::request>(arg);
 
@@ -881,7 +875,7 @@ namespace CryptoNote
     void NodeServer::forEachConnection(std::function<void(P2pConnectionContext &)> action)
     {
         // create copy of connection ids because the list can be changed during action
-        std::vector<boost::uuids::uuid> connectionIds;
+        std::vector<std::array<uint8_t, 16>> connectionIds;
         {
             std::lock_guard<std::mutex> lock(m_connectionsMutex);
             connectionIds.reserve(m_connections.size());
@@ -988,7 +982,7 @@ namespace CryptoNote
 
             P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), std::move(connection));
 
-            ctx.m_connection_id = boost::uuids::random_generator()();
+            ctx.m_connection_id = randomConnectionId();
             ctx.m_remote_ip = na.ip;
             ctx.m_remote_port = na.port;
             ctx.m_is_income = false;
@@ -1027,7 +1021,7 @@ namespace CryptoNote
                 return true;
             }
 
-            PeerlistEntry pe_local = boost::value_initialized<PeerlistEntry>();
+            PeerlistEntry pe_local {};
             pe_local.adr = na;
             pe_local.id = ctx.peerId;
             pe_local.last_seen = time(nullptr);
@@ -1038,7 +1032,7 @@ namespace CryptoNote
                 throw System::InterruptedException();
             }
 
-            boost::uuids::uuid connectionId;
+            std::array<uint8_t, 16> connectionId;
             P2pConnectionContext *connectionContext = nullptr;
             {
                 std::lock_guard<std::mutex> lock(m_connectionsMutex);
@@ -1114,7 +1108,7 @@ namespace CryptoNote
 
             P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), std::move(connection));
 
-            ctx.m_connection_id = boost::uuids::random_generator()();
+            ctx.m_connection_id = randomConnectionId();
             ctx.m_remote_ip = 0; // IPv6 — stored as 0; full address tracked via IpAddress
             ctx.m_remote_ipv6 = addrStr;
             ctx.m_remote_port = na.port;
@@ -1164,7 +1158,7 @@ namespace CryptoNote
                 throw System::InterruptedException();
             }
 
-            boost::uuids::uuid connectionId;
+            std::array<uint8_t, 16> connectionId;
             P2pConnectionContext *connectionContext = nullptr;
             {
                 std::lock_guard<std::mutex> lock(m_connectionsMutex);
@@ -1241,7 +1235,7 @@ namespace CryptoNote
             }
 
             tried_peers.insert(random_index);
-            PeerlistEntry6 pe = boost::value_initialized<PeerlistEntry6>();
+            PeerlistEntry6 pe {};
             bool r = use_white_list ? m_peerlist.get_white6_peer_by_index(pe, random_index)
                                     : m_peerlist.get_gray6_peer_by_index(pe, random_index);
             if (!r)
@@ -1304,7 +1298,7 @@ namespace CryptoNote
             }
 
             tried_peers.insert(random_index);
-            PeerlistEntry pe = boost::value_initialized<PeerlistEntry>();
+            PeerlistEntry pe {};
             bool r = use_white_list ? m_peerlist.get_white_peer_by_index(pe, random_index)
                                     : m_peerlist.get_gray_peer_by_index(pe, random_index);
             if (!(r))
@@ -1540,7 +1534,7 @@ namespace CryptoNote
         time(&now);
         delta = now - local_time;
 
-        BOOST_FOREACH (PeerlistEntry &be, local_peerlist)
+        for (PeerlistEntry &be : local_peerlist)
         {
             if (be.last_seen > uint64_t(local_time))
             {
@@ -1699,12 +1693,12 @@ namespace CryptoNote
     void NodeServer::relay_notify_to_all(
         int command,
         const BinaryArray &data_buff,
-        const boost::uuids::uuid *excludeConnection)
+        const std::array<uint8_t, 16> *excludeConnection)
     {
         if (!isDispatcherThread())
         {
-            const boost::uuids::uuid excludeId =
-                excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+            const std::array<uint8_t, 16> excludeId =
+                excludeConnection ? *excludeConnection : std::array<uint8_t, 16> {};
             m_dispatcher.remoteSpawn(
                 [this, command, data_buff, excludeId] { relay_notify_to_all_impl(command, data_buff, &excludeId); });
             return;
@@ -1716,10 +1710,10 @@ namespace CryptoNote
     void NodeServer::relay_notify_to_all_impl(
         int command,
         const BinaryArray &data_buff,
-        const boost::uuids::uuid *excludeConnection)
+        const std::array<uint8_t, 16> *excludeConnection)
     {
-        boost::uuids::uuid excludeId =
-            excludeConnection ? *excludeConnection : boost::value_initialized<boost::uuids::uuid>();
+        std::array<uint8_t, 16> excludeId =
+            excludeConnection ? *excludeConnection : std::array<uint8_t, 16> {};
 
         forEachConnection([&](P2pConnectionContext &conn) {
             if (conn.peerId && conn.m_connection_id != excludeId
@@ -1763,7 +1757,7 @@ namespace CryptoNote
     bool NodeServer::invoke_notify_to_peer_impl(
         int command,
         const BinaryArray &buffer,
-        const boost::uuids::uuid &connectionId)
+        const std::array<uint8_t, 16> &connectionId)
     {
         std::lock_guard<std::mutex> lock(m_connectionsMutex);
         auto it = m_connections.find(connectionId);
@@ -1868,7 +1862,7 @@ namespace CryptoNote
 
         if (arg.node_data.network_id != m_network_id)
         {
-            logger(Logging::DEBUGGING) << context << "WRONG NETWORK AGENT CONNECTED! id=" << arg.node_data.network_id;
+            logger(Logging::DEBUGGING) << context << "WRONG NETWORK AGENT CONNECTED! id=" << Common::podToHex(arg.node_data.network_id);
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -2166,7 +2160,7 @@ namespace CryptoNote
         for (const auto &cntxt : m_connections)
         {
             ss << cntxt.second.remoteAddressStr() << ":" << cntxt.second.m_remote_port
-               << " \t\tpeer_id " << cntxt.second.peerId << " \t\tconn_id " << cntxt.second.m_connection_id
+               << " \t\tpeer_id " << cntxt.second.peerId << " \t\tconn_id " << Common::podToHex(cntxt.second.m_connection_id)
                << (cntxt.second.m_is_income ? " INCOMING" : " OUTGOING") << std::endl;
         }
 
@@ -2207,7 +2201,7 @@ namespace CryptoNote
             try
             {
                 P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), m_listener.accept());
-                ctx.m_connection_id = boost::uuids::random_generator()();
+                ctx.m_connection_id = randomConnectionId();
                 ctx.m_is_income = true;
                 ctx.m_started = time(nullptr);
 
@@ -2242,7 +2236,7 @@ namespace CryptoNote
                     continue;
                 }
 
-                boost::uuids::uuid connectionId;
+                std::array<uint8_t, 16> connectionId;
                 P2pConnectionContext *connection = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
@@ -2275,7 +2269,7 @@ namespace CryptoNote
             try
             {
                 P2pConnectionContext ctx(m_dispatcher, logger.getLogger(), m_listenerIPv6.accept());
-                ctx.m_connection_id = boost::uuids::random_generator()();
+                ctx.m_connection_id = randomConnectionId();
                 ctx.m_is_income = true;
                 ctx.m_started = time(nullptr);
 
@@ -2327,7 +2321,7 @@ namespace CryptoNote
                     continue;
                 }
 
-                boost::uuids::uuid connectionId;
+                std::array<uint8_t, 16> connectionId;
                 P2pConnectionContext *connection = nullptr;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
@@ -2442,7 +2436,7 @@ namespace CryptoNote
         logger(DEBUGGING) << "timedSyncLoop finished";
     }
 
-    void NodeServer::connectionHandler(const boost::uuids::uuid &connectionId, P2pConnectionContext &ctx)
+    void NodeServer::connectionHandler(const std::array<uint8_t, 16> &connectionId, P2pConnectionContext &ctx)
     {
         // This inner context is necessary in order to stop connection handler at any moment
         System::Context<> context(m_dispatcher, [this, &connectionId, &ctx] {

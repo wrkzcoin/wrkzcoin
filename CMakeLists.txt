@@ -9,18 +9,6 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
 
-# Boost discovery policies (CMake >= 3.27 / 3.30):
-#  - CMP0144 NEW: honour the upper-case BOOST_ROOT variable the cross-build
-#    toolchain files and scripts set.
-#  - CMP0167 OLD: keep CMake's FindBoost module. This project deliberately uses
-#    it in header-only mode (Boost_NO_BOOST_CMAKE below); switching to NEW
-#    would require a BoostConfig.cmake in every build prefix.
-if (POLICY CMP0144)
-    cmake_policy(SET CMP0144 NEW)
-endif ()
-if (POLICY CMP0167)
-    cmake_policy(SET CMP0167 OLD)
-endif ()
 
 find_program(CCACHE_PROGRAM ccache)
 if (CCACHE_PROGRAM)
@@ -48,7 +36,6 @@ option(WRKZ_BUILD_WALLET_CAPI "Build generic wallet C API shared library" OFF)
 option(WRKZ_BUILD_WALLET_WASM "Build wallet WASM module (Emscripten)" OFF)
 option(WRKZ_WASM_PTHREADS "Build wallet WASM with pthread/atomics support" OFF)
 option(WRKZ_ANDROID_PROFILE "Enable Android-focused build defaults" OFF)
-option(WRKZ_ANDROID_HEADER_ONLY_BOOST "Use Boost headers only on Android builds" ON)
 option(WRKZ_ANDROID_DISABLE_OPENSSL "Disable OpenSSL probing/linking on Android builds" ON)
 option(WRKZ_FORCE_STATIC_INTERNALS "Link internal libraries statically" ON)
 set(LIBUCONTEXT_ROOT "" CACHE PATH "Root of prebuilt libucontext for Android (expects include/ and lib/libucontext.a)")
@@ -154,7 +141,6 @@ message(STATUS "WRKZ_BUILD_WALLET_CAPI: ${WRKZ_BUILD_WALLET_CAPI}")
 message(STATUS "WRKZ_BUILD_WALLET_WASM: ${WRKZ_BUILD_WALLET_WASM}")
 message(STATUS "WRKZ_WASM_PTHREADS: ${WRKZ_WASM_PTHREADS}")
 message(STATUS "WRKZ_ANDROID_PROFILE: ${WRKZ_ANDROID_PROFILE}")
-message(STATUS "WRKZ_ANDROID_HEADER_ONLY_BOOST: ${WRKZ_ANDROID_HEADER_ONLY_BOOST}")
 message(STATUS "WRKZ_ANDROID_DISABLE_OPENSSL: ${WRKZ_ANDROID_DISABLE_OPENSSL}")
 message(STATUS "WRKZ_FORCE_STATIC_INTERNALS: ${WRKZ_FORCE_STATIC_INTERNALS}")
 
@@ -241,7 +227,7 @@ elseif (ANDROID)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
     add_definitions(-D_GNU_SOURCE -D_XOPEN_SOURCE=700)
-    add_definitions(-DBOOST_NO_CXX98_FUNCTION_BASE -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
+    add_definitions(-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
 else ()
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux)
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/posix)
@@ -425,123 +411,6 @@ if (NOT MSVC)
     endif ()
 endif ()
 
-## Go get us some static BOOST libraries
-set(Boost_NO_BOOST_CMAKE ON)
-if (WRKZ_ANDROID_PROFILE)
-    set(Boost_USE_STATIC_LIBS OFF)
-    set(Boost_USE_STATIC_RUNTIME OFF)
-else ()
-    set(Boost_USE_STATIC_LIBS ON)
-    set(Boost_USE_STATIC_RUNTIME ON)
-endif ()
-if ((WRKZ_ANDROID_PROFILE AND WRKZ_BUILD_WALLET_CAPI AND NOT WRKZ_BUILD_EXECUTABLES)
-    OR (ANDROID AND WRKZ_ANDROID_HEADER_ONLY_BOOST))
-    # Android builds can run with Boost headers only.
-    if (NOT DEFINED BOOST_ROOT AND DEFINED ENV{BOOST_ROOT})
-        set(BOOST_ROOT "$ENV{BOOST_ROOT}")
-    endif ()
-
-    set(_WRKZ_BOOST_HEADER_CANDIDATES "")
-    if (DEFINED BOOST_ROOT)
-        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
-    endif ()
-
-    set(Boost_INCLUDE_DIRS "")
-    foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
-        if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
-            set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
-            break()
-        endif ()
-    endforeach ()
-
-    if (Boost_INCLUDE_DIRS STREQUAL "")
-        message(FATAL_ERROR
-            "Android build requires Boost headers but none were found.\n"
-            "Set BOOST_ROOT to an isolated Boost headers prefix containing include/boost/version.hpp.\n"
-            "Do not pass /usr/include directly in cross builds.")
-    endif ()
-
-    # Normalize include root: if the probe resolved to ".../boost", use its parent.
-    if (EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
-        get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
-    endif ()
-
-    if (
-        NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/version.hpp"
-        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp"
-        OR NOT EXISTS "${Boost_INCLUDE_DIRS}/boost/variant.hpp"
-    )
-        message(FATAL_ERROR
-            "Boost include root is invalid for Android build: ${Boost_INCLUDE_DIRS}\n"
-            "Expected headers:\n"
-            "  ${Boost_INCLUDE_DIRS}/boost/version.hpp\n"
-            "  ${Boost_INCLUDE_DIRS}/boost/uuid/uuid.hpp\n"
-            "  ${Boost_INCLUDE_DIRS}/boost/variant.hpp\n"
-            "Set BOOST_ROOT to a valid isolated Boost prefix.")
-    endif ()
-    message(STATUS "Boost headers for Android build: ${Boost_INCLUDE_DIRS}")
-
-    set(WRKZ_BOOST_LINK_LIBS "")
-else ()
-    if (EMSCRIPTEN)
-        set(_WRKZ_BOOST_HEADER_CANDIDATES "")
-        if (DEFINED BOOST_ROOT)
-            list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES "${BOOST_ROOT}/include" "${BOOST_ROOT}")
-        endif ()
-        list(APPEND _WRKZ_BOOST_HEADER_CANDIDATES
-            "/usr/include"
-            "/usr/local/include"
-            "/opt/homebrew/include"
-            "/opt/local/include")
-
-        set(Boost_INCLUDE_DIRS "")
-        foreach(_WRKZ_BOOST_DIR IN LISTS _WRKZ_BOOST_HEADER_CANDIDATES)
-            if (EXISTS "${_WRKZ_BOOST_DIR}/boost/version.hpp")
-                set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_DIR}")
-                break()
-            endif ()
-        endforeach ()
-
-        if (Boost_INCLUDE_DIRS STREQUAL "")
-            message(FATAL_ERROR
-                "Emscripten wallet_wasm build requires Boost headers but none were found.\n"
-                "Set BOOST_ROOT to a prefix containing include/boost/version.hpp.")
-        endif ()
-
-        # Avoid injecting full host include roots (e.g. /usr/include) into the
-        # Emscripten compile command, which can shadow sysroot libc headers.
-        # Build a shim include dir that only exposes boost/*.
-        set(_WRKZ_BOOST_SHIM_ROOT "${CMAKE_BINARY_DIR}/boost-headers")
-        file(MAKE_DIRECTORY "${_WRKZ_BOOST_SHIM_ROOT}")
-        if (NOT EXISTS "${_WRKZ_BOOST_SHIM_ROOT}/boost")
-            # Use file(COPY) for portability; symlinks require elevated privileges on Windows
-            file(COPY "${Boost_INCLUDE_DIRS}/boost" DESTINATION "${_WRKZ_BOOST_SHIM_ROOT}")
-        endif ()
-        set(Boost_INCLUDE_DIRS "${_WRKZ_BOOST_SHIM_ROOT}")
-
-        message(STATUS "Boost headers for Emscripten wallet_wasm: ${Boost_INCLUDE_DIRS}")
-        set(WRKZ_BOOST_LINK_LIBS "")
-    else ()
-        # Only Boost headers are needed — boost::posix_time::ptime and
-        # microsec_clock::local_time() are fully header-only (they use
-        # Windows/POSIX APIs directly).  The compiled date_time library is
-        # only required for locale-based I/O which this codebase does not use.
-        find_package(Boost REQUIRED)
-        set(WRKZ_BOOST_LINK_LIBS "")
-        # Suppress MSVC #pragma comment(lib, "boost_date_time-...") auto-link.
-        add_compile_definitions(BOOST_DATE_TIME_NO_LIB BOOST_ALL_NO_LIB)
-    endif ()
-endif ()
-if ((NOT Boost_INCLUDE_DIRS OR Boost_INCLUDE_DIRS STREQUAL "") AND DEFINED Boost_INCLUDE_DIR)
-    if (NOT "${Boost_INCLUDE_DIR}" MATCHES "-NOTFOUND$")
-        set(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIR}")
-    endif ()
-endif ()
-if (Boost_INCLUDE_DIRS AND EXISTS "${Boost_INCLUDE_DIRS}/version.hpp" AND EXISTS "${Boost_INCLUDE_DIRS}/uuid/uuid.hpp")
-    get_filename_component(Boost_INCLUDE_DIRS "${Boost_INCLUDE_DIRS}" DIRECTORY)
-endif ()
-message(STATUS "Boost Found: ${Boost_INCLUDE_DIRS}")
-include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
 ## Detect ZLIB before OpenSSL.
 ## Static OpenSSL on Linux/macOS commonly has a transitive zlib dependency.

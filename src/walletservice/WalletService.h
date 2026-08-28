@@ -19,9 +19,6 @@
 
 #include "logging/LoggerRef.h"
 
-#include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index_container.hpp>
 #include <common/Notifier.h>
 #include <fstream>
 #include <memory>

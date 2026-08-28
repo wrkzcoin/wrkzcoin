@@ -22,9 +22,62 @@
 #include <unistd.h>
 #endif
 
-#include <boost/algorithm/string.hpp>
+#include <vector>
 
 using Common::Console::Color;
+
+namespace
+{
+    /* Splits on 'delimiter', collapsing runs of consecutive delimiters into
+       one. This is the boost::token_compress_on behaviour the console has
+       always had, so "set_log  4" stays a two-token command. Input is
+       trimmed before it reaches here, so no empty leading/trailing token is
+       produced. */
+    std::vector<std::string> splitCompressed(const std::string &text, char delimiter)
+    {
+        std::vector<std::string> tokens;
+        size_t pos = 0;
+
+        while (pos < text.size())
+        {
+            const size_t next = text.find(delimiter, pos);
+
+            if (next == std::string::npos)
+            {
+                tokens.push_back(text.substr(pos));
+                break;
+            }
+
+            tokens.push_back(text.substr(pos, next - pos));
+            pos = text.find_first_not_of(delimiter, next);
+
+            if (pos == std::string::npos)
+            {
+                break;
+            }
+        }
+
+        return tokens;
+    }
+
+    /* Strips leading and trailing whitespace in place, over the same
+       character set boost::algorithm::trim used. */
+    void trimInPlace(std::string &text)
+    {
+        const char *whitespace = " \t\n\v\f\r";
+
+        const size_t last = text.find_last_not_of(whitespace);
+
+        if (last == std::string::npos)
+        {
+            text.clear();
+            return;
+        }
+
+        text.erase(last + 1);
+        text.erase(0, text.find_first_not_of(whitespace));
+    }
+} // namespace
 
 namespace Common
 {
@@ -278,7 +331,7 @@ namespace Common
     void ConsoleHandler::handleCommand(const std::string &cmd)
     {
         std::vector<std::string> args;
-        boost::split(args, cmd, boost::is_any_of(" "), boost::token_compress_on);
+        args = splitCompressed(cmd, ' ');
         runCommand(args);
     }
 
@@ -311,7 +364,7 @@ namespace Common
                     break;
                 }
 
-                boost::algorithm::trim(line);
+                trimInPlace(line);
                 if (!line.empty())
                 {
                     handleCommand(line);

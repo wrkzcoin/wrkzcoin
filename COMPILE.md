@@ -119,21 +119,12 @@ For Linux builds:
 
 If you changed dependencies, use a fresh build dir (or clear cache) so CMake does not reuse stale `ZMQ_LIBRARY` values.
 
-### Boost status (updated)
-
-Boost is no longer required as a broad/full dependency package in build docs.
-Current CMake uses Boost `date_time` only.
-
-- Linux packages: prefer minimal Boost dev packages (for example `libboost-date-time-dev`) instead of `libboost-all-dev`.
-- Windows: if your toolchain cannot auto-resolve Boost, point CMake to your Boost install with `-DBOOST_ROOT=...`.
-
 ## Ubuntu example
 
 ```bash
 sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
-  libssl-dev zlib1g-dev libboost-date-time-dev \
   libzstd-dev libzmq3-dev libsodium-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -143,7 +134,7 @@ cmake --build build -j$(nproc)
 ## macOS example (Homebrew)
 
 ```bash
-brew install cmake openssl boost zstd
+brew install cmake openssl zstd
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
@@ -162,12 +153,6 @@ Open **x64 Native Tools Command Prompt for VS 2019/2022**:
 cd <your_wrkzcoin_directory>
 cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -- /m
-```
-
-If Boost is not discovered automatically:
-
-```bat
-cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -DBOOST_ROOT=C:/local/boost_1_69_0
 ```
 
 Binaries are produced in `build/src/Release`.

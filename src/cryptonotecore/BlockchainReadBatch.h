@@ -11,8 +11,22 @@
 #include "DatabaseCacheData.h"
 #include "IReadBatch.h"
 
-#include <boost/functional/hash.hpp>
 #include <functional>
+
+namespace CryptoNote
+{
+    namespace Detail
+    {
+        /* Mixes an additional value into a hash seed. Replaces
+           boost::hash_combine. These hashes only drive in-memory bucket
+           distribution - nothing persisted or consensus-visible depends on
+           the exact mixing function. */
+        template<class T> void hashCombine(size_t &seed, const T &value)
+        {
+            seed ^= std::hash<T> {}(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        }
+    } // namespace Detail
+} // namespace CryptoNote
 
 namespace std
 {
@@ -23,8 +37,8 @@ namespace std
 
         result_type operator()(const argment_type &arg) const
         {
-            size_t hashValue = boost::hash_value(arg.first);
-            boost::hash_combine(hashValue, arg.second);
+            size_t hashValue = std::hash<CryptoNote::IBlockchainCache::Amount> {}(arg.first);
+            CryptoNote::Detail::hashCombine(hashValue, arg.second);
             return hashValue;
         }
     };
@@ -37,7 +51,7 @@ namespace std
         result_type operator()(const argment_type &arg) const
         {
             size_t hashValue = std::hash<Crypto::Hash> {}(arg.first);
-            boost::hash_combine(hashValue, arg.second);
+            CryptoNote::Detail::hashCombine(hashValue, arg.second);
             return hashValue;
         }
     };

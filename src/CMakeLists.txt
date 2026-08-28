@@ -15,9 +15,6 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 # CPPHTTPLIB_ZLIB_SUPPORT on, httplib's #include <zlib.h> picked up Crypto++'s.
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
-if (DEFINED Boost_INCLUDE_DIRS AND NOT "${Boost_INCLUDE_DIRS}" STREQUAL "")
-    include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-endif ()
 
 # wallet_capi shared target links many internal static libraries. Ensure they
 # are built with PIC so shared linking succeeds on ELF/Mach-O platforms.
@@ -213,7 +210,7 @@ if (WRKZ_BUILD_EXECUTABLES)
 endif ()
 
 ## Optional precompiled headers (opt-in: -DWRKZ_ENABLE_PCH=ON). Each listed
-## target precompiles the std/boost headers (plus json.hpp where JSON is
+## target precompiles the std headers (plus json.hpp where JSON is
 ## pervasive) that nearly every one of its translation units parses; the
 ## COMPILE_LANGUAGE guard leaves the C sources alone (crypto/*.c, the osx
 ## ucontext shim). Measured with MSVC 2022 on a 16-core machine, a clean
@@ -230,12 +227,6 @@ if (WRKZ_ENABLE_PCH)
         exception functional future iomanip iostream iterator limits list map memory mutex
         numeric optional queue random set shared_mutex sstream stack stdexcept string
         system_error thread tuple type_traits unordered_map unordered_set utility vector)
-    set(WRKZ_PCH_BOOST
-        boost/optional.hpp boost/uuid/uuid.hpp
-        boost/multi_index_container.hpp boost/multi_index/composite_key.hpp
-        boost/multi_index/hashed_index.hpp boost/multi_index/member.hpp
-        boost/multi_index/mem_fun.hpp boost/multi_index/ordered_index.hpp
-        boost/multi_index/random_access_index.hpp)
 
     function(wrkz_pch target)
         if (NOT TARGET ${target})
@@ -248,21 +239,21 @@ if (WRKZ_ENABLE_PCH)
         target_precompile_headers(${target} PRIVATE ${_hdrs})
     endfunction ()
 
-    # std-only: no boost / json in these
+    # std-only: no json in these
     foreach(_t IN ITEMS System Logging)
         wrkz_pch(${_t} ${WRKZ_PCH_STD})
     endforeach ()
-    # std + boost
+    # std only
     foreach(_t IN ITEMS Common Serialization Utilities P2P)
-        wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST})
+        wrkz_pch(${_t} ${WRKZ_PCH_STD})
     endforeach ()
-    # std + boost + json
+    # std + json
     foreach(_t IN ITEMS CryptoNoteCore Transfers Wallet WalletBackend Rpc)
-        wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST} json.hpp)
+        wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
     endforeach ()
     if (WRKZ_BUILD_EXECUTABLES)
         foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner)
-            wrkz_pch(${_t} ${WRKZ_PCH_STD} ${WRKZ_PCH_BOOST} json.hpp)
+            wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
         endforeach ()
     endif ()
     if (CCACHE_PROGRAM)
@@ -356,17 +347,10 @@ target_link_libraries(Common __filesystem)
 target_link_libraries(Crypto argon2)
 target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System)
 target_link_libraries(Errors Crypto SubWallets Utilities)
-target_link_libraries(Logging Common ${WRKZ_BOOST_LINK_LIBS})
+target_link_libraries(Logging Common)
 target_link_libraries(Nigel Errors CryptoNoteCore)
 target_link_libraries(NodeRpcProxy Rpc)
 target_link_libraries(P2P upnpc-static Serialization System CryptoNoteCore)
-if (WIN32)
-    # NetNode.cpp uses boost::uuids::random_generator, whose Windows entropy
-    # provider calls BCryptGenRandom. Boost only emits the auto-link pragma for
-    # MSVC, so MinGW needs bcrypt named here — as a P2P dependency it lands
-    # after libP2P.a on the link line, which static resolution requires.
-    target_link_libraries(P2P bcrypt)
-endif ()
 target_link_libraries(Rpc P2P Utilities CryptoNoteCore)
 target_link_libraries(Serialization Common Crypto)
 target_link_libraries(SubWallets Common Logger)

@@ -91,7 +91,6 @@ Prerequisites:
 
 1. Android NDK installed (r26+ recommended).
 2. `ANDROID_NDK` exported to your local NDK path.
-3. Boost headers available on host (`libboost-dev`) or a custom `BOOST_ROOT`.
 4. Android `libucontext` built for the target ABI.
 5. `cmake` and `ninja`/build tools available on host.
 
@@ -99,7 +98,6 @@ Build default Android ABI (`arm64-v8a`):
 
 ```bash
 export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
-sudo apt-get install -y libboost-dev
 bash scripts/cross-build-android-wallet.sh
 ```
 
@@ -145,7 +143,6 @@ Common Android env knobs:
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-arm64`)
 - `JOBS` (default: `nproc`)
-- `BOOST_ROOT` (optional custom isolated Boost prefix containing `include/boost/version.hpp`)
 - `LIBUCONTEXT_ROOT` (default: `.android-libucontext/<ABI>`, must contain `lib/libucontext.a`)
 - `LIBUCONTEXT_ROOT_BASE` (default: `.android-libucontext`, used when `ANDROID_ABIS` is set)
 
@@ -156,8 +153,6 @@ Android notes:
   - `WRKZ_BUILD_EXECUTABLES=OFF`
   - `WRKZ_BUILD_WALLET_CAPI=ON`
   - `ENABLE_ZMQ=OFF`
-- If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
-  `.android-boost/include/boost` and uses that isolated path for cross build.
 - If `libucontext` is missing for an ABI, the script warns and continues.
   Final link may still fail on `getcontext/swapcontext/makecontext`.
 - Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
@@ -172,7 +167,6 @@ Prerequisites:
 
 1. Android NDK installed (r26+ recommended).
 2. `ANDROID_NDK` exported to your local NDK path.
-3. Boost headers available on host (`libboost-dev`) or a custom `BOOST_ROOT`.
 4. Android `libucontext` built for the target ABI (recommended).
 5. `cmake` and `ninja`/build tools available on host.
 
@@ -180,7 +174,6 @@ Build default Android ABI (`arm64-v8a`):
 
 ```bash
 export ANDROID_NDK="$HOME/Android/Sdk/ndk/26.3.11579264"
-sudo apt-get install -y libboost-dev
 bash scripts/cross-build-android-cli.sh
 ```
 
@@ -232,7 +225,6 @@ Common Android CLI env knobs:
 - `BUILD_TYPE` (default: `Release`)
 - `BUILD_DIR` (default: `build-android-cli-arm64-v8a`)
 - `JOBS` (default: `nproc`)
-- `BOOST_ROOT` (optional custom isolated Boost headers prefix)
 - `LIBUCONTEXT_ROOT` (default: `.android-libucontext/<ABI>`, optional but recommended)
 - `LIBUCONTEXT_ROOT_BASE` (default: `.android-libucontext`, used when `ANDROID_ABIS` is set)
 
@@ -242,11 +234,8 @@ Android CLI notes:
   - `WRKZ_BUILD_EXECUTABLES=ON`
   - `WRKZ_BUILD_WALLET_CAPI=OFF`
   - `WRKZ_ANDROID_PROFILE=OFF`
-  - `WRKZ_ANDROID_HEADER_ONLY_BOOST=ON`
   - `WRKZ_ANDROID_DISABLE_OPENSSL=ON`
   - `ENABLE_ZMQ=OFF`
-- If `BOOST_ROOT` is not provided, the script stages `/usr/include/boost` into
-  `.android-boost/include/boost` and uses that isolated path for cross build.
 - If `libucontext` is missing for an ABI, the script warns and continues.
   Final link may still fail on `getcontext/swapcontext/makecontext`.
 - Use separate `BUILD_DIR` per ABI to avoid stale CMake cache.
@@ -310,7 +299,7 @@ This repo includes a legacy Linux ARM64 cross-build flow used by CI.
 From repo root:
 
 ```bash
-# 1) Prepare aarch64 cross toolchain + Boost/OpenSSL
+# 1) Prepare aarch64 cross toolchain + OpenSSL
 source scripts/prep-aarch64.sh
 
 # 2) Configure and build
@@ -362,9 +351,8 @@ build-aarch64/src
 3. Place SDK tarball in:
    - `$HOME/toolchain/macos/sdk`
    - or provide explicit path with `OSXCROSS_SDK_TAR=/path/to/MacOSX*.sdk.tar.xz`
-4. osxcross-compatible target libraries (Boost/OpenSSL) are still required for successful full link.
+4. osxcross-compatible target OpenSSL is still required for successful full link.
    - Export as needed before build:
-   - `BOOST_ROOT=<path>`
    - `OPENSSL_ROOT_DIR=<path>`
    - `CMAKE_PREFIX_PATH=<path>`
 5. Compiler wrappers expected from osxcross:
@@ -406,16 +394,15 @@ builds/wrkzcoin-macos-arm64-<timestamp>.tar.gz
 
 - If you switch between different targets (for example `build-windows-x86_64` and `build-aarch64`), do not reuse the same build directory.
 - Prefer deleting and recreating the target build directory before reconfiguring to avoid stale architecture flags.
-- Windows prep builds target OpenSSL and Boost under:
+- Windows prep builds target OpenSSL under:
   - `$HOME/toolchain/windows-x86_64/prefix`
-- Linux aarch64 prep builds target OpenSSL and Boost under:
+- Linux aarch64 prep builds target OpenSSL under:
   - `$HOME/toolchain/aarch64-linux-gnu/prefix` (default)
 - Override common toolchain locations with:
   - `TOOLCHAIN_DIR`, `CROSS_PREFIX`
 - Windows prep-specific overrides:
   - `MINGW_PREFIX`
 - aarch64 prep-specific overrides:
-  - `TARGET_TRIPLE`, `OPENSSL_VERSION`, `BOOST_VERSION`
 - Skip prep when environment is already ready:
   - `SKIP_PREP=1 bash scripts/cross-build-windows-x86_64.sh`
   - `SKIP_PREP=1 bash scripts/cross-build-windows-wallet-lib.sh`

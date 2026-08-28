@@ -32,7 +32,7 @@
 #include <version.h>
 
 #ifndef AUTO_VAL_INIT
-#define AUTO_VAL_INIT(n) boost::value_initialized<decltype(n)>()
+#define AUTO_VAL_INIT(n) decltype(n) {}
 #endif
 
 using namespace Crypto;
