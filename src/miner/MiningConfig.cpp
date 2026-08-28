@@ -6,6 +6,7 @@
 
 #include "MiningConfig.h"
 
+#include "common/IpcSocket.h"
 #include "common/StringTools.h"
 #include "logging/ILogger.h"
 #include "version.h"
@@ -51,7 +52,8 @@ namespace CryptoNote
         options.add_options("Daemon")(
             "daemon-address",
             "The daemon [host:port] combination to use for node operations. This option overrides --daemon-host and "
-            "--daemon-rpc-port",
+            "--daemon-rpc-port. An absolute path, an @name or an ipc://path connects over the daemon's local IPC "
+            "socket instead (--rpc-ipc-path on the daemon)",
             cxxopts::value<std::string>(daemonAddress),
             "<host:port>")(
             "daemon-host",
@@ -108,6 +110,17 @@ namespace CryptoNote
         {
             std::cout << InformationMsg(getProjectCLIHeader()) << std::endl;
             exit(0);
+        }
+
+        /* Checked before the interactive address prompt below, so a build that
+           cannot do IPC says so straight away instead of asking for a mining
+           address first. Reported here rather than thrown, because main()
+           parses outside its try block and would exit without a word. */
+        if (Utilities::isIpcDaemonAddress(daemonAddress) && !Common::Ipc::supported())
+        {
+            std::cout << WarningMsg("--daemon-address names an IPC socket, but ")
+                      << WarningMsg(Common::Ipc::unsupportedReason()) << WarningMsg(".") << std::endl;
+            exit(1);
         }
 
         const bool integratedAddressesAllowed = false;

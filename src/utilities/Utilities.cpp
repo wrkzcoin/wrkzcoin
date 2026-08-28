@@ -186,8 +186,35 @@ namespace Utilities
         return time - adjust;
     }
 
+    bool isIpcDaemonAddress(const std::string &address)
+    {
+        if (address.rfind("ipc://", 0) == 0)
+        {
+            return true;
+        }
+
+        /* An absolute path or an abstract socket name; neither can be a host,
+           so there is nothing to disambiguate against. */
+        return !address.empty() && (address.front() == '/' || address.front() == '@');
+    }
+
+    std::string ipcDaemonPath(const std::string &address)
+    {
+        return Utilities::removePrefix(address, "ipc://");
+    }
+
     bool parseDaemonAddressFromString(std::string &host, uint16_t &port, std::string address)
     {
+        /* A local socket has no port to speak of, and its path must survive
+           the host:port splitting below untouched. */
+        if (isIpcDaemonAddress(address))
+        {
+            host = ipcDaemonPath(address);
+            port = 0;
+
+            return !host.empty();
+        }
+
         /* Lets users enter url's instead of host:port */
         address = Utilities::removePrefix(address, "https://");
         address = Utilities::removePrefix(address, "http://");

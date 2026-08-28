@@ -39,6 +39,15 @@ namespace Utilities
 
     bool parseDaemonAddressFromString(std::string &host, uint16_t &port, std::string address);
 
+    /* Whether a daemon address names a local IPC socket rather than a host:
+       an absolute path, an "@name" abstract socket, or an explicit ipc:// URL.
+       Everything that dials a daemon runs the address through here, so one
+       spelling works for zedwallet++, the miner and the wallet service alike. */
+    bool isIpcDaemonAddress(const std::string &address);
+
+    /* Strips an ipc:// prefix, leaving the path an AF_UNIX socket wants. */
+    std::string ipcDaemonPath(const std::string &address);
+
     uint64_t getTransactionFee(
         const size_t transactionSize,
         const uint64_t height,

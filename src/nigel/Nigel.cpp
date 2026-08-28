@@ -10,6 +10,7 @@
 ////////////////////////
 
 #include <common/CryptoNoteTools.h>
+#include <common/IpcSocket.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
@@ -71,7 +72,21 @@ inline std::shared_ptr<httplib::Client> getClient(
         false;
 #endif
 
-    auto client = std::make_shared<httplib::Client>(daemonBaseUrl(daemonHost, daemonPort, useSsl));
+    /* A local socket is addressed by path, so it cannot go through the URL
+       constructor - that would try to parse the path as a scheme and host.
+       There is no TLS on a Unix socket either; the kernel already restricts
+       who can open it. */
+    const bool useIpc = Utilities::isIpcDaemonAddress(daemonHost);
+
+    auto client = useIpc
+        ? std::make_shared<httplib::Client>(Utilities::ipcDaemonPath(daemonHost), 80)
+        : std::make_shared<httplib::Client>(daemonBaseUrl(daemonHost, daemonPort, useSsl));
+
+    if (useIpc)
+    {
+        Common::Ipc::configureClient(*client);
+    }
+
     client->set_connection_timeout(timeout);
     client->set_read_timeout(timeout);
     client->set_write_timeout(timeout);

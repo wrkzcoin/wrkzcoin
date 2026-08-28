@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "common/IpcSocket.h"
 #include "common/PathTools.h"
 #include "common/Util.h"
 
@@ -79,6 +80,10 @@ namespace DaemonConfig
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 1000;
             rpcTrustProxy = false;
+            rpcIpcPath = "";
+            rpcIpcMode = Common::Ipc::DEFAULT_MODE;
+            rpcIpcGroup = "";
+            rpcIpcRequireToken = false;
             zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
             noZmq = false;
             blockNotify = "";
@@ -193,6 +198,16 @@ namespace DaemonConfig
         uint32_t rpcMaxBlockCount;
 
         bool rpcTrustProxy;
+
+        /* Local IPC (AF_UNIX) RPC endpoint. Empty = disabled, which is the
+           default: an operator has to name a path to open one. */
+        std::string rpcIpcPath;
+
+        uint32_t rpcIpcMode;
+
+        std::string rpcIpcGroup;
+
+        bool rpcIpcRequireToken;
 
         std::string zmqPub;
 

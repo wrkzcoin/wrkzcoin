@@ -200,6 +200,24 @@ namespace DaemonConfig
             "rpc-trust-proxy",
             "Trust X-Forwarded-For header for client IP (enable only behind trusted reverse proxy)",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "rpc-ipc-path",
+            "Also serve RPC on a local IPC socket at this path, for example /run/wrkzd/wrkzd.sock. "
+            "Prefix with @ for the Linux abstract namespace. Empty disables IPC (default). Not available on Windows",
+            cxxopts::value<std::string>()->default_value(config.rpcIpcPath),
+            "<path>")(
+            "rpc-ipc-mode",
+            "Octal permissions for the IPC socket file. The default 0600 restricts it to the user running the "
+            "daemon; use 0660 together with --rpc-ipc-group to share it",
+            cxxopts::value<std::string>()->default_value(Common::Ipc::formatMode(config.rpcIpcMode)),
+            "<mode>")(
+            "rpc-ipc-group",
+            "Group to own the IPC socket file, for a 0660 shared setup",
+            cxxopts::value<std::string>()->default_value(config.rpcIpcGroup),
+            "<group>")(
+            "rpc-ipc-require-token",
+            "Also demand --rpc-access-token from IPC callers. Off by default: the socket permissions already "
+            "decide who may connect, and the kernel enforces them",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
             "zmq-pub",
             "ZMQ PUB endpoint (for example tcp://127.0.0.1:"
                 + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT) + "). Empty disables ZMQ publisher.",
@@ -656,6 +674,31 @@ namespace DaemonConfig
             if (cli.count("rpc-trust-proxy") > 0)
             {
                 config.rpcTrustProxy = cli["rpc-trust-proxy"].as<bool>();
+            }
+
+            if (cli.count("rpc-ipc-path") > 0)
+            {
+                config.rpcIpcPath = cli["rpc-ipc-path"].as<std::string>();
+            }
+
+            if (cli.count("rpc-ipc-mode") > 0)
+            {
+                const std::string mode = cli["rpc-ipc-mode"].as<std::string>();
+
+                if (!Common::Ipc::parseMode(mode, config.rpcIpcMode))
+                {
+                    throw std::runtime_error("rpc-ipc-mode must be octal permissions such as 0600: " + mode);
+                }
+            }
+
+            if (cli.count("rpc-ipc-group") > 0)
+            {
+                config.rpcIpcGroup = cli["rpc-ipc-group"].as<std::string>();
+            }
+
+            if (cli.count("rpc-ipc-require-token") > 0)
+            {
+                config.rpcIpcRequireToken = cli["rpc-ipc-require-token"].as<bool>();
             }
 
             if (cli.count("zmq-pub") > 0)
@@ -1139,6 +1182,30 @@ namespace DaemonConfig
                     config.rpcTrustProxy = cfgValue.at(0) == '1';
                     updated = true;
                 }
+                else if (cfgKey.compare("rpc-ipc-path") == 0)
+                {
+                    config.rpcIpcPath = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("rpc-ipc-mode") == 0)
+                {
+                    if (!Common::Ipc::parseMode(cfgValue, config.rpcIpcMode))
+                    {
+                        throw std::runtime_error("Invalid value for " + cfgKey + ", expected octal such as 0600");
+                    }
+
+                    updated = true;
+                }
+                else if (cfgKey.compare("rpc-ipc-group") == 0)
+                {
+                    config.rpcIpcGroup = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("rpc-ipc-require-token") == 0)
+                {
+                    config.rpcIpcRequireToken = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("zmq-pub") == 0)
                 {
                     config.zmqPub = cfgValue;
@@ -1574,6 +1641,31 @@ namespace DaemonConfig
             config.rpcTrustProxy = j["rpc-trust-proxy"].get<bool>();
         }
 
+        if (j.contains("rpc-ipc-path"))
+        {
+            config.rpcIpcPath = j["rpc-ipc-path"].get<std::string>();
+        }
+
+        if (j.contains("rpc-ipc-mode"))
+        {
+            const std::string mode = j["rpc-ipc-mode"].get<std::string>();
+
+            if (!Common::Ipc::parseMode(mode, config.rpcIpcMode))
+            {
+                throw std::runtime_error("Invalid value for rpc-ipc-mode, expected octal such as 0600: " + mode);
+            }
+        }
+
+        if (j.contains("rpc-ipc-group"))
+        {
+            config.rpcIpcGroup = j["rpc-ipc-group"].get<std::string>();
+        }
+
+        if (j.contains("rpc-ipc-require-token"))
+        {
+            config.rpcIpcRequireToken = j["rpc-ipc-require-token"].get<bool>();
+        }
+
         if (j.contains("zmq-pub"))
         {
             config.zmqPub = j["zmq-pub"].get<std::string>();
@@ -1715,6 +1807,10 @@ namespace DaemonConfig
         j["rpc-max-global-index-range"] = config.rpcMaxGlobalIndexesRange;
         j["rpc-max-block-count"] = config.rpcMaxBlockCount;
         j["rpc-trust-proxy"] = config.rpcTrustProxy;
+        j["rpc-ipc-path"] = config.rpcIpcPath;
+        j["rpc-ipc-mode"] = Common::Ipc::formatMode(config.rpcIpcMode);
+        j["rpc-ipc-group"] = config.rpcIpcGroup;
+        j["rpc-ipc-require-token"] = config.rpcIpcRequireToken;
         j["zmq-pub"] = config.zmqPub;
         j["no-zmq"] = config.noZmq;
         j["block-notify"] = config.blockNotify;

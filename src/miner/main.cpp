@@ -7,8 +7,10 @@
 #include "MinerManager.h"
 #include "httplib.h"
 
+#include <common/IpcSocket.h>
 #include <memory>
 #include <system/Dispatcher.h>
+#include <utilities/Utilities.h>
 
 int main(int argc, char **argv)
 {
@@ -21,7 +23,20 @@ int main(int argc, char **argv)
         {
             System::Dispatcher dispatcher;
 
-            auto httpClient = std::make_shared<httplib::Client>(config.daemonHost, config.daemonPort);
+            /* An absolute path or @name means the daemon's local IPC socket
+               rather than a host, so it is addressed by path with the client
+               switched to AF_UNIX. */
+            const bool useIpc = Utilities::isIpcDaemonAddress(config.daemonHost);
+
+            auto httpClient = useIpc
+                ? std::make_shared<httplib::Client>(Utilities::ipcDaemonPath(config.daemonHost), 80)
+                : std::make_shared<httplib::Client>(config.daemonHost, config.daemonPort);
+
+            if (useIpc)
+            {
+                Common::Ipc::configureClient(*httpClient);
+            }
+
             httpClient->set_connection_timeout(std::chrono::seconds(10));
             httpClient->set_read_timeout(std::chrono::seconds(10));
             httpClient->set_write_timeout(std::chrono::seconds(10));
