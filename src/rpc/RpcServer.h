@@ -13,7 +13,7 @@
 
 #include "httplib_fwd.h"
 #include "JsonHelper.h"
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 #include <cryptonotecore/Core.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>

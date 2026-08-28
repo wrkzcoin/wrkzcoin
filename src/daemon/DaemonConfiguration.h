@@ -11,7 +11,7 @@
 
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
-#include "json.hpp"
+#include "json_fwd.hpp"
 #include <thread>
 
 namespace DaemonConfig

@@ -8,7 +8,7 @@
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
 #include <string>
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 namespace PaymentService
 {
