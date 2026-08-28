@@ -8,9 +8,7 @@
 #include "version.h"
 #include "JsonHelper.h"
 
-#include <boost/algorithm/string.hpp>
-#include <boost/format.hpp>
-#include <boost/lexical_cast.hpp>
+#include <charconv>
 #include <cmath>
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
@@ -24,6 +22,7 @@
 #include <serialization/SerializationTools.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
+#include <utilities/String.h>
 #include <utilities/Utilities.h>
 #include <common/CheckDifficulty.h>
 #include <common/StringTools.h>
@@ -282,7 +281,7 @@ std::string DaemonCommandsHandler::get_commands_str()
     ss << CryptoNote::CRYPTONOTE_NAME << " v" << PROJECT_VERSION_LONG << ENDL;
     ss << "Commands: " << ENDL;
     std::string usage = m_consoleHandler.getUsage();
-    boost::replace_all(usage, "\n", "\n  ");
+    Utilities::replaceAll(usage, "\n", "\n  ");
     usage.insert(0, "  ");
     ss << usage << ENDL;
     return ss.str();
@@ -474,12 +473,17 @@ bool DaemonCommandsHandler::print_block(const std::vector<std::string> &args)
     }
 
     const std::string &arg = args.front();
-    try
+    uint32_t height = 0;
+    const auto parsed = std::from_chars(arg.data(), arg.data() + arg.size(), height);
+
+    /* Only treat the argument as a height if it parsed completely. Anything
+       else - a block hash, junk, or an out-of-range number - falls through to
+       the hash lookup, which is what lexical_cast's throw used to do. */
+    if (parsed.ec == std::errc() && parsed.ptr == arg.data() + arg.size())
     {
-        uint32_t height = boost::lexical_cast<uint32_t>(arg);
         print_block_by_height(height);
     }
-    catch (boost::bad_lexical_cast &)
+    else
     {
         print_block_by_hash(arg);
     }

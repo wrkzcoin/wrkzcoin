@@ -10,9 +10,9 @@
 #include "ITransaction.h"
 
 #include <array>
-#include <boost/optional.hpp>
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 namespace CryptoNote
 {
@@ -25,7 +25,7 @@ namespace CryptoNote
     struct CompleteBlock
     {
         Crypto::Hash blockHash;
-        boost::optional<CryptoNote::BlockTemplate> block;
+        std::optional<CryptoNote::BlockTemplate> block;
         // first transaction is always coinbase
         std::list<std::shared_ptr<ITransactionReader>> transactions;
     };

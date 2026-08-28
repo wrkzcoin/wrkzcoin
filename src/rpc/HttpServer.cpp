@@ -6,7 +6,6 @@
 
 #include "HttpServer.h"
 
-#include <boost/scope_exit.hpp>
 #include <http/HttpParser.h>
 #include <memory>
 #include <system/InterruptedException.h>
@@ -14,6 +13,29 @@
 #include <system/TcpStream.h>
 
 using namespace Logging;
+
+namespace
+{
+    /* Runs an action when the enclosing scope exits, by any path including an
+       exception. Replaces BOOST_SCOPE_EXIT_ALL. */
+    template<class F> class ScopeExit
+    {
+      public:
+        explicit ScopeExit(F action): m_action(std::move(action)) {}
+
+        ~ScopeExit()
+        {
+            m_action();
+        }
+
+        ScopeExit(const ScopeExit &) = delete;
+
+        ScopeExit &operator=(const ScopeExit &) = delete;
+
+      private:
+        F m_action;
+    };
+} // namespace
 
 namespace CryptoNote
 {
@@ -61,10 +83,7 @@ namespace CryptoNote
             }
 
             m_connections.insert(&connection);
-            BOOST_SCOPE_EXIT_ALL(this, &connection)
-            {
-                m_connections.erase(&connection);
-            };
+            ScopeExit eraseConnection([this, &connection] { m_connections.erase(&connection); });
 
             workingContextGroup.spawn(std::bind(&HttpServer::acceptLoop, this));
 

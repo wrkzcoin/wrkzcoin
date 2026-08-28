@@ -30,6 +30,7 @@
 #include <cryptonotecore/IBlockchainCacheFactory.h>
 #include <deque>
 #include <functional>
+#include <optional>
 #include <tuple>
 #include <utility>
 
@@ -280,13 +281,13 @@ namespace CryptoNote
 
         IBlockchainCacheFactory &blockchainCacheFactory;
 
-        mutable boost::optional<uint32_t> topBlockIndex;
+        mutable std::optional<uint32_t> topBlockIndex;
 
-        mutable boost::optional<Crypto::Hash> topBlockHash;
+        mutable std::optional<Crypto::Hash> topBlockHash;
 
-        mutable boost::optional<uint64_t> transactionsCount;
+        mutable std::optional<uint64_t> transactionsCount;
 
-        mutable boost::optional<uint32_t> keyOutputAmountsCount;
+        mutable std::optional<uint32_t> keyOutputAmountsCount;
 
         mutable std::unordered_map<Amount, int32_t> keyOutputCountsForAmounts;
 

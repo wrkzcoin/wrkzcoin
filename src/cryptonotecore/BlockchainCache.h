@@ -12,15 +12,10 @@
 #include "common/StringView.h"
 #include "cryptonotecore/UpgradeManager.h"
 
-#include <boost/multi_index/composite_key.hpp>
-#include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/mem_fun.hpp>
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/random_access_index.hpp>
-#include <boost/multi_index_container.hpp>
 #include <functional>
+#include <list>
 #include <map>
+#include <optional>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -269,82 +264,462 @@ namespace CryptoNote
             getNonEmptyBlocks(const uint64_t startHeight, const size_t blockCount) const override;
 
       private:
-        struct BlockIndexTag
+        /* Replaces a two-index boost::multi_index container: ordered_non_unique
+           on block index beside hashed_unique on key image.
+
+           The ordered index is what the segment split walks, so a std::multimap
+           carries it. std::multimap and ordered_non_unique agree on where an
+           equivalent key lands (both at the upper bound of the equal range), so
+           the order of several key images spent in the same block is preserved.
+
+           Covered by ContainerTests::testSpentKeyImagesContainer. */
+        class SpentKeyImagesContainer
         {
-        };
-        struct BlockHashTag
-        {
-        };
-        struct TransactionHashTag
-        {
-        };
-        struct KeyImageTag
-        {
-        };
-        struct TransactionInBlockTag
-        {
-        };
-        struct PackedOutputTag
-        {
-        };
-        struct TimestampTag
-        {
-        };
-        struct PaymentIdTag
-        {
+          public:
+            bool insert(uint32_t blockIndex, const Crypto::KeyImage &keyImage)
+            {
+                /* The key image index is unique. */
+                if (m_byKeyImage.count(keyImage) > 0)
+                {
+                    return false;
+                }
+
+                m_byBlockIndex.emplace(blockIndex, keyImage);
+                m_byKeyImage.emplace(keyImage, blockIndex);
+
+                return true;
+            }
+
+            /* The block this key image was spent at, if this segment has it. */
+            std::optional<uint32_t> spentAtBlock(const Crypto::KeyImage &keyImage) const
+            {
+                const auto it = m_byKeyImage.find(keyImage);
+
+                return it == m_byKeyImage.end() ? std::nullopt : std::optional<uint32_t>(it->second);
+            }
+
+            bool contains(const Crypto::KeyImage &keyImage) const
+            {
+                return m_byKeyImage.count(keyImage) > 0;
+            }
+
+            std::vector<Crypto::KeyImage> keyImagesSpentAt(uint32_t blockIndex) const
+            {
+                std::vector<Crypto::KeyImage> keyImages;
+
+                auto range = m_byBlockIndex.equal_range(blockIndex);
+
+                for (auto it = range.first; it != range.second; ++it)
+                {
+                    keyImages.push_back(it->second);
+                }
+
+                return keyImages;
+            }
+
+            /* Moves every entry at or above splitBlockIndex into other. Key
+               images spent at exactly splitBlockIndex move with the upper
+               segment, which is what lower_bound gave before. */
+            void splitInto(SpentKeyImagesContainer &other, uint32_t splitBlockIndex)
+            {
+                auto lowerBound = m_byBlockIndex.lower_bound(splitBlockIndex);
+
+                for (auto it = lowerBound; it != m_byBlockIndex.end(); ++it)
+                {
+                    /* insert() rather than a raw emplace, so a key image
+                       already present in the target is skipped rather than
+                       desyncing the two maps. A range insert on the old
+                       container behaved the same way. */
+                    other.insert(it->first, it->second);
+                    m_byKeyImage.erase(it->second);
+                }
+
+                m_byBlockIndex.erase(lowerBound, m_byBlockIndex.end());
+            }
+
+            /* Every entry in block index order, for serialization - the order
+               the old container's first index produced. */
+            std::vector<SpentKeyImage> entries() const
+            {
+                std::vector<SpentKeyImage> all;
+                all.reserve(m_byBlockIndex.size());
+
+                for (const auto &entry : m_byBlockIndex)
+                {
+                    all.push_back(SpentKeyImage {entry.first, entry.second});
+                }
+
+                return all;
+            }
+
+            size_t size() const
+            {
+                return m_byKeyImage.size();
+            }
+
+          private:
+            std::multimap<uint32_t, Crypto::KeyImage> m_byBlockIndex;
+
+            std::unordered_map<Crypto::KeyImage, uint32_t> m_byKeyImage;
         };
 
-        typedef boost::multi_index_container<
-            SpentKeyImage,
-            boost::multi_index::indexed_by<
-                boost::multi_index::ordered_non_unique<
-                    boost::multi_index::tag<BlockIndexTag>,
-                    BOOST_MULTI_INDEX_MEMBER(SpentKeyImage, uint32_t, blockIndex)>,
-                boost::multi_index::hashed_unique<
-                    boost::multi_index::tag<KeyImageTag>,
-                    BOOST_MULTI_INDEX_MEMBER(SpentKeyImage, Crypto::KeyImage, keyImage)>>>
-            SpentKeyImagesContainer;
+        /* Replaces a three-index boost::multi_index container.
 
-        typedef boost::multi_index_container<
-            CachedTransactionInfo,
-            boost::multi_index::indexed_by<
-                boost::multi_index::hashed_unique<
-                    boost::multi_index::tag<TransactionInBlockTag>,
-                    boost::multi_index::composite_key<
-                        CachedTransactionInfo,
-                        BOOST_MULTI_INDEX_MEMBER(CachedTransactionInfo, uint32_t, blockIndex),
-                        BOOST_MULTI_INDEX_MEMBER(CachedTransactionInfo, uint32_t, transactionIndex)>>,
-                boost::multi_index::ordered_non_unique<
-                    boost::multi_index::tag<BlockIndexTag>,
-                    BOOST_MULTI_INDEX_MEMBER(CachedTransactionInfo, uint32_t, blockIndex)>,
-                boost::multi_index::hashed_unique<
-                    boost::multi_index::tag<TransactionHashTag>,
-                    BOOST_MULTI_INDEX_MEMBER(CachedTransactionInfo, Crypto::Hash, transactionHash)>>>
-            TransactionsCacheContainer;
+           A std::map keyed on (blockIndex, transactionIndex) serves both the
+           composite hashed_unique index and the ordered_non_unique index on
+           block index: lexicographic ordering on the pair subsumes ordering on
+           its first element, so lower_bound({blockIndex, 0}) is the same
+           boundary the block index index gave.
 
-        typedef boost::multi_index_container<
-            CachedBlockInfo,
-            boost::multi_index::indexed_by<
-                // The index here is blockIndex - startIndex
-                boost::multi_index::random_access<boost::multi_index::tag<BlockIndexTag>>,
-                boost::multi_index::hashed_unique<
-                    boost::multi_index::tag<BlockHashTag>,
-                    BOOST_MULTI_INDEX_MEMBER(CachedBlockInfo, Crypto::Hash, blockHash)>,
-                boost::multi_index::ordered_non_unique<
-                    boost::multi_index::tag<TimestampTag>,
-                    BOOST_MULTI_INDEX_MEMBER(CachedBlockInfo, uint64_t, timestamp)>>>
-            BlockInfoContainer;
+           Elements live in a list so that CachedTransactionInfo - which owns
+           two vectors - is not copied when indices are rebuilt.
 
-        typedef boost::multi_index_container<
-            PaymentIdTransactionHashPair,
-            boost::multi_index::indexed_by<
-                boost::multi_index::hashed_non_unique<
-                    boost::multi_index::tag<PaymentIdTag>,
-                    BOOST_MULTI_INDEX_MEMBER(PaymentIdTransactionHashPair, Crypto::Hash, paymentId)>,
-                boost::multi_index::hashed_unique<
-                    boost::multi_index::tag<TransactionHashTag>,
-                    BOOST_MULTI_INDEX_MEMBER(PaymentIdTransactionHashPair, Crypto::Hash, transactionHash)>>>
-            PaymentIdContainer;
+           Covered by ContainerTests::testTransactionsCacheContainer. */
+        class TransactionsCacheContainer
+        {
+          public:
+            typedef std::list<CachedTransactionInfo> Transactions;
+
+            typedef std::pair<uint32_t, uint32_t> BlockAndIndex;
+
+            bool insert(CachedTransactionInfo info)
+            {
+                const BlockAndIndex position {info.blockIndex, info.transactionIndex};
+                const Crypto::Hash hash = info.transactionHash;
+
+                /* Both the composite index and the hash index are unique. */
+                if (m_byPosition.count(position) > 0 || m_byHash.count(hash) > 0)
+                {
+                    return false;
+                }
+
+                const auto it = m_transactions.insert(m_transactions.end(), std::move(info));
+
+                m_byPosition.emplace(position, it);
+                m_byHash.emplace(hash, it);
+
+                return true;
+            }
+
+            const CachedTransactionInfo *findByHash(const Crypto::Hash &transactionHash) const
+            {
+                const auto it = m_byHash.find(transactionHash);
+
+                return it == m_byHash.end() ? nullptr : &*it->second;
+            }
+
+            const CachedTransactionInfo *findInBlock(uint32_t blockIndex, uint32_t transactionIndex) const
+            {
+                const auto it = m_byPosition.find(BlockAndIndex {blockIndex, transactionIndex});
+
+                return it == m_byPosition.end() ? nullptr : &*it->second;
+            }
+
+            bool containsHash(const Crypto::Hash &transactionHash) const
+            {
+                return m_byHash.count(transactionHash) > 0;
+            }
+
+            size_t size() const
+            {
+                return m_byHash.size();
+            }
+
+            /* The transaction hashes at or above a block index, in block order.
+               splitTransactions needs these before the entries move. */
+            std::vector<Crypto::Hash> transactionHashesAtOrAbove(uint32_t blockIndex) const
+            {
+                std::vector<Crypto::Hash> hashes;
+
+                for (auto it = m_byPosition.lower_bound(BlockAndIndex {blockIndex, 0});
+                     it != m_byPosition.end();
+                     ++it)
+                {
+                    hashes.push_back(it->second->transactionHash);
+                }
+
+                return hashes;
+            }
+
+            /* Moves every entry at or above splitBlockIndex into other. */
+            void splitInto(TransactionsCacheContainer &other, uint32_t splitBlockIndex)
+            {
+                auto lowerBound = m_byPosition.lower_bound(BlockAndIndex {splitBlockIndex, 0});
+
+                for (auto it = lowerBound; it != m_byPosition.end(); ++it)
+                {
+                    /* insert() rather than a raw emplace so a duplicate in the
+                       target is skipped instead of desyncing the indices, which
+                       is what a range insert on the old container did. */
+                    other.insert(*it->second);
+
+                    m_byHash.erase(it->second->transactionHash);
+                    m_transactions.erase(it->second);
+                }
+
+                m_byPosition.erase(lowerBound, m_byPosition.end());
+            }
+
+            /* Iteration for callers that want every transaction. The old
+               container's first index was a hash index, so no order was
+               specified then either. */
+            const Transactions &all() const
+            {
+                return m_transactions;
+            }
+
+            std::vector<CachedTransactionInfo> entries() const
+            {
+                return std::vector<CachedTransactionInfo>(m_transactions.begin(), m_transactions.end());
+            }
+
+          private:
+            Transactions m_transactions;
+
+            /* Composite index and block ordering in one. */
+            std::map<BlockAndIndex, Transactions::iterator> m_byPosition;
+
+            std::unordered_map<Crypto::Hash, Transactions::iterator> m_byHash;
+        };
+
+        /* Replaces a three-index boost::multi_index container: random_access
+           beside hashed_unique on block hash and ordered_non_unique on
+           timestamp.
+
+           The random_access index is a plain vector. That is safe because the
+           only erase is the tail truncation in splitBlocks, so a block's
+           position never shifts while it is in the container and a
+           hash -> position map stays valid. It also removes the need for
+           project<BlockIndexTag>(), which existed only to turn a hash lookup
+           back into an ordinal position - positionOf() does that directly.
+
+           The vector-like surface is deliberate: callers index it, take
+           front()/back(), and run std::lower_bound over it.
+
+           Covered by ContainerTests::testBlockInfoContainer. */
+        class BlockInfoContainer
+        {
+          public:
+            typedef std::vector<CachedBlockInfo>::const_iterator const_iterator;
+
+            void push_back(CachedBlockInfo blockInfo)
+            {
+                const Crypto::Hash hash = blockInfo.blockHash;
+                const uint64_t timestamp = blockInfo.timestamp;
+                const size_t position = m_blocks.size();
+
+                m_blocks.push_back(std::move(blockInfo));
+                m_positionByHash.emplace(hash, position);
+                m_positionByTimestamp.emplace(timestamp, position);
+            }
+
+            const CachedBlockInfo &operator[](size_t position) const
+            {
+                return m_blocks[position];
+            }
+
+            const CachedBlockInfo &at(size_t position) const
+            {
+                return m_blocks.at(position);
+            }
+
+            const CachedBlockInfo &front() const
+            {
+                return m_blocks.front();
+            }
+
+            const CachedBlockInfo &back() const
+            {
+                return m_blocks.back();
+            }
+
+            const_iterator begin() const
+            {
+                return m_blocks.begin();
+            }
+
+            const_iterator end() const
+            {
+                return m_blocks.end();
+            }
+
+            size_t size() const
+            {
+                return m_blocks.size();
+            }
+
+            bool empty() const
+            {
+                return m_blocks.empty();
+            }
+
+            bool containsHash(const Crypto::Hash &blockHash) const
+            {
+                return m_positionByHash.count(blockHash) > 0;
+            }
+
+            /* The block's offset within this segment, replacing a lookup in the
+               hash index projected onto the random access index. */
+            std::optional<size_t> positionOf(const Crypto::Hash &blockHash) const
+            {
+                const auto it = m_positionByHash.find(blockHash);
+
+                return it == m_positionByHash.end() ? std::nullopt : std::optional<size_t>(it->second);
+            }
+
+            /* Block hashes whose timestamp falls in [begin, end], in timestamp
+               order - the ordered_non_unique index's lower_bound/upper_bound
+               pair. */
+            std::vector<Crypto::Hash> hashesInTimestampRange(uint64_t begin, uint64_t end) const
+            {
+                std::vector<Crypto::Hash> hashes;
+
+                auto first = m_positionByTimestamp.lower_bound(begin);
+                auto last = m_positionByTimestamp.upper_bound(end);
+
+                for (auto it = first; it != last; ++it)
+                {
+                    hashes.push_back(m_blocks[it->second].blockHash);
+                }
+
+                return hashes;
+            }
+
+            /* Moves everything from position onwards into other. */
+            void splitInto(BlockInfoContainer &other, size_t position)
+            {
+                for (size_t i = position; i < m_blocks.size(); i++)
+                {
+                    other.push_back(std::move(m_blocks[i]));
+                }
+
+                m_blocks.erase(m_blocks.begin() + static_cast<std::ptrdiff_t>(position), m_blocks.end());
+
+                rebuildIndices();
+            }
+
+            const std::vector<CachedBlockInfo> &entries() const
+            {
+                return m_blocks;
+            }
+
+            void assign(std::vector<CachedBlockInfo> blocks)
+            {
+                m_blocks = std::move(blocks);
+                rebuildIndices();
+            }
+
+          private:
+            void rebuildIndices()
+            {
+                m_positionByHash.clear();
+                m_positionByTimestamp.clear();
+
+                for (size_t i = 0; i < m_blocks.size(); i++)
+                {
+                    m_positionByHash.emplace(m_blocks[i].blockHash, i);
+                    m_positionByTimestamp.emplace(m_blocks[i].timestamp, i);
+                }
+            }
+
+            std::vector<CachedBlockInfo> m_blocks;
+
+            std::unordered_map<Crypto::Hash, size_t> m_positionByHash;
+
+            std::multimap<uint64_t, size_t> m_positionByTimestamp;
+        };
+
+        /* Replaces a two-index boost::multi_index container: hashed_non_unique
+           on payment id beside hashed_unique on transaction hash. Both were
+           hash indices, so there is no iteration order to preserve - the old
+           container's first index was itself a hash index, which is why the
+           serialised order was already unspecified.
+
+           Covered by ContainerTests::testPaymentIdContainer. */
+        class PaymentIdContainer
+        {
+          public:
+            bool insert(const PaymentIdTransactionHashPair &entry)
+            {
+                /* The transaction hash index is unique. */
+                if (m_byTransactionHash.count(entry.transactionHash) > 0)
+                {
+                    return false;
+                }
+
+                m_byTransactionHash.emplace(entry.transactionHash, entry.paymentId);
+                m_byPaymentId.emplace(entry.paymentId, entry.transactionHash);
+
+                return true;
+            }
+
+            /* Removes the entry for a transaction and hands it back, so a
+               caller splitting the segment can move it elsewhere. */
+            std::optional<PaymentIdTransactionHashPair> extract(const Crypto::Hash &transactionHash)
+            {
+                const auto it = m_byTransactionHash.find(transactionHash);
+
+                if (it == m_byTransactionHash.end())
+                {
+                    return std::nullopt;
+                }
+
+                const PaymentIdTransactionHashPair entry {it->second, transactionHash};
+
+                auto range = m_byPaymentId.equal_range(it->second);
+
+                for (auto paymentIdIt = range.first; paymentIdIt != range.second; ++paymentIdIt)
+                {
+                    if (paymentIdIt->second == transactionHash)
+                    {
+                        m_byPaymentId.erase(paymentIdIt);
+                        break;
+                    }
+                }
+
+                m_byTransactionHash.erase(it);
+
+                return entry;
+            }
+
+            std::vector<Crypto::Hash> transactionHashesFor(const Crypto::Hash &paymentId) const
+            {
+                std::vector<Crypto::Hash> hashes;
+
+                auto range = m_byPaymentId.equal_range(paymentId);
+
+                for (auto it = range.first; it != range.second; ++it)
+                {
+                    hashes.push_back(it->second);
+                }
+
+                return hashes;
+            }
+
+            /* Every entry, for serialization. */
+            std::vector<PaymentIdTransactionHashPair> entries() const
+            {
+                std::vector<PaymentIdTransactionHashPair> all;
+                all.reserve(m_byTransactionHash.size());
+
+                for (const auto &entry : m_byTransactionHash)
+                {
+                    all.push_back(PaymentIdTransactionHashPair {entry.second, entry.first});
+                }
+
+                return all;
+            }
+
+            size_t size() const
+            {
+                return m_byTransactionHash.size();
+            }
+
+          private:
+            std::unordered_multimap<Crypto::Hash, Crypto::Hash> m_byPaymentId;
+
+            std::unordered_map<Crypto::Hash, Crypto::Hash> m_byTransactionHash;
+        };
 
         typedef std::map<uint64_t, OutputGlobalIndexesForAmount> OutputsGlobalIndexesContainer;
 

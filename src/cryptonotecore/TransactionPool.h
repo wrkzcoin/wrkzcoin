@@ -10,16 +10,14 @@
 #include "TransactionValidatiorState.h"
 #include "crypto/crypto.h"
 
-#include <boost/multi_index/composite_key.hpp>
-#include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/mem_fun.hpp>
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index_container.hpp>
+#include <list>
 #include <logging/LoggerMessage.h>
 #include <logging/LoggerRef.h>
+#include <mutex>
+#include <optional>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 namespace CryptoNote
 {
@@ -67,7 +65,7 @@ namespace CryptoNote
 
             CachedTransaction cachedTransaction;
 
-            boost::optional<Crypto::Hash> paymentId;
+            std::optional<Crypto::Hash> paymentId;
 
             const Crypto::Hash &getTransactionHash() const;
         };
@@ -78,53 +76,29 @@ namespace CryptoNote
             bool operator()(const PendingTransactionInfo &lhs, const PendingTransactionInfo &rhs) const;
         };
 
-        struct TransactionHashTag
-        {
-        };
-        struct TransactionCostTag
-        {
-        };
-        struct PaymentIdTag
-        {
-        };
+        /* Pending transactions live in a list so that the index maps below can
+           hold iterators that stay valid across insert and erase. */
+        typedef std::list<PendingTransactionInfo> PendingTransactions;
 
-        typedef boost::multi_index::ordered_non_unique<
-            boost::multi_index::tag<TransactionCostTag>,
-            boost::multi_index::identity<PendingTransactionInfo>,
-            TransactionPriorityComparator>
-            TransactionCostIndex;
+        PendingTransactions m_pendingTransactions;
 
-        typedef boost::multi_index::hashed_unique<
-            boost::multi_index::tag<TransactionHashTag>,
-            boost::multi_index::const_mem_fun<
-                PendingTransactionInfo,
-                const Crypto::Hash &,
-                &PendingTransactionInfo::getTransactionHash>>
-            TransactionHashIndex;
+        /* Primary index: transaction hash -> entry. Unique. */
+        std::unordered_map<Crypto::Hash, PendingTransactions::iterator> m_transactionsByHash;
 
-        struct PaymentIdHasher
-        {
-            size_t operator()(const boost::optional<Crypto::Hash> &paymentId) const;
-        };
+        /* Secondary index, non-unique. Only transactions that carry a payment
+           id are present; the only query is by a concrete payment id, so the
+           entries the old index kept under a null key were never looked up. */
+        std::unordered_multimap<Crypto::Hash, PendingTransactions::iterator> m_transactionsByPaymentId;
 
-        typedef boost::multi_index::hashed_non_unique<
-            boost::multi_index::tag<PaymentIdTag>,
-            BOOST_MULTI_INDEX_MEMBER(PendingTransactionInfo, boost::optional<Crypto::Hash>, paymentId),
-            PaymentIdHasher>
-            PaymentIdIndex;
+        /* The priority ordering is materialised on demand rather than kept
+           live. m_pendingTransactions is in insertion order and the sort is
+           stable, which reproduces the old ordered_non_unique index exactly,
+           ties included - see ContainerTests::testTransactionPoolContainer,
+           which fails if the sort is not stable. Every caller walks the whole
+           ordering anyway, and the pool holds at most a few thousand entries.
 
-        typedef boost::multi_index_container<
-            PendingTransactionInfo,
-            boost::multi_index::indexed_by<TransactionHashIndex, TransactionCostIndex, PaymentIdIndex>>
-            TransactionsContainer;
-
-        TransactionsContainer transactions;
-
-        TransactionsContainer::index<TransactionHashTag>::type &transactionHashIndex;
-
-        TransactionsContainer::index<TransactionCostTag>::type &transactionCostIndex;
-
-        TransactionsContainer::index<PaymentIdTag>::type &paymentIdIndex;
+           Callers must hold m_transactionsMutex. */
+        std::vector<const PendingTransactionInfo *> transactionsByPriority() const;
 
         mutable std::mutex m_transactionsMutex;
 

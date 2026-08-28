@@ -3750,7 +3750,7 @@ namespace CryptoNote
             return {false, error};
         }
 
-        b = boost::value_initialized<BlockTemplate>();
+        b = BlockTemplate {};
         b.majorVersion = getBlockMajorVersionForHeight(height);
 
         if (b.majorVersion == BLOCK_MAJOR_VERSION_1)
@@ -3775,7 +3775,7 @@ namespace CryptoNote
             b.parentBlock.majorVersion = BLOCK_MINOR_VERSION_0;
             b.parentBlock.transactionCount = 1;
 
-            TransactionExtraMergeMiningTag mmTag = boost::value_initialized<decltype(mmTag)>();
+            TransactionExtraMergeMiningTag mmTag {};
 
             if (!appendMergeMiningTagToExtra(b.parentBlock.baseTransaction.extra, mmTag))
             {
@@ -6020,7 +6020,7 @@ namespace CryptoNote
             }
         }
 
-        transactionDetails.paymentId = boost::value_initialized<Crypto::Hash>();
+        transactionDetails.paymentId = Crypto::Hash {};
         if (transaction->getPaymentId(transactionDetails.paymentId))
         {
             transactionDetails.hasPaymentId = true;

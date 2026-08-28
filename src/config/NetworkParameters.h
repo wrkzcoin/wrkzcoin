@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -24,7 +24,7 @@ namespace CryptoNote
         int zmqPubPort;
         std::string p2pStateFilename;
         std::string dataDirectorySuffix;
-        boost::uuids::uuid networkId;
+        std::array<uint8_t, 16> networkId;
         std::vector<std::string> seedNodes;
     };
 

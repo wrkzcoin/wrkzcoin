@@ -17,8 +17,7 @@
 #include "logging/LoggerRef.h"
 #include "p2p/OnceInInterval.h"
 
-#include <boost/functional/hash.hpp>
-#include <boost/uuid/uuid.hpp>
+#include <array>
 #include <functional>
 #include <mutex>
 #include <system/Context.h>
@@ -165,7 +164,7 @@ namespace CryptoNote
 
         bool init(const NetNodeConfig &config);
 
-        void setNetworkId(const boost::uuids::uuid &networkId);
+        void setNetworkId(const std::array<uint8_t, 16> &networkId);
 
         bool deinit();
 
@@ -270,11 +269,11 @@ namespace CryptoNote
         void relay_notify_to_all_impl(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection);
+            const std::array<uint8_t, 16> *excludeConnection);
         bool invoke_notify_to_peer_impl(
             int command,
             const BinaryArray &buffer,
-            const boost::uuids::uuid &connectionId);
+            const std::array<uint8_t, 16> &connectionId);
         bool isDispatcherThread() const;
 
         void on_connection_new(P2pConnectionContext &context);
@@ -285,7 +284,7 @@ namespace CryptoNote
         virtual void relay_notify_to_all(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) override;
+            const std::array<uint8_t, 16> *excludeConnection) override;
 
         virtual bool invoke_notify_to_peer(
             int command,
@@ -298,12 +297,12 @@ namespace CryptoNote
         virtual void externalRelayNotifyToAll(
             int command,
             const BinaryArray &data_buff,
-            const boost::uuids::uuid *excludeConnection) override;
+            const std::array<uint8_t, 16> *excludeConnection) override;
 
         virtual void externalRelayNotifyToList(
             int command,
             const BinaryArray &data_buff,
-            const std::list<boost::uuids::uuid> relayList) override;
+            const std::list<std::array<uint8_t, 16>> relayList) override;
 
         //-----------------------------------------------------------------------------------------------
         bool handleConfig(const NetNodeConfig &config);
@@ -358,7 +357,25 @@ namespace CryptoNote
         // debug functions
         std::string print_connections_container();
 
-        typedef std::unordered_map<boost::uuids::uuid, P2pConnectionContext, boost::hash<boost::uuids::uuid>>
+        /* Hashes a 16-byte connection id, replacing the Boost hash the uuid
+           type used to supply. This only drives in-memory bucket
+           distribution. */
+        struct ConnectionIdHasher
+        {
+            size_t operator()(const std::array<uint8_t, 16> &id) const
+            {
+                size_t seed = 0;
+
+                for (const uint8_t byte : id)
+                {
+                    seed ^= static_cast<size_t>(byte) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                }
+
+                return seed;
+            }
+        };
+
+        typedef std::unordered_map<std::array<uint8_t, 16>, P2pConnectionContext, ConnectionIdHasher>
             ConnectionContainer;
 
         typedef ConnectionContainer::iterator ConnectionIterator;
@@ -370,7 +387,7 @@ namespace CryptoNote
 
         void acceptLoopIPv6();
 
-        void connectionHandler(const boost::uuids::uuid &connectionId, P2pConnectionContext &connection);
+        void connectionHandler(const std::array<uint8_t, 16> &connectionId, P2pConnectionContext &connection);
 
         void writeHandler(P2pConnectionContext &ctx);
 
@@ -477,7 +494,7 @@ namespace CryptoNote
 
         uint64_t m_peer_livetime;
 
-        boost::uuids::uuid m_network_id;
+        std::array<uint8_t, 16> m_network_id;
 
         std::mutex m_banMutex;
 

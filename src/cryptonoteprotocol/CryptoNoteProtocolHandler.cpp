@@ -8,14 +8,14 @@
 #include "CryptoNoteProtocolHandler.h"
 
 #include "common/CryptoNoteTools.h"
+#include "common/StringTools.h"
 #include "cryptonotecore/Core.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "cryptonotecore/CryptoNoteFormatUtils.h"
 #include "cryptonotecore/Currency.h"
 #include "p2p/LevinProtocol.h"
 
-#include <boost/scope_exit.hpp>
-#include <boost/uuid/uuid_io.hpp>
+#include <array>
 #include <cmath>
 #include <config/Ascii.h>
 #include <config/CryptoNoteConfig.h>
@@ -60,7 +60,7 @@ namespace CryptoNote
         void relay_post_notify(
             IP2pEndpoint &p2p,
             typename t_parametr::request &arg,
-            const boost::uuids::uuid *excludeConnection = nullptr)
+            const std::array<uint8_t, 16> *excludeConnection = nullptr)
         {
             p2p.externalRelayNotifyToAll(t_parametr::ID, LevinProtocol::encode(arg), excludeConnection);
         }
@@ -288,7 +288,7 @@ namespace CryptoNote
             assert(context.m_requested_objects.empty());
             context.m_sync_batch_size = getAdaptiveBatchSize(context);
 
-            NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+            NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
@@ -534,7 +534,7 @@ namespace CryptoNote
         typedef typename Command::request Request;
         int command = Command::ID;
 
-        Request req = boost::value_initialized<Request>();
+        Request req {};
         if (!LevinProtocol::decode(reqBuf, req))
         {
             throw std::runtime_error("Failed to load_from_binary in command " + std::to_string(command));
@@ -629,7 +629,7 @@ namespace CryptoNote
                 {
                     logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
                     context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                    NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                    NOTIFY_REQUEST_CHAIN::request r {};
                     r.block_ids = m_core.buildSparseChain();
                     logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
                                           << r.block_ids.size();
@@ -644,7 +644,7 @@ namespace CryptoNote
         else if (result == error::AddBlockErrorCondition::BLOCK_REJECTED)
         {
             context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-            NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+            NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
@@ -981,7 +981,7 @@ namespace CryptoNote
                 context.m_discard_next_objects_response = context.m_pipelined_objects_outstanding;
 
                 context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request req = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                NOTIFY_REQUEST_CHAIN::request req {};
                 req.block_ids = m_core.buildSparseChain();
                 post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, req, context);
                 return 1;
@@ -1111,7 +1111,7 @@ namespace CryptoNote
                     {
                         logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
                         context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                        NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                        NOTIFY_REQUEST_CHAIN::request r {};
                         r.block_ids = m_core.buildSparseChain();
                         logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
                                               << r.block_ids.size();
@@ -1126,7 +1126,7 @@ namespace CryptoNote
             else if (result == error::AddBlockErrorCondition::BLOCK_REJECTED)
             {
                 context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+                NOTIFY_REQUEST_CHAIN::request r {};
                 r.block_ids = m_core.buildSparseChain();
                 logger(Logging::TRACE) << context
                                        << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
@@ -1248,7 +1248,7 @@ namespace CryptoNote
         else if (context.m_last_response_height < context.m_remote_blockchain_height - 1)
         { // we have to fetch more objects ids, request blockchain entry
 
-            NOTIFY_REQUEST_CHAIN::request r = boost::value_initialized<NOTIFY_REQUEST_CHAIN::request>();
+            NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
@@ -1385,7 +1385,7 @@ namespace CryptoNote
             if (!ok)
             {
                 logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-                    << "Failed to post notification NOTIFY_NEW_TRANSACTIONS to " << context.m_connection_id;
+                    << "Failed to post notification NOTIFY_NEW_TRANSACTIONS to " << Common::podToHex(context.m_connection_id);
             }
         }
 
@@ -1674,7 +1674,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "NOTIFY_NEW_BLOCK - MSG_SIZE = " << buf.size();
         logger(Logging::DEBUGGING) << "NOTIFY_NEW_LITE_BLOCK - MSG_SIZE = " << lite_buf.size();
 
-        std::list<boost::uuids::uuid> liteBlockConnections, normalBlockConnections;
+        std::list<std::array<uint8_t, 16>> liteBlockConnections, normalBlockConnections;
 
         // sort the peers into their support categories.
         m_p2p->for_each_connection([this, &liteBlockConnections, &normalBlockConnections](
@@ -1736,7 +1736,7 @@ namespace CryptoNote
         if (!ok)
         {
             logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-                << "Failed to post notification NOTIFY_REQUEST_TX_POOL to " << context.m_connection_id;
+                << "Failed to post notification NOTIFY_REQUEST_TX_POOL to " << Common::podToHex(context.m_connection_id);
         }
     }
 

@@ -11,11 +11,11 @@
 #include "P2pContext.h"
 #include "P2pContextOwner.h"
 #include "common/StdInputStream.h"
+#include "common/StringTools.h"
 #include "common/StdOutputStream.h"
 #include "serialization/BinaryInputStreamSerializer.h"
 #include "serialization/BinaryOutputStreamSerializer.h"
 
-#include <boost/uuid/uuid_io.hpp>
 #include <config/CryptoNoteConfig.h>
 #include <crypto/random.h>
 #include <random>
@@ -489,7 +489,7 @@ namespace CryptoNote
             if (response.node_data.network_id != request.node_data.network_id)
             {
                 logger(DEBUGGING) << *connection
-                                  << "COMMAND_HANDSHAKE failed, wrong network: " << response.node_data.network_id;
+                                  << "COMMAND_HANDSHAKE failed, wrong network: " << Common::podToHex(response.node_data.network_id);
                 return false;
             }
 
@@ -690,7 +690,7 @@ namespace CryptoNote
         if (node.network_id != m_cfg.getNetworkId())
         {
             std::ostringstream msg;
-            msg << context << "COMMAND_HANDSHAKE Failed, wrong network!  (" << node.network_id << ")";
+            msg << context << "COMMAND_HANDSHAKE Failed, wrong network!  (" << Common::podToHex(node.network_id) << ")";
             throw std::runtime_error(msg.str());
         }
 

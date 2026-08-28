@@ -11,7 +11,7 @@
 #include <common/CheckDifficulty.h>
 #include "TransactionPoW.h"
 
-#include <boost/optional.hpp>
+#include <optional>
 #include <config/CryptoNoteConfig.h>
 #include <memory>
 #include <numeric>
@@ -148,9 +148,9 @@ namespace CryptoNote
 
         CryptoNote::Transaction transaction;
 
-        boost::optional<SecretKey> secretKey;
+        std::optional<SecretKey> secretKey;
 
-        mutable boost::optional<Hash> transactionHash;
+        mutable std::optional<Hash> transactionHash;
 
         TransactionExtra extra;
     };
@@ -207,7 +207,7 @@ namespace CryptoNote
 
     void TransactionImpl::invalidateHash()
     {
-        if (transactionHash.is_initialized())
+        if (transactionHash.has_value())
         {
             transactionHash = decltype(transactionHash)();
         }
@@ -215,12 +215,12 @@ namespace CryptoNote
 
     Hash TransactionImpl::getTransactionHash() const
     {
-        if (!transactionHash.is_initialized())
+        if (!transactionHash.has_value())
         {
             transactionHash = getObjectHash(transaction);
         }
 
-        return transactionHash.get();
+        return transactionHash.value();
     }
 
     Hash TransactionImpl::getTransactionPrefixHash() const
