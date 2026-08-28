@@ -1,4 +1,4 @@
-# 3.16 is needed for target_precompile_headers(); CONFIGURE_DEPENDS globs,
+﻿# 3.16 is needed for target_precompile_headers(); CONFIGURE_DEPENDS globs,
 # $CACHE{} and CMAKE_CXX_STANDARD 20 already required >= 3.12.
 cmake_minimum_required(VERSION 3.16)
 
@@ -130,7 +130,7 @@ if (WRKZ_ANDROID_PROFILE)
     set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
 endif ()
 
-# Emscripten WASM builds only need the wallet library chain â€” disable
+# Emscripten WASM builds only need the wallet library chain — disable
 # executables, ZMQ, and RocksDB which are daemon-only.
 if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
     message(STATUS "Emscripten WASM build: disabling executables, ZMQ, RocksDB")

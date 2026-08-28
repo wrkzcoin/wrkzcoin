@@ -1,4 +1,4 @@
-set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
+﻿set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
 set(UPNPC_BUILD_SHARED OFF CACHE BOOL "Build shared library")
 set(UPNPC_BUILD_TESTS OFF CACHE BOOL "Build test executables")
 # miniupnpc >= 2.2 builds upnpc/listdevices samples by default and names the
@@ -143,7 +143,7 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     unset(_WRKZ_PREV_WITH_LIBBSD)
 endif ()
 
-# â”€â”€ zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) â”€â”€
+# ── zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) ──
 if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN AND WRKZ_SYSTEM_ROCKSDB)
     # Packagers and CI can supply RocksDB themselves and skip the bundled tree
     # (and the bundled zstd, which only exists to be RocksDB's compressor)
