@@ -8,11 +8,13 @@
 #include "common/StringTools.h"
 
 #include <algorithm>
+#include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/identity.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/random_access_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <cstdlib>
 #include <cstring>
@@ -889,6 +891,574 @@ namespace ContainerTests
         std::cout << "PASSED" << std::endl;
     }
 
+    /* ----------------------------------------------------------------------
+       BlockchainCache::transactions
+       ---------------------------------------------------------------------- */
+    namespace
+    {
+        struct CacheTxEntry
+        {
+            uint32_t blockIndex;
+
+            uint32_t transactionIndex;
+
+            Crypto::Hash transactionHash;
+        };
+
+        struct CacheInBlockTag
+        {
+        };
+        struct CacheBlockIndexTag
+        {
+        };
+        struct CacheTxHashTag
+        {
+        };
+
+        typedef boost::multi_index_container<
+            CacheTxEntry,
+            boost::multi_index::indexed_by<
+                boost::multi_index::hashed_unique<
+                    boost::multi_index::tag<CacheInBlockTag>,
+                    boost::multi_index::composite_key<
+                        CacheTxEntry,
+                        BOOST_MULTI_INDEX_MEMBER(CacheTxEntry, uint32_t, blockIndex),
+                        BOOST_MULTI_INDEX_MEMBER(CacheTxEntry, uint32_t, transactionIndex)>>,
+                boost::multi_index::ordered_non_unique<
+                    boost::multi_index::tag<CacheBlockIndexTag>,
+                    BOOST_MULTI_INDEX_MEMBER(CacheTxEntry, uint32_t, blockIndex)>,
+                boost::multi_index::hashed_unique<
+                    boost::multi_index::tag<CacheTxHashTag>,
+                    BOOST_MULTI_INDEX_MEMBER(CacheTxEntry, Crypto::Hash, transactionHash)>>>
+            BoostTransactionsCache;
+
+        /* One ordered map on the (blockIndex, transactionIndex) pair carries
+           both the composite index and the block ordering. */
+        class ReplacementTransactionsCache
+        {
+          public:
+            typedef std::list<CacheTxEntry> Entries;
+
+            typedef std::pair<uint32_t, uint32_t> BlockAndIndex;
+
+            bool insert(CacheTxEntry entry)
+            {
+                const BlockAndIndex position {entry.blockIndex, entry.transactionIndex};
+                const Crypto::Hash hash = entry.transactionHash;
+
+                if (m_byPosition.count(position) > 0 || m_byHash.count(hash) > 0)
+                {
+                    return false;
+                }
+
+                const auto it = m_entries.insert(m_entries.end(), std::move(entry));
+
+                m_byPosition.emplace(position, it);
+                m_byHash.emplace(hash, it);
+
+                return true;
+            }
+
+            const CacheTxEntry *findByHash(const Crypto::Hash &transactionHash) const
+            {
+                const auto it = m_byHash.find(transactionHash);
+
+                return it == m_byHash.end() ? nullptr : &*it->second;
+            }
+
+            const CacheTxEntry *findInBlock(uint32_t blockIndex, uint32_t transactionIndex) const
+            {
+                const auto it = m_byPosition.find(BlockAndIndex {blockIndex, transactionIndex});
+
+                return it == m_byPosition.end() ? nullptr : &*it->second;
+            }
+
+            size_t size() const
+            {
+                return m_byHash.size();
+            }
+
+            std::vector<Crypto::Hash> transactionHashesAtOrAbove(uint32_t blockIndex) const
+            {
+                std::vector<Crypto::Hash> hashes;
+
+                for (auto it = m_byPosition.lower_bound(BlockAndIndex {blockIndex, 0});
+                     it != m_byPosition.end();
+                     ++it)
+                {
+                    hashes.push_back(it->second->transactionHash);
+                }
+
+                return hashes;
+            }
+
+            void splitInto(ReplacementTransactionsCache &other, uint32_t splitBlockIndex)
+            {
+                auto lowerBound = m_byPosition.lower_bound(BlockAndIndex {splitBlockIndex, 0});
+
+                for (auto it = lowerBound; it != m_byPosition.end(); ++it)
+                {
+                    other.insert(*it->second);
+
+                    m_byHash.erase(it->second->transactionHash);
+                    m_entries.erase(it->second);
+                }
+
+                m_byPosition.erase(lowerBound, m_byPosition.end());
+            }
+
+            std::vector<CacheTxEntry> inBlockOrder() const
+            {
+                std::vector<CacheTxEntry> ordered;
+
+                for (const auto &entry : m_byPosition)
+                {
+                    ordered.push_back(*entry.second);
+                }
+
+                return ordered;
+            }
+
+          private:
+            Entries m_entries;
+
+            std::map<BlockAndIndex, Entries::iterator> m_byPosition;
+
+            std::unordered_map<Crypto::Hash, Entries::iterator> m_byHash;
+        };
+
+        void compareTransactionsCache(
+            const BoostTransactionsCache &original,
+            const ReplacementTransactionsCache &replacement,
+            const std::string &what,
+            uint64_t seed,
+            uint64_t step)
+        {
+            if (original.size() != replacement.size())
+            {
+                fail(what + ": size() diverged", seed, step);
+            }
+
+            /* The block index index orders on block index only, so entries
+               within a block are ordered by insertion. The replacement orders
+               by (blockIndex, transactionIndex). Compare the block index
+               sequence, which both must agree on, and the set of positions. */
+            std::vector<uint32_t> originalBlocks;
+
+            for (const auto &entry : original.get<CacheBlockIndexTag>())
+            {
+                originalBlocks.push_back(entry.blockIndex);
+            }
+
+            std::vector<uint32_t> replacementBlocks;
+
+            for (const auto &entry : replacement.inBlockOrder())
+            {
+                replacementBlocks.push_back(entry.blockIndex);
+            }
+
+            if (originalBlocks != replacementBlocks)
+            {
+                fail(what + ": block ordering diverged", seed, step);
+            }
+        }
+    } // namespace
+
+    void testTransactionsCacheContainer(uint64_t seed, uint64_t iterations)
+    {
+        std::cout << "ContainerTests::transactionsCache (seed " << seed << ", " << iterations << " ops): ";
+
+        std::mt19937_64 rng(seed);
+
+        BoostTransactionsCache original;
+        ReplacementTransactionsCache replacement;
+
+        std::vector<CacheTxEntry> live;
+
+        for (uint64_t step = 0; step < iterations; step++)
+        {
+            if (rng() % 100 < 80 || live.empty())
+            {
+                CacheTxEntry entry {};
+                entry.blockIndex = static_cast<uint32_t>(rng() % 6);
+                entry.transactionIndex = static_cast<uint32_t>(rng() % 4);
+                entry.transactionHash = makeHash(rng);
+
+                /* Sometimes reuse an existing hash to exercise that unique
+                   index independently of the composite one. */
+                if (!live.empty() && (rng() % 8) == 0)
+                {
+                    entry.transactionHash = live[rng() % live.size()].transactionHash;
+                }
+
+                const bool insertedOriginal = original.insert(entry).second;
+                const bool insertedReplacement = replacement.insert(entry);
+
+                if (insertedOriginal != insertedReplacement)
+                {
+                    fail("insert() disagreed on whether the entry was new", seed, step);
+                }
+
+                if (insertedOriginal)
+                {
+                    live.push_back(entry);
+                }
+            }
+            else
+            {
+                const uint32_t pivot = static_cast<uint32_t>(rng() % 6);
+
+                /* The hashes moving out, which splitTransactions collects
+                   before the entries move. */
+                std::vector<Crypto::Hash> originalMoving;
+
+                auto &blockIndexIndex = original.get<CacheBlockIndexTag>();
+
+                for (auto it = blockIndexIndex.lower_bound(pivot); it != blockIndexIndex.end(); ++it)
+                {
+                    originalMoving.push_back(it->transactionHash);
+                }
+
+                std::vector<Crypto::Hash> replacementMoving = replacement.transactionHashesAtOrAbove(pivot);
+
+                const auto byBytes = [](const Crypto::Hash &a, const Crypto::Hash &b) {
+                    return std::memcmp(a.data, b.data, sizeof(a.data)) < 0;
+                };
+
+                std::sort(originalMoving.begin(), originalMoving.end(), byBytes);
+                std::sort(replacementMoving.begin(), replacementMoving.end(), byBytes);
+
+                if (originalMoving != replacementMoving)
+                {
+                    fail("the set of transactions at or above the pivot diverged", seed, step);
+                }
+
+                BoostTransactionsCache originalUpper;
+                ReplacementTransactionsCache replacementUpper;
+
+                auto lowerBound = blockIndexIndex.lower_bound(pivot);
+                originalUpper.get<CacheBlockIndexTag>().insert(lowerBound, blockIndexIndex.end());
+                blockIndexIndex.erase(lowerBound, blockIndexIndex.end());
+
+                replacement.splitInto(replacementUpper, pivot);
+
+                compareTransactionsCache(originalUpper, replacementUpper, "upper segment", seed, step);
+
+                live.clear();
+
+                for (const auto &entry : original.get<CacheBlockIndexTag>())
+                {
+                    live.push_back(entry);
+                }
+            }
+
+            compareTransactionsCache(original, replacement, "lower segment", seed, step);
+
+            for (const CacheTxEntry &entry : live)
+            {
+                const auto originalIt = original.get<CacheTxHashTag>().find(entry.transactionHash);
+                const CacheTxEntry *replacementEntry = replacement.findByHash(entry.transactionHash);
+
+                if ((originalIt == original.get<CacheTxHashTag>().end()) != (replacementEntry == nullptr))
+                {
+                    fail("findByHash() disagreed on presence", seed, step);
+                }
+
+                const auto originalComposite = original.get<CacheInBlockTag>().find(
+                    boost::make_tuple<uint32_t, uint32_t>(entry.blockIndex, entry.transactionIndex));
+                const CacheTxEntry *replacementComposite =
+                    replacement.findInBlock(entry.blockIndex, entry.transactionIndex);
+
+                if ((originalComposite == original.get<CacheInBlockTag>().end())
+                    != (replacementComposite == nullptr))
+                {
+                    fail("findInBlock() disagreed on presence", seed, step);
+                }
+
+                if (replacementComposite != nullptr
+                    && !(originalComposite->transactionHash == replacementComposite->transactionHash))
+                {
+                    fail("findInBlock() returned a different entry", seed, step);
+                }
+            }
+        }
+
+        std::cout << "PASSED" << std::endl;
+    }
+
+    /* ----------------------------------------------------------------------
+       BlockchainCache::blockInfos
+       ---------------------------------------------------------------------- */
+    namespace
+    {
+        struct BlockInfoEntry
+        {
+            Crypto::Hash blockHash;
+
+            uint64_t timestamp;
+        };
+
+        struct BiHashTag
+        {
+        };
+        struct BiTimestampTag
+        {
+        };
+        struct BiRandomTag
+        {
+        };
+
+        typedef boost::multi_index_container<
+            BlockInfoEntry,
+            boost::multi_index::indexed_by<
+                boost::multi_index::random_access<boost::multi_index::tag<BiRandomTag>>,
+                boost::multi_index::hashed_unique<
+                    boost::multi_index::tag<BiHashTag>,
+                    BOOST_MULTI_INDEX_MEMBER(BlockInfoEntry, Crypto::Hash, blockHash)>,
+                boost::multi_index::ordered_non_unique<
+                    boost::multi_index::tag<BiTimestampTag>,
+                    BOOST_MULTI_INDEX_MEMBER(BlockInfoEntry, uint64_t, timestamp)>>>
+            BoostBlockInfos;
+
+        /* A vector plus a hash-to-position map and a timestamp-ordered map.
+           Safe because the only erase is a tail truncation, so positions never
+           shift while an entry is in the container. */
+        class ReplacementBlockInfos
+        {
+          public:
+            bool push_back(BlockInfoEntry entry)
+            {
+                if (m_positionByHash.count(entry.blockHash) > 0)
+                {
+                    return false;
+                }
+
+                const Crypto::Hash hash = entry.blockHash;
+                const uint64_t timestamp = entry.timestamp;
+                const size_t position = m_blocks.size();
+
+                m_blocks.push_back(std::move(entry));
+                m_positionByHash.emplace(hash, position);
+                m_positionByTimestamp.emplace(timestamp, position);
+
+                return true;
+            }
+
+            size_t size() const
+            {
+                return m_blocks.size();
+            }
+
+            const BlockInfoEntry &operator[](size_t position) const
+            {
+                return m_blocks[position];
+            }
+
+            bool containsHash(const Crypto::Hash &blockHash) const
+            {
+                return m_positionByHash.count(blockHash) > 0;
+            }
+
+            std::optional<size_t> positionOf(const Crypto::Hash &blockHash) const
+            {
+                const auto it = m_positionByHash.find(blockHash);
+
+                return it == m_positionByHash.end() ? std::nullopt : std::optional<size_t>(it->second);
+            }
+
+            std::vector<Crypto::Hash> hashesInTimestampRange(uint64_t begin, uint64_t end) const
+            {
+                std::vector<Crypto::Hash> hashes;
+
+                auto first = m_positionByTimestamp.lower_bound(begin);
+                auto last = m_positionByTimestamp.upper_bound(end);
+
+                for (auto it = first; it != last; ++it)
+                {
+                    hashes.push_back(m_blocks[it->second].blockHash);
+                }
+
+                return hashes;
+            }
+
+            void splitInto(ReplacementBlockInfos &other, size_t position)
+            {
+                for (size_t i = position; i < m_blocks.size(); i++)
+                {
+                    other.push_back(m_blocks[i]);
+                }
+
+                m_blocks.erase(m_blocks.begin() + static_cast<std::ptrdiff_t>(position), m_blocks.end());
+
+                rebuildIndices();
+            }
+
+            const std::vector<BlockInfoEntry> &entries() const
+            {
+                return m_blocks;
+            }
+
+          private:
+            void rebuildIndices()
+            {
+                m_positionByHash.clear();
+                m_positionByTimestamp.clear();
+
+                for (size_t i = 0; i < m_blocks.size(); i++)
+                {
+                    m_positionByHash.emplace(m_blocks[i].blockHash, i);
+                    m_positionByTimestamp.emplace(m_blocks[i].timestamp, i);
+                }
+            }
+
+            std::vector<BlockInfoEntry> m_blocks;
+
+            std::unordered_map<Crypto::Hash, size_t> m_positionByHash;
+
+            std::multimap<uint64_t, size_t> m_positionByTimestamp;
+        };
+    } // namespace
+
+    void testBlockInfoContainer(uint64_t seed, uint64_t iterations)
+    {
+        std::cout << "ContainerTests::blockInfos (seed " << seed << ", " << iterations << " ops): ";
+
+        std::mt19937_64 rng(seed);
+
+        BoostBlockInfos original;
+        ReplacementBlockInfos replacement;
+
+        std::vector<Crypto::Hash> live;
+
+        const auto byBytes = [](const Crypto::Hash &a, const Crypto::Hash &b) {
+            return std::memcmp(a.data, b.data, sizeof(a.data)) < 0;
+        };
+
+        for (uint64_t step = 0; step < iterations; step++)
+        {
+            if (rng() % 100 < 85 || original.empty())
+            {
+                BlockInfoEntry entry {};
+                entry.blockHash = makeHash(rng);
+
+                /* A narrow timestamp range so the ordered index has ties, and
+                   so timestamps are not monotonic with position. */
+                entry.timestamp = rng() % 10;
+
+                const bool insertedOriginal = original.get<BiRandomTag>().push_back(entry).second;
+                const bool insertedReplacement = replacement.push_back(entry);
+
+                if (insertedOriginal != insertedReplacement)
+                {
+                    fail("push_back() disagreed on whether the block was new", seed, step);
+                }
+
+                if (insertedOriginal)
+                {
+                    live.push_back(entry.blockHash);
+                }
+            }
+            else
+            {
+                /* Tail split, the only erase this container ever sees. */
+                const size_t position = rng() % original.size();
+
+                BoostBlockInfos originalUpper;
+                ReplacementBlockInfos replacementUpper;
+
+                auto &randomIndex = original.get<BiRandomTag>();
+                auto bound = std::next(randomIndex.begin(), static_cast<std::ptrdiff_t>(position));
+
+                for (auto it = bound; it != randomIndex.end(); ++it)
+                {
+                    originalUpper.get<BiRandomTag>().push_back(*it);
+                }
+
+                randomIndex.erase(bound, randomIndex.end());
+
+                replacement.splitInto(replacementUpper, position);
+
+                if (originalUpper.size() != replacementUpper.size())
+                {
+                    fail("upper segment size diverged after split", seed, step);
+                }
+
+                for (size_t i = 0; i < originalUpper.size(); i++)
+                {
+                    if (!(originalUpper.get<BiRandomTag>()[i].blockHash == replacementUpper[i].blockHash))
+                    {
+                        fail("upper segment ordering diverged after split", seed, step);
+                    }
+                }
+
+                live.clear();
+
+                for (const auto &entry : original.get<BiRandomTag>())
+                {
+                    live.push_back(entry.blockHash);
+                }
+            }
+
+            if (original.size() != replacement.size())
+            {
+                fail("size() diverged", seed, step);
+            }
+
+            /* Positional access, and the hash-to-position lookup that replaced
+               project<BlockIndexTag>() + std::distance. */
+            for (size_t i = 0; i < original.size(); i++)
+            {
+                const auto &originalEntry = original.get<BiRandomTag>()[i];
+
+                if (!(originalEntry.blockHash == replacement[i].blockHash))
+                {
+                    fail("positional access diverged", seed, step);
+                }
+
+                const auto hashIt = original.get<BiHashTag>().find(originalEntry.blockHash);
+                const auto projected = original.project<BiRandomTag>(hashIt);
+                const size_t originalPosition =
+                    static_cast<size_t>(std::distance(original.get<BiRandomTag>().begin(), projected));
+
+                const auto replacementPosition = replacement.positionOf(originalEntry.blockHash);
+
+                if (!replacementPosition || *replacementPosition != originalPosition)
+                {
+                    fail("positionOf() diverged from project<>() + distance", seed, step);
+                }
+            }
+
+            /* Timestamp range query. The ordered index does not specify the
+               order of equal timestamps against the replacement's, so compare
+               as sets. */
+            {
+                const uint64_t begin = rng() % 10;
+                const uint64_t end = begin + (rng() % 4);
+
+                std::vector<Crypto::Hash> originalHashes;
+
+                auto &timestampIndex = original.get<BiTimestampTag>();
+
+                for (auto it = timestampIndex.lower_bound(begin); it != timestampIndex.upper_bound(end); ++it)
+                {
+                    originalHashes.push_back(it->blockHash);
+                }
+
+                std::vector<Crypto::Hash> replacementHashes = replacement.hashesInTimestampRange(begin, end);
+
+                std::sort(originalHashes.begin(), originalHashes.end(), byBytes);
+                std::sort(replacementHashes.begin(), replacementHashes.end(), byBytes);
+
+                if (originalHashes != replacementHashes)
+                {
+                    fail("timestamp range query diverged", seed, step);
+                }
+            }
+        }
+
+        std::cout << "PASSED" << std::endl;
+    }
+
     void runAll()
     {
         std::cout << std::endl << "Test Container Replacements" << std::endl << std::endl;
@@ -908,6 +1478,16 @@ namespace ContainerTests
         for (uint64_t seed : {1u, 7u, 1337u, 90210u})
         {
             testPaymentIdContainer(seed, 400);
+        }
+
+        for (uint64_t seed : {1u, 7u, 1337u, 90210u})
+        {
+            testTransactionsCacheContainer(seed, 400);
+        }
+
+        for (uint64_t seed : {1u, 7u, 1337u, 90210u})
+        {
+            testBlockInfoContainer(seed, 200);
         }
     }
 } // namespace ContainerTests

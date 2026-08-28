@@ -28,6 +28,19 @@ namespace ContainerTests
        beside a hashed_unique index on transaction hash. */
     void testPaymentIdContainer(uint64_t seed, uint64_t iterations);
 
+    /* BlockchainCache::transactions - a hashed_unique composite index on
+       (block index, transaction index), an ordered_non_unique index on block
+       index, and a hashed_unique index on transaction hash. The replacement
+       serves the first two from a single ordered map, so the test checks the
+       composite lookups and the block-ordered split together. */
+    void testTransactionsCacheContainer(uint64_t seed, uint64_t iterations);
+
+    /* BlockchainCache::blockInfos - a random_access index beside hashed_unique
+       on block hash and ordered_non_unique on timestamp. Exercises positional
+       access, the hash-to-position lookup that replaced project<>(), the
+       timestamp range query, and the tail split. */
+    void testBlockInfoContainer(uint64_t seed, uint64_t iterations);
+
     /* Runs every container test with the default seed and iteration count. */
     void runAll();
 } // namespace ContainerTests
