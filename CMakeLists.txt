@@ -29,6 +29,7 @@ set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distri
 set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may reduce CPU portability")
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
+option(WRKZ_SYSTEM_ROCKSDB "Link a system-provided RocksDB instead of building the bundled copy" OFF)
 set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
 set(ROCKSDB_BUILD_PARALLEL_CAP "8" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided (MAKEFLAGS -jN / CMAKE_BUILD_PARALLEL_LEVEL / ROCKSDB_BUILD_PARALLEL take precedence)")
 option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
@@ -614,8 +615,9 @@ add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
 ## RocksDB is only linked by the daemon: skip it (and its configure step) for
-## wallet-only builds (WRKZ_BUILD_EXECUTABLES=OFF) and for Emscripten.
-if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN)
+## wallet-only builds (WRKZ_BUILD_EXECUTABLES=OFF), for Emscripten, and when
+## WRKZ_SYSTEM_ROCKSDB asks us to use a RocksDB supplied by the system.
+if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN AND NOT WRKZ_SYSTEM_ROCKSDB)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
     set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
     set(ROCKSDB_CMAKE_EXTRA_ARGS "")
@@ -669,8 +671,18 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN)
         -DWITH_LIBURING=OFF
         -DWITH_GFLAGS=0
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        # RocksDB defaults the tool/benchmark switches to ON. WITH_TESTS and
+        # WITH_TOOLS alone still leave WITH_BENCHMARK_TOOLS (which pulls in the
+        # bundled gtest) and WITH_CORE_TOOLS / WITH_TRACE_TOOLS enabled, so turn
+        # the whole set off explicitly. Kept in sync with external/CMakeLists.txt.
         -DWITH_TESTS=OFF
+        -DWITH_BENCHMARK_TOOLS=OFF
+        -DWITH_CORE_TOOLS=OFF
         -DWITH_TOOLS=OFF
+        -DWITH_TRACE_TOOLS=OFF
+        -DWITH_JNI=OFF
+        -DWITH_EXAMPLES=OFF
+        -DWITH_BENCHMARK=OFF
         -DPORTABLE=ON
         -DUSE_RTTI=ON
         -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}

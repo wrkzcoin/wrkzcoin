@@ -4,7 +4,11 @@ if (STATIC)
 endif ()
 
 # Add external libraries as include dirs, so we can do #include "httplib" for example
-include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
+# With WRKZ_SYSTEM_ROCKSDB the headers come from the found package/library target
+# instead, so the bundled tree must stay off the include path.
+if (NOT WRKZ_SYSTEM_ROCKSDB)
+    include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
+endif ()
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
@@ -335,11 +339,9 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif ()
 
 if (WRKZ_BUILD_EXECUTABLES)
-    if (MSVC)
-        target_link_libraries(Wrkzd System CryptoNoteCore rocksdb libzstd Errors)
-    else ()
-        target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib libzstd Errors)
-    endif ()
+    # WRKZ_ROCKSDB_LIBS is set by external/CMakeLists.txt and names whichever
+    # RocksDB (plus bundled zstd, when we build it) this configuration uses.
+    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} Errors)
 endif ()
 
 # Add the dependencies we need
