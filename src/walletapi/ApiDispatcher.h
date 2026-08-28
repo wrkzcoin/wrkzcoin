@@ -9,7 +9,8 @@
 #include "json.hpp"
 
 #include <common/Notifier.h>
-#include <cryptopp/modes.h>
+#include "crypto/WalletCrypto.h"
+
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -397,7 +398,7 @@ class ApiDispatcher
     std::string m_corsHeader;
 
     /* Used along with our password with pbkdf2 */
-    CryptoPP::byte m_salt[16];
+    uint8_t m_salt[WalletCrypto::SALT_SIZE];
 
     /* Amount of threads to use during wallet syncing */
     unsigned int m_walletSyncThreads;

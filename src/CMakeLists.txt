@@ -13,10 +13,6 @@ include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
-# Crypto++ is included as <cryptopp/...> through the external/ include dir above.
-# Its own directory must NOT be on the include path: it ships generically named
-# headers (zlib.h, config.h, sha.h, ...) that shadow system headers - with
-# CPPHTTPLIB_ZLIB_SUPPORT on, httplib's #include <zlib.h> picked up Crypto++'s.
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 
@@ -134,7 +130,7 @@ if (WRKZ_BUILD_WALLET_CAPI AND NOT WIN32)
         Logger Mnemonics Nigel NodeRpcProxy P2P Rpc Serialization SubWallets
         System Transfers Utilities Wallet WalletBackend
         # external dep pulled in transitively:
-        argon2          # Crypto → argon2 (no PIC by default)
+        argon2          # Crypto ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ argon2 (no PIC by default)
         # rocksdb not needed: DatabaseBlockchainCache/RocksDBWrapper are
         # daemon-only dead code that the lazy linker never pulls in.
     )
@@ -359,7 +355,7 @@ target_link_libraries(SubWallets Common Logger)
 target_link_libraries(Transfers CryptoNoteCore)
 target_link_libraries(Utilities Common Errors)
 target_link_libraries(Wallet NodeRpcProxy Transfers CryptoNoteCore Common WalletBackend)
-target_link_libraries(WalletBackend Serialization Mnemonics Nigel cryptopp-static __filesystem Utilities SubWallets Logger Config Wallet)
+target_link_libraries(WalletBackend Serialization Mnemonics Nigel __filesystem Utilities SubWallets Logger Config Wallet)
 if (WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(cryptotest Crypto Common)
     target_link_libraries(miner Crypto Errors Utilities System Serialization)
@@ -372,7 +368,7 @@ if (WRKZ_BUILD_WALLET_CAPI)
     target_link_libraries(wallet_capi_c WalletBackend)
     target_link_libraries(wallet_capi PRIVATE WalletBackend)
     set_property(TARGET wallet_capi PROPERTY OUTPUT_NAME "wallet_capi")
-    # Strip debug symbols in Release builds — reduces .so from ~90MB to ~15-20MB
+    # Strip debug symbols in Release builds ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â reduces .so from ~90MB to ~15-20MB
     if (NOT WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
         add_custom_command(TARGET wallet_capi POST_BUILD
             COMMAND ${CMAKE_STRIP} -s "$<TARGET_FILE:wallet_capi>"
@@ -538,3 +534,4 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_custom_target(cli DEPENDS Wrkzd zedwallet++)
     add_custom_target(wrkz-wallet DEPENDS zedwallet++)
 endif ()
+

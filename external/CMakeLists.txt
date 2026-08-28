@@ -9,7 +9,7 @@ set(UPNPC_NO_INSTALL ON CACHE BOOL "Disable miniupnpc installation rules")
 set(WITH_MD_LIBRARY OFF CACHE BOOL "Code Generation for static library")
 
 # CMake >= 4.0 refuses cmake_minimum_required() < 3.5, which the bundled
-# argon2 (2.6), cryptopp (2.8.6) and libzmq (3.0.2...) still declare. Treat
+# argon2 (2.6) and libzmq (3.0.2...) still declare. Treat
 # them as 3.5-era projects; older CMake ignores this variable.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
@@ -20,18 +20,6 @@ if (NOT MSVC)
 endif()
 
 add_subdirectory(miniupnpc)
-add_subdirectory(cryptopp)
-# Crypto++ exports its source directory as a PUBLIC include directory. That puts
-# its generically named headers (zlib.h, config.h, sha.h, ...) ahead of the
-# system ones for every consumer - with CPPHTTPLIB_ZLIB_SUPPORT enabled,
-# httplib's #include <zlib.h> then resolved to Crypto++'s ZlibCompressor header.
-# We include Crypto++ as <cryptopp/...> through the external/ include dir, so
-# the propagation is not needed.
-foreach(_wrkz_cryptopp_target IN ITEMS cryptopp-static cryptopp-shared)
-    if (TARGET ${_wrkz_cryptopp_target})
-        set_target_properties(${_wrkz_cryptopp_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
-    endif ()
-endforeach ()
 add_subdirectory(argon2)
 
 if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
@@ -155,7 +143,7 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     unset(_WRKZ_PREV_WITH_LIBBSD)
 endif ()
 
-# ── zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) ──
+# â”€â”€ zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) â”€â”€
 if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN AND WRKZ_SYSTEM_ROCKSDB)
     # Packagers and CI can supply RocksDB themselves and skip the bundled tree
     # (and the bundled zstd, which only exists to be RocksDB's compressor)
@@ -183,7 +171,7 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN AND WRKZ_SYSTEM_ROCKSDB)
         set(WRKZ_ROCKSDB_LIBS wrkz-system-rocksdb PARENT_SCOPE)
         message(STATUS "RocksDB: using system library ${WRKZ_ROCKSDB_LIBRARY}")
     endif ()
-    set_property(TARGET libminiupnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
+    set_property(TARGET libminiupnpc-static argon2 PROPERTY FOLDER "external")
 elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     # zstd (new layout): CMake entrypoint lives under build/cmake
     set(ZSTD_BUILD_STATIC ON CACHE BOOL "Build static zstd" FORCE)
@@ -210,10 +198,10 @@ elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
 
     if (MSVC)
         add_subdirectory(rocksdb EXCLUDE_FROM_ALL)
-        set_property(TARGET libminiupnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         set(WRKZ_ROCKSDB_LIBS rocksdb libzstd PARENT_SCOPE)
     else ()
-        set_property(TARGET libminiupnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
             set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
             set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
@@ -264,7 +252,7 @@ elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     endif ()
 else ()
     # No daemon dependencies built: only set the folder property for the targets that exist
-    set_property(TARGET libminiupnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
+    set_property(TARGET libminiupnpc-static argon2 PROPERTY FOLDER "external")
 endif ()
 
 if (MSVC)

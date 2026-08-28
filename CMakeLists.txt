@@ -130,7 +130,7 @@ if (WRKZ_ANDROID_PROFILE)
     set(ENABLE_ZMQ OFF CACHE BOOL "Enable daemon ZMQ publisher support" FORCE)
 endif ()
 
-# Emscripten WASM builds only need the wallet library chain — disable
+# Emscripten WASM builds only need the wallet library chain â€” disable
 # executables, ZMQ, and RocksDB which are daemon-only.
 if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM)
     message(STATUS "Emscripten WASM build: disabling executables, ZMQ, RocksDB")
@@ -318,16 +318,12 @@ if (NOT MSVC)
 
     if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64" OR WRKZ_COMPILER_TARGETS_AARCH64)
         set(MAES_FLAG "")
-        set(CRYPTOPP_AARCH64 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch64")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" OR WRKZ_COMPILER_TARGETS_ARMHF)
         set(MAES_FLAG "")
-        set(CRYPTOPP_ARMHF ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabihf")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi" OR WRKZ_COMPILER_TARGETS_ARMEL)
         set(MAES_FLAG "")
-        set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
         set(MAES_FLAG "")
-        set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
     elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT WRKZ_COMPILER_TARGETS_ARM AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
         if (ENABLE_X86_AESNI AND NOT NO_AES)
             set(MAES_FLAG "-maes")
@@ -345,9 +341,6 @@ if (NOT MSVC)
         if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
             # Need to build against libc++ instead of libstc++ on apple
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I/usr/local/opt/llvm/include/c++/v1 -nodefaultlibs -lc++ -lc++abi -lm -lc -lgcc -lgcc_eh")
-
-            # Need these flags so gcc OSX works on the cryptopp ASM - https://groups.google.com/forum/#!topic/cryptopp-users/po8yO-vYaac
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCRYPTOPP_CLANG_INTEGRATED_ASSEMBLER=1")
 
         elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
             # Need to link against the llvm libc++ library, default is too old for std::filesystem
@@ -600,7 +593,7 @@ if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM AND WRKZ_WASM_PTHREADS)
         -pthread
     )
 
-    foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
+    foreach(_wrkz_pthread_target IN ITEMS argon2 libminiupnpc-static)
         if (TARGET ${_wrkz_pthread_target})
             target_compile_options(${_wrkz_pthread_target} PRIVATE
                 -pthread

@@ -19,9 +19,8 @@
 #include <common/StringTools.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Mixins.h>
-#include <cryptopp/modes.h>
-#include <cryptopp/pwdbased.h>
-#include <cryptopp/sha.h>
+#include "crypto/WalletCrypto.h"
+
 #include <errors/ValidateParameters.h>
 #include <iomanip>
 #include <iostream>
@@ -2040,23 +2039,13 @@ void ApiDispatcher::publicKeysToAddresses(nlohmann::json &j) const
 
 std::string ApiDispatcher::hashPassword(const std::string password) const
 {
-    using namespace CryptoPP;
+    /* Hash the password with PBKDF2-HMAC-SHA256 */
+    const auto key = WalletCrypto::deriveKey(
+        password, m_salt, sizeof(m_salt), ApiConstants::PBKDF2_ITERATIONS, WalletCrypto::KEY_SIZE);
 
-    /* Using SHA256 as the algorithm */
-    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+    uint8_t keyArray[WalletCrypto::KEY_SIZE];
 
-    byte key[16];
+    std::copy(key.begin(), key.end(), keyArray);
 
-    /* Hash the password with pbkdf2 */
-    pbkdf2.DeriveKey(
-        key,
-        sizeof(key),
-        0,
-        (byte *)password.c_str(),
-        password.size(),
-        m_salt,
-        sizeof(m_salt),
-        ApiConstants::PBKDF2_ITERATIONS);
-
-    return Common::podToHex(key);
+    return Common::podToHex(keyArray);
 }
