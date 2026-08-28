@@ -298,7 +298,7 @@ namespace CryptoNote
                     SpentOutputDescriptor descriptor(transfer);
 
                     auto availableRange =
-                        m_availableTransfers.get<SpentOutputDescriptorIndex>().equal_range(descriptor);
+                        m_availableTransfers.rangeByDescriptor(descriptor);
                     for (auto it = availableRange.first; !duplicate && it != availableRange.second; ++it)
                     {
                         if (it->transactionHash == info.transactionHash
@@ -308,7 +308,7 @@ namespace CryptoNote
                         }
                     }
 
-                    auto spentRange = m_spentTransfers.get<SpentOutputDescriptorIndex>().equal_range(descriptor);
+                    auto spentRange = m_spentTransfers.rangeByDescriptor(descriptor);
                     for (auto it = spentRange.first; !duplicate && it != spentRange.second; ++it)
                     {
                         if (it->transactionHash == info.transactionHash
@@ -361,7 +361,7 @@ namespace CryptoNote
                 tx.getInput(i, input);
 
                 SpentOutputDescriptor descriptor(&input.keyImage);
-                auto spentRange = m_spentTransfers.get<SpentOutputDescriptorIndex>().equal_range(descriptor);
+                auto spentRange = m_spentTransfers.rangeByDescriptor(descriptor);
                 if (std::distance(spentRange.first, spentRange.second) > 0)
                 {
                     assert(std::distance(spentRange.first, spentRange.second) == 1);
@@ -383,9 +383,9 @@ namespace CryptoNote
                     throw std::runtime_error(message);
                 }
 
-                auto availableRange = m_availableTransfers.get<SpentOutputDescriptorIndex>().equal_range(descriptor);
+                auto availableRange = m_availableTransfers.rangeByDescriptor(descriptor);
                 auto unconfirmedRange =
-                    m_unconfirmedTransfers.get<SpentOutputDescriptorIndex>().equal_range(descriptor);
+                    m_unconfirmedTransfers.rangeByDescriptor(descriptor);
                 size_t availableCount = std::distance(availableRange.first, availableRange.second);
                 size_t unconfirmedCount = std::distance(unconfirmedRange.first, unconfirmedRange.second);
 
@@ -404,8 +404,8 @@ namespace CryptoNote
                     }
                 }
 
-                auto &outputDescriptorIndex = m_availableTransfers.get<SpentOutputDescriptorIndex>();
-                auto availableOutputsRange = outputDescriptorIndex.equal_range(SpentOutputDescriptor(&input.keyImage));
+                auto availableOutputsRange =
+                    m_availableTransfers.rangeByDescriptor(SpentOutputDescriptor(&input.keyImage));
 
                 auto iteratorList = createTransferIteratorList(availableOutputsRange);
                 iteratorList.sort();
@@ -422,7 +422,7 @@ namespace CryptoNote
                 assert(spendingTransferIt->keyImage == input.keyImage);
                 copyToSpent(block, tx, i, *spendingTransferIt);
                 // erase from available outputs
-                outputDescriptorIndex.erase(spendingTransferIt);
+                m_availableTransfers.eraseByDescriptor(spendingTransferIt);
                 updateTransfersVisibility(input.keyImage);
 
                 inputsAdded = true;
@@ -489,7 +489,7 @@ namespace CryptoNote
             txInfo.timestamp = block.timestamp;
             m_transactions.update(transactionHash, txInfo);
 
-            auto availableRange = m_unconfirmedTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+            auto availableRange = m_unconfirmedTransfers.rangeByTransaction(transactionHash);
             for (auto transferIt = availableRange.first; transferIt != availableRange.second;)
             {
                 auto transfer = *transferIt;
@@ -511,7 +511,7 @@ namespace CryptoNote
                 (void)result; // Disable unused warning
                 assert(result.second);
 
-                transferIt = m_unconfirmedTransfers.get<ContainingTransactionIndex>().erase(transferIt);
+                transferIt = m_unconfirmedTransfers.eraseByTransaction(transferIt);
 
                 if (transfer.type == TransactionTypes::OutputType::Key)
                 {
@@ -519,15 +519,14 @@ namespace CryptoNote
                 }
             }
 
-            auto &spendingTransactionIndex = m_spentTransfers.get<SpendingTransactionIndex>();
-            auto spentRange = spendingTransactionIndex.equal_range(transactionHash);
+            auto spentRange = m_spentTransfers.rangeBySpendingTransaction(transactionHash);
             for (auto transferIt = spentRange.first; transferIt != spentRange.second; ++transferIt)
             {
                 auto transfer = *transferIt;
                 assert(transfer.spendingBlock.height == WALLET_UNCONFIRMED_TRANSACTION_HEIGHT);
 
                 transfer.spendingBlock = block;
-                spendingTransactionIndex.replace(transferIt, transfer);
+                m_spentTransfers.replaceBySpendingTransaction(transferIt, transfer);
             }
         }
         catch (std::exception &e)
@@ -541,7 +540,7 @@ namespace CryptoNote
             txInfo.timestamp = 0;
             m_transactions.update(transactionHash, txInfo);
 
-            auto availableRange = m_availableTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+            auto availableRange = m_availableTransfers.rangeByTransaction(transactionHash);
             for (auto transferIt = availableRange.first; transferIt != availableRange.second;)
             {
                 TransactionOutputInformationEx unconfirmedTransfer = *transferIt;
@@ -555,7 +554,7 @@ namespace CryptoNote
                 (void)result; // Disable unused warning
                 assert(result.second);
 
-                transferIt = m_availableTransfers.get<ContainingTransactionIndex>().erase(transferIt);
+                transferIt = m_availableTransfers.eraseByTransaction(transferIt);
 
                 if (unconfirmedTransfer.type == TransactionTypes::OutputType::Key)
                 {
@@ -563,8 +562,7 @@ namespace CryptoNote
                 }
             }
 
-            auto &spendingTransactionIndex = m_spentTransfers.get<SpendingTransactionIndex>();
-            auto spentRange = spendingTransactionIndex.equal_range(transactionHash);
+            auto spentRange = m_spentTransfers.rangeBySpendingTransaction(transactionHash);
             for (auto transferIt = spentRange.first; transferIt != spentRange.second; ++transferIt)
             {
                 auto spentTransfer = *transferIt;
@@ -572,7 +570,7 @@ namespace CryptoNote
                 spentTransfer.spendingBlock.timestamp = 0;
                 spentTransfer.spendingBlock.transactionIndex = 0;
 
-                spendingTransactionIndex.replace(transferIt, spentTransfer);
+                m_spentTransfers.replaceBySpendingTransaction(transferIt, spentTransfer);
             }
 
             throw;
@@ -586,8 +584,7 @@ namespace CryptoNote
      */
     void TransfersContainer::deleteTransactionTransfers(const Hash &transactionHash)
     {
-        auto &spendingTransactionIndex = m_spentTransfers.get<SpendingTransactionIndex>();
-        auto spentTransfersRange = spendingTransactionIndex.equal_range(transactionHash);
+        auto spentTransfersRange = m_spentTransfers.rangeBySpendingTransaction(transactionHash);
         for (auto it = spentTransfersRange.first; it != spentTransfersRange.second;)
         {
             assert(it->blockHeight != WALLET_UNCONFIRMED_TRANSACTION_HEIGHT);
@@ -595,7 +592,7 @@ namespace CryptoNote
 
             auto result = m_availableTransfers.insert(static_cast<const TransactionOutputInformationEx &>(*it));
             assert(result.second);
-            it = spendingTransactionIndex.erase(it);
+            it = m_spentTransfers.eraseBySpendingTransaction(it);
 
             if (result.first->type == TransactionTypes::OutputType::Key)
             {
@@ -604,34 +601,33 @@ namespace CryptoNote
         }
 
         auto unconfirmedTransfersRange =
-            m_unconfirmedTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+            m_unconfirmedTransfers.rangeByTransaction(transactionHash);
         for (auto it = unconfirmedTransfersRange.first; it != unconfirmedTransfersRange.second;)
         {
             if (it->type == TransactionTypes::OutputType::Key)
             {
                 KeyImage keyImage = it->keyImage;
-                it = m_unconfirmedTransfers.get<ContainingTransactionIndex>().erase(it);
+                it = m_unconfirmedTransfers.eraseByTransaction(it);
                 updateTransfersVisibility(keyImage);
             }
             else
             {
-                it = m_unconfirmedTransfers.get<ContainingTransactionIndex>().erase(it);
+                it = m_unconfirmedTransfers.eraseByTransaction(it);
             }
         }
 
-        auto &transactionTransfersIndex = m_availableTransfers.get<ContainingTransactionIndex>();
-        auto transactionTransfersRange = transactionTransfersIndex.equal_range(transactionHash);
+        auto transactionTransfersRange = m_availableTransfers.rangeByTransaction(transactionHash);
         for (auto it = transactionTransfersRange.first; it != transactionTransfersRange.second;)
         {
             if (it->type == TransactionTypes::OutputType::Key)
             {
                 KeyImage keyImage = it->keyImage;
-                it = transactionTransfersIndex.erase(it);
+                it = m_availableTransfers.eraseByTransaction(it);
                 updateTransfersVisibility(keyImage);
             }
             else
             {
-                it = transactionTransfersIndex.erase(it);
+                it = m_availableTransfers.eraseByTransaction(it);
             }
         }
     }
@@ -666,7 +662,6 @@ namespace CryptoNote
         std::lock_guard<std::mutex> lk(m_mutex);
 
         std::vector<Hash> deletedTransactions;
-        auto &spendingTransactionIndex = m_spentTransfers.get<SpendingTransactionIndex>();
         auto it = m_transactions.blockHeightEnd();
         while (it != m_transactions.blockHeightBegin())
         {
@@ -677,7 +672,7 @@ namespace CryptoNote
             bool doDelete = false;
             if (info.blockHeight == WALLET_UNCONFIRMED_TRANSACTION_HEIGHT)
             {
-                auto range = spendingTransactionIndex.equal_range(info.transactionHash);
+                auto range = m_spentTransfers.rangeBySpendingTransaction(info.transactionHash);
                 for (auto spentTransferIt = range.first; spentTransferIt != range.second; ++spentTransferIt)
                 {
                     if (spentTransferIt->blockHeight >= height)
@@ -714,13 +709,16 @@ namespace CryptoNote
 
     namespace
     {
-        template<typename C, typename T> void updateVisibility(C &collection, const T &range, bool visible)
+        /* visible is not part of either index key, so replace() updates
+           the element in place and the iterators stay valid - the same
+           property multi_index's replace() had here. */
+        template<typename C, typename T> void updateVisibility(C &container, const T &range, bool visible)
         {
             for (auto it = range.first; it != range.second; ++it)
             {
                 auto updated = *it;
                 updated.visible = visible;
-                collection.replace(it, updated);
+                container.replace(it, updated);
             }
         }
     } // namespace
@@ -730,14 +728,10 @@ namespace CryptoNote
      */
     void TransfersContainer::updateTransfersVisibility(const KeyImage &keyImage)
     {
-        auto &unconfirmedIndex = m_unconfirmedTransfers.get<SpentOutputDescriptorIndex>();
-        auto &availableIndex = m_availableTransfers.get<SpentOutputDescriptorIndex>();
-        auto &spentIndex = m_spentTransfers.get<SpentOutputDescriptorIndex>();
-
         SpentOutputDescriptor descriptor(&keyImage);
-        auto unconfirmedRange = unconfirmedIndex.equal_range(descriptor);
-        auto availableRange = availableIndex.equal_range(descriptor);
-        auto spentRange = spentIndex.equal_range(descriptor);
+        auto unconfirmedRange = m_unconfirmedTransfers.rangeByDescriptor(descriptor);
+        auto availableRange = m_availableTransfers.rangeByDescriptor(descriptor);
+        auto spentRange = m_spentTransfers.rangeByDescriptor(descriptor);
 
         size_t unconfirmedCount = std::distance(unconfirmedRange.first, unconfirmedRange.second);
         size_t availableCount = std::distance(availableRange.first, availableRange.second);
@@ -746,14 +740,14 @@ namespace CryptoNote
 
         if (spentCount > 0)
         {
-            updateVisibility(unconfirmedIndex, unconfirmedRange, false);
-            updateVisibility(availableIndex, availableRange, false);
-            updateVisibility(spentIndex, spentRange, true);
+            updateVisibility(m_unconfirmedTransfers, unconfirmedRange, false);
+            updateVisibility(m_availableTransfers, availableRange, false);
+            updateVisibility(m_spentTransfers, spentRange, true);
         }
         else if (availableCount > 0)
         {
-            updateVisibility(unconfirmedIndex, unconfirmedRange, false);
-            updateVisibility(availableIndex, availableRange, false);
+            updateVisibility(m_unconfirmedTransfers, unconfirmedRange, false);
+            updateVisibility(m_availableTransfers, availableRange, false);
 
             auto iteratorList = createTransferIteratorList(availableRange);
             auto earliestTransferIt = iteratorList.minElement();
@@ -761,11 +755,11 @@ namespace CryptoNote
 
             auto earliestTransfer = *earliestTransferIt;
             earliestTransfer.visible = true;
-            availableIndex.replace(earliestTransferIt, earliestTransfer);
+            m_availableTransfers.replace(earliestTransferIt, earliestTransfer);
         }
         else
         {
-            updateVisibility(unconfirmedIndex, unconfirmedRange, unconfirmedCount == 1);
+            updateVisibility(m_unconfirmedTransfers, unconfirmedRange, unconfirmedCount == 1);
         }
     }
 
@@ -889,7 +883,7 @@ namespace CryptoNote
             if (info.blockHeight == WALLET_UNCONFIRMED_TRANSACTION_HEIGHT)
             {
                 auto unconfirmedOutputsRange =
-                    m_unconfirmedTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+                    m_unconfirmedTransfers.rangeByTransaction(transactionHash);
                 for (auto it = unconfirmedOutputsRange.first; it != unconfirmedOutputsRange.second; ++it)
                 {
                     *amountOut += it->amount;
@@ -898,14 +892,14 @@ namespace CryptoNote
             else
             {
                 auto availableOutputsRange =
-                    m_availableTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+                    m_availableTransfers.rangeByTransaction(transactionHash);
                 for (auto it = availableOutputsRange.first; it != availableOutputsRange.second; ++it)
                 {
                     *amountOut += it->amount;
                 }
 
                 auto spentOutputsRange =
-                    m_spentTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+                    m_spentTransfers.rangeByTransaction(transactionHash);
                 for (auto it = spentOutputsRange.first; it != spentOutputsRange.second; ++it)
                 {
                     *amountOut += it->amount;
@@ -916,7 +910,7 @@ namespace CryptoNote
         if (amountIn != nullptr)
         {
             *amountIn = 0;
-            auto rangeInputs = m_spentTransfers.get<SpendingTransactionIndex>().equal_range(transactionHash);
+            auto rangeInputs = m_spentTransfers.rangeBySpendingTransaction(transactionHash);
             for (auto it = rangeInputs.first; it != rangeInputs.second; ++it)
             {
                 *amountIn += it->amount;
@@ -933,7 +927,7 @@ namespace CryptoNote
 
         std::vector<TransactionOutputInformation> result;
 
-        auto availableRange = m_availableTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+        auto availableRange = m_availableTransfers.rangeByTransaction(transactionHash);
         for (auto i = availableRange.first; i != availableRange.second; ++i)
         {
             const auto &t = *i;
@@ -946,7 +940,7 @@ namespace CryptoNote
         if ((flags & IncludeStateLocked) != 0)
         {
             auto unconfirmedRange =
-                m_unconfirmedTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+                m_unconfirmedTransfers.rangeByTransaction(transactionHash);
             for (auto i = unconfirmedRange.first; i != unconfirmedRange.second; ++i)
             {
                 if (isIncluded(i->type, IncludeStateLocked, flags))
@@ -958,7 +952,7 @@ namespace CryptoNote
 
         if ((flags & IncludeStateSpent) != 0)
         {
-            auto spentRange = m_spentTransfers.get<ContainingTransactionIndex>().equal_range(transactionHash);
+            auto spentRange = m_spentTransfers.rangeByTransaction(transactionHash);
             for (auto i = spentRange.first; i != spentRange.second; ++i)
             {
                 if (isIncluded(i->type, IncludeStateAll, flags))
@@ -981,7 +975,7 @@ namespace CryptoNote
         std::lock_guard<std::mutex> lk(m_mutex);
 
         std::vector<TransactionOutputInformation> result;
-        auto transactionInputsRange = m_spentTransfers.get<SpendingTransactionIndex>().equal_range(transactionHash);
+        auto transactionInputsRange = m_spentTransfers.rangeBySpendingTransaction(transactionHash);
         for (auto it = transactionInputsRange.first; it != transactionInputsRange.second; ++it)
         {
             if (isIncluded(it->type, IncludeStateUnlocked, flags))
@@ -1018,11 +1012,15 @@ namespace CryptoNote
         const auto transactionEntries = m_transactions.entries();
         writeSequence<TransactionInformation>(
             transactionEntries.begin(), transactionEntries.end(), "transactions", s);
+        const auto unconfirmedEntries = m_unconfirmedTransfers.entries();
         writeSequence<TransactionOutputInformationEx>(
-            m_unconfirmedTransfers.begin(), m_unconfirmedTransfers.end(), "unconfirmedTransfers", s);
+            unconfirmedEntries.begin(), unconfirmedEntries.end(), "unconfirmedTransfers", s);
+        const auto availableEntries = m_availableTransfers.entries();
         writeSequence<TransactionOutputInformationEx>(
-            m_availableTransfers.begin(), m_availableTransfers.end(), "availableTransfers", s);
-        writeSequence<SpentTransactionOutput>(m_spentTransfers.begin(), m_spentTransfers.end(), "spentTransfers", s);
+            availableEntries.begin(), availableEntries.end(), "availableTransfers", s);
+        const auto spentEntries = m_spentTransfers.entries();
+        writeSequence<SpentTransactionOutput>(
+            spentEntries.begin(), spentEntries.end(), "spentTransfers", s);
     }
 
     void TransfersContainer::load(std::istream &in)
@@ -1044,19 +1042,27 @@ namespace CryptoNote
 
         uint32_t currentHeight = 0;
         TransactionMultiIndex transactions;
-        UnconfirmedTransfersMultiIndex unconfirmedTransfers;
-        AvailableTransfersMultiIndex availableTransfers;
-        SpentTransfersMultiIndex spentTransfers;
+        TransferMultiIndex unconfirmedTransfers;
+        TransferMultiIndex availableTransfers;
+        SpentTransferMultiIndex spentTransfers;
 
         s(currentHeight, "height");
         std::vector<TransactionInformation> transactionEntries;
         readSequence<TransactionInformation>(std::back_inserter(transactionEntries), "transactions", s);
         transactions.assign(std::move(transactionEntries));
+        std::vector<TransactionOutputInformationEx> unconfirmedEntries;
         readSequence<TransactionOutputInformationEx>(
-            std::inserter(unconfirmedTransfers, unconfirmedTransfers.end()), "unconfirmedTransfers", s);
+            std::back_inserter(unconfirmedEntries), "unconfirmedTransfers", s);
+        unconfirmedTransfers.assign(std::move(unconfirmedEntries));
+
+        std::vector<TransactionOutputInformationEx> availableEntries;
         readSequence<TransactionOutputInformationEx>(
-            std::inserter(availableTransfers, availableTransfers.end()), "availableTransfers", s);
-        readSequence<SpentTransactionOutput>(std::inserter(spentTransfers, spentTransfers.end()), "spentTransfers", s);
+            std::back_inserter(availableEntries), "availableTransfers", s);
+        availableTransfers.assign(std::move(availableEntries));
+
+        std::vector<SpentTransactionOutput> spentEntries;
+        readSequence<SpentTransactionOutput>(std::back_inserter(spentEntries), "spentTransfers", s);
+        spentTransfers.assign(std::move(spentEntries));
 
         m_currentHeight = currentHeight;
         m_transactions = std::move(transactions);
