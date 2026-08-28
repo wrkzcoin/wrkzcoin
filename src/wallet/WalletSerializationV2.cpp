@@ -218,7 +218,6 @@ namespace CryptoNote
         m_deletedKeys.clear();
 
         std::unordered_set<Crypto::PublicKey> cachedKeySet;
-        auto &index = m_walletsContainer.get<KeysIndex>();
         for (size_t i = 0; i < walletCount; ++i)
         {
             Crypto::PublicKey spendPublicKey;
@@ -234,8 +233,8 @@ namespace CryptoNote
 
             cachedKeySet.insert(spendPublicKey);
 
-            auto it = index.find(spendPublicKey);
-            if (it == index.end())
+            const auto position = m_walletsContainer.positionOfSpendKey(spendPublicKey);
+            if (!position)
             {
                 m_deletedKeys.emplace(std::move(spendPublicKey));
             }
@@ -244,14 +243,14 @@ namespace CryptoNote
                 m_actualBalance += actualBalance;
                 m_pendingBalance += pendingBalance;
 
-                index.modify(it, [actualBalance, pendingBalance](WalletRecord &wallet) {
+                m_walletsContainer.updateAt(*position, [actualBalance, pendingBalance](WalletRecord &wallet) {
                     wallet.actualBalance = actualBalance;
                     wallet.pendingBalance = pendingBalance;
                 });
             }
         }
 
-        for (auto wallet : index)
+        for (const auto &wallet : m_walletsContainer)
         {
             if (cachedKeySet.count(wallet.spendPublicKey) == 0)
             {
@@ -262,9 +261,9 @@ namespace CryptoNote
 
     void WalletSerializerV2::saveKeyListAndBalances(CryptoNote::ISerializer &serializer, bool saveCache)
     {
-        uint64_t walletCount = m_walletsContainer.get<RandomAccessIndex>().size();
+        uint64_t walletCount = m_walletsContainer.size();
         serializer(walletCount, "walletCount");
-        for (auto wallet : m_walletsContainer.get<RandomAccessIndex>())
+        for (auto wallet : m_walletsContainer)
         {
             serializer(wallet.spendPublicKey, "spendPublicKey");
 
@@ -281,7 +280,7 @@ namespace CryptoNote
         uint64_t count = 0;
         serializer(count, "transactionCount");
 
-        m_transactions.get<RandomAccessIndex>().reserve(count);
+        m_transactions.reserve(count);
 
         for (uint64_t i = 0; i < count; ++i)
         {
@@ -300,7 +299,7 @@ namespace CryptoNote
             tx.extra = dto.extra;
             tx.isBase = dto.isBase;
 
-            m_transactions.get<RandomAccessIndex>().push_back(std::move(tx));
+            m_transactions.push_back(std::move(tx));
         }
     }
 
@@ -378,8 +377,6 @@ namespace CryptoNote
 
     void WalletSerializerV2::loadUnlockTransactionsJobs(CryptoNote::ISerializer &serializer)
     {
-        auto &index = m_unlockTransactions.get<TransactionHashIndex>();
-        auto &walletsIndex = m_walletsContainer.get<KeysIndex>();
 
         uint64_t jobsCount = 0;
         serializer(jobsCount, "unlockTransactionsJobsCount");
@@ -389,34 +386,28 @@ namespace CryptoNote
             UnlockTransactionJobDtoV2 dto;
             serializer(dto, "unlockTransactionsJob");
 
-            auto walletIt = walletsIndex.find(dto.walletSpendPublicKey);
-            if (walletIt != walletsIndex.end())
+            const auto *walletIt = m_walletsContainer.findBySpendKey(dto.walletSpendPublicKey);
+            if (walletIt != nullptr)
             {
                 UnlockTransactionJob job;
                 job.blockHeight = dto.blockHeight;
                 job.transactionHash = dto.transactionHash;
                 job.container = walletIt->container;
 
-                index.insert(std::move(job));
+                m_unlockTransactions.insert(std::move(job));
             }
         }
     }
 
     void WalletSerializerV2::saveUnlockTransactionsJobs(CryptoNote::ISerializer &serializer)
     {
-        auto &index = m_unlockTransactions.get<TransactionHashIndex>();
-        auto &wallets = m_walletsContainer.get<TransfersContainerIndex>();
-
-        uint64_t jobsCount = index.size();
+        uint64_t jobsCount = m_unlockTransactions.size();
         serializer(jobsCount, "unlockTransactionsJobsCount");
 
-        for (const auto &j : index)
+        for (const auto &j : m_unlockTransactions)
         {
-            auto containerIt = wallets.find(j.container);
-            assert(containerIt != wallets.end());
-
-            auto keyIt = m_walletsContainer.project<KeysIndex>(containerIt);
-            assert(keyIt != m_walletsContainer.get<KeysIndex>().end());
+            const auto *keyIt = m_walletsContainer.findByContainer(j.container);
+            assert(keyIt != nullptr);
 
             UnlockTransactionJobDtoV2 dto;
             dto.blockHeight = j.blockHeight;
