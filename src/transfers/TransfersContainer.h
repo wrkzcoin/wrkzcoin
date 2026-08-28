@@ -21,9 +21,13 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <cassert>
 #include <cstdint>
+#include <list>
+#include <map>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 namespace CryptoNote
 {
@@ -228,14 +232,171 @@ namespace CryptoNote
         {
         };
 
-        typedef boost::multi_index_container<
-            TransactionInformation,
-            boost::multi_index::indexed_by<
-                boost::multi_index::hashed_unique<
-                    BOOST_MULTI_INDEX_MEMBER(TransactionInformation, Crypto::Hash, transactionHash)>,
-                boost::multi_index::ordered_non_unique<
-                    BOOST_MULTI_INDEX_MEMBER(TransactionInformation, uint32_t, blockHeight)>>>
-            TransactionMultiIndex;
+        /* Replaces a two-index boost::multi_index container: hashed_unique on
+           transaction hash beside ordered_non_unique on block height.
+
+           Entries live in a list because SpentOutputDescriptor stores a
+           pointer into the element it describes, so element addresses have to
+           stay stable for as long as the entry exists.
+
+           Covered by ContainerTests::testTransactionMultiIndex. */
+        class TransactionMultiIndex
+        {
+          public:
+            typedef std::list<TransactionInformation> Items;
+
+            typedef std::multimap<uint32_t, Items::iterator> ByBlockHeight;
+
+            bool insert(TransactionInformation info)
+            {
+                const Crypto::Hash hash = info.transactionHash;
+
+                if (m_byHash.count(hash) > 0)
+                {
+                    return false;
+                }
+
+                const uint32_t blockHeight = info.blockHeight;
+
+                const auto it = m_items.insert(m_items.end(), std::move(info));
+
+                m_byHash.emplace(hash, it);
+                m_byBlockHeight.emplace(blockHeight, it);
+
+                return true;
+            }
+
+            const TransactionInformation *find(const Crypto::Hash &transactionHash) const
+            {
+                const auto it = m_byHash.find(transactionHash);
+
+                return it == m_byHash.end() ? nullptr : &*it->second;
+            }
+
+            size_t count(const Crypto::Hash &transactionHash) const
+            {
+                return m_byHash.count(transactionHash);
+            }
+
+            size_t size() const
+            {
+                return m_byHash.size();
+            }
+
+            bool erase(const Crypto::Hash &transactionHash)
+            {
+                const auto it = m_byHash.find(transactionHash);
+
+                if (it == m_byHash.end())
+                {
+                    return false;
+                }
+
+                eraseFromBlockHeight(it->second);
+
+                m_items.erase(it->second);
+                m_byHash.erase(it);
+
+                return true;
+            }
+
+            /* Replaces an entry, moving it in the block height index if that
+               key changed. The transaction hash is the unique key and cannot
+               change, which callers rely on. */
+            bool update(const Crypto::Hash &transactionHash, const TransactionInformation &updated)
+            {
+                const auto it = m_byHash.find(transactionHash);
+
+                if (it == m_byHash.end())
+                {
+                    return false;
+                }
+
+                assert(updated.transactionHash == transactionHash);
+
+                const auto item = it->second;
+
+                if (item->blockHeight != updated.blockHeight)
+                {
+                    eraseFromBlockHeight(item);
+                    m_byBlockHeight.emplace(updated.blockHeight, item);
+                }
+
+                *item = updated;
+
+                return true;
+            }
+
+            ByBlockHeight::iterator blockHeightBegin()
+            {
+                return m_byBlockHeight.begin();
+            }
+
+            ByBlockHeight::iterator blockHeightEnd()
+            {
+                return m_byBlockHeight.end();
+            }
+
+            /* Removes the entry a block height iterator refers to from every
+               index and returns the following block height iterator. */
+            ByBlockHeight::iterator eraseAt(ByBlockHeight::iterator it)
+            {
+                const auto item = it->second;
+
+                m_byHash.erase(item->transactionHash);
+                m_items.erase(item);
+
+                return m_byBlockHeight.erase(it);
+            }
+
+            Items::const_iterator begin() const
+            {
+                return m_items.begin();
+            }
+
+            Items::const_iterator end() const
+            {
+                return m_items.end();
+            }
+
+            std::vector<TransactionInformation> entries() const
+            {
+                return std::vector<TransactionInformation>(m_items.begin(), m_items.end());
+            }
+
+            void assign(std::vector<TransactionInformation> infos)
+            {
+                m_items.clear();
+                m_byHash.clear();
+                m_byBlockHeight.clear();
+
+                for (auto &info : infos)
+                {
+                    insert(std::move(info));
+                }
+            }
+
+          private:
+            void eraseFromBlockHeight(Items::iterator item)
+            {
+                auto range = m_byBlockHeight.equal_range(item->blockHeight);
+
+                for (auto it = range.first; it != range.second; ++it)
+                {
+                    if (it->second == item)
+                    {
+                        m_byBlockHeight.erase(it);
+                        return;
+                    }
+                }
+            }
+
+            Items m_items;
+
+            std::unordered_map<Crypto::Hash, Items::iterator> m_byHash;
+
+            ByBlockHeight m_byBlockHeight;
+        };
 
         typedef boost::multi_index_container<
             TransactionOutputInformationEx,
