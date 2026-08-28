@@ -12,11 +12,13 @@
 
 #include <cassert>
 #include <cstring>
+#include <stdexcept>
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/errno.h>
 #include <sys/event.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -364,6 +366,74 @@ namespace System
         }
 
         throw std::runtime_error("TcpConnector::connect(IpAddress), " + message);
+    }
+
+    TcpConnection TcpConnector::connect(const std::string &socketPath)
+    {
+        assert(dispatcher != nullptr);
+        assert(context == nullptr);
+        if (dispatcher->interrupted())
+        {
+            throw InterruptedException();
+        }
+
+        sockaddr_un address = {};
+
+        if (socketPath.empty() || socketPath.size() >= sizeof(address.sun_path))
+        {
+            throw std::runtime_error("TcpConnector::connect(local), unusable local socket path: " + socketPath);
+        }
+
+        address.sun_family = AF_UNIX;
+        std::memcpy(address.sun_path, socketPath.data(), socketPath.size());
+
+        if (socketPath.front() == '@')
+        {
+            address.sun_path[0] = '\0';
+        }
+
+        const socklen_t addressLength =
+            static_cast<socklen_t>(sizeof(address) - sizeof(address.sun_path) + socketPath.size());
+
+        std::string message;
+        int connection = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        if (connection == -1)
+        {
+            message = "socket failed, " + lastErrorMessage();
+        }
+        else
+        {
+            /* Unlike a TCP connect there is no handshake to wait on here: the
+               kernel either finds a listener on the path and queues us, or it
+               fails outright. So the socket stays blocking across connect()
+               and only goes non-blocking afterwards, which keeps this off the
+               event loop entirely instead of duplicating the EINPROGRESS
+               machinery for a call that cannot be in progress. */
+            if (::connect(connection, reinterpret_cast<sockaddr *>(&address), addressLength) != 0)
+            {
+                message = "connect failed, " + lastErrorMessage();
+            }
+            else
+            {
+                int flags = fcntl(connection, F_GETFL, 0);
+                if (flags == -1 || fcntl(connection, F_SETFL, flags | O_NONBLOCK) == -1)
+                {
+                    message = "fcntl failed, " + lastErrorMessage();
+                }
+                else
+                {
+                    return TcpConnection(*dispatcher, connection);
+                }
+            }
+
+            int result = close(connection);
+            if (result)
+            {
+            }
+            assert(result != -1);
+        }
+
+        throw std::runtime_error("TcpConnector::connect(local), " + message);
     }
 
 } // namespace System

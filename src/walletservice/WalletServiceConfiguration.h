@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <common/IpcSocket.h>
 #include <config/CryptoNoteConfig.h>
 #include <logging/ILogger.h>
 #include <string>
@@ -21,6 +22,16 @@ namespace PaymentService
 
         /* Address to run the API on (0.0.0.0 for all interfaces) */
         std::string bindAddress = "127.0.0.1";
+
+        /* Local IPC socket to serve the API on instead of a TCP port. Empty =
+           disabled, which is the default; an operator has to name a path. */
+        std::string bindIpcPath;
+
+        /* Permission bits for the IPC socket file */
+        uint32_t bindIpcMode = Common::Ipc::DEFAULT_MODE;
+
+        /* Optional group to own the IPC socket file */
+        std::string bindIpcGroup;
 
         /* Password to access the API */
         std::string rpcPassword;

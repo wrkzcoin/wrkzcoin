@@ -192,6 +192,19 @@ namespace System
         throw std::runtime_error("TcpListener::TcpListener, " + message);
     }
 
+    TcpListener::TcpListener(Dispatcher &dispatcher, const std::string &socketPath, uint32_t socketMode)
+    {
+        (void)dispatcher;
+        (void)socketMode;
+
+        /* Windows has had AF_UNIX since Windows 10 1803, but the accept path
+           here is built on AcceptEx, which only serves AF_INET and AF_INET6,
+           and the socket file carries no permissions the OS will enforce.
+           Refusing outright beats a listener nobody can restrict. */
+        throw std::runtime_error(
+            "TcpListener::TcpListener, local IPC sockets are not supported on Windows: " + socketPath);
+    }
+
     TcpListener::TcpListener(TcpListener &&other): dispatcher(other.dispatcher), m_af(other.m_af)
     {
         if (dispatcher != nullptr)

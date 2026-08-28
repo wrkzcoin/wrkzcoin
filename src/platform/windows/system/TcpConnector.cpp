@@ -480,4 +480,13 @@ namespace System
         throw std::runtime_error("TcpConnector::connect(IpAddress), " + message);
     }
 
+    TcpConnection TcpConnector::connect(const std::string &socketPath)
+    {
+        /* Matches TcpListener: the overlapped connect path here is AF_INET and
+           AF_INET6 only, and a Windows AF_UNIX socket file carries no
+           permissions the OS enforces. */
+        throw std::runtime_error(
+            "TcpConnector::connect, local IPC sockets are not supported on Windows: " + socketPath);
+    }
+
 } // namespace System
