@@ -370,6 +370,19 @@ namespace CryptoNote
 
     bool Core::hasBlock(const Crypto::Hash &blockHash) const
     {
+        /* Walks the chain segments, which addBlock mutates under this mutex.
+           Called from the protocol handler for every block id it considers
+           requesting, so it has to be safe against a concurrent block add. */
+        std::shared_lock lock(m_chainMutex);
+
+        return hasBlockUnsafe(blockHash);
+    }
+
+    /* Assumes the caller holds m_chainMutex (shared or unique). addBlock needs
+       this because it already holds the mutex exclusively - going through the
+       locking form there would deadlock, as a shared mutex is not recursive. */
+    bool Core::hasBlockUnsafe(const Crypto::Hash &blockHash) const
+    {
         throwIfNotInitialized();
         return findSegmentContainingBlock(blockHash) != nullptr;
     }
@@ -1296,7 +1309,8 @@ namespace CryptoNote
         std::string blockStr = os.str();
 
         logger(Logging::DEBUGGING) << "Request to add block " << blockStr;
-        if (hasBlock(cachedBlock.getBlockHash()))
+        /* We already hold m_chainMutex exclusively - see hasBlockUnsafe */
+        if (hasBlockUnsafe(cachedBlock.getBlockHash()))
         {
             logger(Logging::DEBUGGING) << "Block " << blockStr << " already exists";
             return error::AddBlockErrorCode::ALREADY_EXISTS;

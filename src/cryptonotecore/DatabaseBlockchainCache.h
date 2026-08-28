@@ -300,6 +300,17 @@ namespace CryptoNote
 
         const size_t unitsCacheSize = 1000;
 
+        /* The midnight we last confirmed has a closest-timestamp-block-index
+           entry in the database. One entry is kept per day, so consecutive
+           blocks during a sync all ask about the same midnight; remembering
+           the answer turns a read per block into a read per day. Cleared by
+           deleteClosestTimestampBlockIndex(), which is what removes them. */
+        std::optional<uint64_t> knownClosestTimestampMidnight;
+
+        /* The top block's cached info, served from unitsCache when it can be
+           shown to be current. */
+        CachedBlockInfo getTopBlockInfo() const;
+
         struct ExtendedPushedBlockInfo;
 
         ExtendedPushedBlockInfo getExtendedPushedBlockInfo(uint32_t blockIndex) const;

@@ -850,6 +850,10 @@ namespace CryptoNote
             midnight += ONE_DAY_SECONDS;
         }
 
+        /* Entries are going away, so anything we remembered about which
+           midnights are present is no longer safe to rely on. */
+        knownClosestTimestampMidnight.reset();
+
         logger(Logging::TRACE) << "deleted closest timestamp";
     }
 
@@ -1455,8 +1459,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "push block with hash " << cachedBlock.getBlockHash() << ", and "
                                    << cachedTransactions.size() + 1 << " transactions"; //+1 for base transaction
 
-        // TODO: cache top block difficulty, size, timestamp, coins; use it here
-        auto lastBlockInfo = getCachedBlockInfo(getTopBlockIndex());
+        auto lastBlockInfo = getTopBlockInfo();
         auto cumulativeDifficulty = lastBlockInfo.cumulativeDifficulty + blockDifficulty;
         auto alreadyGeneratedCoins = lastBlockInfo.alreadyGeneratedCoins + generatedCoins;
         auto alreadyGeneratedTransactions = lastBlockInfo.alreadyGeneratedTransactions + cachedTransactions.size() + 1;
@@ -1489,19 +1492,26 @@ namespace CryptoNote
             pushTransaction(transaction, getTopBlockIndex() + 1, transactionIndex++, batch);
         }
 
-        auto closestBlockIndexDb =
-            requestClosestBlockIndexByTimestamp(roundToMidnight(cachedBlock.getBlock().timestamp), database);
-        if (!closestBlockIndexDb.second)
-        {
-            logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash()
-                                   << " request closest block index by timestamp failed";
-            throw std::runtime_error("Couldn't get closest to timestamp block index");
-        }
+        const uint64_t blockMidnight = roundToMidnight(cachedBlock.getBlock().timestamp);
 
-        if (!closestBlockIndexDb.first)
+        /* Only one entry exists per midnight, so once we have established that
+           this day is present every further block of that day can skip the
+           lookup. Blocks arrive in time order during a sync, which makes this
+           roughly one read per day instead of one per block. */
+        if (knownClosestTimestampMidnight != blockMidnight)
         {
-            batch.insertClosestTimestampBlockIndex(
-                roundToMidnight(cachedBlock.getBlock().timestamp), getTopBlockIndex() + 1);
+            auto closestBlockIndexDb = requestClosestBlockIndexByTimestamp(blockMidnight, database);
+            if (!closestBlockIndexDb.second)
+            {
+                logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash()
+                                       << " request closest block index by timestamp failed";
+                throw std::runtime_error("Couldn't get closest to timestamp block index");
+            }
+
+            if (!closestBlockIndexDb.first)
+            {
+                batch.insertClosestTimestampBlockIndex(blockMidnight, getTopBlockIndex() + 1);
+            }
         }
 
         insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
@@ -1524,6 +1534,10 @@ namespace CryptoNote
         {
             unitsCache.pop_front();
         }
+
+        /* Set only now the write has gone through, so a failed push cannot
+           leave us believing in an entry that was never committed. */
+        knownClosestTimestampMidnight = blockMidnight;
     }
 
     PushedBlockInfo DatabaseBlockchainCache::getPushedBlockInfo(uint32_t blockIndex) const
@@ -1825,6 +1839,24 @@ namespace CryptoNote
     {
         assert(blockIndex <= getTopBlockIndex());
         return getCachedBlockInfo(blockIndex).cumulativeDifficulty;
+    }
+
+    CachedBlockInfo DatabaseBlockchainCache::getTopBlockInfo() const
+    {
+        /* unitsCache holds the most recent blocks, ending at the top one, so
+           its back entry is the info pushBlock would otherwise read back out
+           of the database. Check it against the memoised top hash rather than
+           trusting the invariant blindly - these values seed the next block's
+           cumulative difficulty and emission totals, so a stale entry would
+           corrupt the chain rather than merely slow things down. The compare
+           is 32 bytes in memory; the read it replaces is a database round
+           trip on every block applied. */
+        if (!unitsCache.empty() && unitsCache.back().blockHash == getTopBlockHash())
+        {
+            return unitsCache.back();
+        }
+
+        return getCachedBlockInfo(getTopBlockIndex());
     }
 
     CachedBlockInfo DatabaseBlockchainCache::getCachedBlockInfo(uint32_t index) const
