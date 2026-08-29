@@ -871,6 +871,76 @@ namespace CryptoNote
         }
     }
 
+    /* Turns the caller's view of the chain into the height its next block sits
+       at. Assumes the chain lock is already held and the timestamp has already
+       been converted to a height, so both wallet sync entry points and the
+       cheap start index lookup all agree on one answer. */
+    uint64_t Core::resolveWalletSyncStartIndex(
+        IBlockchainCache *mainChain,
+        const std::vector<Crypto::Hash> &knownBlockHashes,
+        const uint64_t startHeight,
+        const uint64_t timestampBlockHeight) const
+    {
+        /* If a height was given, start from there, else use the height the
+           timestamp resolved to */
+        const uint64_t firstBlockHeight = startHeight == 0 ? timestampBlockHeight : startHeight;
+
+        /* The height of the last block we know about */
+        const uint64_t lastKnownBlockHashHeight =
+            static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes));
+
+        /* Start returning either from the start height, or the height of the
+           last block we know about, whichever is higher */
+        return std::max(
+            /* Plus one so we return the next block - default to zero if it's zero,
+               otherwise genesis block will be skipped. */
+            lastKnownBlockHashHeight == 0 ? 0 : lastKnownBlockHashHeight + 1,
+            firstBlockHeight);
+    }
+
+    /* The height getWalletSyncData would begin at for the same arguments,
+       without assembling anything. The RPC layer asks for it first so it can
+       look for an already built response before paying for a new one. */
+    bool Core::getWalletSyncStartIndex(
+        const std::vector<Crypto::Hash> &knownBlockHashes,
+        const uint64_t startHeight,
+        const uint64_t startTimestamp,
+        uint64_t &startIndex) const
+    {
+        std::shared_lock lock(m_chainMutex);
+
+        try
+        {
+            throwIfNotInitialized();
+
+            IBlockchainCache *mainChain = chainsLeaves[0];
+
+            auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
+
+            if (startTimestamp == 0)
+            {
+                timestampBlockHeight = 0;
+            }
+            else if (!success)
+            {
+                /* Same case getWalletSyncData answers with the top block and no
+                   blocks at all - nothing worth caching. */
+                return false;
+            }
+
+            startIndex = resolveWalletSyncStartIndex(mainChain, knownBlockHashes, startHeight, timestampBlockHeight);
+
+            return true;
+        }
+        catch (const std::exception &)
+        {
+            /* findBlockchainSupplement throws when it recognises none of the
+               caller's hashes. The full call is left to report that; here it
+               just means there is nothing to look up. */
+            return false;
+        }
+    }
+
     /* Known block hashes = The hashes the wallet knows about. We'll give blocks starting from this hash.
        Timestamp = The timestamp to start giving blocks from, if knownBlockHashes is empty. Used for syncing a new
        wallet. walletBlocks = The returned vector of blocks */
@@ -879,10 +949,16 @@ namespace CryptoNote
         const uint64_t startHeight,
         const uint64_t startTimestamp,
         const uint64_t blockCount,
+        const uint64_t endHeight,
         const bool skipCoinbaseTransactions,
+        const bool skipEmptyBlocks,
         std::vector<WalletTypes::WalletBlockInfo> &walletBlocks,
-        std::optional<WalletTypes::TopBlock> &topBlockInfo) const
+        std::optional<WalletTypes::TopBlock> &topBlockInfo,
+        uint64_t &scannedToHeight) const
     {
+        /* Nothing covered until we say otherwise. */
+        scannedToHeight = 0;
+
         /* Reads chainsLeaves and walks the chain segments, both of which
            addBlock mutates under the same mutex. */
         std::shared_lock lock(m_chainMutex);
@@ -925,20 +1001,12 @@ namespace CryptoNote
                 return true;
             }
 
-            /* If a height was given, start from there, else convert the timestamp
-           to a block */
-            uint64_t firstBlockHeight = startHeight == 0 ? timestampBlockHeight : startHeight;
-
-            /* The height of the last block we know about */
-            uint64_t lastKnownBlockHashHeight = static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes));
-
-            /* Start returning either from the start height, or the height of the
-           last block we know about, whichever is higher */
-            uint64_t startIndex = std::max(
-                /* Plus one so we return the next block - default to zero if it's zero,
-           otherwise genesis block will be skipped. */
-                lastKnownBlockHashHeight == 0 ? 0 : lastKnownBlockHashHeight + 1,
-                firstBlockHeight);
+            /* Where in the chain this caller's next block sits. Shared with
+               getWalletSyncStartIndex so the two can never answer differently
+               for the same request - the RPC layer keys its response cache on
+               that answer. */
+            const uint64_t startIndex =
+                resolveWalletSyncStartIndex(mainChain, knownBlockHashes, startHeight, timestampBlockHeight);
 
             /* Difference between the start and end */
             uint64_t blockDifference = (currentIndex > startIndex) ? currentIndex - startIndex : startIndex - currentIndex;
@@ -956,8 +1024,6 @@ namespace CryptoNote
                                        << "\n* Start timestamp: " << startTimestamp
                                        << "\n* Current index: " << currentIndex
                                        << "\n* Timestamp block height: " << timestampBlockHeight
-                                       << "\n* First block height: " << firstBlockHeight
-                                       << "\n* Last known block hash height: " << lastKnownBlockHashHeight
                                        << "\n* Start index: " << startIndex
                                        << "\n* Block difference: " << blockDifference << "\n* End index: " << endIndex
                                        << "\n============================================="
@@ -971,19 +1037,63 @@ namespace CryptoNote
                 return true;
             }
 
+            /* Blocks holding only a coinbase carry nothing a wallet that has
+               opted out of coinbase scanning could own. When it has told us it
+               can cope with them being left out, look well past the block
+               count for ones that are worth sending, so a response can carry
+               it across a quiet stretch of chain in one round trip instead of
+               dozens. */
+            const bool skipEmpty = skipEmptyBlocks && skipCoinbaseTransactions;
+
+            uint64_t scanCount = endIndex - startIndex;
+
+            if (skipEmpty)
+            {
+                const uint64_t widened = std::min(
+                    actualBlockCount * BLOCKS_SYNCHRONIZING_SKIP_EMPTY_SCAN_MULTIPLIER,
+                    BLOCKS_SYNCHRONIZING_SKIP_EMPTY_MAX_SCAN);
+
+                scanCount = std::min(widened, blockDifference + 1);
+            }
+
+            uint64_t scanEndIndex = startIndex + std::max(scanCount, endIndex - startIndex);
+
+            /* A caller that is fetching several windows at once picks the
+               boundaries itself, so that the windows tile the chain exactly. It
+               cannot do that if we decide for it how far a response reaches, so
+               honour the bound it gave. Zero means it did not give one. */
+            if (endHeight != 0)
+            {
+                endIndex = std::min(endIndex, endHeight);
+                scanEndIndex = std::min(scanEndIndex, endHeight);
+            }
+
+            if (endIndex <= startIndex)
+            {
+                /* The window is entirely behind where this caller actually is. */
+                return true;
+            }
+
             if (const auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain))
             {
+                uint32_t scannedToIndex = 0;
+
                 walletBlocks = dbCache->getWalletSyncBlocks(
                     static_cast<uint32_t>(startIndex),
                     static_cast<uint32_t>(endIndex),
+                    static_cast<uint32_t>(scanEndIndex),
                     skipCoinbaseTransactions,
-                    BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES);
+                    skipEmpty,
+                    BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES,
+                    scannedToIndex);
+
+                scannedToHeight = scannedToIndex;
             }
             else
             {
                 std::vector<RawBlock> rawBlocks;
 
-                if (skipCoinbaseTransactions)
+                if (skipEmpty)
                 {
                     rawBlocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
                 }
@@ -1027,6 +1137,14 @@ namespace CryptoNote
             if (walletBlocks.empty())
             {
                 topBlockInfo = WalletTypes::TopBlock({currentHash, currentIndex});
+            }
+            else if (scannedToHeight == 0)
+            {
+                /* The in memory segment reader does not report how far it looked,
+                   so claim only up to the last block we are returning. A caller
+                   fetching windows in parallel will see the shortfall and ask for
+                   the rest rather than skipping it. */
+                scannedToHeight = walletBlocks.back().blockHeight;
             }
 
             return true;
@@ -1092,20 +1210,12 @@ namespace CryptoNote
                 return true;
             }
 
-            /* If a height was given, start from there, else convert the timestamp
-           to a block */
-            uint64_t firstBlockHeight = startHeight == 0 ? timestampBlockHeight : startHeight;
-
-            /* The height of the last block we know about */
-            uint64_t lastKnownBlockHashHeight = static_cast<uint64_t>(findBlockchainSupplement(knownBlockHashes));
-
-            /* Start returning either from the start height, or the height of the
-           last block we know about, whichever is higher */
-            uint64_t startIndex = std::max(
-                /* Plus one so we return the next block - default to zero if it's zero,
-           otherwise genesis block will be skipped. */
-                lastKnownBlockHashHeight == 0 ? 0 : lastKnownBlockHashHeight + 1,
-                firstBlockHeight);
+            /* Where in the chain this caller's next block sits. Shared with
+               getWalletSyncStartIndex so the two can never answer differently
+               for the same request - the RPC layer keys its response cache on
+               that answer. */
+            const uint64_t startIndex =
+                resolveWalletSyncStartIndex(mainChain, knownBlockHashes, startHeight, timestampBlockHeight);
 
             /* Difference between the start and end */
             uint64_t blockDifference = (currentIndex > startIndex) ? currentIndex - startIndex : startIndex - currentIndex;
@@ -1123,8 +1233,6 @@ namespace CryptoNote
                                        << "\n* Start timestamp: " << startTimestamp
                                        << "\n* Current index: " << currentIndex
                                        << "\n* Timestamp block height: " << timestampBlockHeight
-                                       << "\n* First block height: " << firstBlockHeight
-                                       << "\n* Last known block hash height: " << lastKnownBlockHashHeight
                                        << "\n* Start index: " << startIndex
                                        << "\n* Block difference: " << blockDifference << "\n* End index: " << endIndex
                                        << "\n============================================="

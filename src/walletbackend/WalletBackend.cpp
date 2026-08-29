@@ -757,14 +757,35 @@ void WalletBackend::init()
 
 Error WalletBackend::save() const
 {
-    return m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this]() { return unsafeSave(); });
+    /* Only the snapshot needs the synchronizer held still. Writing it out is
+       half a million rounds of PBKDF2 followed by an AES pass over the whole
+       wallet, none of which touches wallet state - keeping sync stopped
+       through all of that is what makes a save show up as a stall in the sync
+       rate, and during an initial sync we save every ten thousand blocks. */
+    const std::string walletJSON =
+        m_syncRAIIWrapper->pauseSynchronizerToRunFunction([this]() { return unsafeToJSON(); });
+
+    /* The pause used to serialise saves against each other as a side effect of
+       running everything inside it. Two overlapping saves writing the same
+       file would interleave their bytes, so keep them ordered explicitly now
+       that the write happens outside. */
+    std::scoped_lock lock(m_saveMutex);
+
+    return saveWalletJSONToDisk(walletJSON, m_filename, m_password);
 }
 
 /* Unsafe because it doesn't lock any data structures - need to stop the
    blockchain synchronizer first (Call save()) */
 Error WalletBackend::unsafeSave() const
 {
-    return WalletBackend::saveWalletJSONToDisk(unsafeToJSON(), m_filename, m_password);
+    const std::string walletJSON = unsafeToJSON();
+
+    /* Unsafe refers to the wallet state, which the caller has already stopped
+       the synchronizer to take. The file still has to be written one save at a
+       time. */
+    std::scoped_lock lock(m_saveMutex);
+
+    return WalletBackend::saveWalletJSONToDisk(walletJSON, m_filename, m_password);
 }
 
 /* Get the balance for one subwallet (error, unlocked, locked) */

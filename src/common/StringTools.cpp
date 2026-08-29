@@ -6,6 +6,7 @@
 
 #include "StringTools.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 
@@ -206,6 +207,179 @@ namespace Common
             text += "0123456789abcdef"[data[i] >> 4];
             text += "0123456789abcdef"[data[i] & 15];
         }
+    }
+
+    std::string toBase64(const void *data, uint64_t size)
+    {
+        static const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+        const auto *bytes = static_cast<const uint8_t *>(data);
+
+        std::string text;
+        text.reserve(((size + 2) / 3) * 4);
+
+        uint64_t i = 0;
+
+        for (; i + 3 <= size; i += 3)
+        {
+            const uint32_t triple = (static_cast<uint32_t>(bytes[i]) << 16)
+                                    | (static_cast<uint32_t>(bytes[i + 1]) << 8)
+                                    | static_cast<uint32_t>(bytes[i + 2]);
+
+            text += alphabet[(triple >> 18) & 0x3f];
+            text += alphabet[(triple >> 12) & 0x3f];
+            text += alphabet[(triple >> 6) & 0x3f];
+            text += alphabet[triple & 0x3f];
+        }
+
+        const uint64_t remaining = size - i;
+
+        if (remaining == 1)
+        {
+            const uint32_t triple = static_cast<uint32_t>(bytes[i]) << 16;
+
+            text += alphabet[(triple >> 18) & 0x3f];
+            text += alphabet[(triple >> 12) & 0x3f];
+            text += '=';
+            text += '=';
+        }
+        else if (remaining == 2)
+        {
+            const uint32_t triple =
+                (static_cast<uint32_t>(bytes[i]) << 16) | (static_cast<uint32_t>(bytes[i + 1]) << 8);
+
+            text += alphabet[(triple >> 18) & 0x3f];
+            text += alphabet[(triple >> 12) & 0x3f];
+            text += alphabet[(triple >> 6) & 0x3f];
+            text += '=';
+        }
+
+        return text;
+    }
+
+    std::string toBase64(const std::vector<uint8_t> &data)
+    {
+        return toBase64(data.data(), data.size());
+    }
+
+    namespace
+    {
+        /* 0xff for anything that is not a base64 digit, so a single table
+           lookup rejects stray characters as well as decoding valid ones. */
+        int8_t base64Value(char character)
+        {
+            if (character >= 'A' && character <= 'Z')
+            {
+                return static_cast<int8_t>(character - 'A');
+            }
+
+            if (character >= 'a' && character <= 'z')
+            {
+                return static_cast<int8_t>(character - 'a' + 26);
+            }
+
+            if (character >= '0' && character <= '9')
+            {
+                return static_cast<int8_t>(character - '0' + 52);
+            }
+
+            if (character == '+')
+            {
+                return 62;
+            }
+
+            if (character == '/')
+            {
+                return 63;
+            }
+
+            return -1;
+        }
+
+        bool decodeBase64(const std::string &text, std::vector<uint8_t> &out)
+        {
+            /* Padded base64 only - the encoder above always pads, and refusing
+               anything else keeps a truncated response from decoding into a
+               short but plausible looking key. */
+            if (text.size() % 4 != 0)
+            {
+                return false;
+            }
+
+            out.reserve(out.size() + (text.size() / 4) * 3);
+
+            for (uint64_t i = 0; i < text.size(); i += 4)
+            {
+                const bool padThird = text[i + 2] == '=';
+                const bool padFourth = text[i + 3] == '=';
+
+                /* Padding only ever comes at the very end, and '=' in the third
+                   position means the fourth must be padding too. */
+                if ((padThird || padFourth) && i + 4 != text.size())
+                {
+                    return false;
+                }
+
+                if (padThird && !padFourth)
+                {
+                    return false;
+                }
+
+                const int8_t first = base64Value(text[i]);
+                const int8_t second = base64Value(text[i + 1]);
+                const int8_t third = padThird ? 0 : base64Value(text[i + 2]);
+                const int8_t fourth = padFourth ? 0 : base64Value(text[i + 3]);
+
+                if (first < 0 || second < 0 || third < 0 || fourth < 0)
+                {
+                    return false;
+                }
+
+                const uint32_t triple = (static_cast<uint32_t>(first) << 18)
+                                        | (static_cast<uint32_t>(second) << 12)
+                                        | (static_cast<uint32_t>(third) << 6) | static_cast<uint32_t>(fourth);
+
+                out.push_back(static_cast<uint8_t>((triple >> 16) & 0xff));
+
+                if (!padThird)
+                {
+                    out.push_back(static_cast<uint8_t>((triple >> 8) & 0xff));
+                }
+
+                if (!padFourth)
+                {
+                    out.push_back(static_cast<uint8_t>(triple & 0xff));
+                }
+            }
+
+            return true;
+        }
+    } // namespace
+
+    bool fromBase64(const std::string &text, void *data, uint64_t bufferSize, uint64_t &size)
+    {
+        std::vector<uint8_t> decoded;
+
+        if (!decodeBase64(text, decoded))
+        {
+            return false;
+        }
+
+        if (decoded.size() > bufferSize)
+        {
+            return false;
+        }
+
+        std::copy(decoded.begin(), decoded.end(), static_cast<uint8_t *>(data));
+
+        size = decoded.size();
+
+        return true;
+    }
+
+    bool fromBase64(const std::string &text, std::vector<uint8_t> &data)
+    {
+        return decodeBase64(text, data);
     }
 
     std::string extract(std::string &text, char delimiter)

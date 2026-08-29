@@ -95,14 +95,35 @@ namespace CryptoNote
             std::vector<BlockDetails> &entries,
             uint32_t blockCount) const = 0;
 
+        /* endHeight bounds the range the response may cover, exclusive, so a
+           caller can ask for a window it chose rather than one the daemon
+           chose. Zero leaves it unbounded, which is what every caller
+           predating the parameter asks for.
+
+           scannedToHeight reports the highest height actually looked at, so a
+           caller knows how far it may skip ahead without guessing. Zero means
+           nothing was covered. */
         virtual bool getWalletSyncData(
             const std::vector<Crypto::Hash> &knownBlockHashes,
             const uint64_t startHeight,
             const uint64_t startTimestamp,
             const uint64_t blockCount,
+            const uint64_t endHeight,
+            const bool skipCoinbaseTransactions,
             const bool skipEmptyBlocks,
             std::vector<WalletTypes::WalletBlockInfo> &blocks,
-            std::optional<WalletTypes::TopBlock> &topBlockInfo) const = 0;
+            std::optional<WalletTypes::TopBlock> &topBlockInfo,
+            uint64_t &scannedToHeight) const = 0;
+
+        /* The height getWalletSyncData would begin at for the same arguments,
+           without assembling anything. Returns false when the caller cannot be
+           placed on this chain, in which case there is nothing to look up and
+           the full call should be made. */
+        virtual bool getWalletSyncStartIndex(
+            const std::vector<Crypto::Hash> &knownBlockHashes,
+            const uint64_t startHeight,
+            const uint64_t startTimestamp,
+            uint64_t &startIndex) const = 0;
 
         virtual bool getRawBlocks(
             const std::vector<Crypto::Hash> &knownBlockHashes,

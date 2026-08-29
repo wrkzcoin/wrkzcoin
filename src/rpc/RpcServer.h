@@ -4,12 +4,16 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
 #include <future>
+#include <list>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "httplib_fwd.h"
 #include "JsonHelper.h"
@@ -24,6 +28,57 @@ enum class RpcMode
 {
     Standard = 0,
     Explorer = 1,
+};
+
+/* Everything that decides the bytes of a wallet sync response. The start index
+   is the one the core resolved from the caller's checkpoints, not the
+   checkpoints themselves - two wallets at the same height send different
+   checkpoint tails but want the identical answer, and keying on the resolved
+   index is what lets them share it. */
+struct WalletSyncCacheKey
+{
+    uint64_t startIndex = 0;
+
+    uint64_t blockCount = 0;
+
+    uint64_t endHeight = 0;
+
+    bool skipCoinbaseTransactions = false;
+
+    bool skipInputKeyOffsets = false;
+
+    bool skipEmptyBlocks = false;
+
+    bool base64 = false;
+
+    bool operator==(const WalletSyncCacheKey &other) const
+    {
+        return startIndex == other.startIndex && blockCount == other.blockCount && endHeight == other.endHeight
+               && skipCoinbaseTransactions == other.skipCoinbaseTransactions
+               && skipInputKeyOffsets == other.skipInputKeyOffsets && skipEmptyBlocks == other.skipEmptyBlocks
+               && base64 == other.base64;
+    }
+};
+
+struct WalletSyncCacheKeyHash
+{
+    std::size_t operator()(const WalletSyncCacheKey &key) const
+    {
+        std::size_t seed = std::hash<uint64_t>()(key.startIndex);
+
+        const auto mix = [&seed](const std::size_t value) {
+            seed ^= value + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+        };
+
+        mix(std::hash<uint64_t>()(key.blockCount));
+
+        mix(std::hash<uint64_t>()(key.endHeight));
+
+        mix(static_cast<std::size_t>(key.skipCoinbaseTransactions) | (static_cast<std::size_t>(key.skipInputKeyOffsets) << 1)
+            | (static_cast<std::size_t>(key.skipEmptyBlocks) << 2) | (static_cast<std::size_t>(key.base64) << 3));
+
+        return seed;
+    }
 };
 
 class RpcServer
@@ -46,6 +101,7 @@ class RpcServer
         const uint32_t rpcMaxRequestsPerMinute,
         const uint32_t rpcMaxGlobalIndexesRange,
         const uint32_t rpcMaxBlockCount,
+        const uint64_t rpcSyncCacheBytes,
         const bool rpcTrustProxy,
         const std::string rpcIpcPath,
         const uint32_t rpcIpcMode,
@@ -67,6 +123,12 @@ class RpcServer
 
     /* Stops the server. */
     void stop();
+
+    /* Which content encoding this build can compress responses with, or
+       "none". Decided at compile time by which of httplib's compression
+       backends were available, so it is the same answer for every request
+       and every server this process runs. */
+    static const char *compressionAlgorithm();
 
     /* Gets the IP/port combo the server is running on */
     std::tuple<std::string, uint16_t> getConnectionInfo();
@@ -315,4 +377,44 @@ class RpcServer
        the map is cleared rather than left to accumulate an entry per address
        seen since the node started. */
     uint64_t m_rateLimitWindowStart = 0;
+
+    ////////////////////////////
+    /* WALLET SYNC BODY CACHE */
+    ////////////////////////////
+
+    /* Every wallet syncing past a given height asks for the same range with
+       the same flags, and building one response is thousands of database
+       reads, a full reassembly and the encoding of the result. Keeping the
+       finished bodies means a node serving many wallets does that work once
+       per range rather than once per wallet. */
+    std::mutex m_syncCacheMutex;
+
+    /* Most recently used at the front. Bodies are large and variable, so the
+       cache is bounded by their total size rather than a count. */
+    std::list<std::pair<WalletSyncCacheKey, std::string>> m_syncCacheEntries;
+
+    std::unordered_map<
+        WalletSyncCacheKey,
+        std::list<std::pair<WalletSyncCacheKey, std::string>>::iterator,
+        WalletSyncCacheKeyHash>
+        m_syncCacheIndex;
+
+    uint64_t m_syncCacheBytes = 0;
+
+    const uint64_t m_syncCacheMaxBytes;
+
+    /* The highest top block index seen while serving. A drop means the chain
+       reorganised, at which point anything cached may describe blocks that are
+       no longer on the main chain. */
+    uint64_t m_syncCacheTopBlockIndex = 0;
+
+    std::optional<std::string> lookupSyncCache(const WalletSyncCacheKey &key);
+
+    void storeSyncCache(
+        const WalletSyncCacheKey &key,
+        const std::string &body,
+        const std::vector<WalletTypes::WalletBlockInfo> &blocks,
+        const uint64_t topBlockIndex);
+
+    void discardSyncCacheOnReorg(const uint64_t topBlockIndex);
 };

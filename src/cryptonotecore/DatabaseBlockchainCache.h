@@ -253,10 +253,22 @@ namespace CryptoNote
         std::unordered_map<Crypto::Hash, RawBlock>
             getRawBlocksByHashes(const std::vector<Crypto::Hash> &blockHashes) const;
 
-        /* Batched equivalent of getWalletSyncBlock over the half open range
-         * [startIndex, endIndex). Costs two database round trips for the whole
-         * range instead of two per block. Blocks that are missing from the
-         * database are skipped, as they are by the single block reader.
+        /* Batched equivalent of getWalletSyncBlock. Costs a handful of database
+         * round trips for a whole range instead of two per block. Blocks that
+         * are missing from the database are skipped, as they are by the single
+         * block reader.
+         *
+         * Returns at most (endIndex - startIndex) blocks, looking as far as
+         * scanEndIndex to find them. The two differ only when skipEmptyBlocks
+         * is set: blocks holding nothing but a coinbase carry nothing a wallet
+         * that has opted out of coinbase scanning could own, so they are left
+         * out and the scan keeps going, letting one response carry the wallet
+         * across far more heights than its block count.
+         *
+         * The last block actually looked at is always included, empty or not.
+         * It is what tells the caller how far the scan reached - without it a
+         * window of nothing but empty blocks would come back as an empty
+         * response, which a wallet reads as "fully synced".
          *
          * The range is additionally cut short once maxResponseBytes worth of
          * block data has been assembled, so a large block count stays safe
@@ -264,8 +276,11 @@ namespace CryptoNote
         std::vector<WalletTypes::WalletBlockInfo> getWalletSyncBlocks(
             uint32_t startIndex,
             uint32_t endIndex,
+            uint32_t scanEndIndex,
             bool skipCoinbaseTransactions,
-            uint64_t maxResponseBytes) const;
+            bool skipEmptyBlocks,
+            uint64_t maxResponseBytes,
+            uint32_t &scannedToIndex) const;
 
         std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
 

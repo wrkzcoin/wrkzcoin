@@ -106,4 +106,32 @@ namespace WalletConfig
      * requests move far more blocks per rate limit slot than many small ones.
      */
     const uint64_t maxBlocksPerSyncRequest = 1000;
+
+    /**
+     * How long to wait for a daemon to finish producing a response, in
+     * seconds, as distinct from how long to wait to reach it at all.
+     *
+     * Nothing caps how long a daemon's request handler may run, and its own
+     * --rpc-write-timeout defaults to thirty seconds. Giving up sooner than
+     * that abandons a response the daemon is still building: the rate limit
+     * slot is spent either way, the daemon finishes the work regardless, and
+     * we halve our batch size for a request that would have arrived.
+     *
+     * The connection timeout stays short so an unreachable node still fails
+     * quickly.
+     */
+    const uint64_t daemonResponseTimeoutSeconds = 30;
+
+    /**
+     * How many block windows to have in flight at once while catching up.
+     *
+     * A single stream of requests spends most of its time waiting: the round
+     * trip, then the daemon assembling the answer, then the transfer, all
+     * before the next request is even sent. Asking for several consecutive
+     * windows at once overlaps those waits.
+     *
+     * Each one costs a connection and a rate limit slot, so this stays small.
+     * Set to 1 to disable parallel fetching entirely.
+     */
+    const size_t syncRequestConcurrency = 4;
 } // namespace WalletConfig

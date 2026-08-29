@@ -9,6 +9,7 @@
 #include "JsonHelper.h"
 
 #include <errors/Errors.h>
+#include <mutex>
 #include <nigel/Nigel.h>
 #include <string>
 #include <subwallets/SubWallets.h>
@@ -355,6 +356,11 @@ class WalletBackend
 
     /* The password the wallet is encrypted with */
     std::string m_password;
+
+    /* Orders concurrent saves. The encryption and file write happen outside
+       the synchronizer pause now, so they no longer exclude each other by
+       accident. */
+    mutable std::mutex m_saveMutex;
 
     /* The sub wallets container (Using a shared_ptr here so
        the WalletSynchronizer has access to it) */

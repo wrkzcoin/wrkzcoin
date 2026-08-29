@@ -647,6 +647,42 @@ namespace CryptoNote
     const uint64_t BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES = 8ULL * 1024 * 1024;
     const size_t COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT = 1000;
 
+    /* How much further than the requested block count one wallet sync response
+       may look when the wallet has said it does not want blocks that hold
+       nothing for it. Most blocks on a quiet chain carry only a coinbase, so
+       without this a response spends its whole block count on heights the
+       wallet has no use for. Scanning reads one small transaction hash list
+       per height, which is far cheaper than the header and body reads the
+       skipped blocks would otherwise have cost. */
+    const uint64_t BLOCKS_SYNCHRONIZING_SKIP_EMPTY_SCAN_MULTIPLIER = 20;
+
+    /* Ceiling on that scan, so one request cannot walk an unbounded stretch of
+       empty chain however large a block count it asked for. */
+    const uint64_t BLOCKS_SYNCHRONIZING_SKIP_EMPTY_MAX_SCAN = 50000;
+
+    /* Optional wallet sync behaviours the daemon advertises in /info under
+       "sync_features". A wallet only turns one on after seeing the daemon
+       name it, so pointing a new wallet at an old daemon changes nothing -
+       the old daemon simply never advertises, and the wallet stays on the
+       behaviour every release has always supported. */
+    namespace SyncFeatures
+    {
+        /* The daemon may leave out blocks holding nothing the wallet could
+           own, letting one response carry the wallet across far more heights
+           than its block count would otherwise allow. */
+        const char *const SKIP_EMPTY_BLOCKS = "skipEmptyBlocks";
+
+        /* Hashes and keys are sent base64 rather than hex - a third fewer
+           bytes on the wire, and less for both sides to encode and parse. */
+        const char *const BASE64_ENCODING = "base64";
+
+        /* The caller may bound a response to a height window it chose, and is
+           told how far the daemon actually looked. Together those let it ask
+           for several windows at once without guessing where each response
+           will end and leaving a gap between them. */
+        const char *const HEIGHT_RANGE = "heightRange";
+    } // namespace SyncFeatures
+
     const int P2P_DEFAULT_PORT = 17855;
 
     const int RPC_DEFAULT_PORT = 17856;

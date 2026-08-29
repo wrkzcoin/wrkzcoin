@@ -258,6 +258,12 @@ namespace DaemonConfig
             "Responses are additionally capped by size, so raising this is safe during a transaction flood",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.rpcMaxBlockCount)),
             "#")(
+            "rpc-sync-cache-size",
+            "Megabytes of finished wallet sync responses to keep. Wallets syncing past the same height ask "
+            "for the same range, so this serves them from one build instead of rebuilding it per wallet. "
+            "0 disables the cache",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.rpcSyncCacheBytes / (1024 * 1024))),
+            "#")(
             "rpc-trust-proxy",
             "Trust X-Forwarded-For header for client IP (enable only behind trusted reverse proxy)",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
@@ -769,6 +775,11 @@ namespace DaemonConfig
             if (cli.count("rpc-max-block-count") > 0)
             {
                 config.rpcMaxBlockCount = std::max<uint32_t>(1, cli["rpc-max-block-count"].as<uint32_t>());
+            }
+
+            if (cli.count("rpc-sync-cache-size") > 0)
+            {
+                config.rpcSyncCacheBytes = cli["rpc-sync-cache-size"].as<uint64_t>() * 1024 * 1024;
             }
 
             if (cli.count("rpc-trust-proxy") > 0)
@@ -1299,6 +1310,17 @@ namespace DaemonConfig
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("rpc-sync-cache-size") == 0)
+                {
+                    try
+                    {
+                        config.rpcSyncCacheBytes = std::stoull(cfgValue) * 1024 * 1024;
+                    }
+                    catch (const std::exception &)
+                    {
+                        throw std::runtime_error("rpc-sync-cache-size must be a number: " + cfgValue);
+                    }
+                }
                 else if (cfgKey.compare("rpc-max-block-count") == 0)
                 {
                     try
@@ -1791,6 +1813,11 @@ namespace DaemonConfig
             config.rpcMaxGlobalIndexesRange = std::max<uint32_t>(100, j["rpc-max-global-index-range"].get<uint32_t>());
         }
 
+        if (j.contains("rpc-sync-cache-size"))
+        {
+            config.rpcSyncCacheBytes = j["rpc-sync-cache-size"].get<uint64_t>() * 1024 * 1024;
+        }
+
         if (j.contains("rpc-max-block-count"))
         {
             config.rpcMaxBlockCount = std::max<uint32_t>(1, j["rpc-max-block-count"].get<uint32_t>());
@@ -1969,6 +1996,7 @@ namespace DaemonConfig
         j["rpc-max-rpm"] = config.rpcMaxRequestsPerMinute;
         j["rpc-max-global-index-range"] = config.rpcMaxGlobalIndexesRange;
         j["rpc-max-block-count"] = config.rpcMaxBlockCount;
+        j["rpc-sync-cache-size"] = config.rpcSyncCacheBytes / (1024 * 1024);
         j["rpc-trust-proxy"] = config.rpcTrustProxy;
         j["rpc-ipc-path"] = config.rpcIpcPath;
         j["rpc-ipc-mode"] = Common::Ipc::formatMode(config.rpcIpcMode);
