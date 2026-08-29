@@ -306,18 +306,63 @@ async function route() {
   const page  = parts[0] || 'home';
 
   // Highlight nav link
-  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  closeToolsMenu();
+  document.querySelectorAll('.nav-link, .nav-menu-item').forEach(el => el.classList.remove('active'));
   if (page === 'home'    || page === '')      { $('navHome')?.classList.add('active'); }
   if (page === 'mempool')                     { $('navMempool')?.classList.add('active'); }
+  if (TOOL_PAGES.includes(page)) {
+    $('navToolsBtn')?.classList.add('active');
+    document.querySelector(`.nav-menu-item[href="#/${page}"]`)?.classList.add('active');
+  }
 
   switch (page) {
-    case 'home':    return showHome();
-    case 'block':   return showBlock(parts[1] || '');
-    case 'tx':      return showTx(parts[1] || '');
-    case 'mempool': return showMempool();
+    case 'home':       return showHome();
+    case 'block':      return showBlock(parts[1] || '');
+    case 'tx':         return showTx(parts[1] || '');
+    case 'mempool':    return showMempool();
+    case 'paper':      return showPaperWallet();
+    case 'import':     return showImportSeed();
+    case 'integrated': return showIntegratedAddress();
+    case 'decode':     return showDecodeAddress(parts[1] || '');
     default:
       showError(`Unknown route: <code>${escHtml(page)}</code>`);
   }
+}
+
+// ─── TOOLS MENU ───────────────────────────────────────────────────────────────
+
+const TOOL_PAGES = ['paper', 'import', 'integrated', 'decode'];
+
+function closeToolsMenu() {
+  const menu = $('navTools');
+  if (!menu) return;
+  menu.dataset.open = 'false';
+  $('navToolsList').hidden = true;
+  $('navToolsBtn').setAttribute('aria-expanded', 'false');
+}
+
+function toggleToolsMenu() {
+  const menu = $('navTools');
+  if (!menu) return;
+  const open = menu.dataset.open !== 'true';
+  menu.dataset.open = String(open);
+  $('navToolsList').hidden = !open;
+  $('navToolsBtn').setAttribute('aria-expanded', String(open));
+}
+
+function initToolsMenu() {
+  const btn = $('navToolsBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', e => { e.stopPropagation(); toggleToolsMenu(); });
+
+  document.addEventListener('click', e => {
+    if (!$('navTools')?.contains(e.target)) closeToolsMenu();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeToolsMenu();
+  });
 }
 
 // ─── AUTO REFRESH ─────────────────────────────────────────────────────────────
@@ -367,6 +412,19 @@ async function doSearch(query) {
     } catch (e) { /* fall through */ }
   }
 
+  // Looks like an address → hand it to the decoder, which validates the checksum
+  if (window.WrkzCrypto
+      && (query.length === window.WrkzCrypto.STANDARD_ADDRESS_LENGTH
+       || query.length === window.WrkzCrypto.INTEGRATED_ADDRESS_LENGTH
+       || query.length === window.WrkzCrypto.INTEGRATED_ADDRESS_LENGTH_LONG)) {
+    try {
+      window.WrkzCrypto.decodeAddress(query);
+      hideLoading();
+      window.location.hash = `#/decode/${encodeURIComponent(query)}`;
+      return;
+    } catch (e) { /* not a valid address, keep looking */ }
+  }
+
   // 64-char hex → try TX first, then block
   if (/^[0-9a-fA-F]{64}$/.test(query)) {
     // Try transaction
@@ -386,7 +444,8 @@ async function doSearch(query) {
 
   hideLoading();
   showError(`No results found for: <code>${escHtml(query)}</code>. `
-          + `Tip: enter a block height (number), block hash, or transaction hash (64 hex chars).`);
+          + `Tip: enter a block height (number), a block or transaction hash (64 hex chars), `
+          + `or a Wrkz address to decode.`);
 }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
@@ -395,6 +454,9 @@ function setPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const p = $(`page-${name}`);
   if (p) p.classList.add('active');
+  /* The tool pages are static markup, so nothing else will clear an overlay
+     left behind by a search that routed here. */
+  if (TOOL_PAGES.includes(name)) hideLoading();
 }
 
 async function showHome() {
@@ -1325,114 +1387,6 @@ function getTxPubKeyBytes(txContext) {
 }
 
 async function runCheckTx(txContext, address, keyHex, keyType) {
-  if (!window._cnCrypto) throw new Error('Crypto library not yet loaded — wait a moment and try again.');
-  const { keccak, ed } = window._cnCrypto;
-  const l = ed.CURVE.l;
-
-  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) throw new Error('Key must be exactly 64 hex characters.');
-
-  const { spendKey, viewKey } = parseCnAddress(address);
-  const spendPoint = ed.Point.fromHex(u8ToHex(spendKey));
-
-  const keyBytes  = hexToU8(keyHex);
-  const keyScalar = leBytesToBigInt(keyBytes) % l;
-  if (keyScalar === 0n) throw new Error('Invalid key (zero scalar).');
-
-  const derivations = [];
-  const txPubBytes = getTxPubKeyBytes(txContext);
-  if (keyType !== 'txkey' && txPubBytes) derivations.push(ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n).toRawBytes());
-  if (keyType !== 'viewkey') derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
-  if (derivations.length === 0) derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
-  /*
-  
-    // D = 8 × (privViewKey × txPubKey)
-    const txPubBytes = getTxPubKeyBytes(txContext);
-    if (!txPubBytes) throw new Error('Transaction public key is not available in this tx JSON. Private view key verification needs the tx public key. Try TX Private Key mode if you have the sender tx key.');
-    derivPoint = ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n);
-  } else {
-    // D = 8 × (txPrivKey × recipientViewPubKey)
-    derivPoint = ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n);
-  }
-
-  const D = derivPoint.toRawBytes(); // 32-byte compressed shared derivation
-  */
-  const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
-  const matched = [];
-
-  for (let i = 0; i < outputs.length; i++) {
-    const outKey = outputs[i]?.target?.data?.key ?? outputs[i]?.target?.key ?? '';
-    if (!outKey) continue;
-
-    // Hs(D || varint(i)) mod l — CryptoNote hash-to-scalar (little-endian)
-    const idxBytes = varintEncode(i);
-    const hashIn   = new Uint8Array(32 + idxBytes.length);
-    hashIn.set(D, 0); hashIn.set(idxBytes, 32);
-    const h = keccak(hashIn);
-    const hScalar = leBytesToBigInt(h) % l;
-    if (hScalar === 0n) continue;
-
-    // P_check = h×G + spendPubKey
-    const pCheck = ed.Point.BASE.multiply(hScalar).add(spendPoint);
-    if (pCheck.toHex() === outKey.toLowerCase()) matched.push(i);
-  }
-  return matched;
-}
-
-async function runCheckTx(txContext, address, keyHex, keyType) {
-  if (!window._cnCrypto) throw new Error('Crypto library not yet loaded â€” wait a moment and try again.');
-  const { keccak, ed } = window._cnCrypto;
-  const l = ed.CURVE.l;
-
-  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) throw new Error('Key must be exactly 64 hex characters.');
-
-  const { spendKey, viewKey } = parseCnAddress(address);
-  const spendPoint = ed.Point.fromHex(u8ToHex(spendKey));
-
-  const keyBytes = hexToU8(keyHex);
-  const keyScalar = leBytesToBigInt(keyBytes) % l;
-  if (keyScalar === 0n) throw new Error('Invalid key (zero scalar).');
-
-  const derivations = [];
-  const txPubBytes = getTxPubKeyBytes(txContext);
-
-  if (txPubBytes) {
-    derivations.push(ed.Point.fromHex(u8ToHex(txPubBytes)).multiply(keyScalar).multiply(8n).toRawBytes());
-  }
-
-  derivations.push(ed.Point.fromHex(u8ToHex(viewKey)).multiply(keyScalar).multiply(8n).toRawBytes());
-
-  const outputs = txContext?.tx?.vout || txContext?.tx?.outputs || [];
-  const matched = [];
-
-  for (let i = 0; i < outputs.length; i++) {
-    const outKey = outputs[i]?.target?.data?.key ?? outputs[i]?.target?.key ?? '';
-    if (!outKey) continue;
-
-    let isMatch = false;
-    for (const D of derivations) {
-      const idxBytes = varintEncode(i);
-      const hashIn = new Uint8Array(32 + idxBytes.length);
-      hashIn.set(D, 0);
-      hashIn.set(idxBytes, 32);
-
-      const h = keccak(hashIn);
-      const hScalar = leBytesToBigInt(h) % l;
-      if (hScalar === 0n) continue;
-
-      const pCheck = ed.Point.BASE.multiply(hScalar).add(spendPoint);
-      if (pCheck.toHex() === outKey.toLowerCase()) {
-        isMatch = true;
-        break;
-      }
-    }
-
-    if (isMatch) matched.push(i);
-  }
-
-  return matched;
-}
-
-async function runCheckTx(txContext, address, keyHex, keyType) {
   await ensureTurtleCoinUtils();
   if (!window._cnUtils) {
     window._cnUtils = new window.TurtleCoinUtils.CryptoNote({
@@ -1575,6 +1529,332 @@ function initCheckTxEvents(txContext) {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   WALLET / ADDRESS TOOLS
+
+   Everything below runs entirely in the browser against vendor/wrkz-crypto.js.
+   No key material, seed, or address is ever sent to the daemon or anywhere else.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function wrkzCrypto() {
+  if (!window.WrkzCrypto) {
+    throw new Error('vendor/wrkz-crypto.js failed to load, so these tools are unavailable.');
+  }
+  return window.WrkzCrypto;
+}
+
+function setToolStatus(id, msg, kind) {
+  const el = $(id);
+  if (!el) return;
+  el.className = 'tool-status' + (kind ? ` ${kind}` : '');
+  el.textContent = msg || '';
+}
+
+/* One labelled, copyable field. `secret` only changes the colour — it is a
+   reminder to the reader, not a security control. */
+function field(label, value, opts) {
+  const { secret = false, copy = true } = opts || {};
+  const safe = escHtml(value);
+  return /* html */ `
+    <div class="field">
+      <div class="field-label">${escHtml(label)}</div>
+      <div class="field-value${secret ? ' secret' : ''}">${safe}</div>
+      ${copy ? `<button type="button" class="copy-btn" data-copy="${safe}">Copy</button>` : ''}
+    </div>`;
+}
+
+function renderSeedGrid(mnemonic) {
+  const words = mnemonic.split(' ');
+  const cells = words.map((w, i) => /* html */ `
+    <div class="seed-word">
+      <span class="seed-index">${i + 1}</span>
+      <span class="seed-text">${escHtml(w)}</span>
+    </div>`).join('');
+
+  return /* html */ `
+    <div class="detail-card full mt">
+      <h3>Mnemonic Seed — 25 words</h3>
+      <div class="seed-grid">${cells}</div>
+      <div class="tool-actions">
+        <button type="button" class="copy-btn" data-copy="${escHtml(mnemonic)}">Copy seed</button>
+      </div>
+    </div>`;
+}
+
+/* The full key set, shared by the paper wallet and the seed importer. */
+function renderKeySet(wallet) {
+  return /* html */ `
+    <div class="detail-card full">
+      <h3>Address</h3>
+      ${field('Address', wallet.address)}
+    </div>
+
+    ${renderSeedGrid(wallet.mnemonic)}
+
+    <div class="detail-card full mt">
+      <h3>Private Keys — keep these secret</h3>
+      ${field('Private Spend Key', wallet.privateSpendKey, { secret: true })}
+      ${field('Private View Key',  wallet.privateViewKey,  { secret: true })}
+    </div>
+
+    <div class="detail-card full mt">
+      <h3>Public Keys</h3>
+      ${field('Public Spend Key', wallet.publicSpendKey)}
+      ${field('Public View Key',  wallet.publicViewKey)}
+    </div>`;
+}
+
+/* Clipboard, with a fallback for pages served over plain http where
+   navigator.clipboard is unavailable. */
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    if (!document.execCommand('copy')) throw new Error('Copy was rejected by the browser.');
+  } finally {
+    document.body.removeChild(ta);
+  }
+}
+
+function initCopyButtons() {
+  document.addEventListener('click', async e => {
+    const btn = e.target.closest('.copy-btn');
+    if (!btn || btn.dataset.busy === '1') return;
+
+    /* Capture the label before it is replaced, so a second click while the
+       "Copied" flash is still showing cannot make it stick. */
+    const original = btn.textContent;
+    btn.dataset.busy = '1';
+
+    let ok = true;
+    try {
+      await copyText(btn.dataset.copy || '');
+    } catch (err) {
+      ok = false;
+    }
+
+    btn.textContent = ok ? 'Copied' : 'Copy failed';
+    btn.classList.toggle('copied', ok);
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+      delete btn.dataset.busy;
+    }, ok ? 1400 : 1800);
+  });
+}
+
+function randomPaymentId(length) {
+  const webcrypto = window.crypto || window.msCrypto;
+  if (!webcrypto || typeof webcrypto.getRandomValues !== 'function') {
+    throw new Error('This browser has no secure random number generator, '
+                  + 'so a payment ID cannot be generated safely.');
+  }
+  const bytes = new Uint8Array(length / 2);
+  webcrypto.getRandomValues(bytes);
+  return wrkzCrypto().hex(bytes);
+}
+
+// ─── PAPER WALLET ─────────────────────────────────────────────────────────────
+
+function showPaperWallet() {
+  setPage('paper');
+}
+
+function initPaperWallet() {
+  const btn = $('paperGenBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', () => {
+    $('paperResult').innerHTML = '';
+    $('paperPrintBtn').hidden = true;
+
+    try {
+      const wallet = wrkzCrypto().createWallet();
+      $('paperResult').innerHTML = renderKeySet(wallet);
+      $('paperPrintBtn').hidden = false;
+      setToolStatus('paperStatus', 'New wallet generated. Nothing was sent anywhere.', 'ok');
+    } catch (err) {
+      setToolStatus('paperStatus', err.message, 'err');
+    }
+  });
+
+  $('paperPrintBtn').addEventListener('click', () => window.print());
+}
+
+// ─── IMPORT FROM SEED ─────────────────────────────────────────────────────────
+
+function showImportSeed() {
+  setPage('import');
+}
+
+function initImportSeed() {
+  const btn = $('importBtn');
+  if (!btn) return;
+
+  const run = () => {
+    const input = $('importInput').value;
+    $('importResult').innerHTML = '';
+
+    if (!input.trim()) {
+      setToolStatus('importStatus', 'Enter a mnemonic seed or a private spend key.', 'err');
+      return;
+    }
+
+    try {
+      const wallet = wrkzCrypto().importWallet(input);
+      $('importResult').innerHTML = renderKeySet(wallet);
+      setToolStatus('importStatus', 'Wallet recovered.', 'ok');
+    } catch (err) {
+      setToolStatus('importStatus', err.message, 'err');
+    }
+  };
+
+  btn.addEventListener('click', run);
+
+  $('importClearBtn').addEventListener('click', () => {
+    $('importInput').value = '';
+    $('importResult').innerHTML = '';
+    setToolStatus('importStatus', '');
+  });
+}
+
+// ─── INTEGRATED ADDRESS GENERATOR ─────────────────────────────────────────────
+
+function showIntegratedAddress() {
+  setPage('integrated');
+}
+
+function initIntegratedAddress() {
+  const btn = $('intBtn');
+  if (!btn) return;
+
+  const setPid = length => {
+    try {
+      $('intPid').value = randomPaymentId(length);
+      setToolStatus('intStatus', '');
+    } catch (err) {
+      setToolStatus('intStatus', err.message, 'err');
+    }
+  };
+
+  $('intRand16').addEventListener('click', () => setPid(16));
+  $('intRand64').addEventListener('click', () => setPid(64));
+
+  btn.addEventListener('click', () => {
+    const address   = $('intAddr').value.trim();
+    const paymentId = $('intPid').value.trim();
+    $('intResult').innerHTML = '';
+
+    try {
+      const W = wrkzCrypto();
+      const integrated = W.createIntegratedAddress(address, paymentId);
+      const decoded    = W.decodeAddress(integrated);
+
+      $('intResult').innerHTML = /* html */ `
+        <div class="detail-card full">
+          <h3>Integrated Address</h3>
+          <div class="tool-badges">
+            <span class="badge badge-accent">${decoded.paymentIdType === 'short' ? 'Short' : 'Long'} payment ID</span>
+            <span class="badge">${integrated.length} characters</span>
+          </div>
+          ${field('Integrated Address', integrated)}
+          ${field('Payment ID', decoded.paymentId)}
+          ${field('Standard Address', decoded.baseAddress)}
+        </div>`;
+
+      setToolStatus('intStatus', 'Created.', 'ok');
+    } catch (err) {
+      setToolStatus('intStatus', err.message, 'err');
+    }
+  });
+}
+
+// ─── ADDRESS DECODER ──────────────────────────────────────────────────────────
+
+function showDecodeAddress(prefill) {
+  setPage('decode');
+  if (!prefill) return;
+
+  /* A hand-edited hash can contain a stray "%", which would make
+     decodeURIComponent throw and take the router down with it. */
+  let address;
+  try {
+    address = decodeURIComponent(prefill);
+  } catch (err) {
+    address = prefill;
+  }
+
+  $('decAddr').value = address;
+  runDecodeAddress();
+}
+
+function runDecodeAddress() {
+  const address = $('decAddr').value.trim();
+  $('decResult').innerHTML = '';
+
+  if (!address) {
+    setToolStatus('decStatus', 'Enter an address to decode.', 'err');
+    return;
+  }
+
+  try {
+    const decoded = decodeAddressForDisplay(address);
+    $('decResult').innerHTML = decoded;
+    setToolStatus('decStatus', 'Checksum verified.', 'ok');
+  } catch (err) {
+    setToolStatus('decStatus', err.message, 'err');
+  }
+}
+
+function decodeAddressForDisplay(address) {
+  const W = wrkzCrypto();
+  const d = W.decodeAddress(address);
+
+  const kind = !d.isIntegrated ? 'Standard address'
+             : d.paymentIdType === 'short' ? 'Integrated address (short payment ID)'
+             : 'Integrated address (long payment ID)';
+
+  const integratedRows = d.isIntegrated ? `
+      ${field('Payment ID', d.paymentId)}
+      ${field('Standard Address', d.baseAddress)}` : '';
+
+  return /* html */ `
+    <div class="detail-card full">
+      <h3>Decoded</h3>
+      <div class="tool-badges">
+        <span class="badge badge-accent">${escHtml(kind)}</span>
+        <span class="badge">${address.trim().length} characters</span>
+        <span class="badge badge-green">Checksum OK</span>
+      </div>
+      ${field('Address Prefix', String(d.prefix), { copy: false })}
+      ${integratedRows}
+      ${field('Public Spend Key', d.publicSpendKey)}
+      ${field('Public View Key',  d.publicViewKey)}
+    </div>`;
+}
+
+function initDecodeAddress() {
+  const btn = $('decBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', runDecodeAddress);
+
+  $('decClearBtn').addEventListener('click', () => {
+    $('decAddr').value = '';
+    $('decResult').innerHTML = '';
+    setToolStatus('decStatus', '');
+  });
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 function init() {
@@ -1589,6 +1869,14 @@ function init() {
     e.preventDefault();
     doSearch($('searchInput').value);
   });
+
+  // Wallet / address tools — handlers are bound once, pages are shown by route()
+  initToolsMenu();
+  initCopyButtons();
+  initPaperWallet();
+  initImportSeed();
+  initIntegratedAddress();
+  initDecodeAddress();
 
   // Hash routing
   window.addEventListener('hashchange', route);
