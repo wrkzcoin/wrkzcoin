@@ -177,6 +177,14 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_send_prepared(
     char **out_tx_hash,
     size_t *out_len);
 
+/* Drops a prepared-but-unsent transaction from the wallet's cache.
+ * Preparing a transaction (send_transaction = false) stores it so it can be
+ * relayed later; without this, an abandoned prepare stays cached until the
+ * wallet is closed. Returns SUCCESS whether or not an entry was present. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_delete_prepared(
+    wallet_handle_t *wallet,
+    const char *prepared_tx_hash_hex);
+
 WALLET_CAPI_EXPORT wallet_status_t wallet_send_advanced_json(
     wallet_handle_t *wallet,
     const char *request_json,

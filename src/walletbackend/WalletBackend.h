@@ -144,8 +144,12 @@ class WalletBackend
         const bool daemonSSL,
         const unsigned int syncThreadCount);
 
-    /* Remove a previously prepared transaction. */
+    /* Remove a previously prepared transaction. Assumes m_transactionMutex is
+       already held — external callers want deletePreparedTransaction(). */
     bool removePreparedTransaction(const Crypto::Hash &transactionHash);
+
+    /* Remove a previously prepared transaction, taking m_transactionMutex. */
+    bool deletePreparedTransaction(const Crypto::Hash &transactionHash);
 
     /* Sends a previously prepared transaction to the network */
     std::tuple<Error, Crypto::Hash> sendPreparedTransaction(

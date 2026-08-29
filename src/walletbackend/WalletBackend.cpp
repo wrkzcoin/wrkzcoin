@@ -847,6 +847,16 @@ bool WalletBackend::removePreparedTransaction(const Crypto::Hash &transactionHas
     return removed;
 }
 
+bool WalletBackend::deletePreparedTransaction(const Crypto::Hash &transactionHash)
+{
+    /* removePreparedTransaction() is called from sendPreparedTransaction() with
+       m_transactionMutex already held, so it does not lock itself. External
+       callers come through here to take the lock. */
+    std::scoped_lock lock(m_transactionMutex);
+
+    return removePreparedTransaction(transactionHash);
+}
+
 std::tuple<Error, Crypto::Hash> WalletBackend::sendPreparedTransaction(
     const Crypto::Hash transactionHash)
 {
