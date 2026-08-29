@@ -79,6 +79,7 @@ namespace DaemonConfig
             rpcMaxRequestsPerMinute = 240;
             rpcMaxGlobalIndexesRange = 5000;
             rpcMaxBlockCount = 1000;
+            rpcSyncCacheBytes = 64ULL * 1024 * 1024;
             rpcTrustProxy = false;
             rpcIpcPath = "";
             rpcIpcMode = Common::Ipc::DEFAULT_MODE;
@@ -196,6 +197,12 @@ namespace DaemonConfig
         uint32_t rpcMaxGlobalIndexesRange;
 
         uint32_t rpcMaxBlockCount;
+
+        /* Bytes of finished wallet sync response bodies to keep. Every
+           wallet syncing past a given height asks for the same range, so a
+           node serving many of them otherwise rebuilds the same answer once
+           per wallet. 0 disables the cache. */
+        uint64_t rpcSyncCacheBytes;
 
         bool rpcTrustProxy;
 

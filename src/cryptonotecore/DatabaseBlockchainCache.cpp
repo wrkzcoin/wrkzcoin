@@ -2626,61 +2626,134 @@ namespace CryptoNote
     std::vector<WalletTypes::WalletBlockInfo> DatabaseBlockchainCache::getWalletSyncBlocks(
         uint32_t startIndex,
         uint32_t endIndex,
+        uint32_t scanEndIndex,
         bool skipCoinbaseTransactions,
-        uint64_t maxResponseBytes) const
+        bool skipEmptyBlocks,
+        uint64_t maxResponseBytes,
+        uint32_t &scannedToIndex) const
     {
         std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
+
+        /* Nothing looked at yet. Callers read this as "no heights are
+         * covered", which is the honest answer for an empty result. */
+        scannedToIndex = 0;
 
         if (endIndex <= startIndex)
         {
             return walletBlocks;
         }
 
-        /* One round trip for every block's header and transaction hash list,
-         * rather than one per block. */
-        BlockchainReadBatch blockBatch;
-        for (uint32_t index = startIndex; index < endIndex; ++index)
+        /* A block with nothing but its coinbase holds nothing a wallet that
+         * asked us to leave coinbases out could own, so there is nothing to
+         * skip once it wants them. */
+        skipEmptyBlocks = skipEmptyBlocks && skipCoinbaseTransactions;
+
+        if (!skipEmptyBlocks || scanEndIndex < endIndex)
         {
-            blockBatch.requestCachedBlock(index).requestTransactionHashesByBlock(index);
+            scanEndIndex = endIndex;
         }
 
-        const auto blockResult = readDatabase(blockBatch);
-        const auto &cachedBlocks = blockResult.getCachedBlocks();
-        const auto &hashesByBlock = blockResult.getTransactionHashesByBlocks();
+        const uint32_t blockLimit = endIndex - startIndex;
 
-        /* Transaction counts are known now the header batch is in, so decide how
-         * far the range can actually go before reading any transaction bodies.
-         * Reading the whole range first and trimming afterwards would let a
-         * flood of large blocks balloon our memory before we ever look at the
-         * budget. The first block is always included so sync cannot stall. */
+        /* One round trip for the transaction hash list of every height we may
+         * look at. These are small, and their length is what decides whether a
+         * height is worth sending - reading them is what makes skipping safe,
+         * where inferring emptiness from a cumulative counter would silently
+         * drop a wallet's incoming transaction if the counter ever drifted. */
+        BlockchainReadBatch hashBatch;
+        for (uint32_t index = startIndex; index < scanEndIndex; ++index)
+        {
+            hashBatch.requestTransactionHashesByBlock(index);
+        }
+
+        const auto hashResult = readDatabase(hashBatch);
+        const auto &hashesByBlock = hashResult.getTransactionHashesByBlocks();
+
+        /* Transaction counts are known now the hash batch is in, so decide
+         * which heights the response covers before reading any block headers
+         * or transaction bodies. Reading the whole range first and trimming
+         * afterwards would let a flood of large blocks balloon our memory
+         * before we ever look at the budget. The first block is always
+         * included so sync cannot stall. */
         const uint64_t transactionBudget =
             std::max<uint64_t>(1, maxResponseBytes / ESTIMATED_WALLET_SYNC_TRANSACTION_BYTES);
 
-        uint32_t cappedEndIndex = startIndex;
-        uint64_t transactionsSoFar = 0;
+        std::vector<uint32_t> selected;
+        selected.reserve(std::min<uint32_t>(blockLimit, 1024));
 
-        for (uint32_t index = startIndex; index < endIndex; ++index)
+        uint64_t transactionsSoFar = 0;
+        uint32_t lastScanned = 0;
+        bool scannedAny = false;
+
+        for (uint32_t index = startIndex; index < scanEndIndex; ++index)
         {
             const auto hashesIt = hashesByBlock.find(index);
 
-            const uint64_t blockTransactions = hashesIt == hashesByBlock.end() ? 0 : hashesIt->second.size();
+            if (hashesIt == hashesByBlock.end())
+            {
+                /* Nothing stored at this height, so there is nothing beyond it
+                 * either - the chain does not reach this far, or the read came
+                 * back short. Stop rather than scanning a gap to its end. */
+                break;
+            }
 
-            if (index != startIndex && transactionsSoFar + blockTransactions > transactionBudget)
+            const uint64_t blockTransactions = hashesIt->second.size();
+
+            if (!selected.empty() && transactionsSoFar + blockTransactions > transactionBudget)
             {
                 break;
             }
 
+            scannedAny = true;
+            lastScanned = index;
+
+            /* The hash list always leads with the coinbase, so a length of one
+             * is a block with nothing else in it. */
+            if (skipEmptyBlocks && blockTransactions <= 1)
+            {
+                continue;
+            }
+
             transactionsSoFar += blockTransactions;
-            cappedEndIndex = index + 1;
+            selected.push_back(index);
+
+            if (selected.size() >= blockLimit)
+            {
+                break;
+            }
         }
 
-        endIndex = cappedEndIndex;
+        if (!scannedAny)
+        {
+            return walletBlocks;
+        }
 
-        /* Then a single round trip for every transaction in the whole range. */
+        /* Whatever else happened, say how far we looked. Without this a window
+         * of nothing but empty blocks comes back empty, which a wallet reads as
+         * "fully synced" - it would stop here and never ask for the rest of the
+         * chain. */
+        if (selected.empty() || selected.back() != lastScanned)
+        {
+            selected.push_back(lastScanned);
+        }
+
+        /* One round trip for the headers of the heights we settled on. */
+        BlockchainReadBatch blockBatch;
+        for (const uint32_t index : selected)
+        {
+            blockBatch.requestCachedBlock(index);
+        }
+
+        const auto blockResult = readDatabase(blockBatch);
+        const auto &cachedBlocks = blockResult.getCachedBlocks();
+
+        /* Then one for their transactions. The coinbase leads every hash list
+         * and is thrown away again below when the wallet has opted out of it,
+         * so there is no reason to read it back. */
         BlockchainReadBatch transactionBatch;
         bool haveTransactions = false;
 
-        for (uint32_t index = startIndex; index < endIndex; ++index)
+        for (const uint32_t index : selected)
         {
             const auto hashesIt = hashesByBlock.find(index);
 
@@ -2689,9 +2762,11 @@ namespace CryptoNote
                 continue;
             }
 
-            for (const auto &hash : hashesIt->second)
+            const auto &transactionHashes = hashesIt->second;
+
+            for (size_t i = skipCoinbaseTransactions ? 1 : 0; i < transactionHashes.size(); ++i)
             {
-                transactionBatch.requestCachedTransaction(hash);
+                transactionBatch.requestCachedTransaction(transactionHashes[i]);
                 haveTransactions = true;
             }
         }
@@ -2700,20 +2775,23 @@ namespace CryptoNote
             ? readDatabase(transactionBatch).getCachedTransactions()
             : std::unordered_map<Crypto::Hash, ExtendedTransactionInfo>();
 
-        walletBlocks.reserve(endIndex - startIndex);
+        walletBlocks.reserve(selected.size());
 
         uint64_t responseBytes = 0;
 
-        for (uint32_t index = startIndex; index < endIndex; ++index)
+        for (const uint32_t index : selected)
         {
             const auto blockIt = cachedBlocks.find(index);
             const auto hashesIt = hashesByBlock.find(index);
 
-            /* Matches the per block reader, which reports a miss and is skipped
-             * by the caller rather than terminating the range. */
+            /* The hash list said this height was worth sending but its header
+             * has gone - a torn read against a reorganisation, most likely.
+             * Stop rather than skipping past it: we would be claiming to have
+             * covered a block whose transactions we never sent, and the caller
+             * would never come back for them. */
             if (blockIt == cachedBlocks.end() || hashesIt == hashesByBlock.end())
             {
-                continue;
+                break;
             }
 
             const auto &transactionHashes = hashesIt->second;
@@ -2723,7 +2801,7 @@ namespace CryptoNote
             walletBlock.blockHash = blockIt->second.blockHash;
             walletBlock.blockTimestamp = blockIt->second.timestamp;
 
-            for (size_t i = 0; i < transactionHashes.size(); ++i)
+            for (size_t i = skipCoinbaseTransactions ? 1 : 0; i < transactionHashes.size(); ++i)
             {
                 const auto transactionIt = transactions.find(transactionHashes[i]);
 
@@ -2734,10 +2812,7 @@ namespace CryptoNote
 
                 if (i == 0)
                 {
-                    if (!skipCoinbaseTransactions)
-                    {
-                        walletBlock.coinbaseTransaction = toWalletRawCoinbaseTransaction(transactionIt->second);
-                    }
+                    walletBlock.coinbaseTransaction = toWalletRawCoinbaseTransaction(transactionIt->second);
 
                     continue;
                 }
@@ -2748,6 +2823,13 @@ namespace CryptoNote
             responseBytes += walletBlock.memoryUsage();
 
             walletBlocks.push_back(std::move(walletBlock));
+
+            /* Everything up to here is either in this response or was read and
+             * found to hold nothing worth sending. Claiming coverage only as
+             * blocks actually go out means a response cut short - by the byte
+             * budget below, or by the missing header above - never invites the
+             * caller to skip past heights it has not seen. */
+            scannedToIndex = index;
 
             /* Budget is checked after appending so the first block always goes
              * out, however large it is. */
