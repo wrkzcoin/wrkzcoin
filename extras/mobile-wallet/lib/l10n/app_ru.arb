@@ -1,24 +1,32 @@
 {
   "@@locale": "ru",
-
   "appTitle": "PLUTON Mobile",
-
   "tabOverview": "Обзор",
   "tabReceive": "Получить",
   "tabSend": "Отправить",
   "tabHistory": "История",
   "tabSettings": "Настройки",
-
   "send": "Отправить",
   "receive": "Получить",
   "available": "Доступно",
   "locked": "Заблокировано",
   "total": "Итого",
   "lockedAmount": "Заблокировано: {amount}",
-  "@lockedAmount": { "placeholders": { "amount": { "type": "String" } } },
+  "@lockedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "totalAmount": "Итого: {amount}",
-  "@totalAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@totalAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "recentTransactions": "Последние транзакции",
   "viewAll": "Смотреть все",
   "noTransactionsYet": "Транзакций пока нет",
@@ -26,14 +34,31 @@
   "pending": "В ожидании...",
   "justNow": "Только что",
   "minutesAgo": "{count} мин. назад",
-  "@minutesAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "{count} ч. назад",
-  "@hoursAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "{count} д. назад",
-  "@daysAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "received": "Получено",
   "sent": "Отправлено",
-
   "networkStatus": "Состояние сети",
   "node": "Узел",
   "status": "Статус",
@@ -46,13 +71,23 @@
   "viewOnly": "Только просмотр",
   "couldNotFetchStatus": "Не удалось получить статус. Проверьте узел в Настройках.",
   "errorPrefix": "Ошибка: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "seedBackupWarning": "Сделайте резервную копию сид-фразы в Настройках, чтобы защитить свои средства.",
   "noConnectionToDaemon": "Нет подключения к демону",
   "syncingPercent": "Синхронизация {percent}%",
-  "@syncingPercent": { "placeholders": { "percent": { "type": "String" } } },
-
+  "@syncingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "yourAddress": "Ваш адрес",
   "errorLoadingAddress": "Ошибка загрузки адреса",
   "integratedAddress": "Интегрированный адрес",
@@ -66,7 +101,6 @@
   "longPid": "Длинный PID",
   "share": "Поделиться",
   "copy": "Копировать",
-
   "sweepAllFunds": "Собрать все средства",
   "normalSend": "Обычная отправка",
   "sweep": "Собрать",
@@ -74,9 +108,21 @@
   "scanQr": "Сканировать QR",
   "amount": "Сумма",
   "availableBalance": "Доступно: {amount}",
-  "@availableBalance": { "placeholders": { "amount": { "type": "String" } } },
+  "@availableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "sweepInfo": "Сбор объединяет все UTXO и отправляет весь разблокированный баланс ({amount}) за вычетом комиссии.",
-  "@sweepInfo": { "placeholders": { "amount": { "type": "String" } } },
+  "@sweepInfo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "paymentIdOptional": "Идентификатор платежа (необязательно)",
   "hexCharacters": "16 или 64 hex-символа",
   "mustBeHex": "Должно быть 16 или 64 hex-символа",
@@ -99,7 +145,6 @@
   "cancel": "Отмена",
   "useThisAddress": "Использовать этот адрес",
   "sweepFailed": "Сбор не удался",
-
   "searchPlaceholder": "Поиск по хэшу, адресу, идентификатору платежа...",
   "all": "Все",
   "filterReceived": "Полученные",
@@ -108,14 +153,12 @@
   "address": "Адрес",
   "block": "Блок",
   "confirmed": "Подтверждено",
-
   "password": "Пароль",
   "unlock": "Разблокировать",
   "switchWallet": "Сменить кошелёк",
   "enterPasswordToUnlock": "Введите пароль для разблокировки",
   "incorrectPassword": "Неверный пароль",
   "enterYourPassword": "Введите ваш пароль",
-
   "plutonMobile": "PLUTON Mobile",
   "createFirstWalletSubtitle": "Создайте первый кошелёк для начала работы",
   "selectWalletSubtitle": "Выберите кошелёк для открытия",
@@ -123,14 +166,25 @@
   "noWalletsYet": "Кошельков пока нет",
   "lastOpened": "Последнее открытие",
   "createdDate": "Создан {date}",
-  "@createdDate": { "placeholders": { "date": { "type": "String" } } },
+  "@createdDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "createFirstWallet": "Создать первый кошелёк",
   "addWallet": "Добавить кошелёк",
   "deleteWallet": "Удалить кошелёк",
   "deleteWalletConfirm": "Удалить \"{name}\"?\n\nЭто навсегда удалит файл кошелька и ключи. Убедитесь, что вы сохранили резервную копию сид-фразы.",
-  "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@deleteWalletConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Удалить",
-
   "createNewWallet": "Создать новый кошелёк",
   "createNewWalletSubtitle": "Сгенерировать новый кошелёк с новой сид-фразой",
   "importFromSeed": "Импорт из сид-фразы",
@@ -163,14 +217,13 @@
   "ssl": "SSL",
   "walletNameRequired": "Название кошелька обязательно",
   "passwordRequired": "Пароль обязателен",
-  "passwordTooShort": "Пароль должен содержать не менее 6 символов",
+  "passwordTooShort": "Пароль должен содержать не менее {count} символов",
   "passwordsDoNotMatch": "Пароли не совпадают",
   "seedRequired": "Сид-фраза обязательна",
   "spendKeyRequired": "Ключ расходования обязателен",
   "viewKeyRequired": "Ключ просмотра обязателен",
   "addressRequired": "Адрес обязателен",
   "daemonHostRequired": "Хост демона обязателен",
-
   "backupSeedTitle": "Резервная копия сид-фразы",
   "backupWarning": "Запишите сид-фразу и храните её в надёжном месте. Если вы её потеряете, ваши средства будут утеряны навсегда.",
   "seedPhraseLabel": "Сид-фраза",
@@ -178,35 +231,72 @@
   "privateSpendKeyLabel": "Приватный ключ расходования",
   "backupConfirmCheck": "Я надёжно сохранил(а) резервную копию сид-фразы",
   "continueToWallet": "Перейти к кошельку",
-
   "sectionDaemonNode": "Узел демона",
   "apply": "Применить",
   "nodeUpdated": "Узел обновлён: {host}:{port}",
-  "@nodeUpdated": { "placeholders": { "host": { "type": "String" }, "port": { "type": "int" } } },
+  "@nodeUpdated": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
   "hostRequired": "Хост обязателен",
   "currentWallet": "Текущий кошелёк — {name}",
-  "@currentWallet": { "placeholders": { "name": { "type": "String" } } },
+  "@currentWallet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "saveWallet": "Сохранить кошелёк",
   "walletSaved": "Кошелёк сохранён",
   "saveFailed": "Ошибка сохранения: {error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "backupSeed": "Резервная копия сид-фразы",
   "changePassword": "Изменить пароль",
   "resetScanHeight": "Сбросить высоту сканирования",
   "reset": "Сбросить",
   "resetScanConfirm": "Это приведёт к повторному сканированию блокчейна начиная с блока {height}. Это может занять некоторое время. Продолжить?",
-  "@resetScanConfirm": { "placeholders": { "height": { "type": "int" } } },
+  "@resetScanConfirm": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "scanResetTo": "Сканирование сброшено до блока {height}",
-  "@scanResetTo": { "placeholders": { "height": { "type": "int" } } },
+  "@scanResetTo": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "resetFailed": "Сброс не удался: {error}",
-  "@resetFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@resetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "enterPasswordTitle": "Введите пароль",
   "confirm": "Подтвердить",
   "seedBackup": "Резервная копия сид-фразы",
   "seedPhraseColon": "Сид-фраза:",
   "privateViewKeyColon": "Приватный ключ просмотра:",
   "iveBackedUp": "Я сохранил(а) резервную копию",
-
   "currentPasswordLabel": "Текущий пароль",
   "newPasswordLabel": "Новый пароль",
   "confirmNewPasswordLabel": "Подтвердите новый пароль",
@@ -214,7 +304,6 @@
   "currentPasswordIncorrect": "Текущий пароль неверен",
   "newPasswordsDoNotMatch": "Новые пароли не совпадают",
   "passwordChanged": "Пароль изменён",
-
   "walletManagement": "Управление кошельками",
   "switchWalletSubtitle": "Сохранить и закрыть, выбрать другой",
   "manageWallets": "Управление кошельками",
@@ -225,20 +314,23 @@
   "newName": "Новое название",
   "rename": "Переименовать",
   "deleteWalletConfirmShort": "Удалить \"{name}\"? Это действие нельзя отменить.",
-  "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
-
+  "@deleteWalletConfirmShort": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "security": "Безопасность",
   "biometricUnlock": "Биометрическая разблокировка",
   "biometricSubtitle": "Отпечаток пальца / Face ID",
   "biometricNotAvailable": "Биометрия недоступна",
   "autoLock": "Автоблокировка",
-
   "appearance": "Внешний вид",
   "theme": "Тема",
   "themeAuto": "Авто",
   "themeLight": "Светлая",
   "themeDark": "Тёмная",
-
   "preferences": "Предпочтения",
   "transactionNotifications": "Уведомления о транзакциях",
   "notificationsSubtitle": "Оповещение о входящих транзакциях",
@@ -246,13 +338,11 @@
   "autosaveSubtitle": "Сохранять после синхронизации, затем каждые 5 минут",
   "scanCoinbaseTx": "Сканировать транзакции Coinbase",
   "scanCoinbaseSubtitle": "Включить вознаграждения майнеров (по умолчанию отключено)",
-
   "dangerZone": "Опасная зона",
   "deleteCurrentWallet": "Удалить текущий кошелёк",
   "deleteCurrentWalletSubtitle": "Навсегда удалить данные кошелька",
   "deleteWalletTypeCaps": "Это навсегда удалит файл кошелька и ключи. Убедитесь, что вы сохранили резервную копию сид-фразы.\n\nВведите DELETE для подтверждения:",
   "deleteHint": "DELETE",
-
   "language": "Язык",
   "selectLanguage": "Выбрать язык",
   "languageEn": "English",
@@ -264,9 +354,14 @@
   "languageEs": "Español",
   "languagePt": "Português",
   "languageRu": "Русский",
-
   "autoLockImmediately": "Немедленно",
   "autoLock1Min": "1 минута",
   "autoLock5Min": "5 минут",
-  "autoLockNever": "Никогда"
+  "autoLockNever": "Никогда",
+  "preparedTransactionExpired": "Эта транзакция больше не действительна. Вернитесь и создайте её заново.",
+  "deleteConfirmMismatch": "Введите точно DELETE для подтверждения.",
+  "seedNotBackedUpWarning": "Вы не подтвердили резервную копию сид-фразы этого кошелька. Удаление сейчас означает, что средства невозможно будет восстановить.",
+  "wrkzReceived": "WRKZ получены",
+  "retry": "Повторить",
+  "youReceivedAmount": "Вы получили {amount}"
 }

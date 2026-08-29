@@ -777,4 +777,27 @@ class SVi extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Giao dịch này không còn hợp lệ. Hãy quay lại và tạo lại.';
+
+  @override
+  String get deleteConfirmMismatch => 'Hãy gõ chính xác DELETE để xác nhận.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Không thể xác minh mật khẩu trên thiết bị này. Hãy dùng “Đóng ví” rồi mở lại ví.';
+
+  @override
+  String get exportJsonWarningTitle => 'Xuất ví chưa mã hóa?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'Tệp xuất ra chứa khóa xem riêng tư và khóa chi tiêu riêng tư của bạn ở dạng văn bản thuần. Bất kỳ ai đọc được đều có thể tiêu tiền của bạn.\n\nChỉ lưu vào bộ nhớ bạn kiểm soát và xóa ngay khi xong.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'Mật khẩu phải có ít nhất $count ký tự';
+  }
 }

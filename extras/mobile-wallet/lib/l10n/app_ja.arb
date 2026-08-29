@@ -1,24 +1,32 @@
 {
   "@@locale": "ja",
-
   "appTitle": "PLUTON Mobile",
-
   "tabOverview": "概要",
   "tabReceive": "受取",
   "tabSend": "送金",
   "tabHistory": "履歴",
   "tabSettings": "設定",
-
   "send": "送金",
   "receive": "受取",
   "available": "利用可能",
   "locked": "ロック中",
   "total": "合計",
   "lockedAmount": "ロック中: {amount}",
-  "@lockedAmount": { "placeholders": { "amount": { "type": "String" } } },
+  "@lockedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "totalAmount": "合計: {amount}",
-  "@totalAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@totalAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "recentTransactions": "最近のトランザクション",
   "viewAll": "すべて表示",
   "noTransactionsYet": "トランザクションはまだありません",
@@ -26,14 +34,31 @@
   "pending": "保留中...",
   "justNow": "たった今",
   "minutesAgo": "{count}分前",
-  "@minutesAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "{count}時間前",
-  "@hoursAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "{count}日前",
-  "@daysAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "received": "受取済み",
   "sent": "送金済み",
-
   "networkStatus": "ネットワーク状態",
   "node": "ノード",
   "status": "ステータス",
@@ -46,13 +71,23 @@
   "viewOnly": "閲覧専用",
   "couldNotFetchStatus": "ステータスを取得できませんでした。設定のノードを確認してください。",
   "errorPrefix": "エラー: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "seedBackupWarning": "資産を守るため、設定でシードフレーズをバックアップしてください。",
   "noConnectionToDaemon": "デーモンへの接続がありません",
   "syncingPercent": "同期中 {percent}%",
-  "@syncingPercent": { "placeholders": { "percent": { "type": "String" } } },
-
+  "@syncingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "yourAddress": "あなたのアドレス",
   "errorLoadingAddress": "アドレスの読み込みエラー",
   "integratedAddress": "統合アドレス",
@@ -66,7 +101,6 @@
   "longPid": "長PID",
   "share": "共有",
   "copy": "コピー",
-
   "sweepAllFunds": "全資金をスイープ",
   "normalSend": "通常送金",
   "sweep": "スイープ",
@@ -74,9 +108,21 @@
   "scanQr": "QRをスキャン",
   "amount": "金額",
   "availableBalance": "利用可能: {amount}",
-  "@availableBalance": { "placeholders": { "amount": { "type": "String" } } },
+  "@availableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "sweepInfo": "スイープはすべてのUTXOを統合し、ロック解除済み残高（{amount}）から手数料を引いた全額を送金します。",
-  "@sweepInfo": { "placeholders": { "amount": { "type": "String" } } },
+  "@sweepInfo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "paymentIdOptional": "支払いID（任意）",
   "hexCharacters": "16または64桁の16進数",
   "mustBeHex": "16または64桁の16進数でなければなりません",
@@ -99,7 +145,6 @@
   "cancel": "キャンセル",
   "useThisAddress": "このアドレスを使用",
   "sweepFailed": "スイープに失敗しました",
-
   "searchPlaceholder": "ハッシュ、アドレス、支払いIDで検索...",
   "all": "すべて",
   "filterReceived": "受取済み",
@@ -108,14 +153,12 @@
   "address": "アドレス",
   "block": "ブロック",
   "confirmed": "確認済み",
-
   "password": "パスワード",
   "unlock": "ロック解除",
   "switchWallet": "ウォレット切替",
   "enterPasswordToUnlock": "ロック解除するパスワードを入力してください",
   "incorrectPassword": "パスワードが正しくありません",
   "enterYourPassword": "パスワードを入力してください",
-
   "plutonMobile": "PLUTON Mobile",
   "createFirstWalletSubtitle": "最初のウォレットを作成して始めましょう",
   "selectWalletSubtitle": "開くウォレットを選択してください",
@@ -123,14 +166,25 @@
   "noWalletsYet": "ウォレットはまだありません",
   "lastOpened": "最後に開いた日時",
   "createdDate": "{date}に作成",
-  "@createdDate": { "placeholders": { "date": { "type": "String" } } },
+  "@createdDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "createFirstWallet": "最初のウォレットを作成",
   "addWallet": "ウォレットを追加",
   "deleteWallet": "ウォレットを削除",
   "deleteWalletConfirm": "「{name}」を削除しますか？\n\nウォレットファイルと鍵が完全に削除されます。シードフレーズのバックアップを確認してください。",
-  "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@deleteWalletConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "削除",
-
   "createNewWallet": "新しいウォレットを作成",
   "createNewWalletSubtitle": "新しいシードフレーズでウォレットを生成する",
   "importFromSeed": "シードフレーズからインポート",
@@ -163,14 +217,13 @@
   "ssl": "SSL",
   "walletNameRequired": "ウォレット名は必須です",
   "passwordRequired": "パスワードは必須です",
-  "passwordTooShort": "パスワードは6文字以上でなければなりません",
+  "passwordTooShort": "パスワードは{count}文字以上でなければなりません",
   "passwordsDoNotMatch": "パスワードが一致しません",
   "seedRequired": "シードフレーズは必須です",
   "spendKeyRequired": "スペンド鍵は必須です",
   "viewKeyRequired": "ビュー鍵は必須です",
   "addressRequired": "アドレスは必須です",
   "daemonHostRequired": "デーモンホストは必須です",
-
   "backupSeedTitle": "シードのバックアップ",
   "backupWarning": "シードフレーズを書き留め、安全な場所に保管してください。失った場合、資金は永久に失われます。",
   "seedPhraseLabel": "シードフレーズ",
@@ -178,35 +231,72 @@
   "privateSpendKeyLabel": "秘密スペンド鍵",
   "backupConfirmCheck": "シードフレーズを安全にバックアップしました",
   "continueToWallet": "ウォレットへ進む",
-
   "sectionDaemonNode": "デーモンノード",
   "apply": "適用",
   "nodeUpdated": "ノードを {host}:{port} に更新しました",
-  "@nodeUpdated": { "placeholders": { "host": { "type": "String" }, "port": { "type": "int" } } },
+  "@nodeUpdated": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
   "hostRequired": "ホストは必須です",
   "currentWallet": "現在のウォレット — {name}",
-  "@currentWallet": { "placeholders": { "name": { "type": "String" } } },
+  "@currentWallet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "saveWallet": "ウォレットを保存",
   "walletSaved": "ウォレットを保存しました",
   "saveFailed": "保存に失敗しました: {error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "backupSeed": "シードのバックアップ",
   "changePassword": "パスワードを変更",
   "resetScanHeight": "スキャン高さをリセット",
   "reset": "リセット",
   "resetScanConfirm": "ブロック {height} からブロックチェーンを再スキャンします。時間がかかる場合があります。続けますか？",
-  "@resetScanConfirm": { "placeholders": { "height": { "type": "int" } } },
+  "@resetScanConfirm": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "scanResetTo": "スキャンをブロック {height} にリセットしました",
-  "@scanResetTo": { "placeholders": { "height": { "type": "int" } } },
+  "@scanResetTo": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "resetFailed": "リセットに失敗しました: {error}",
-  "@resetFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@resetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "enterPasswordTitle": "パスワードを入力",
   "confirm": "確認",
   "seedBackup": "シードバックアップ",
   "seedPhraseColon": "シードフレーズ:",
   "privateViewKeyColon": "秘密ビュー鍵:",
   "iveBackedUp": "バックアップ完了",
-
   "currentPasswordLabel": "現在のパスワード",
   "newPasswordLabel": "新しいパスワード",
   "confirmNewPasswordLabel": "新しいパスワードを確認",
@@ -214,7 +304,6 @@
   "currentPasswordIncorrect": "現在のパスワードが正しくありません",
   "newPasswordsDoNotMatch": "新しいパスワードが一致しません",
   "passwordChanged": "パスワードを変更しました",
-
   "walletManagement": "ウォレット管理",
   "switchWalletSubtitle": "保存して閉じ、別のウォレットを選択",
   "manageWallets": "ウォレットを管理",
@@ -225,20 +314,23 @@
   "newName": "新しい名前",
   "rename": "名前を変更",
   "deleteWalletConfirmShort": "「{name}」を削除しますか？この操作は取り消せません。",
-  "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
-
+  "@deleteWalletConfirmShort": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "security": "セキュリティ",
   "biometricUnlock": "生体認証ロック解除",
   "biometricSubtitle": "指紋 / 顔認証",
   "biometricNotAvailable": "生体認証は利用できません",
   "autoLock": "自動ロック",
-
   "appearance": "外観",
   "theme": "テーマ",
   "themeAuto": "自動",
   "themeLight": "ライト",
   "themeDark": "ダーク",
-
   "preferences": "環境設定",
   "transactionNotifications": "トランザクション通知",
   "notificationsSubtitle": "入金時にアラートを表示",
@@ -246,13 +338,11 @@
   "autosaveSubtitle": "同期後に保存し、その後5分ごとに保存",
   "scanCoinbaseTx": "コインベーストランザクションをスキャン",
   "scanCoinbaseSubtitle": "マイナー報酬を含める（デフォルトはオフ）",
-
   "dangerZone": "危険ゾーン",
   "deleteCurrentWallet": "現在のウォレットを削除",
   "deleteCurrentWalletSubtitle": "ウォレットデータを完全に削除する",
   "deleteWalletTypeCaps": "ウォレットファイルと鍵が完全に削除されます。シードフレーズのバックアップを確認してください。\n\n確認するにはDELETEと入力してください:",
   "deleteHint": "DELETE",
-
   "language": "言語",
   "selectLanguage": "言語を選択",
   "languageEn": "English",
@@ -264,9 +354,14 @@
   "languageEs": "Español",
   "languagePt": "Português",
   "languageRu": "Русский",
-
   "autoLockImmediately": "すぐに",
   "autoLock1Min": "1分",
   "autoLock5Min": "5分",
-  "autoLockNever": "しない"
+  "autoLockNever": "しない",
+  "preparedTransactionExpired": "この取引は無効になりました。戻って作成し直してください。",
+  "deleteConfirmMismatch": "確認するにはDELETEと正確に入力してください。",
+  "seedNotBackedUpWarning": "このウォレットのシードフレーズのバックアップが確認されていません。今削除すると資金を復元できません。",
+  "wrkzReceived": "WRKZを受け取りました",
+  "retry": "再試行",
+  "youReceivedAmount": "{amount} を受け取りました"
 }

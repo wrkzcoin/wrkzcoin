@@ -1,24 +1,32 @@
 {
   "@@locale": "fr",
-
   "appTitle": "PLUTON Mobile",
-
   "tabOverview": "Aperçu",
   "tabReceive": "Recevoir",
   "tabSend": "Envoyer",
   "tabHistory": "Historique",
   "tabSettings": "Paramètres",
-
   "send": "Envoyer",
   "receive": "Recevoir",
   "available": "Disponible",
   "locked": "Verrouillé",
   "total": "Total",
   "lockedAmount": "Verrouillé : {amount}",
-  "@lockedAmount": { "placeholders": { "amount": { "type": "String" } } },
+  "@lockedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "totalAmount": "Total : {amount}",
-  "@totalAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@totalAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "recentTransactions": "Transactions récentes",
   "viewAll": "Voir tout",
   "noTransactionsYet": "Aucune transaction pour l'instant",
@@ -26,14 +34,31 @@
   "pending": "En attente...",
   "justNow": "À l'instant",
   "minutesAgo": "Il y a {count}m",
-  "@minutesAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "Il y a {count}h",
-  "@hoursAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "Il y a {count}j",
-  "@daysAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "received": "Reçu",
   "sent": "Envoyé",
-
   "networkStatus": "État du réseau",
   "node": "Nœud",
   "status": "État",
@@ -46,13 +71,23 @@
   "viewOnly": "Lecture seule",
   "couldNotFetchStatus": "Impossible de récupérer l'état. Vérifiez votre nœud dans les paramètres.",
   "errorPrefix": "Erreur : {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "seedBackupWarning": "Sauvegardez votre phrase de récupération dans les paramètres pour protéger vos fonds.",
   "noConnectionToDaemon": "Pas de connexion au daemon",
   "syncingPercent": "Synchronisation {percent}%",
-  "@syncingPercent": { "placeholders": { "percent": { "type": "String" } } },
-
+  "@syncingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "yourAddress": "Votre adresse",
   "errorLoadingAddress": "Erreur lors du chargement de l'adresse",
   "integratedAddress": "Adresse intégrée",
@@ -66,7 +101,6 @@
   "longPid": "PID long",
   "share": "Partager",
   "copy": "Copier",
-
   "sweepAllFunds": "Balayer tous les fonds",
   "normalSend": "Envoi normal",
   "sweep": "Balayer",
@@ -74,9 +108,21 @@
   "scanQr": "Scanner QR",
   "amount": "Montant",
   "availableBalance": "Disponible : {amount}",
-  "@availableBalance": { "placeholders": { "amount": { "type": "String" } } },
+  "@availableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "sweepInfo": "Le balayage consolide tous les UTXOs et envoie l'intégralité de votre solde déverrouillé ({amount}) moins les frais.",
-  "@sweepInfo": { "placeholders": { "amount": { "type": "String" } } },
+  "@sweepInfo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "paymentIdOptional": "Identifiant de paiement (facultatif)",
   "hexCharacters": "16 ou 64 caractères hexadécimaux",
   "mustBeHex": "Doit comporter 16 ou 64 caractères hexadécimaux",
@@ -99,7 +145,6 @@
   "cancel": "Annuler",
   "useThisAddress": "Utiliser cette adresse",
   "sweepFailed": "Échec du balayage",
-
   "searchPlaceholder": "Rechercher par hash, adresse, identifiant de paiement...",
   "all": "Tous",
   "filterReceived": "Reçus",
@@ -108,14 +153,12 @@
   "address": "Adresse",
   "block": "Bloc",
   "confirmed": "Confirmé",
-
   "password": "Mot de passe",
   "unlock": "Déverrouiller",
   "switchWallet": "Changer de portefeuille",
   "enterPasswordToUnlock": "Entrez votre mot de passe pour déverrouiller",
   "incorrectPassword": "Mot de passe incorrect",
   "enterYourPassword": "Entrez votre mot de passe",
-
   "plutonMobile": "PLUTON Mobile",
   "createFirstWalletSubtitle": "Créez votre premier portefeuille pour commencer",
   "selectWalletSubtitle": "Sélectionnez un portefeuille à ouvrir",
@@ -123,14 +166,25 @@
   "noWalletsYet": "Aucun portefeuille pour l'instant",
   "lastOpened": "Dernière ouverture",
   "createdDate": "Créé le {date}",
-  "@createdDate": { "placeholders": { "date": { "type": "String" } } },
+  "@createdDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "createFirstWallet": "Créer le premier portefeuille",
   "addWallet": "Ajouter un portefeuille",
   "deleteWallet": "Supprimer le portefeuille",
   "deleteWalletConfirm": "Supprimer « {name} » ?\n\nCela supprimera définitivement le fichier portefeuille et les clés. Assurez-vous d'avoir sauvegardé votre phrase de récupération.",
-  "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@deleteWalletConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Supprimer",
-
   "createNewWallet": "Créer un nouveau portefeuille",
   "createNewWalletSubtitle": "Générer un nouveau portefeuille avec une nouvelle phrase de récupération",
   "importFromSeed": "Importer depuis une phrase de récupération",
@@ -163,14 +217,13 @@
   "ssl": "SSL",
   "walletNameRequired": "Le nom du portefeuille est requis",
   "passwordRequired": "Le mot de passe est requis",
-  "passwordTooShort": "Le mot de passe doit comporter au moins 6 caractères",
+  "passwordTooShort": "Le mot de passe doit comporter au moins {count} caractères",
   "passwordsDoNotMatch": "Les mots de passe ne correspondent pas",
   "seedRequired": "La phrase de récupération est requise",
   "spendKeyRequired": "La clé de dépense est requise",
   "viewKeyRequired": "La clé de visualisation est requise",
   "addressRequired": "L'adresse est requise",
   "daemonHostRequired": "L'hôte daemon est requis",
-
   "backupSeedTitle": "Sauvegarder votre phrase de récupération",
   "backupWarning": "Notez votre phrase de récupération et conservez-la en lieu sûr. Si vous la perdez, vos fonds sont perdus pour toujours.",
   "seedPhraseLabel": "Phrase de récupération",
@@ -178,35 +231,72 @@
   "privateSpendKeyLabel": "Clé de dépense privée",
   "backupConfirmCheck": "J'ai sauvegardé ma phrase de récupération en lieu sûr",
   "continueToWallet": "Continuer vers le portefeuille",
-
   "sectionDaemonNode": "Nœud daemon",
   "apply": "Appliquer",
   "nodeUpdated": "Nœud mis à jour vers {host}:{port}",
-  "@nodeUpdated": { "placeholders": { "host": { "type": "String" }, "port": { "type": "int" } } },
+  "@nodeUpdated": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
   "hostRequired": "L'hôte est requis",
   "currentWallet": "Portefeuille actuel — {name}",
-  "@currentWallet": { "placeholders": { "name": { "type": "String" } } },
+  "@currentWallet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "saveWallet": "Enregistrer le portefeuille",
   "walletSaved": "Portefeuille enregistré",
   "saveFailed": "Échec de l'enregistrement : {error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "backupSeed": "Sauvegarder la phrase de récupération",
   "changePassword": "Modifier le mot de passe",
   "resetScanHeight": "Réinitialiser la hauteur de scan",
   "reset": "Réinitialiser",
   "resetScanConfirm": "Cela va rescanner la blockchain depuis le bloc {height}. Cela peut prendre un certain temps. Continuer ?",
-  "@resetScanConfirm": { "placeholders": { "height": { "type": "int" } } },
+  "@resetScanConfirm": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "scanResetTo": "Scan réinitialisé au bloc {height}",
-  "@scanResetTo": { "placeholders": { "height": { "type": "int" } } },
+  "@scanResetTo": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "resetFailed": "Échec de la réinitialisation : {error}",
-  "@resetFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@resetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "enterPasswordTitle": "Entrez le mot de passe",
   "confirm": "Confirmer",
   "seedBackup": "Sauvegarde de la phrase de récupération",
   "seedPhraseColon": "Phrase de récupération :",
   "privateViewKeyColon": "Clé de visualisation privée :",
   "iveBackedUp": "J'ai sauvegardé",
-
   "currentPasswordLabel": "Mot de passe actuel",
   "newPasswordLabel": "Nouveau mot de passe",
   "confirmNewPasswordLabel": "Confirmer le nouveau mot de passe",
@@ -214,7 +304,6 @@
   "currentPasswordIncorrect": "Le mot de passe actuel est incorrect",
   "newPasswordsDoNotMatch": "Les nouveaux mots de passe ne correspondent pas",
   "passwordChanged": "Mot de passe modifié",
-
   "walletManagement": "Gestion des portefeuilles",
   "switchWalletSubtitle": "Enregistrer et fermer, en choisir un autre",
   "manageWallets": "Gérer les portefeuilles",
@@ -225,20 +314,23 @@
   "newName": "Nouveau nom",
   "rename": "Renommer",
   "deleteWalletConfirmShort": "Supprimer « {name} » ? Cette action est irréversible.",
-  "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
-
+  "@deleteWalletConfirmShort": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "security": "Sécurité",
   "biometricUnlock": "Déverrouillage biométrique",
   "biometricSubtitle": "Empreinte digitale / Face ID",
   "biometricNotAvailable": "Biométrie non disponible",
   "autoLock": "Verrouillage automatique",
-
   "appearance": "Apparence",
   "theme": "Thème",
   "themeAuto": "Automatique",
   "themeLight": "Clair",
   "themeDark": "Sombre",
-
   "preferences": "Préférences",
   "transactionNotifications": "Notifications de transaction",
   "notificationsSubtitle": "Alerte lors de transactions entrantes",
@@ -246,13 +338,11 @@
   "autosaveSubtitle": "Sauvegarder après la synchronisation, puis toutes les 5 minutes",
   "scanCoinbaseTx": "Scanner les transactions Coinbase",
   "scanCoinbaseSubtitle": "Inclure les récompenses de minage (désactivé par défaut)",
-
   "dangerZone": "Zone dangereuse",
   "deleteCurrentWallet": "Supprimer le portefeuille actuel",
   "deleteCurrentWalletSubtitle": "Supprimer définitivement les données du portefeuille",
   "deleteWalletTypeCaps": "Cela supprimera définitivement le fichier portefeuille et les clés. Assurez-vous d'avoir sauvegardé votre phrase de récupération.\n\nTapez DELETE pour confirmer :",
   "deleteHint": "DELETE",
-
   "language": "Langue",
   "selectLanguage": "Sélectionner la langue",
   "languageEn": "English",
@@ -264,9 +354,14 @@
   "languageEs": "Español",
   "languagePt": "Português",
   "languageRu": "Русский",
-
   "autoLockImmediately": "Immédiatement",
   "autoLock1Min": "1 minute",
   "autoLock5Min": "5 minutes",
-  "autoLockNever": "Jamais"
+  "autoLockNever": "Jamais",
+  "preparedTransactionExpired": "Cette transaction n'est plus valide. Revenez en arrière et recréez-la.",
+  "deleteConfirmMismatch": "Tapez exactement DELETE pour confirmer.",
+  "seedNotBackedUpWarning": "Vous n'avez pas confirmé la sauvegarde de la phrase de récupération de ce portefeuille. Le supprimer maintenant rendra les fonds irrécupérables.",
+  "wrkzReceived": "WRKZ reçus",
+  "retry": "Réessayer",
+  "youReceivedAmount": "Vous avez reçu {amount}"
 }

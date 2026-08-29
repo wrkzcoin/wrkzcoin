@@ -1,24 +1,32 @@
 {
   "@@locale": "zh",
-
   "appTitle": "PLUTON Mobile",
-
   "tabOverview": "概览",
   "tabReceive": "收款",
   "tabSend": "转账",
   "tabHistory": "记录",
   "tabSettings": "设置",
-
   "send": "转账",
   "receive": "收款",
   "available": "可用",
   "locked": "已锁定",
   "total": "总计",
   "lockedAmount": "已锁定：{amount}",
-  "@lockedAmount": { "placeholders": { "amount": { "type": "String" } } },
+  "@lockedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "totalAmount": "总计：{amount}",
-  "@totalAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@totalAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "recentTransactions": "最近交易",
   "viewAll": "查看全部",
   "noTransactionsYet": "暂无交易记录",
@@ -26,14 +34,31 @@
   "pending": "处理中...",
   "justNow": "刚刚",
   "minutesAgo": "{count}分钟前",
-  "@minutesAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "{count}小时前",
-  "@hoursAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "{count}天前",
-  "@daysAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "received": "已收款",
   "sent": "已转账",
-
   "networkStatus": "网络状态",
   "node": "节点",
   "status": "状态",
@@ -46,13 +71,23 @@
   "viewOnly": "仅查看",
   "couldNotFetchStatus": "无法获取状态，请在设置中检查您的节点。",
   "errorPrefix": "错误：{message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "seedBackupWarning": "请在设置中备份您的助记词以保护资金安全。",
   "noConnectionToDaemon": "无法连接到守护进程",
   "syncingPercent": "同步中 {percent}%",
-  "@syncingPercent": { "placeholders": { "percent": { "type": "String" } } },
-
+  "@syncingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "yourAddress": "您的地址",
   "errorLoadingAddress": "加载地址失败",
   "integratedAddress": "集成地址",
@@ -66,7 +101,6 @@
   "longPid": "长支付ID",
   "share": "分享",
   "copy": "复制",
-
   "sweepAllFunds": "归集全部资金",
   "normalSend": "普通转账",
   "sweep": "归集",
@@ -74,9 +108,21 @@
   "scanQr": "扫描 QR",
   "amount": "金额",
   "availableBalance": "可用：{amount}",
-  "@availableBalance": { "placeholders": { "amount": { "type": "String" } } },
+  "@availableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "sweepInfo": "归集将合并所有UTXO，并发送您全部已解锁余额（{amount}）减去手续费。",
-  "@sweepInfo": { "placeholders": { "amount": { "type": "String" } } },
+  "@sweepInfo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "paymentIdOptional": "支付ID（可选）",
   "hexCharacters": "16或64位十六进制字符",
   "mustBeHex": "必须为16或64位十六进制字符",
@@ -99,7 +145,6 @@
   "cancel": "取消",
   "useThisAddress": "使用此地址",
   "sweepFailed": "归集失败",
-
   "searchPlaceholder": "按哈希、地址、支付ID搜索...",
   "all": "全部",
   "filterReceived": "收款",
@@ -108,14 +153,12 @@
   "address": "地址",
   "block": "区块",
   "confirmed": "已确认",
-
   "password": "密码",
   "unlock": "解锁",
   "switchWallet": "切换钱包",
   "enterPasswordToUnlock": "输入密码以解锁",
   "incorrectPassword": "密码错误",
   "enterYourPassword": "输入您的密码",
-
   "plutonMobile": "PLUTON Mobile",
   "createFirstWalletSubtitle": "创建您的第一个钱包以开始使用",
   "selectWalletSubtitle": "选择一个钱包以打开",
@@ -123,14 +166,25 @@
   "noWalletsYet": "暂无钱包",
   "lastOpened": "上次打开",
   "createdDate": "创建于 {date}",
-  "@createdDate": { "placeholders": { "date": { "type": "String" } } },
+  "@createdDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "createFirstWallet": "创建第一个钱包",
   "addWallet": "添加钱包",
   "deleteWallet": "删除钱包",
-  "deleteWalletConfirm": "删除\u201c{name}\u201d？\n\n这将永久移除钱包文件和密钥，请确保已备份您的助记词。",
-  "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "deleteWalletConfirm": "删除“{name}”？\n\n这将永久移除钱包文件和密钥，请确保已备份您的助记词。",
+  "@deleteWalletConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "删除",
-
   "createNewWallet": "创建新钱包",
   "createNewWalletSubtitle": "生成一个带有全新助记词的钱包",
   "importFromSeed": "从助记词导入",
@@ -163,14 +217,13 @@
   "ssl": "SSL",
   "walletNameRequired": "钱包名称不能为空",
   "passwordRequired": "密码不能为空",
-  "passwordTooShort": "密码至少需要6个字符",
+  "passwordTooShort": "密码至少需要{count}个字符",
   "passwordsDoNotMatch": "两次密码不一致",
   "seedRequired": "助记词不能为空",
   "spendKeyRequired": "花费密钥不能为空",
   "viewKeyRequired": "查看密钥不能为空",
   "addressRequired": "地址不能为空",
   "daemonHostRequired": "守护进程主机不能为空",
-
   "backupSeedTitle": "备份助记词",
   "backupWarning": "请抄写您的助记词并妥善保管。如果丢失，您的资金将永久无法找回。",
   "seedPhraseLabel": "助记词",
@@ -178,35 +231,72 @@
   "privateSpendKeyLabel": "私有花费密钥",
   "backupConfirmCheck": "我已安全备份助记词",
   "continueToWallet": "继续进入钱包",
-
   "sectionDaemonNode": "守护节点",
   "apply": "应用",
   "nodeUpdated": "节点已更新为 {host}:{port}",
-  "@nodeUpdated": { "placeholders": { "host": { "type": "String" }, "port": { "type": "int" } } },
+  "@nodeUpdated": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
   "hostRequired": "主机不能为空",
   "currentWallet": "当前钱包 — {name}",
-  "@currentWallet": { "placeholders": { "name": { "type": "String" } } },
+  "@currentWallet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "saveWallet": "保存钱包",
   "walletSaved": "钱包已保存",
   "saveFailed": "保存失败：{error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "backupSeed": "备份助记词",
   "changePassword": "更改密码",
   "resetScanHeight": "重置扫描高度",
   "reset": "重置",
   "resetScanConfirm": "这将从区块 {height} 重新扫描区块链，可能需要一段时间。是否继续？",
-  "@resetScanConfirm": { "placeholders": { "height": { "type": "int" } } },
+  "@resetScanConfirm": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "scanResetTo": "扫描已重置到区块 {height}",
-  "@scanResetTo": { "placeholders": { "height": { "type": "int" } } },
+  "@scanResetTo": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "resetFailed": "重置失败：{error}",
-  "@resetFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@resetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "enterPasswordTitle": "输入密码",
   "confirm": "确认",
   "seedBackup": "助记词备份",
   "seedPhraseColon": "助记词：",
   "privateViewKeyColon": "私有查看密钥：",
   "iveBackedUp": "已完成备份",
-
   "currentPasswordLabel": "当前密码",
   "newPasswordLabel": "新密码",
   "confirmNewPasswordLabel": "确认新密码",
@@ -214,7 +304,6 @@
   "currentPasswordIncorrect": "当前密码不正确",
   "newPasswordsDoNotMatch": "两次新密码不一致",
   "passwordChanged": "密码已更改",
-
   "walletManagement": "钱包管理",
   "switchWalletSubtitle": "保存并关闭，选择其他钱包",
   "manageWallets": "管理钱包",
@@ -224,21 +313,24 @@
   "renameWallet": "重命名钱包",
   "newName": "新名称",
   "rename": "重命名",
-  "deleteWalletConfirmShort": "删除\u201c{name}\u201d？此操作无法撤销。",
-  "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
-
+  "deleteWalletConfirmShort": "删除“{name}”？此操作无法撤销。",
+  "@deleteWalletConfirmShort": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "security": "安全",
   "biometricUnlock": "生物识别解锁",
   "biometricSubtitle": "指纹 / 面容ID",
   "biometricNotAvailable": "生物识别不可用",
   "autoLock": "自动锁定",
-
   "appearance": "外观",
   "theme": "主题",
   "themeAuto": "自动",
   "themeLight": "浅色",
   "themeDark": "深色",
-
   "preferences": "偏好设置",
   "transactionNotifications": "交易通知",
   "notificationsSubtitle": "收到入账交易时提醒",
@@ -246,13 +338,11 @@
   "autosaveSubtitle": "同步后保存，之后每5分钟保存一次",
   "scanCoinbaseTx": "扫描Coinbase交易",
   "scanCoinbaseSubtitle": "包括矿工奖励（默认关闭）",
-
   "dangerZone": "危险区域",
   "deleteCurrentWallet": "删除当前钱包",
   "deleteCurrentWalletSubtitle": "永久删除钱包数据",
   "deleteWalletTypeCaps": "这将永久删除钱包文件和密钥，请确保已备份助记词。\n\n输入 DELETE 以确认：",
   "deleteHint": "DELETE",
-
   "language": "语言",
   "selectLanguage": "选择语言",
   "languageEn": "English",
@@ -264,9 +354,14 @@
   "languageEs": "Español",
   "languagePt": "Português",
   "languageRu": "Русский",
-
   "autoLockImmediately": "立即",
   "autoLock1Min": "1分钟",
   "autoLock5Min": "5分钟",
-  "autoLockNever": "从不"
+  "autoLockNever": "从不",
+  "preparedTransactionExpired": "该交易已失效，请返回重新创建。",
+  "deleteConfirmMismatch": "请准确输入 DELETE 以确认。",
+  "seedNotBackedUpWarning": "您尚未确认备份该钱包的助记词。现在删除将无法找回资金。",
+  "wrkzReceived": "已收到 WRKZ",
+  "retry": "重试",
+  "youReceivedAmount": "您收到了 {amount}"
 }

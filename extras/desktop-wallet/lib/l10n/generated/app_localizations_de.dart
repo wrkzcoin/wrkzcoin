@@ -785,4 +785,28 @@ class SDe extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Diese Transaktion ist nicht mehr gültig. Gehen Sie zurück und erstellen Sie sie erneut.';
+
+  @override
+  String get deleteConfirmMismatch =>
+      'Geben Sie genau DELETE ein, um zu bestätigen.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Das Passwort kann auf diesem Gerät nicht überprüft werden. Verwenden Sie „Wallet stattdessen schließen“ und öffnen Sie die Wallet erneut.';
+
+  @override
+  String get exportJsonWarningTitle => 'Unverschlüsselte Wallet exportieren?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'Die exportierte Datei enthält Ihren privaten View-Key und Ihre privaten Spend-Keys im Klartext. Wer sie liest, kann Ihr Guthaben ausgeben.\n\nSpeichern Sie sie nur auf einem Datenträger, den Sie kontrollieren, und löschen Sie sie danach sofort.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'Das Passwort muss mindestens $count Zeichen lang sein';
+  }
 }

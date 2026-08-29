@@ -787,4 +787,28 @@ class SPt extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Esta transação já não é válida. Volte atrás e crie-a novamente.';
+
+  @override
+  String get deleteConfirmMismatch =>
+      'Digite exatamente DELETE para confirmar.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Não é possível verificar a palavra-passe neste dispositivo. Use «Fechar carteira» e abra a carteira novamente.';
+
+  @override
+  String get exportJsonWarningTitle => 'Exportar a carteira não encriptada?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'O ficheiro exportado contém a sua chave de visualização privada e as chaves de gasto privadas em texto simples. Quem o ler pode gastar os seus fundos.\n\nGuarde-o apenas em armazenamento que controla e elimine-o assim que terminar.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'A senha deve ter pelo menos $count caracteres';
+  }
 }
