@@ -2,19 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/address_validator.dart';
 import '../../shared/widgets/copy_button.dart';
 import 'address_book_provider.dart';
 
-// ── WRKZ address validation ───────────────────────────────────────────────────
-// Standard: 98 chars | Short integrated: 120 chars | Long integrated: 186 chars
-// All start with "Wrkz" and consist of base58 characters.
-bool _isValidWrkzAddress(String address) {
-  const validLengths = {98, 120, 186};
-  if (!validLengths.contains(address.length)) return false;
-  if (!address.startsWith('Wrkz')) return false;
-  return RegExp(r'^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$')
-      .hasMatch(address);
-}
+// Address validation lives in shared/utils/address_validator.dart so the
+// transfer screen and this one cannot drift apart.
 
 class AddressBookScreen extends ConsumerWidget {
   const AddressBookScreen({super.key});
@@ -68,7 +61,7 @@ class AddressBookScreen extends ConsumerWidget {
     final noteCtrl = TextEditingController();
     String? error;
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
@@ -100,12 +93,22 @@ class AddressBookScreen extends ConsumerWidget {
                   setState(() => error = tr?.nameAndAddressRequired ?? 'Name and address are required');
                   return;
                 }
-                if (!_isValidWrkzAddress(addr)) {
+                if (!isValidAddress(addr)) {
                   setState(() => error =
                       tr?.invalidWrkzAddress ??
                       'Invalid WRKZ address. Must be 98 (standard), '
                       '120 (short integrated), or 186 (long integrated) '
                       'characters starting with "Wrkz".');
+                  return;
+                }
+                // Saving the same address twice under two labels is almost
+                // always a mistake, and makes the picker ambiguous.
+                final existing = ref.read(addressBookProvider)
+                    .where((e) => e.address == addr)
+                    .firstOrNull;
+                if (existing != null) {
+                  setState(() => error = tr?.addressAlreadySaved(existing.name) ??
+                      'Already saved as "${existing.name}"');
                   return;
                 }
                 ref.read(addressBookProvider.notifier).add(
@@ -120,7 +123,12 @@ class AddressBookScreen extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      // Dialog-local controllers were never disposed.
+      nameCtrl.dispose();
+      addrCtrl.dispose();
+      noteCtrl.dispose();
+    });
   }
 }
 
@@ -186,7 +194,7 @@ class _EntryCard extends ConsumerWidget {
     final nameCtrl = TextEditingController(text: entry.name);
     final noteCtrl = TextEditingController(text: entry.note ?? '');
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr?.editEntry ?? 'Edit Entry'),
@@ -216,13 +224,16 @@ class _EntryCard extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ).whenComplete(() {
+      nameCtrl.dispose();
+      noteCtrl.dispose();
+    });
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref) {
     final tr = S.of(context);
 
-    showDialog(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr?.deleteEntry ?? 'Delete Entry'),

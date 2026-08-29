@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -37,22 +38,37 @@ class AddressBookEntry {
 
 class AddressBookNotifier extends Notifier<List<AddressBookEntry>> {
   static const _storage = FlutterSecureStorage();
+  static final _rnd = Random.secure();
+
+  /// In-flight initial load. Mutations wait on it so an entry added before the
+  /// read completes is not overwritten when the stored list finally lands.
+  Future<void>? _loading;
 
   @override
   List<AddressBookEntry> build() {
-    _load();
+    _loading = _load();
     return [];
   }
 
   Future<void> _load() async {
-    final raw = await _storage.read(key: _kStorageKey);
-    if (raw == null) return;
     try {
+      final raw = await _storage.read(key: _kStorageKey);
+      if (raw == null) return;
       final list = jsonDecode(raw) as List<dynamic>;
       state = list
-          .map((e) => AddressBookEntry.fromJson(e as Map<String, dynamic>))
+          .whereType<Map>()
+          .map((e) => AddressBookEntry.fromJson(Map<String, dynamic>.from(e)))
           .toList();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[addressbook] load failed: $e');
+    }
+  }
+
+  Future<void> _ready() async {
+    if (_loading != null) {
+      await _loading;
+      _loading = null;
+    }
   }
 
   Future<void> _persist() async {
@@ -62,9 +78,17 @@ class AddressBookNotifier extends Notifier<List<AddressBookEntry>> {
     );
   }
 
+  /// Millisecond timestamps collide when two entries are added in the same
+  /// tick (or imported in a loop), and a duplicate id makes remove() delete
+  /// both. Suffix with randomness.
+  String _newId() =>
+      '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}'
+      '-${_rnd.nextInt(0x100000).toRadixString(36)}';
+
   Future<void> add(String name, String address, {String? note}) async {
+    await _ready();
     final entry = AddressBookEntry(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _newId(),
       name: name,
       address: address,
       note: note,
@@ -74,11 +98,13 @@ class AddressBookNotifier extends Notifier<List<AddressBookEntry>> {
   }
 
   Future<void> remove(String id) async {
+    await _ready();
     state = state.where((e) => e.id != id).toList();
     await _persist();
   }
 
   Future<void> update(String id, {String? name, String? note}) async {
+    await _ready();
     state = state.map((e) {
       if (e.id != id) return e;
       return AddressBookEntry(
