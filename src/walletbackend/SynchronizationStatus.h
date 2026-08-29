@@ -7,7 +7,7 @@
 
 #include "CryptoTypes.h"
 #include "JsonHelper.h"
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 #include <deque>
 #include <vector>

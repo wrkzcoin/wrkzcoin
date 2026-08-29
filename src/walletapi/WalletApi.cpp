@@ -55,7 +55,8 @@ int main(int argc, char **argv)
         /* Init the API */
         api = std::make_shared<ApiDispatcher>(
             config.port, config.rpcBindIp, config.rpcBindIpv6Address, config.rpcUseIpv6,
-            config.rpcPassword, config.corsHeader, config.threads, config.txNotify, config.notifyDuringSync);
+            config.rpcPassword, config.corsHeader, config.threads, config.txNotify, config.notifyDuringSync,
+            config.rpcIpcPath, config.rpcIpcMode, config.rpcIpcGroup);
 
         /* Launch the API */
         apiThread = std::thread(&ApiDispatcher::start, api.get());
@@ -75,6 +76,16 @@ int main(int argc, char **argv)
         {
             std::cout << "The api is also listening on http://[" << config.rpcBindIpv6Address
                       << "]:" << std::to_string(config.port) << std::endl;
+        }
+
+        /* Empty if the bind failed, in which case start() has already warned
+           and there is nothing to announce. */
+        const std::string ipcPath = api->getIpcPath();
+
+        if (!ipcPath.empty())
+        {
+            std::cout << "The api is also listening on the local " << Common::Ipc::describe(ipcPath) << " (mode "
+                      << Common::Ipc::formatMode(config.rpcIpcMode) << ")." << std::endl;
         }
 
         if (!config.noConsole)

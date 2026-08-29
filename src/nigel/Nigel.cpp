@@ -10,6 +10,7 @@
 ////////////////////////
 
 #include <common/CryptoNoteTools.h>
+#include <common/IpcSocket.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
@@ -71,7 +72,21 @@ inline std::shared_ptr<httplib::Client> getClient(
         false;
 #endif
 
-    auto client = std::make_shared<httplib::Client>(daemonBaseUrl(daemonHost, daemonPort, useSsl));
+    /* A local socket is addressed by path, so it cannot go through the URL
+       constructor - that would try to parse the path as a scheme and host.
+       There is no TLS on a Unix socket either; the kernel already restricts
+       who can open it. */
+    const bool useIpc = Utilities::isIpcDaemonAddress(daemonHost);
+
+    auto client = useIpc
+        ? std::make_shared<httplib::Client>(Utilities::ipcDaemonPath(daemonHost), 80)
+        : std::make_shared<httplib::Client>(daemonBaseUrl(daemonHost, daemonPort, useSsl));
+
+    if (useIpc)
+    {
+        Common::Ipc::configureClient(*client);
+    }
+
     client->set_connection_timeout(timeout);
     client->set_read_timeout(timeout);
     client->set_write_timeout(timeout);
@@ -353,6 +368,8 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     stop();
 
     m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+    m_maxBlockCount = WalletConfig::maxBlocksPerSyncRequest;
+    m_lastRequestRateLimited = false;
     m_localDaemonBlockCount = 0;
     m_networkBlockCount = 0;
     m_peerCount = 0;
@@ -373,15 +390,50 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
 
 void Nigel::decreaseRequestedBlockCount()
 {
+    /* A rate limited request tells us nothing about how much data the daemon
+       can produce in time - it never got that far. Halving the batch here
+       would make things strictly worse, since serving the same range then
+       costs twice as many rate limit slots. */
+    if (m_lastRequestRateLimited)
+    {
+        return;
+    }
+
     if (m_blockCount > 1)
     {
         m_blockCount = m_blockCount / 2;
     }
 }
 
+/* Called after a successful fetch. Rather than snapping back to the default,
+   grow towards the negotiated ceiling - larger batches mean fewer round trips
+   and fewer rate limit slots consumed for the same number of blocks. */
 void Nigel::resetRequestedBlockCount()
 {
-    m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+    const uint64_t ceiling = m_maxBlockCount.load();
+
+    uint64_t current = m_blockCount.load();
+
+    if (current < CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT)
+    {
+        current = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+    }
+    else if (current < ceiling)
+    {
+        current = std::min(current * 2, ceiling);
+    }
+
+    m_blockCount = std::min(current, ceiling);
+}
+
+bool Nigel::lastRequestWasRateLimited() const
+{
+    return m_lastRequestRateLimited;
+}
+
+uint64_t Nigel::requestedBlockCount() const
+{
+    return m_blockCount;
 }
 
 std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<WalletTypes::TopBlock>>
@@ -397,7 +449,12 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
               {"startHeight", startHeight},
               {"startTimestamp", startTimestamp},
               {"blockCount", m_blockCount.load()},
-              {"skipCoinbaseTransactions", skipCoinbaseTransactions}};
+              {"skipCoinbaseTransactions", skipCoinbaseTransactions},
+              /* Ring member offsets are only needed to build a spend, which we
+                 do from get_random_outs - the sync path never reads them.
+                 Daemons that don't know the flag send them anyway, and our
+                 deserializer treats key_offsets as optional either way. */
+              {"skipInputKeyOffsets", true}};
 
     const std::string endpoint = m_useRawBlocks ? "/getrawblocks" : "/getwalletsyncdata";
 
@@ -421,6 +478,46 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
 #else
     const auto res = m_nodeClient->Post(endpoint, toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
+
+    m_lastRequestRateLimited = false;
+
+    /* The daemon's --rpc-max-block-count is lower than what we asked for.
+       Remember its ceiling so we stop overshooting, and retry immediately at
+       a size it will accept. Daemons old enough not to have the option clamp
+       silently instead, which costs us nothing but a smaller batch. */
+    if (res && res->status == 400 && m_blockCount > CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT)
+    {
+        const uint64_t rejected = m_blockCount.load();
+
+        const uint64_t reduced = std::max<uint64_t>(CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, rejected / 2);
+
+        m_maxBlockCount = reduced;
+        m_blockCount = reduced;
+
+        Logger::logger.log(
+            "Daemon rejected a request for " + std::to_string(rejected) + " blocks. Reducing to "
+                + std::to_string(reduced) + " blocks per request.",
+            Logger::DEBUG,
+            { Logger::SYNC, Logger::DAEMON }
+        );
+
+        return getWalletSyncData(blockHashCheckpoints, startHeight, startTimestamp, skipCoinbaseTransactions);
+    }
+
+    /* Rate limited. Flag it so the downloader waits rather than shrinking the
+       batch, which would only consume more rate limit slots per block. */
+    if (res && res->status == 429)
+    {
+        m_lastRequestRateLimited = true;
+
+        Logger::logger.log(
+            "Daemon rate limited our sync request. Backing off before retrying.",
+            Logger::DEBUG,
+            { Logger::SYNC, Logger::DAEMON }
+        );
+
+        return { false, {}, std::nullopt };
+    }
 
     /* Daemon doesn't support /getrawblocks, or pruned/raw-block path failed:
        fall back to /getwalletsyncdata reconstruction path. */

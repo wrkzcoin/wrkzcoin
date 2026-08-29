@@ -256,11 +256,16 @@ namespace CryptoNote
         /* Batched equivalent of getWalletSyncBlock over the half open range
          * [startIndex, endIndex). Costs two database round trips for the whole
          * range instead of two per block. Blocks that are missing from the
-         * database are skipped, as they are by the single block reader. */
+         * database are skipped, as they are by the single block reader.
+         *
+         * The range is additionally cut short once maxResponseBytes worth of
+         * block data has been assembled, so a large block count stays safe
+         * during a transaction flood. At least one block is always returned. */
         std::vector<WalletTypes::WalletBlockInfo> getWalletSyncBlocks(
             uint32_t startIndex,
             uint32_t endIndex,
-            bool skipCoinbaseTransactions) const;
+            bool skipCoinbaseTransactions,
+            uint64_t maxResponseBytes) const;
 
         std::vector<Crypto::Hash> getTransactionHashesByBlockRange(uint64_t startHeight, uint64_t endHeight) const;
 
@@ -294,6 +299,17 @@ namespace CryptoNote
         std::deque<CachedBlockInfo> unitsCache;
 
         const size_t unitsCacheSize = 1000;
+
+        /* The midnight we last confirmed has a closest-timestamp-block-index
+           entry in the database. One entry is kept per day, so consecutive
+           blocks during a sync all ask about the same midnight; remembering
+           the answer turns a read per block into a read per day. Cleared by
+           deleteClosestTimestampBlockIndex(), which is what removes them. */
+        std::optional<uint64_t> knownClosestTimestampMidnight;
+
+        /* The top block's cached info, served from unitsCache when it can be
+           shown to be current. */
+        CachedBlockInfo getTopBlockInfo() const;
 
         struct ExtendedPushedBlockInfo;
 

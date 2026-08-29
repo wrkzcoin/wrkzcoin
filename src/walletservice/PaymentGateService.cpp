@@ -7,6 +7,7 @@
 #include "PaymentGateService.h"
 
 #include "PaymentServiceJsonRpcServer.h"
+#include "common/IpcSocket.h"
 #include "common/ScopeExit.h"
 #include "common/SignalHandler.h"
 #include "common/Util.h"
@@ -198,7 +199,22 @@ void PaymentGateService::runWalletService(const CryptoNote::Currency &currency, 
     }
 
     PaymentService::PaymentServiceJsonRpcServer rpcServer(*dispatcher, *stopEvent, *service, logger, config);
-    rpcServer.start(config.serviceConfig.bindAddress, config.serviceConfig.bindPort);
+
+    if (!config.serviceConfig.bindIpcPath.empty())
+    {
+        Logging::LoggerRef(logger, "PaymentGateService")(Logging::INFO, Logging::BRIGHT_WHITE)
+            << "Starting JSON-RPC server on local " << Common::Ipc::describe(config.serviceConfig.bindIpcPath)
+            << " (mode " << Common::Ipc::formatMode(config.serviceConfig.bindIpcMode) << ")";
+
+        rpcServer.startIpc(
+            config.serviceConfig.bindIpcPath,
+            config.serviceConfig.bindIpcMode,
+            config.serviceConfig.bindIpcGroup);
+    }
+    else
+    {
+        rpcServer.start(config.serviceConfig.bindAddress, config.serviceConfig.bindPort);
+    }
 
     Logging::LoggerRef(logger, "PaymentGateService")(Logging::INFO, Logging::BRIGHT_WHITE)
         << "JSON-RPC server stopped, stopping wallet service...";

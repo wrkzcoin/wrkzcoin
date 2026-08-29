@@ -119,12 +119,26 @@ namespace Logger
         throw std::invalid_argument("Invalid log category given");
     }
 
-    void Logger::log(const std::string message, const LogLevel level, const std::vector<LogCategory> categories) const
+    void Logger::log(
+        const std::string &message,
+        const LogLevel level,
+        const std::vector<LogCategory> &categories) const
     {
         if (level == DISABLED)
         {
             return;
         }
+
+        /* Bail out before formatting anything. This used to build the
+           timestamp, run it through localtime and assemble the whole prefix
+           through a stringstream first, and only then check the level - so
+           every suppressed DEBUG line in the block sync loop still paid for a
+           localtime call and several allocations, on every block. */
+        if (level > m_logLevel)
+        {
+            return;
+        }
+
         const std::time_t now = std::time(nullptr);
         std::stringstream output;
         output << "[" << std::put_time(std::localtime(&now), "%H:%M:%S") << "] "
@@ -134,17 +148,14 @@ namespace Logger
             output << " [" << logCategoryToString(category) << "]";
         }
         output << ": " << message;
-        if (level <= m_logLevel)
+        /* If the user provides a callback, log to that instead */
+        if (m_callback)
         {
-            /* If the user provides a callback, log to that instead */
-            if (m_callback)
-            {
-                m_callback(output.str(), message, level, categories);
-            }
-            else
-            {
-                std::cout << output.str() << std::endl;
-            }
+            m_callback(output.str(), message, level, categories);
+        }
+        else
+        {
+            std::cout << output.str() << std::endl;
         }
     }
 

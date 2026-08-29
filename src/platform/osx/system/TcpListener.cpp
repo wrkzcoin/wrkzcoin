@@ -17,6 +17,8 @@
 #include <sys/errno.h>
 #include <sys/event.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/types.h>
 #include <system/ErrorMessage.h>
 #include <system/InterruptedException.h>
@@ -165,6 +167,105 @@ namespace System
             if (close(listener) == -1)
             {
                 message = "close failed, " + lastErrorMessage();
+            }
+        }
+
+        throw std::runtime_error("TcpListener::TcpListener, " + message);
+    }
+
+    TcpListener::TcpListener(Dispatcher &dispatcher, const std::string &socketPath, uint32_t socketMode):
+        dispatcher(&dispatcher)
+    {
+        sockaddr_un address = {};
+
+        if (socketPath.empty() || socketPath.size() >= sizeof(address.sun_path))
+        {
+            throw std::runtime_error("TcpListener::TcpListener, unusable local socket path: " + socketPath);
+        }
+
+        address.sun_family = AF_UNIX;
+        std::memcpy(address.sun_path, socketPath.data(), socketPath.size());
+
+        /* Linux spells an abstract socket with a leading NUL, which has no
+           filesystem entry and therefore no permissions of its own. */
+        const bool abstract = socketPath.front() == '@';
+
+        if (abstract)
+        {
+            address.sun_path[0] = '\0';
+        }
+
+        const socklen_t addressLength =
+            static_cast<socklen_t>(sizeof(address) - sizeof(address.sun_path) + socketPath.size());
+
+        /* Only a bind we performed ourselves may be unwound on the error
+           path; unlinking a path we never created could take out a socket
+           belonging to somebody else. */
+        bool created = false;
+
+        std::string message;
+        listener = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (listener == -1)
+        {
+            message = "socket failed, " + lastErrorMessage();
+        }
+        else
+        {
+            int flags = fcntl(listener, F_GETFL, 0);
+            if (flags == -1 || fcntl(listener, F_SETFL, flags | O_NONBLOCK) == -1)
+            {
+                message = "fcntl failed, " + lastErrorMessage();
+            }
+            else
+            {
+                /* A local socket exists only once bind() has created it, so a
+                   chmod afterwards would leave a window in which it carries
+                   whatever the ambient umask allowed. Deriving the umask from
+                   the requested mode closes that window; the caller still
+                   chmods afterwards to make the result exact. umask is process
+                   wide, so this has to run before other listeners come up. */
+                const mode_t previousUmask = ::umask(static_cast<mode_t>((~socketMode) & 0777));
+
+                const bool bound = bind(listener, reinterpret_cast<sockaddr *>(&address), addressLength) == 0;
+
+                ::umask(previousUmask);
+
+                created = bound && !abstract;
+
+                if (!bound)
+                {
+                    message = "bind failed, " + lastErrorMessage();
+                }
+                else if (listen(listener, SOMAXCONN) != 0)
+                {
+                    message = "listen failed, " + lastErrorMessage();
+                }
+                else
+                {
+                    struct kevent event;
+                    EV_SET(&event, listener, EVFILT_READ, EV_ADD | EV_DISABLE | EV_CLEAR, 0, SOMAXCONN, NULL);
+
+                    if (kevent(dispatcher.getKqueue(), &event, 1, NULL, 0, NULL) == -1)
+                    {
+                        message = "kevent failed, " + lastErrorMessage();
+                    }
+                    else
+                    {
+                        context = nullptr;
+                        return;
+                    }
+                }
+            }
+
+            int result = close(listener);
+            if (result)
+            {
+            }
+            assert(result != -1);
+
+            if (created)
+            {
+                ::unlink(socketPath.c_str());
             }
         }
 

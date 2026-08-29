@@ -295,6 +295,21 @@ namespace CryptoNote
         const uint64_t CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_SECONDS =
             DIFFICULTY_TARGET * CRYPTONOTE_LOCKED_TX_ALLOWED_DELTA_BLOCKS;
 
+        /* Ceiling on the total serialized size of the transaction pool. Without
+           one, a flood is bounded only by CRYPTONOTE_MEMPOOL_TX_LIVETIME below,
+           so a node can be driven to hold a day's worth of spam in memory (and
+           serve it to every peer that asks for the pool). When the pool is over
+           budget the lowest fee per byte transactions are evicted first, and an
+           incoming transaction that is itself the least profitable is rejected
+           rather than displacing something better. */
+        const uint64_t CRYPTONOTE_MEMPOOL_MAX_SIZE_BYTES = 64ULL * 1024 * 1024;
+
+        /* When the pool goes over budget it is trimmed down to this percentage
+           of the cap rather than just back under it, so the sort that picks the
+           victims is amortised over the admissions that follow instead of
+           running again for every single one. */
+        const uint64_t CRYPTONOTE_MEMPOOL_EVICT_TO_PERCENT = 90;
+
         const uint64_t CRYPTONOTE_MEMPOOL_TX_LIVETIME = 60 * 60 * 24; // seconds, one day
         const uint64_t CRYPTONOTE_MEMPOOL_TX_FROM_ALT_BLOCK_LIVETIME = 60 * 60 * 24 * 7; // seconds, one week
 
@@ -435,6 +450,21 @@ namespace CryptoNote
 
     const size_t BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT = 10000; // by default, blocks ids count in synchronizing
     const uint64_t BLOCKS_SYNCHRONIZING_DEFAULT_COUNT = 100; // by default, blocks count in blocks downloading
+
+    /* Absolute ceiling on how many blocks one wallet sync RPC call may return,
+       regardless of what the caller asks for. Operators tune the real limit
+       with --rpc-max-block-count; this only stops a pathological request from
+       trying to materialise an unbounded range in memory. */
+    const uint64_t BLOCKS_SYNCHRONIZING_MAX_COUNT = 10000;
+
+    /* Companion byte budget for the block count above, measured against the
+       in-memory size of the assembled blocks. A block count that is
+       comfortable on a quiet chain can be enormous during a transaction flood,
+       so the response stops early once it reaches this size. At least one
+       block is always returned, so sync can never stall on an oversized
+       block. JSON encoding inflates this several fold on the wire, which is
+       why the budget sits well under the wallet's own body size limit. */
+    const uint64_t BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES = 8ULL * 1024 * 1024;
     const size_t COMMAND_RPC_GET_BLOCKS_FAST_MAX_COUNT = 1000;
 
     const int P2P_DEFAULT_PORT = 17855;

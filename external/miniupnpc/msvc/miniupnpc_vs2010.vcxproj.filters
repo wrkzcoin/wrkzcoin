@@ -40,12 +40,12 @@
     <ClCompile Include="..\upnperrors.c">
       <Filter>sources</Filter>
     </ClCompile>
+    <ClCompile Include="..\addr_is_reserved.c">
+      <Filter>sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\connecthostport.h">
-      <Filter>headers</Filter>
-    </ClInclude>
-    <ClInclude Include="..\declspec.h">
       <Filter>headers</Filter>
     </ClInclude>
     <ClInclude Include="..\igd_desc_parse.h">
@@ -99,6 +99,15 @@
     <ClInclude Include="..\miniwget_private.h">
       <Filter>headers</Filter>
     </ClInclude>
+    <ClInclude Include="..\addr_is_reserved.h">
+      <Filter>headers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\win32_snprintf.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="..\rc_version.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="sources">
@@ -107,5 +116,18 @@
     <Filter Include="headers">
       <UniqueIdentifier>{2b3996de-1bc4-418b-8a83-a5f34fdf0df5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="scripts">
+      <UniqueIdentifier>{45dbc39d-c3ca-4a75-adf0-76070e20415a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="genminiupnpcstrings.vbs">
+      <Filter>scripts</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="../miniupnpc.rc">
+      <Filter>Fichiers de ressources</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

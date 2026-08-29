@@ -11,6 +11,7 @@
 #include "crypto/multisig.h"
 
 #include "ContainerTests.h"
+#include "WalletCryptoTests.h"
 
 #include <assert.h>
 #include <chrono>
@@ -377,6 +378,8 @@ int main(int argc, char **argv)
         std::cout << getProjectCLIHeader() << std::endl;
 
         ContainerTests::runAll();
+
+        WalletCryptoTests::runAll();
 
         std::cout << std::endl << "Test Crypto Primitives" << std::endl << std::endl;
 

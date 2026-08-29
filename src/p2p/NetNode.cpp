@@ -28,8 +28,8 @@
 #include <fstream>
 #include <future>
 #include <iomanip>
-#include <miniupnpc/miniupnpc.h>
-#include <miniupnpc/upnpcommands.h>
+#include <miniupnpc.h>
+#include <upnpcommands.h>
 #include <system/Context.h>
 #include <system/ContextGroupTimeout.h>
 #include <system/EventLock.h>
@@ -79,11 +79,13 @@ namespace
         UPNPUrls urls;
         IGDdatas igdData;
         char lanAddress[64];
-        result = UPNP_GetValidIGD(deviceList, &urls, &igdData, lanAddress, sizeof lanAddress);
+        char wanAddress[64];
+        result = UPNP_GetValidIGD(
+            deviceList, &urls, &igdData, lanAddress, sizeof lanAddress, wanAddress, sizeof wanAddress);
         freeUPNPDevlist(deviceList);
-        if (result != 0)
+        if (result != UPNP_NO_IGD)
         {
-            if (result == 1)
+            if (result == UPNP_CONNECTED_IGD)
             {
                 std::ostringstream portString;
                 portString << port;
@@ -106,11 +108,15 @@ namespace
                     logger(INFO) << "Added IGD port mapping.";
                 }
             }
-            else if (result == 2)
+            else if (result == UPNP_PRIVATEIP_IGD)
+            {
+                logger(INFO) << "IGD was found but its external address is reserved (double NAT).";
+            }
+            else if (result == UPNP_DISCONNECTED_IGD)
             {
                 logger(INFO) << "IGD was found but reported as not connected.";
             }
-            else if (result == 3)
+            else if (result == UPNP_UNKNOWN_DEVICE)
             {
                 logger(INFO) << "UPnP device was found but not recognized as IGD.";
             }

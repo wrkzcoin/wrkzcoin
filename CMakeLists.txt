@@ -1,4 +1,4 @@
-# 3.16 is needed for target_precompile_headers(); CONFIGURE_DEPENDS globs,
+﻿# 3.16 is needed for target_precompile_headers(); CONFIGURE_DEPENDS globs,
 # $CACHE{} and CMAKE_CXX_STANDARD 20 already required >= 3.12.
 cmake_minimum_required(VERSION 3.16)
 
@@ -29,6 +29,7 @@ set(PORTABLE_BINARY ON CACHE BOOL "Prefer portable CPU flags for binaries distri
 set(ENABLE_X86_AESNI OFF CACHE BOOL "Enable x86 AES-NI compile flag (-maes); may reduce CPU portability")
 set(FULLY_STATIC OFF CACHE BOOL "Attempt fully static executable linkage on Linux (requires static system libs)")
 set(ENABLE_ZMQ ON CACHE BOOL "Enable daemon ZMQ publisher support")
+option(WRKZ_SYSTEM_ROCKSDB "Link a system-provided RocksDB instead of building the bundled copy" OFF)
 set(ROCKSDB_BUILD_PARALLEL "" CACHE STRING "Parallel jobs for RocksDB sub-build (empty=auto)")
 set(ROCKSDB_BUILD_PARALLEL_CAP "8" CACHE STRING "Max auto-detected parallel jobs for RocksDB sub-build when no explicit parallel value is provided (MAKEFLAGS -jN / CMAKE_BUILD_PARALLEL_LEVEL / ROCKSDB_BUILD_PARALLEL take precedence)")
 option(WRKZ_BUILD_EXECUTABLES "Build CLI/daemon executables" ON)
@@ -317,16 +318,12 @@ if (NOT MSVC)
 
     if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64" OR "${LABEL}" STREQUAL "aarch64" OR WRKZ_COMPILER_TARGETS_AARCH64)
         set(MAES_FLAG "")
-        set(CRYPTOPP_AARCH64 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch64")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" OR WRKZ_COMPILER_TARGETS_ARMHF)
         set(MAES_FLAG "")
-        set(CRYPTOPP_ARMHF ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabihf")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm" OR "${LABEL}" STREQUAL "aarch32-linux-gnueabi" OR WRKZ_COMPILER_TARGETS_ARMEL)
         set(MAES_FLAG "")
-        set(CRYPTOPP_ARM ON CACHE BOOL FORCE "Tell CryptoPP that we are building for aarch32-linux-gnueabi")
     elseif (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" AND "${LABEL}" STREQUAL "Ubuntu GCC 8 x86")
         set(MAES_FLAG "")
-        set(CRYPTOPP_I386 ON CACHE BOOL FORCE "Tell CryptoPP that we are building for i386")
     elseif (${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64" AND NOT WRKZ_COMPILER_TARGETS_ARM AND NOT "${LABEL}" STREQUAL "aarch64" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabihf" AND NOT "${LABEL}" STREQUAL "aarch32-linux-gnueabi")
         if (ENABLE_X86_AESNI AND NOT NO_AES)
             set(MAES_FLAG "-maes")
@@ -344,9 +341,6 @@ if (NOT MSVC)
         if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
             # Need to build against libc++ instead of libstc++ on apple
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -nostdinc++ -I/usr/local/opt/llvm/include/c++/v1 -nodefaultlibs -lc++ -lc++abi -lm -lc -lgcc -lgcc_eh")
-
-            # Need these flags so gcc OSX works on the cryptopp ASM - https://groups.google.com/forum/#!topic/cryptopp-users/po8yO-vYaac
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCRYPTOPP_CLANG_INTEGRATED_ASSEMBLER=1")
 
         elseif (CMAKE_C_COMPILER_ID STREQUAL "Clang")
             # Need to link against the llvm libc++ library, default is too old for std::filesystem
@@ -599,7 +593,7 @@ if (EMSCRIPTEN AND WRKZ_BUILD_WALLET_WASM AND WRKZ_WASM_PTHREADS)
         -pthread
     )
 
-    foreach(_wrkz_pthread_target IN ITEMS cryptopp-object cryptopp-static argon2 upnpc-static)
+    foreach(_wrkz_pthread_target IN ITEMS argon2 libminiupnpc-static)
         if (TARGET ${_wrkz_pthread_target})
             target_compile_options(${_wrkz_pthread_target} PRIVATE
                 -pthread
@@ -614,8 +608,9 @@ add_subdirectory(src)
 
 ## We need to setup the RocksDB build environment to match our system
 ## RocksDB is only linked by the daemon: skip it (and its configure step) for
-## wallet-only builds (WRKZ_BUILD_EXECUTABLES=OFF) and for Emscripten.
-if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN)
+## wallet-only builds (WRKZ_BUILD_EXECUTABLES=OFF), for Emscripten, and when
+## WRKZ_SYSTEM_ROCKSDB asks us to use a RocksDB supplied by the system.
+if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN AND NOT WRKZ_SYSTEM_ROCKSDB)
     set(ROCKSDB_ZSTD_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/zstd/lib")
     set(ROCKSDB_ZSTD_LIBRARY "${PROJECT_BINARY_DIR}/external/zstd/build/cmake/lib/libzstd.a")
     set(ROCKSDB_CMAKE_EXTRA_ARGS "")
@@ -669,8 +664,18 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT MSVC AND NOT EMSCRIPTEN)
         -DWITH_LIBURING=OFF
         -DWITH_GFLAGS=0
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        # RocksDB defaults the tool/benchmark switches to ON. WITH_TESTS and
+        # WITH_TOOLS alone still leave WITH_BENCHMARK_TOOLS (which pulls in the
+        # bundled gtest) and WITH_CORE_TOOLS / WITH_TRACE_TOOLS enabled, so turn
+        # the whole set off explicitly. Kept in sync with external/CMakeLists.txt.
         -DWITH_TESTS=OFF
+        -DWITH_BENCHMARK_TOOLS=OFF
+        -DWITH_CORE_TOOLS=OFF
         -DWITH_TOOLS=OFF
+        -DWITH_TRACE_TOOLS=OFF
+        -DWITH_JNI=OFF
+        -DWITH_EXAMPLES=OFF
+        -DWITH_BENCHMARK=OFF
         -DPORTABLE=ON
         -DUSE_RTTI=ON
         -DZSTD_INCLUDE_DIRS=${ROCKSDB_ZSTD_INCLUDE_DIR}

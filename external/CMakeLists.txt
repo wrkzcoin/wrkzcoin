@@ -1,10 +1,15 @@
-set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
+﻿set(UPNPC_BUILD_STATIC ON CACHE BOOL "Build static library")
 set(UPNPC_BUILD_SHARED OFF CACHE BOOL "Build shared library")
 set(UPNPC_BUILD_TESTS OFF CACHE BOOL "Build test executables")
+# miniupnpc >= 2.2 builds upnpc/listdevices samples by default and names the
+# sample executable "upnpc-static" - the same name its 2.1 static library used.
+# We only want the library, so keep the samples off.
+set(UPNPC_BUILD_SAMPLE OFF CACHE BOOL "Build sample executables")
+set(UPNPC_NO_INSTALL ON CACHE BOOL "Disable miniupnpc installation rules")
 set(WITH_MD_LIBRARY OFF CACHE BOOL "Code Generation for static library")
 
 # CMake >= 4.0 refuses cmake_minimum_required() < 3.5, which the bundled
-# argon2 (2.6), cryptopp (2.8.6) and libzmq (3.0.2...) still declare. Treat
+# argon2 (2.6) and libzmq (3.0.2...) still declare. Treat
 # them as 3.5-era projects; older CMake ignores this variable.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
@@ -15,18 +20,6 @@ if (NOT MSVC)
 endif()
 
 add_subdirectory(miniupnpc)
-add_subdirectory(cryptopp)
-# Crypto++ exports its source directory as a PUBLIC include directory. That puts
-# its generically named headers (zlib.h, config.h, sha.h, ...) ahead of the
-# system ones for every consumer - with CPPHTTPLIB_ZLIB_SUPPORT enabled,
-# httplib's #include <zlib.h> then resolved to Crypto++'s ZlibCompressor header.
-# We include Crypto++ as <cryptopp/...> through the external/ include dir, so
-# the propagation is not needed.
-foreach(_wrkz_cryptopp_target IN ITEMS cryptopp-static cryptopp-shared)
-    if (TARGET ${_wrkz_cryptopp_target})
-        set_target_properties(${_wrkz_cryptopp_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
-    endif ()
-endforeach ()
 add_subdirectory(argon2)
 
 if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
@@ -151,7 +144,35 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
 endif ()
 
 # ── zstd + RocksDB (daemon-only: skipped for wallet-only and Emscripten builds) ──
-if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
+if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN AND WRKZ_SYSTEM_ROCKSDB)
+    # Packagers and CI can supply RocksDB themselves and skip the bundled tree
+    # (and the bundled zstd, which only exists to be RocksDB's compressor)
+    # entirely. Prefer the upstream CMake package config, fall back to a plain
+    # header/library search.
+    find_package(RocksDB CONFIG QUIET)
+    if (TARGET RocksDB::rocksdb)
+        set(WRKZ_ROCKSDB_LIBS RocksDB::rocksdb PARENT_SCOPE)
+        message(STATUS "RocksDB: using system package (RocksDB::rocksdb)")
+    elseif (TARGET RocksDB::rocksdb-shared)
+        set(WRKZ_ROCKSDB_LIBS RocksDB::rocksdb-shared PARENT_SCOPE)
+        message(STATUS "RocksDB: using system package (RocksDB::rocksdb-shared)")
+    else ()
+        find_path(WRKZ_ROCKSDB_INCLUDE_DIR NAMES rocksdb/db.h)
+        find_library(WRKZ_ROCKSDB_LIBRARY NAMES rocksdb)
+        if (NOT WRKZ_ROCKSDB_INCLUDE_DIR OR NOT WRKZ_ROCKSDB_LIBRARY)
+            message(FATAL_ERROR
+                "WRKZ_SYSTEM_ROCKSDB=ON but no system RocksDB was found. Install the "
+                "RocksDB development package (or point CMAKE_PREFIX_PATH at it), or "
+                "re-run with -DWRKZ_SYSTEM_ROCKSDB=OFF to build the bundled copy.")
+        endif ()
+        add_library(wrkz-system-rocksdb INTERFACE)
+        target_include_directories(wrkz-system-rocksdb INTERFACE ${WRKZ_ROCKSDB_INCLUDE_DIR})
+        target_link_libraries(wrkz-system-rocksdb INTERFACE ${WRKZ_ROCKSDB_LIBRARY})
+        set(WRKZ_ROCKSDB_LIBS wrkz-system-rocksdb PARENT_SCOPE)
+        message(STATUS "RocksDB: using system library ${WRKZ_ROCKSDB_LIBRARY}")
+    endif ()
+    set_property(TARGET libminiupnpc-static argon2 PROPERTY FOLDER "external")
+elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     # zstd (new layout): CMake entrypoint lives under build/cmake
     set(ZSTD_BUILD_STATIC ON CACHE BOOL "Build static zstd" FORCE)
     set(ZSTD_BUILD_SHARED OFF CACHE BOOL "Disable shared zstd" FORCE)
@@ -161,11 +182,26 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     add_subdirectory(zstd/build/cmake)
     set(WITH_SNAPPY OFF CACHE BOOL "Disable Snappy in RocksDB" FORCE)
 
+    # RocksDB defaults WITH_BENCHMARK_TOOLS / WITH_CORE_TOOLS / WITH_TOOLS /
+    # WITH_TRACE_TOOLS to ON, which drags in db_bench, ldb, sst_dump,
+    # trace_analyzer and the bundled gtest. We only want librocksdb. These are
+    # kept in sync with the -D flags passed to the out-of-tree sub-build below;
+    # the pruned vendored tree no longer ships the sources they would need.
+    set(WITH_TESTS OFF CACHE BOOL "Disable RocksDB tests" FORCE)
+    set(WITH_BENCHMARK_TOOLS OFF CACHE BOOL "Disable RocksDB benchmarks" FORCE)
+    set(WITH_CORE_TOOLS OFF CACHE BOOL "Disable RocksDB ldb/sst_dump" FORCE)
+    set(WITH_TOOLS OFF CACHE BOOL "Disable RocksDB tools" FORCE)
+    set(WITH_TRACE_TOOLS OFF CACHE BOOL "Disable RocksDB trace tools" FORCE)
+    set(WITH_JNI OFF CACHE BOOL "Disable RocksDB JNI bindings" FORCE)
+    set(WITH_EXAMPLES OFF CACHE BOOL "Disable RocksDB examples" FORCE)
+    set(WITH_BENCHMARK OFF CACHE BOOL "Disable RocksDB microbenchmarks" FORCE)
+
     if (MSVC)
         add_subdirectory(rocksdb EXCLUDE_FROM_ALL)
-        set_property(TARGET upnpc-static cryptopp-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set(WRKZ_ROCKSDB_LIBS rocksdb libzstd PARENT_SCOPE)
     else ()
-        set_property(TARGET upnpc-static cryptopp-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
+        set_property(TARGET libminiupnpc-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
             set(_WRKZ_ROCKSDB_FALLBACK_JOBS "${ROCKSDB_BUILD_PARALLEL}")
             set(_WRKZ_ROCKSDB_PARALLEL_SOURCE "ROCKSDB_BUILD_PARALLEL")
@@ -209,17 +245,18 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
         add_library(rocksdblib STATIC IMPORTED GLOBAL)
         set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
         add_dependencies(rocksdblib rocksdb)
+        set(WRKZ_ROCKSDB_LIBS rocksdblib libzstd PARENT_SCOPE)
 
         unset(_WRKZ_ROCKSDB_FALLBACK_JOBS)
         unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)
     endif ()
 else ()
     # No daemon dependencies built: only set the folder property for the targets that exist
-    set_property(TARGET upnpc-static cryptopp-static argon2 PROPERTY FOLDER "external")
+    set_property(TARGET libminiupnpc-static argon2 PROPERTY FOLDER "external")
 endif ()
 
 if (MSVC)
-    set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -wd4244 -wd4267")
 else ()
-    set_property(TARGET upnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
+    set_property(TARGET libminiupnpc-static APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-undef -Wno-unused-result -Wno-unused-value")
 endif ()

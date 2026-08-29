@@ -45,6 +45,8 @@ namespace CryptoNote
 
         virtual const std::optional<CachedTransaction> tryGetTransaction(const Crypto::Hash &hash) const override;
 
+        virtual const CachedTransaction *tryGetTransactionRef(const Crypto::Hash &hash) const override;
+
         virtual bool removeTransaction(const Crypto::Hash &hash) override;
 
         virtual size_t getFusionTransactionCount() const override;
@@ -67,6 +69,8 @@ namespace CryptoNote
         virtual std::vector<Crypto::Hash> getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const override;
 
         virtual void flush() override;
+
+        virtual std::vector<Crypto::Hash> takeEvictedTransactions() override;
 
         virtual std::vector<Crypto::Hash> clean(const uint32_t height) override;
 

@@ -25,6 +25,11 @@ namespace CryptoNote
 
         void start(const std::string &address, uint16_t port);
 
+        /* Serves on a local AF_UNIX socket instead of a TCP port. socketPath
+           is a filesystem path or "@name"; mode and group decide who may
+           connect, since there is no address to filter on. */
+        void startIpc(const std::string &socketPath, const uint32_t socketMode, const std::string &socketGroup);
+
         void stop();
 
         virtual void processRequest(const HttpRequest &request, HttpResponse &response) = 0;
@@ -44,6 +49,11 @@ namespace CryptoNote
         System::TcpListener m_listener;
 
         std::unordered_set<System::TcpConnection *> m_connections;
+
+        /* Non-empty once startIpc has bound a socket, so stop() knows to
+           unlink it - nothing else removes the file, and a leftover one blocks
+           the next start. */
+        std::string m_ipcPath;
     };
 
 } // namespace CryptoNote

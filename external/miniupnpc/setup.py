@@ -1,8 +1,8 @@
-#! /usr/bin/python
+#! /usr/bin/env python
 # vim: tabstop=8 shiftwidth=8 expandtab
-# $Id: setup.py,v 1.9 2012/05/23 08:50:10 nanard Exp $
-# the MiniUPnP Project (c) 2007-2017 Thomas Bernard
-# http://miniupnp.tuxfamily.org/ or http://miniupnp.free.fr/
+# $Id: setup.py,v 1.17 2024/06/22 19:23:20 nanard Exp $
+# the MiniUPnP Project (c) 2007-2024 Thomas Bernard
+# https://miniupnp.tuxfamily.org/ or http://miniupnp.free.fr/
 #
 # python script to build the miniupnpc module under unix
 #
@@ -13,7 +13,7 @@ from setuptools.command import build_ext
 import subprocess
 import os
 
-EXT = ['libminiupnpc.a']
+EXT = ['build/libminiupnpc.a']
 
 class make_then_build_ext(build_ext.build_ext):
       def run(self):
@@ -25,11 +25,13 @@ setup(name="miniupnpc",
       author='Thomas BERNARD',
       author_email='miniupnp@free.fr',
       license=open('LICENSE').read(),
-      url='http://miniupnp.free.fr/',
-      description='miniUPnP client',
+      url='https://miniupnp.tuxfamily.org/',
+      description='MiniUPnP IGD client',
+      long_description=open('DESCRIPTION').read().strip(),
+      long_description_content_type='text/plain',
       cmdclass={'build_ext': make_then_build_ext},
       ext_modules=[
-         Extension(name="miniupnpc", sources=["miniupnpcmodule.c"],
-                   extra_objects=EXT)
+         Extension(name="miniupnpc", sources=["src/miniupnpcmodule.c"],
+                   include_dirs=['include'], extra_objects=EXT)
       ])
 

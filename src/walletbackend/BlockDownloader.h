@@ -93,12 +93,21 @@ class BlockDownloader
     /* Downloads a set of blocks, if needed */
     bool downloadBlocks();
 
+    /* Approximate heap footprint of one stored block */
+    static size_t storedBlockMemoryUsage(const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block);
+
     //////////////////////////////
     /* Private member variables */
     //////////////////////////////
 
     /* Cached blocks */
     ThreadSafeDeque<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> m_storedBlocks;
+
+    /* Running total of the approximate memory used by m_storedBlocks. Kept
+       incrementally so shouldFetchMoreBlocks() is O(1) - the queue can hold
+       hundreds of thousands of blocks, and walking it before every request
+       was costing more than the download it was gating. */
+    std::atomic<size_t> m_storedBlocksBytes = 0;
 
     /* The daemon connection */
     std::shared_ptr<Nigel> m_daemon;

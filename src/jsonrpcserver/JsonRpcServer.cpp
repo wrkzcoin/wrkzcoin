@@ -44,6 +44,16 @@ namespace CryptoNote
         HttpServer::stop();
     }
 
+    void JsonRpcServer::startIpc(
+        const std::string &socketPath,
+        const uint32_t socketMode,
+        const std::string &socketGroup)
+    {
+        HttpServer::startIpc(socketPath, socketMode, socketGroup);
+        stopEvent.wait();
+        HttpServer::stop();
+    }
+
     void JsonRpcServer::processRequest(const CryptoNote::HttpRequest &req, CryptoNote::HttpResponse &resp)
     {
         try

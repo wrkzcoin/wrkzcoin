@@ -8,8 +8,10 @@
 #include "httplib_fwd.h"
 #include "json.hpp"
 
+#include <common/IpcSocket.h>
 #include <common/Notifier.h>
-#include <cryptopp/modes.h>
+#include "crypto/WalletCrypto.h"
+
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -65,13 +67,20 @@ class ApiDispatcher
         std::string corsHeader,
         unsigned int walletSyncThreads = std::thread::hardware_concurrency(),
         const std::string txNotify = "",
-        const bool notifyDuringSync = false);
+        const bool notifyDuringSync = false,
+        const std::string rpcIpcPath = "",
+        const uint32_t rpcIpcMode = Common::Ipc::DEFAULT_MODE,
+        const std::string rpcIpcGroup = "");
 
     ~ApiDispatcher();
 
     /////////////////////////////
     /* Public member functions */
     /////////////////////////////
+
+    /* The local socket the API is being served on, or empty if IPC is
+       disabled or failed to bind. Only meaningful after start(). */
+    std::string getIpcPath() const;
 
     /* Starts the server */
     void start();
@@ -368,6 +377,9 @@ class ApiDispatcher
     /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
     std::unique_ptr<httplib::Server> m_ipv6Server;
 
+    /* Our local IPC server instance (only used when m_ipcPath is non-empty) */
+    std::unique_ptr<httplib::Server> m_ipcServer;
+
     /* The --rpc-password hashed with pbkdf2 */
     std::string m_hashedPassword;
 
@@ -392,12 +404,27 @@ class ApiDispatcher
     /* The thread running the IPv6 server */
     std::thread m_ipv6Thread;
 
+    /* The local socket to accept API calls on (empty = IPC disabled) */
+    std::string m_ipcPath;
+
+    /* Permission bits the socket file is created with */
+    uint32_t m_ipcMode = Common::Ipc::DEFAULT_MODE;
+
+    /* Optional group to hand the socket file to, for a 0660 setup */
+    std::string m_ipcGroup;
+
+    /* The thread running the IPC server */
+    std::thread m_ipcThread;
+
+    /* Set once the IPC socket is bound, so shutdown knows to unlink it */
+    bool m_ipcBound = false;
+
     /* The header to use with 'Access-Control-Allow-Origin'. If empty string,
        header is not added. */
     std::string m_corsHeader;
 
     /* Used along with our password with pbkdf2 */
-    CryptoPP::byte m_salt[16];
+    uint8_t m_salt[WalletCrypto::SALT_SIZE];
 
     /* Amount of threads to use during wallet syncing */
     unsigned int m_walletSyncThreads;

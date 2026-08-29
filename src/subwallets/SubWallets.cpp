@@ -9,6 +9,7 @@
 //////////////////////////////////
 
 #include <JsonHelper.h>
+#include <algorithm>
 #include <common/StringTools.h>
 #include <config/CryptoNoteConfig.h>
 #include <ctime>
@@ -45,6 +46,7 @@ SubWallets::SubWallets(
         SubWallet(publicSpendKey, privateSpendKey, address, scanHeight, timestamp, isPrimaryAddress);
 
     m_publicSpendKeys.push_back(publicSpendKey);
+    m_publicSpendKeyLookup.insert(publicSpendKey);
 }
 
 /* Makes a new view only subwallet */
@@ -66,6 +68,7 @@ SubWallets::SubWallets(
     m_subWallets[publicSpendKey] = SubWallet(publicSpendKey, address, scanHeight, timestamp, isPrimaryAddress);
 
     m_publicSpendKeys.push_back(publicSpendKey);
+    m_publicSpendKeyLookup.insert(publicSpendKey);
 }
 
 /* Copy constructor */
@@ -76,6 +79,7 @@ SubWallets::SubWallets(const SubWallets &other):
     m_privateViewKey(other.m_privateViewKey),
     m_isViewWallet(other.m_isViewWallet),
     m_publicSpendKeys(other.m_publicSpendKeys),
+    m_publicSpendKeyLookup(other.m_publicSpendKeyLookup),
     m_transactionPrivateKeys(other.m_transactionPrivateKeys)
 {
 }
@@ -115,6 +119,7 @@ std::tuple<Error, std::string, Crypto::SecretKey, uint64_t> SubWallets::addSubWa
         m_subWalletIndexCounter);
 
     m_publicSpendKeys.push_back(newPublicKey);
+    m_publicSpendKeyLookup.insert(newPublicKey);
 
     return {SUCCESS, address, newPrivateKey, m_subWalletIndexCounter};
 }
@@ -149,6 +154,7 @@ std::tuple<Error, std::string>
         SubWallet(publicSpendKey, privateSpendKey, address, scanHeight, timestamp, isPrimaryAddress);
 
     m_publicSpendKeys.push_back(publicSpendKey);
+    m_publicSpendKeyLookup.insert(publicSpendKey);
 
     return {SUCCESS, address};
 }
@@ -206,6 +212,7 @@ std::tuple<Error, std::string>
     m_subWallets[publicSpendKey] = SubWallet(publicSpendKey, address, scanHeight, timestamp, isPrimaryAddress);
 
     m_publicSpendKeys.push_back(publicSpendKey);
+    m_publicSpendKeyLookup.insert(publicSpendKey);
 
     return {SUCCESS, address};
 }
@@ -241,6 +248,8 @@ Error SubWallets::deleteSubWallet(const std::string address)
     {
         m_publicSpendKeys.erase(it2, m_publicSpendKeys.end());
     }
+
+    m_publicSpendKeyLookup.erase(spendKey);
 
     return SUCCESS;
 }
@@ -435,6 +444,28 @@ void SubWallets::storeTransactionInput(
     }
 
     throw std::runtime_error("Subwallet not found!");
+}
+
+void SubWallets::refreshPublicSpendKeyLookup()
+{
+    m_publicSpendKeyLookup.clear();
+    m_publicSpendKeyLookup.insert(m_publicSpendKeys.begin(), m_publicSpendKeys.end());
+}
+
+bool SubWallets::isOurSpendKey(const Crypto::PublicKey &spendKey) const
+{
+    /* m_publicSpendKeys is public, so a caller can in principle append to it
+       without the lookup set hearing about it. Any disagreement in size means
+       the set cannot be trusted, so fall back to scanning the vector rather
+       than silently failing to recognise our own outputs. Correctness first;
+       the fast path covers every normal case. */
+    if (m_publicSpendKeyLookup.size() != m_publicSpendKeys.size())
+    {
+        return std::find(m_publicSpendKeys.begin(), m_publicSpendKeys.end(), spendKey)
+               != m_publicSpendKeys.end();
+    }
+
+    return m_publicSpendKeyLookup.find(spendKey) != m_publicSpendKeyLookup.end();
 }
 
 std::tuple<bool, Crypto::PublicKey> SubWallets::getKeyImageOwner(const Crypto::KeyImage keyImage) const
@@ -1017,6 +1048,8 @@ void SubWallets::fromJSON(const nlohmann::json &j)
         key.fromString(getStringFromJSONString(x));
         m_publicSpendKeys.push_back(key);
     }
+
+    refreshPublicSpendKeyLookup();
 
     if (j.contains("subWalletIndexCounter"))
     {

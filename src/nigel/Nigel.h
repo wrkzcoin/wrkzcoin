@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <config/CryptoNoteConfig.h>
+#include <config/WalletConfig.h>
 #include <logger/Logger.h>
 #include <memory>
 #include <optional>
@@ -55,6 +56,12 @@ class Nigel
     void decreaseRequestedBlockCount();
 
     void resetRequestedBlockCount();
+
+    /* Whether the last sync request came back rate limited (HTTP 429) */
+    bool lastRequestWasRateLimited() const;
+
+    /* How many blocks we are currently asking for per request */
+    uint64_t requestedBlockCount() const;
 
     /* Returns whether we've received info from the daemon at some point */
     bool isOnline() const;
@@ -159,6 +166,16 @@ class Nigel
 
     /* Stores how many blocks we'll try to sync */
     std::atomic<uint64_t> m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
+
+    /* The largest blockCount this daemon has been observed to accept. Starts
+       optimistic and is lowered if the daemon rejects a request as exceeding
+       its --rpc-max-block-count. */
+    std::atomic<uint64_t> m_maxBlockCount = WalletConfig::maxBlocksPerSyncRequest;
+
+    /* Set when the last sync request was rejected with HTTP 429. Shrinking the
+       batch in response to rate limiting is counterproductive - it takes more
+       requests to move the same blocks - so the downloader waits instead. */
+    std::atomic<bool> m_lastRequestRateLimited = false;
 
     /* The amount of blocks the daemon we're connected to has */
     std::atomic<uint64_t> m_localDaemonBlockCount = 0;

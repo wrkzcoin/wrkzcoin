@@ -28,6 +28,14 @@ namespace System
 
         TcpListener(Dispatcher &dispatcher, const IpAddress &address, uint16_t port);
 
+        /* Listens on an AF_UNIX socket. socketPath is a filesystem path, or
+           "@name" for the Linux abstract namespace, and socketMode is the
+           octal permission triple the socket file is created with - it is
+           applied through the process umask so the socket is never reachable
+           more widely than asked for, not even between bind and chmod.
+           Throws where the platform has no usable local sockets. */
+        TcpListener(Dispatcher &dispatcher, const std::string &socketPath, uint32_t socketMode);
+
         TcpListener(const TcpListener &) = delete;
 
         TcpListener(TcpListener &&other);

@@ -92,4 +92,18 @@ namespace WalletConfig
      * The amount of memory to use storing downloaded blocks - 200MB
      */
     const size_t blockStoreMemoryLimit = 1024 * 1024 * 200;
+
+    /**
+     * The largest number of blocks we will ask a daemon for in a single
+     * /getwalletsyncdata request.
+     *
+     * The wallet starts at BLOCKS_SYNCHRONIZING_DEFAULT_COUNT and probes
+     * upwards towards this value, backing off if the daemon rejects the
+     * request with a 400 (its own --rpc-max-block-count is lower). Daemons
+     * predating that option silently clamp instead, which costs us nothing.
+     *
+     * This matters because public nodes rate limit per IP - fewer, larger
+     * requests move far more blocks per rate limit slot than many small ones.
+     */
+    const uint64_t maxBlocksPerSyncRequest = 1000;
 } // namespace WalletConfig
