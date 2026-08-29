@@ -275,6 +275,54 @@ code, .mono {
 }
 .nav-link.active { color: var(--accent); }
 
+/* Tools dropdown */
+.nav-menu { position: relative; }
+
+.nav-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.nav-menu-caret {
+  width: 9px;
+  height: 9px;
+  transition: transform 0.15s;
+}
+.nav-menu[data-open="true"] .nav-menu-caret { transform: rotate(180deg); }
+
+.nav-menu-list {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.3rem;
+  z-index: 200;
+}
+
+.nav-menu-item {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.nav-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  text-decoration: none;
+}
+.nav-menu-item.active { color: var(--accent); }
+
 /* Theme toggle */
 .icon-btn {
   background: var(--icon-btn-bg);
@@ -375,6 +423,13 @@ code, .mono {
   color: var(--red);
 }
 [data-theme="light"] .alert-error { color: var(--red); }
+
+.alert-warn {
+  background: var(--yellow-dim);
+  border: 1px solid rgba(251,191,36,0.25);
+  color: var(--yellow);
+}
+[data-theme="light"] .alert-warn { color: #92400e; }
 
 .alert code {
   background: rgba(0,0,0,0.15);
@@ -1196,6 +1251,145 @@ code {
 }
 
 .output-nomatch { opacity: 0.4; }
+
+/* ─── WALLET / ADDRESS TOOLS ─────────────────────────────────────────────── */
+
+.tool-warning { margin: 0 0 1.25rem; padding: 0.9rem 1rem; }
+.tool-warning strong { display: block; margin-bottom: 0.15rem; }
+
+.tool-hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+}
+
+.tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.tool-actions-inline { flex: 1; min-width: 0; }
+
+.tool-status { font-size: 0.82rem; color: var(--text-muted); }
+.tool-status.err { color: var(--red); }
+.tool-status.ok  { color: var(--green); }
+
+.tool-textarea {
+  resize: vertical;
+  line-height: 1.6;
+  padding: 0.55rem 0.7rem;
+}
+
+.tool-result:empty { display: none; }
+.tool-result { margin-top: 1rem; }
+
+/* A single labelled field with a copy button */
+.field {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+}
+.field + .field { border-top: 1px solid var(--border); }
+
+.field-label {
+  width: 170px;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-top: 0.15rem;
+}
+
+.field-value {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  line-height: 1.65;
+  color: var(--text);
+}
+.field-value.secret { color: var(--yellow); }
+
+.copy-btn {
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+.copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+/* Mnemonic seed grid */
+.seed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+
+.seed-word {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.seed-index {
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.2em;
+  text-align: right;
+}
+
+.seed-text {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  color: var(--text);
+}
+
+.tool-badges {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .field { flex-wrap: wrap; }
+  .field-label { width: 100%; }
+}
+
+/* ─── PRINT (paper wallet) ───────────────────────────────────────────────── */
+
+@media print {
+  /* Leave only the generated keys on the page — chrome, the generator form and
+     the on-screen warnings are all noise once it is on paper. */
+  .site-header, .site-footer, .tool-actions, .alert,
+  .loading-overlay, .nav-menu, .tool-hint, .tool-panel { display: none !important; }
+  body { background: #fff; color: #000; }
+  .detail-card {
+    border: 1px solid #999;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+  .field-value, .field-value.secret { color: #000; }
+  .seed-word { border: 1px solid #999; background: #fff; }
+  .main-content { padding: 0; }
+}
 
 /* ─── SCROLL ─────────────────────────────────────────────────────────────── */
 

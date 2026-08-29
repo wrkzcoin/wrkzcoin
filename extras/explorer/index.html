@@ -26,7 +26,7 @@
             <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
           </svg>
           <input id="searchInput" type="text"
-            placeholder="Block height, block hash, or TX hash…"
+            placeholder="Block height, block hash, TX hash, or address…"
             autocomplete="off" spellcheck="false" />
           <button type="submit" class="btn btn-primary search-btn">Search</button>
         </div>
@@ -35,6 +35,23 @@
       <div class="header-actions">
         <a href="#/" class="nav-link" id="navHome">Blocks</a>
         <a href="#/mempool" class="nav-link" id="navMempool">Mempool</a>
+
+        <div class="nav-menu" id="navTools">
+          <button type="button" class="nav-link nav-menu-btn" id="navToolsBtn"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="navToolsList">
+            Tools
+            <svg class="nav-menu-caret" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <path d="M6 8.5 1.5 4h9L6 8.5z"/>
+            </svg>
+          </button>
+          <div class="nav-menu-list" id="navToolsList" role="menu" hidden>
+            <a href="#/paper"      class="nav-menu-item" role="menuitem">Paper Wallet</a>
+            <a href="#/import"     class="nav-menu-item" role="menuitem">Import from Seed</a>
+            <a href="#/integrated" class="nav-menu-item" role="menuitem">Integrated Address</a>
+            <a href="#/decode"     class="nav-menu-item" role="menuitem">Decode Address</a>
+          </div>
+        </div>
+
         <button id="themeToggle" class="icon-btn" title="Toggle dark/light mode" aria-label="Toggle theme">
           <svg id="iconMoon" class="theme-icon" viewBox="0 0 24 24" fill="currentColor">
             <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/>
@@ -192,6 +209,159 @@
       <div id="mempoolDetail" class="detail-root"></div>
     </div>
 
+    <!-- ─── PAPER WALLET ─────────────────────────────────────────────── -->
+    <div id="page-paper" class="page">
+      <div class="detail-root">
+        <div class="detail-heading"><h2>Paper Wallet</h2></div>
+
+        <div class="alert alert-warn tool-warning" role="note">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="flex-shrink:0">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+          <div>
+            <strong>Generate this offline.</strong>
+            Keys are created in your browser and are never sent anywhere, but anyone
+            who sees this screen — or the machine's memory, cache, or printer spool —
+            can spend the funds. For anything you intend to keep, save this page to
+            disk, disconnect from the network, and generate on a machine you trust.
+          </div>
+        </div>
+
+        <div class="detail-card full tool-panel">
+          <h3>Generate a new wallet</h3>
+          <p class="tool-hint">
+            Creates a random private spend key with your browser's cryptographic
+            random number generator, then derives the view key, address and
+            25-word mnemonic seed exactly the way the WrkzCoin wallet does.
+          </p>
+          <div class="tool-actions">
+            <button id="paperGenBtn" class="btn btn-primary">Generate New Wallet</button>
+            <button id="paperPrintBtn" class="btn btn-outline" hidden>Print</button>
+            <span id="paperStatus" class="tool-status"></span>
+          </div>
+        </div>
+
+        <div id="paperResult" class="tool-result"></div>
+      </div>
+    </div>
+
+    <!-- ─── IMPORT FROM SEED ─────────────────────────────────────────── -->
+    <div id="page-import" class="page">
+      <div class="detail-root">
+        <div class="detail-heading"><h2>Import from Seed</h2></div>
+
+        <div class="alert alert-warn tool-warning" role="note">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16" style="flex-shrink:0">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+          <div>
+            <strong>Your seed never leaves this page.</strong>
+            It is not sent to the explorer, the daemon, or anywhere else. Even so,
+            typing a live seed into a browser is risky — prefer an offline copy of
+            this page when the wallet holds real funds.
+          </div>
+        </div>
+
+        <div class="detail-card full">
+          <h3>Recover keys and address</h3>
+          <p class="tool-hint">
+            Accepts a 25-word mnemonic seed or a 64-character private spend key.
+            The private view key is derived deterministically from the spend key,
+            matching <code>generateViewFromSpend</code> in the daemon.
+          </p>
+          <div class="check-form">
+            <div class="check-row">
+              <label class="check-label" for="importInput">Seed or Spend Key</label>
+              <textarea id="importInput" class="check-input tool-textarea" rows="3"
+                        placeholder="25 mnemonic words, or a 64-character private spend key"
+                        spellcheck="false" autocomplete="off"></textarea>
+            </div>
+            <div class="tool-actions">
+              <button id="importBtn" class="btn btn-primary">Recover Wallet</button>
+              <button id="importClearBtn" class="btn btn-outline">Clear</button>
+              <span id="importStatus" class="tool-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="importResult" class="tool-result"></div>
+      </div>
+    </div>
+
+    <!-- ─── INTEGRATED ADDRESS GENERATOR ─────────────────────────────── -->
+    <div id="page-integrated" class="page">
+      <div class="detail-root">
+        <div class="detail-heading"><h2>Integrated Address Generator</h2></div>
+
+        <div class="detail-card full">
+          <h3>Build an integrated address</h3>
+          <p class="tool-hint">
+            An integrated address packs a payment ID into a standard address so
+            senders cannot forget it. WrkzCoin supports both lengths: a 16-character
+            payment ID produces a 120-character address, and a 64-character payment
+            ID produces a 186-character one.
+          </p>
+          <div class="check-form">
+            <div class="check-row">
+              <label class="check-label" for="intAddr">Standard Address</label>
+              <input id="intAddr" class="check-input" type="text"
+                     placeholder="Wrkz… (98 characters)" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="check-row">
+              <label class="check-label" for="intPid">Payment ID</label>
+              <input id="intPid" class="check-input" type="text"
+                     placeholder="16 or 64 hexadecimal characters" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="check-row">
+              <span class="check-label">Random</span>
+              <div class="tool-actions tool-actions-inline">
+                <button id="intRand16" type="button" class="btn btn-sm btn-outline">16-char payment ID</button>
+                <button id="intRand64" type="button" class="btn btn-sm btn-outline">64-char payment ID</button>
+              </div>
+            </div>
+            <div class="tool-actions">
+              <button id="intBtn" class="btn btn-primary">Create Integrated Address</button>
+              <span id="intStatus" class="tool-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="intResult" class="tool-result"></div>
+      </div>
+    </div>
+
+    <!-- ─── ADDRESS DECODER ──────────────────────────────────────────── -->
+    <div id="page-decode" class="page">
+      <div class="detail-root">
+        <div class="detail-heading"><h2>Address Decoder</h2></div>
+
+        <div class="detail-card full">
+          <h3>Inspect an address</h3>
+          <p class="tool-hint">
+            Verifies the base58 checksum and the address prefix, then shows the
+            public spend and view keys. For an integrated address it also extracts
+            the payment ID and the underlying standard address — both the
+            16-character and 64-character payment ID forms are supported.
+          </p>
+          <div class="check-form">
+            <div class="check-row">
+              <label class="check-label" for="decAddr">Address</label>
+              <textarea id="decAddr" class="check-input tool-textarea" rows="2"
+                        placeholder="Standard or integrated Wrkz… address"
+                        spellcheck="false" autocomplete="off"></textarea>
+            </div>
+            <div class="tool-actions">
+              <button id="decBtn" class="btn btn-primary">Decode Address</button>
+              <button id="decClearBtn" class="btn btn-outline">Clear</button>
+              <span id="decStatus" class="tool-status"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="decResult" class="tool-result"></div>
+      </div>
+    </div>
+
   </main>
 
   <!-- ═══════════════════════════════ FOOTER ═════════════════════════════ -->
@@ -205,6 +375,14 @@
         <span class="sep">·</span>
         <a href="#/mempool">Mempool</a>
         <span class="sep">·</span>
+        <a href="#/paper">Paper Wallet</a>
+        <span class="sep">·</span>
+        <a href="#/import">Import Seed</a>
+        <span class="sep">·</span>
+        <a href="#/integrated">Integrated Address</a>
+        <span class="sep">·</span>
+        <a href="#/decode">Decode Address</a>
+        <span class="sep">·</span>
         <a href="https://github.com/wrkzcoin/wrkzcoin/" target="_blank" rel="noopener noreferrer">GitHub</a>
         <span class="sep">·</span>
         <a href="https://chat.wrkz.work/" target="_blank" rel="noopener noreferrer">Discord</a>
@@ -214,6 +392,8 @@
     </div>
   </footer>
 
+  <!-- Address / key primitives. Pure JS, no network access — see vendor/wrkz-crypto.js -->
+  <script src="vendor/wrkz-crypto.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
