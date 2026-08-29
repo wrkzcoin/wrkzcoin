@@ -32,7 +32,9 @@ Notes:
 - `index.html`: main explorer page
 - `app.js`: frontend logic
 - `style.css`: explorer styling
+- `vendor/wrkz-crypto.js`: self-contained address and key primitives used by the wallet tools
 - `vendor/TurtleCoinUtils.js`: vendored client-side crypto helper used by Check Transaction
+- `test/`: Node test suites for the crypto module and the page wiring
 
 ## Local Development
 
@@ -96,6 +98,75 @@ server {
 4. Configure nginx to serve the static files and proxy `/api/` to the daemon.
 5. Open the explorer in a browser and load a block or transaction page.
 
+## Wallet and Address Tools
+
+The `Tools` menu in the header holds four utilities. All four run entirely in
+the browser against `vendor/wrkz-crypto.js`. None of them contacts the daemon,
+so they keep working when the explorer's RPC backend is down, and they work from
+a copy of this folder opened straight off disk.
+
+| Tool | Route | What it does |
+| --- | --- | --- |
+| Paper Wallet | `#/paper` | Generates a new wallet and shows the address, 25-word seed, and both key pairs |
+| Import from Seed | `#/import` | Recovers the same key set from a 25-word mnemonic or a 64-character private spend key |
+| Integrated Address | `#/integrated` | Packs a payment ID into a standard address |
+| Decode Address | `#/decode` | Verifies any address and extracts its keys, plus the payment ID if it is integrated |
+
+Searching for an address in the header search box jumps straight to the decoder.
+
+### Payment ID lengths
+
+WrkzCoin accepts both payment ID forms, and the tools handle each:
+
+- 16 hex characters produces a 120-character integrated address
+- 64 hex characters produces a 186-character integrated address
+
+Note that the vendored `TurtleCoinUtils.js` only decodes the 64-character form.
+The tools deliberately do not use it, which is why the 16-character form works
+here.
+
+### Offline use
+
+For a paper wallet that will hold real funds, do not trust a hosted copy of this
+page. Save the folder to disk, disconnect from the network, and open
+`index.html` directly. The block explorer views will fail without a daemon, but
+every tool in the `Tools` menu keeps working, because none of them makes a
+network request.
+
+Keys are generated with `crypto.getRandomValues`. If a browser does not expose
+it, the tool refuses to generate rather than falling back to a weaker source.
+
+### Correctness
+
+`vendor/wrkz-crypto.js` reimplements the daemon's primitives in plain JavaScript
+rather than wrapping a bundled library. Each function names the C++ routine it
+mirrors. The test suite checks the two against each other:
+
+```powershell
+cd extras\explorer
+node test\crypto.test.js
+node test\wiring.test.js
+node test\ui.test.js
+```
+
+`crypto.test.js` reads the address prefix from `src/config/CryptoNoteConfig.h`,
+the payment ID and address lengths from `src/config/WalletConfig.h`, and the
+mnemonic word list from `src/mnemonics/WordList.h`, so the browser tools cannot
+drift away from the daemon without the tests failing. It also checks Keccak-256,
+CRC32 and ed25519 against published vectors, round-trips a real WrkzCoin
+address, and generates 300 wallets to confirm every one re-imports to the same
+address from both its seed and its spend key.
+
+`wiring.test.js` cross-references `index.html`, `app.js` and `style.css` — every
+element id the script reaches for, every route, every new CSS class — and
+asserts that the tools section of `app.js` contains no network call.
+
+`ui.test.js` boots `app.js` against a minimal DOM shim and clicks through all
+four tools, including generating a wallet, copying the seed out of the rendered
+page, and importing it back to the same address.
+
+All three suites need only Node; there are no npm dependencies.
+
 ## Check Transaction
 
 The `Check Transaction` feature runs entirely in the browser.
@@ -130,6 +201,18 @@ Check:
 - the private key is correct
 - the transaction page JSON includes the transaction public key
 - the daemon was restarted after any RPC changes
+
+### Tools menu items show "wrkz-crypto.js failed to load"
+
+Confirm `vendor/wrkz-crypto.js` was copied to the web root alongside
+`index.html`, and that the web server serves `.js` files from `vendor/`.
+
+### Copy buttons do nothing
+
+`navigator.clipboard` requires a secure context. Over plain HTTP on a hostname
+other than `localhost`, the page falls back to `document.execCommand('copy')`,
+which some browsers refuse. Serve the explorer over HTTPS, or select the text
+manually.
 
 ### Browser shows RPC or CORS errors
 
