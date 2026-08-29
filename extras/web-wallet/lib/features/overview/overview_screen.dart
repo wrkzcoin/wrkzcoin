@@ -69,12 +69,12 @@ class OverviewScreen extends ConsumerWidget {
                               const SizedBox(height: 10),
                               Row(
                                 children: [
-                                  const Icon(Icons.lock_outline, size: 14, color: kTextSecondary),
+                                  Icon(Icons.lock_outline, size: 14, color: context.textSecondary),
                                   const SizedBox(width: 4),
                                   Text(
                                     tr?.lockedUnconfirmed(formatAmount(b.locked), kCoinTicker) ?? 'Locked (unconfirmed): ${formatAmount(b.locked)} $kCoinTicker',
                                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: b.locked > 0 ? kWarning : kTextSecondary,
+                                      color: b.locked > 0 ? kWarning : context.textSecondary,
                                     ),
                                   ),
                                 ],
@@ -83,7 +83,7 @@ class OverviewScreen extends ConsumerWidget {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Icon(Icons.account_balance_wallet_outlined, size: 14, color: kTextSecondary),
+                                  Icon(Icons.account_balance_wallet_outlined, size: 14, color: context.textSecondary),
                                   const SizedBox(width: 4),
                                   Text(
                                     tr?.totalBalance(formatAmount(b.total), kCoinTicker) ?? 'Total: ${formatAmount(b.total)} $kCoinTicker',
@@ -204,7 +204,7 @@ class _NodeErrorCard extends StatelessWidget {
                 children: [
                   Text(tr?.nodeConnectionIssue ?? 'Node connection issue', style: const TextStyle(color: kError, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text(error, style: const TextStyle(color: kTextSecondary, fontSize: 12)),
+                  Text(error, style: TextStyle(color: context.textSecondary, fontSize: 12)),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => context.go('/settings'),
@@ -333,9 +333,9 @@ class _EmptyTxPlaceholder extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Icon(Icons.receipt_long_outlined, size: 32, color: kTextDisabled),
+          Icon(Icons.receipt_long_outlined, size: 32, color: context.textDisabled),
           const SizedBox(height: 8),
-          Text(tr?.noTransactionsYet ?? 'No transactions yet', style: const TextStyle(color: kTextDisabled)),
+          Text(tr?.noTransactionsYet ?? 'No transactions yet', style: TextStyle(color: context.textDisabled)),
         ],
       ),
     );

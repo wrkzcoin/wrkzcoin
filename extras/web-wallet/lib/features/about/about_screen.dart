@@ -147,10 +147,10 @@ class _LinkTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(icon, size: 20, color: kTextSecondary),
+      leading: Icon(icon, size: 20, color: context.textSecondary),
       title: Text(label, style: const TextStyle(fontSize: 14)),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.open_in_new, size: 14, color: kTextSecondary),
+      trailing: Icon(Icons.open_in_new, size: 14, color: context.textSecondary),
       onTap: onTap,
     );
   }

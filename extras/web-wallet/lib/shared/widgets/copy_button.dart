@@ -45,7 +45,7 @@ class _CopyButtonState extends State<CopyButton> {
           child: Icon(
             _copied ? Icons.check : Icons.copy_outlined,
             size: widget.size,
-            color: _copied ? kSuccess : kTextSecondary,
+            color: _copied ? kSuccess : context.textSecondary,
           ),
         ),
       ),

@@ -85,7 +85,7 @@ class _SyncBannerState extends State<SyncBanner> {
           Expanded(
             child: LinearProgressIndicator(
               value: widget.status.syncProgress,
-              backgroundColor: kDivider,
+              backgroundColor: context.dividerColor,
               color: kWarning,
               minHeight: 4,
               borderRadius: BorderRadius.circular(2),

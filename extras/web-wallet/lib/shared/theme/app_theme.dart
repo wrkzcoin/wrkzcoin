@@ -26,6 +26,42 @@ const kTextPrimaryLight = Color(0xFF1A1F2E);
 const kTextSecondaryLight = Color(0xFF4A5568);
 const kTextDisabledLight = Color(0xFF8A97A8);
 
+// ── Theme-aware accessors ─────────────────────────────────────────────────────
+
+/// Semantic colours that resolve against the *active* theme.
+///
+/// Both palettes were defined from the start, but the screens referenced the
+/// dark constants (`kTextSecondary`, `kDivider`, `kBgDark`, …) directly, so
+/// light mode rendered grey-on-grey text and dark dividers on light cards.
+/// Going through these getters keeps a single call site working in both.
+extension AppColors on BuildContext {
+  ColorScheme get cs => Theme.of(this).colorScheme;
+
+  bool get isDarkTheme => Theme.of(this).brightness == Brightness.dark;
+
+  /// Muted body text / captions.
+  Color get textSecondary => isDarkTheme ? kTextSecondary : kTextSecondaryLight;
+
+  /// Disabled or placeholder text.
+  Color get textDisabled => isDarkTheme ? kTextDisabled : kTextDisabledLight;
+
+  /// Primary body text.
+  Color get textPrimary => isDarkTheme ? kTextPrimary : kTextPrimaryLight;
+
+  /// Raised fill behind inputs and chips.
+  Color get surfaceVariantColor =>
+      isDarkTheme ? kSurfaceVariant : kSurfaceVariantLight;
+
+  /// Hairline separators.
+  Color get dividerColor => isDarkTheme ? kDivider : kDividerLight;
+
+  /// Card / sidebar background.
+  Color get surfaceColor => isDarkTheme ? kSurface : kSurfaceLight;
+
+  /// Page background.
+  Color get appBackground => isDarkTheme ? kBgDark : kBgLight;
+}
+
 // ── Dark theme ────────────────────────────────────────────────────────────────
 ThemeData buildDarkTheme() => ThemeData(
       useMaterial3: true,

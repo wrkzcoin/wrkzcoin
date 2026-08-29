@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/wallet_notifiers.dart';
@@ -32,77 +35,111 @@ const _kPageSize = 25;
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-class HistoryScreen extends ConsumerWidget {
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends ConsumerState<HistoryScreen> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.text = ref.read(_filterProvider).search;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Every keystroke used to re-filter the entire history synchronously.
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) return;
+      ref.read(_filterProvider.notifier).state =
+          ref.read(_filterProvider).copyWith(search: value.trim().toLowerCase());
+      ref.read(_pageProvider.notifier).state = 0;
+    });
+  }
+
+  void _setDirection(_TxFilter direction) {
+    ref.read(_filterProvider.notifier).state =
+        ref.read(_filterProvider).copyWith(direction: direction);
+    ref.read(_pageProvider.notifier).state = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tr = S.of(context);
     final txAsync = ref.watch(transactionsProvider);
     final filter = ref.watch(_filterProvider);
     final page = ref.watch(_pageProvider);
+    final narrow = MediaQuery.sizeOf(context).width < 600;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ── Header + filter bar ───────────────────────────────────────────
         Container(
-          padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
+          padding: EdgeInsets.fromLTRB(narrow ? 16 : 28, narrow ? 16 : 28, narrow ? 16 : 28, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(tr?.transactionHistory ?? 'Transaction History', style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 16),
-              Row(
+              // Wrap, not Row: on a phone the search field plus three chips
+              // plus the refresh button overflowed the viewport.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  // Search
-                  Expanded(
-                    child: SizedBox(
-                      height: 40,
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: tr?.searchByHash ?? 'Search by hash, address or payment ID\u2026',
-                          prefixIcon: const Icon(Icons.search, size: 18),
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                        ),
-                        onChanged: (v) {
-                          ref.read(_filterProvider.notifier).state =
-                              filter.copyWith(search: v.toLowerCase());
-                          ref.read(_pageProvider.notifier).state = 0;
-                        },
+                  SizedBox(
+                    height: 40,
+                    width: narrow ? double.infinity : 320,
+                    child: TextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        hintText: tr?.searchByHash ?? 'Search by hash, address or payment ID\u2026',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        suffixIcon: filter.search.isEmpty
+                            ? null
+                            : IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                tooltip: tr?.clear ?? 'Clear',
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  _onSearchChanged('');
+                                },
+                              ),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
                       ),
+                      onChanged: _onSearchChanged,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // Direction filter chips
                   _FilterChip(
                     label: tr?.all ?? 'All',
                     selected: filter.direction == _TxFilter.all,
-                    onTap: () {
-                      ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.all);
-                      ref.read(_pageProvider.notifier).state = 0;
-                    },
+                    onTap: () => _setDirection(_TxFilter.all),
                   ),
-                  const SizedBox(width: 6),
                   _FilterChip(
                     label: tr?.filterReceived ?? 'Received',
                     selected: filter.direction == _TxFilter.incoming,
-                    onTap: () {
-                      ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.incoming);
-                      ref.read(_pageProvider.notifier).state = 0;
-                    },
+                    onTap: () => _setDirection(_TxFilter.incoming),
                   ),
-                  const SizedBox(width: 6),
                   _FilterChip(
                     label: tr?.filterSent ?? 'Sent',
                     selected: filter.direction == _TxFilter.outgoing,
-                    onTap: () {
-                      ref.read(_filterProvider.notifier).state = filter.copyWith(direction: _TxFilter.outgoing);
-                      ref.read(_pageProvider.notifier).state = 0;
-                    },
+                    onTap: () => _setDirection(_TxFilter.outgoing),
                   ),
-                  const SizedBox(width: 12),
-                  // Refresh
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 18),
                     tooltip: tr?.refresh ?? 'Refresh',
@@ -130,9 +167,9 @@ class HistoryScreen extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.receipt_long_outlined, size: 40, color: kTextDisabled),
+                      Icon(Icons.receipt_long_outlined, size: 40, color: context.textDisabled),
                       const SizedBox(height: 10),
-                      Text(tr?.noTransactionsFound ?? 'No transactions found', style: const TextStyle(color: kTextDisabled)),
+                      Text(tr?.noTransactionsFound ?? 'No transactions found', style: TextStyle(color: context.textDisabled)),
                     ],
                   ),
                 );
@@ -173,8 +210,10 @@ class HistoryScreen extends ConsumerWidget {
       if (f.direction == _TxFilter.incoming && !tx.isIncoming) return false;
       if (f.direction == _TxFilter.outgoing && tx.isIncoming) return false;
       if (f.search.isNotEmpty) {
+        // The query is lower-cased; the hash was compared raw, so any
+        // upper-case character in a hash made it unsearchable.
         final q = f.search;
-        if (!tx.hash.contains(q) &&
+        if (!tx.hash.toLowerCase().contains(q) &&
             !tx.address.toLowerCase().contains(q) &&
             !tx.paymentID.toLowerCase().contains(q)) {
           return false;
@@ -236,8 +275,13 @@ class _TxCardState extends State<_TxCard> {
                       children: [
                         Text(incoming ? (tr?.received ?? 'Received') : (tr?.sent ?? 'Sent'),
                             style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text(fmt.format(tx.dateTime),
-                            style: const TextStyle(color: kTextSecondary, fontSize: 11)),
+                        Text(
+                            // Pending transactions have no block timestamp yet;
+                            // formatting 0 rendered every one as 1 Jan 1970.
+                            tx.dateTime == null
+                                ? (tr?.pendingConfirmation ?? 'Pending confirmation')
+                                : fmt.format(tx.dateTime!),
+                            style: TextStyle(color: context.textSecondary, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -265,7 +309,7 @@ class _TxCardState extends State<_TxCard> {
                     ],
                   ),
                   const SizedBox(width: 8),
-                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: kTextSecondary),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 16, color: context.textSecondary),
                 ],
               ),
 
@@ -281,6 +325,23 @@ class _TxCardState extends State<_TxCard> {
                 _DetailRow(label: tr?.fee ?? 'Fee', value: '${formatAmount(tx.fee)} $kCoinTicker'),
                 if (tx.paymentID.isNotEmpty)
                   _DetailRow(label: tr?.paymentId ?? 'Payment ID', value: tx.paymentID, mono: true, copyable: true),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.open_in_new, size: 14),
+                    label: Text(tr?.viewInExplorer ?? 'View in explorer',
+                        style: const TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    onPressed: () => launchUrl(
+                      Uri.parse(kExplorerTxUrl.replaceAll('{hash}', tx.hash)),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -304,7 +365,7 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 90, child: Text(label, style: const TextStyle(color: kTextSecondary, fontSize: 12))),
+          SizedBox(width: 90, child: Text(label, style: TextStyle(color: context.textSecondary, fontSize: 12))),
           Expanded(
             child: Text(
               value,
@@ -353,7 +414,7 @@ class _PaginationBar extends StatelessWidget {
         children: [
           Text(
             tr?.showingRange(start, end, totalItems) ?? 'Showing $start\u2013$end of $totalItems',
-            style: const TextStyle(color: kTextSecondary, fontSize: 12),
+            style: TextStyle(color: context.textSecondary, fontSize: 12),
           ),
           const Spacer(),
           IconButton(
@@ -389,15 +450,15 @@ class _FilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? kPrimary.withAlpha(30) : kSurfaceVariant,
+          color: selected ? kPrimary.withAlpha(30) : context.surfaceVariantColor,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? kPrimary : kDivider),
+          border: Border.all(color: selected ? kPrimary : context.dividerColor),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: selected ? kPrimary : kTextSecondary,
+            color: selected ? kPrimary : context.textSecondary,
             fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),

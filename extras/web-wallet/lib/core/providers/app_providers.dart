@@ -1,36 +1,163 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:intl/intl.dart';
 import '../config/app_config.dart';
 
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
 const _kLogLevelKey = 'pluton_log_level';
 const _kNotificationsKey = 'pluton_notifications_enabled';
+const _kAutosaveKey = 'pluton_autosave_enabled';
+const _kScanCoinbaseKey = 'pluton_scan_coinbase';
+const _kLocaleKey = 'pluton_locale';
+const _kFirstLaunchDoneKey = 'pluton_first_launch_done';
+const _kAutoLockKey = 'pluton_auto_lock_minutes';
+const _kDefaultNodeHostKey = 'pluton_default_node_host';
+const _kDefaultNodePortKey = 'pluton_default_node_port';
+const _kDefaultNodeSSLKey = 'pluton_default_node_ssl';
+
+typedef DefaultNode = ({String host, int port, bool ssl});
+
+// ── Preferences preload ───────────────────────────────────────────────────────
+
+/// Snapshot of every persisted preference, read once before the first frame.
+///
+/// Each notifier used to kick off an un-awaited `_load()` from `build()` and
+/// return a default, so the app painted in the wrong theme and language and
+/// then snapped to the stored values. On web that flash happens on every page
+/// load. Reading them all up front makes the first frame the correct one.
+class PreloadedPrefs {
+  final ThemeMode themeMode;
+  final WalletLogLevel logLevel;
+  final bool notificationsEnabled;
+  final bool autosaveEnabled;
+  final bool scanCoinbase;
+  final Locale? locale;
+  final bool firstLaunchDone;
+  final int autoLockMinutes;
+  final DefaultNode defaultNode;
+
+  const PreloadedPrefs({
+    required this.themeMode,
+    required this.logLevel,
+    required this.notificationsEnabled,
+    required this.autosaveEnabled,
+    required this.scanCoinbase,
+    required this.locale,
+    required this.firstLaunchDone,
+    required this.autoLockMinutes,
+    required this.defaultNode,
+  });
+
+  static const fallback = PreloadedPrefs(
+    themeMode: ThemeMode.system,
+    logLevel: WalletLogLevel.info,
+    notificationsEnabled: true,
+    autosaveEnabled: true,
+    scanCoinbase: false,
+    locale: null,
+    firstLaunchDone: false,
+    autoLockMinutes: kDefaultAutoLockMinutes,
+    defaultNode: (
+      host: kDefaultDaemonHost,
+      port: kDefaultDaemonPort,
+      ssl: kDefaultDaemonSSL,
+    ),
+  );
+}
+
+Future<String?> _read(String key) async {
+  try {
+    return await _storage.read(key: key);
+  } catch (_) {
+    // Storage blocked (private mode, disabled cookies) — fall back to defaults
+    // rather than failing startup.
+    return null;
+  }
+}
+
+Future<void> _write(String key, String value) async {
+  try {
+    await _storage.write(key: key, value: value);
+  } catch (_) {
+    // Non-fatal: the setting just will not survive a reload.
+  }
+}
+
+/// Reads every stored preference concurrently. Call before `runApp`.
+Future<PreloadedPrefs> loadPreferences() async {
+  final values = await Future.wait([
+    _read(_kThemeModeKey),        // 0
+    _read(_kLogLevelKey),         // 1
+    _read(_kNotificationsKey),    // 2
+    _read(_kAutosaveKey),         // 3
+    _read(_kScanCoinbaseKey),     // 4
+    _read(_kLocaleKey),           // 5
+    _read(_kFirstLaunchDoneKey),  // 6
+    _read(_kAutoLockKey),         // 7
+    _read(_kDefaultNodeHostKey),  // 8
+    _read(_kDefaultNodePortKey),  // 9
+    _read(_kDefaultNodeSSLKey),   // 10
+  ]);
+
+  final localeCode = values[5];
+  final host = values[8];
+
+  final prefs = PreloadedPrefs(
+    themeMode: switch (values[0]) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    },
+    logLevel: WalletLogLevel.values.firstWhere(
+      (l) => l.value == (int.tryParse(values[1] ?? '') ?? 3),
+      orElse: () => WalletLogLevel.info,
+    ),
+    notificationsEnabled: values[2] != 'false',
+    autosaveEnabled: values[3] != 'false',
+    scanCoinbase: values[4] == 'true',
+    locale: (localeCode != null && localeCode.isNotEmpty)
+        ? Locale(localeCode)
+        : null,
+    firstLaunchDone: values[6] == 'true',
+    autoLockMinutes: int.tryParse(values[7] ?? '') ?? kDefaultAutoLockMinutes,
+    defaultNode: host == null
+        ? (host: kDefaultDaemonHost, port: kDefaultDaemonPort, ssl: kDefaultDaemonSSL)
+        : (
+            host: host,
+            port: int.tryParse(values[9] ?? '') ?? kDefaultDaemonPort,
+            ssl: values[10] == 'true',
+          ),
+  );
+
+  // Number and date formatting follow the chosen language from the first frame.
+  applyIntlLocale(prefs.locale);
+  return prefs;
+}
+
+/// Points `package:intl` at [locale] so amounts are grouped and punctuated the
+/// way the active language expects.
+void applyIntlLocale(Locale? locale) {
+  Intl.defaultLocale = locale?.toLanguageTag() ?? 'en';
+}
+
+/// Overridden in `main()` with the result of [loadPreferences].
+final preloadedPrefsProvider = Provider<PreloadedPrefs>(
+  (_) => PreloadedPrefs.fallback,
+);
 
 // ── Theme mode ────────────────────────────────────────────────────────────────
 
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
-  ThemeMode build() {
-    _load();
-    return ThemeMode.system;
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kThemeModeKey);
-    state = switch (v) {
-      'light' => ThemeMode.light,
-      'dark' => ThemeMode.dark,
-      _ => ThemeMode.system,
-    };
-  }
+  ThemeMode build() => ref.read(preloadedPrefsProvider).themeMode;
 
   Future<void> set(ThemeMode mode) async {
     state = mode;
-    await _storage.write(
-      key: _kThemeModeKey,
-      value: switch (mode) {
+    await _write(
+      _kThemeModeKey,
+      switch (mode) {
         ThemeMode.light => 'light',
         ThemeMode.dark => 'dark',
         _ => 'system',
@@ -60,23 +187,11 @@ enum WalletLogLevel {
 
 class LogLevelNotifier extends Notifier<WalletLogLevel> {
   @override
-  WalletLogLevel build() {
-    _load();
-    return WalletLogLevel.info;
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kLogLevelKey);
-    final n = int.tryParse(v ?? '') ?? 3;
-    state = WalletLogLevel.values.firstWhere(
-      (l) => l.value == n,
-      orElse: () => WalletLogLevel.info,
-    );
-  }
+  WalletLogLevel build() => ref.read(preloadedPrefsProvider).logLevel;
 
   Future<void> set(WalletLogLevel level) async {
     state = level;
-    await _storage.write(key: _kLogLevelKey, value: level.value.toString());
+    await _write(_kLogLevelKey, level.value.toString());
   }
 }
 
@@ -87,19 +202,11 @@ final logLevelProvider =
 
 class NotificationsEnabledNotifier extends Notifier<bool> {
   @override
-  bool build() {
-    _load();
-    return true; // default: On
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kNotificationsKey);
-    state = v != 'false';
-  }
+  bool build() => ref.read(preloadedPrefsProvider).notificationsEnabled;
 
   Future<void> set(bool enabled) async {
     state = enabled;
-    await _storage.write(key: _kNotificationsKey, value: enabled.toString());
+    await _write(_kNotificationsKey, enabled.toString());
   }
 }
 
@@ -109,23 +216,13 @@ final notificationsEnabledProvider =
 
 // ── Autosave preference ──────────────────────────────────────────────────────
 
-const _kAutosaveKey = 'pluton_autosave_enabled';
-
 class AutosaveEnabledNotifier extends Notifier<bool> {
   @override
-  bool build() {
-    _load();
-    return true; // default: On
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kAutosaveKey);
-    state = v != 'false';
-  }
+  bool build() => ref.read(preloadedPrefsProvider).autosaveEnabled;
 
   Future<void> set(bool enabled) async {
     state = enabled;
-    await _storage.write(key: _kAutosaveKey, value: enabled.toString());
+    await _write(_kAutosaveKey, enabled.toString());
   }
 }
 
@@ -135,28 +232,40 @@ final autosaveEnabledProvider =
 
 // ── Scan coinbase ────────────────────────────────────────────────────────────
 
-const _kScanCoinbaseKey = 'pluton_scan_coinbase';
-
 class ScanCoinbaseNotifier extends Notifier<bool> {
   @override
-  bool build() {
-    _load();
-    return false; // default: Off
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kScanCoinbaseKey);
-    if (v != null) state = v == 'true';
-  }
+  bool build() => ref.read(preloadedPrefsProvider).scanCoinbase;
 
   Future<void> set(bool enabled) async {
     state = enabled;
-    await _storage.write(key: _kScanCoinbaseKey, value: enabled.toString());
+    await _write(_kScanCoinbaseKey, enabled.toString());
   }
 }
 
 final scanCoinbaseProvider =
     NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+
+// ── Auto-lock ────────────────────────────────────────────────────────────────
+
+/// Minutes of inactivity before the wallet locks itself. 0 disables it.
+///
+/// A browser tab left open on a shared machine previously stayed unlocked
+/// forever with the seed one menu click away.
+class AutoLockNotifier extends Notifier<int> {
+  @override
+  int build() => ref.read(preloadedPrefsProvider).autoLockMinutes;
+
+  Future<void> set(int minutes) async {
+    state = minutes;
+    await _write(_kAutoLockKey, minutes.toString());
+  }
+}
+
+final autoLockMinutesProvider =
+    NotifierProvider<AutoLockNotifier, int>(AutoLockNotifier.new);
+
+/// Selectable idle timeouts, in minutes (0 = never).
+const List<int> kAutoLockChoices = [0, 1, 5, 15, 30, 60];
 
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 
@@ -165,9 +274,6 @@ final scanCoinbaseProvider =
 final walletLockedProvider = StateProvider<bool>((_) => false);
 
 // ── Locale ───────────────────────────────────────────────────────────────────
-
-const _kLocaleKey = 'pluton_locale';
-const _kFirstLaunchDoneKey = 'pluton_first_launch_done';
 
 const supportedLocales = [
   Locale('en'),
@@ -183,21 +289,14 @@ const supportedLocales = [
 
 class LocaleNotifier extends Notifier<Locale?> {
   @override
-  Locale? build() {
-    _load();
-    return null; // null = system default
-  }
-
-  Future<void> _load() async {
-    final v = await _storage.read(key: _kLocaleKey);
-    if (v != null && v.isNotEmpty) {
-      state = Locale(v);
-    }
-  }
+  Locale? build() => ref.read(preloadedPrefsProvider).locale;
 
   Future<void> set(Locale? locale) async {
     state = locale;
-    await _storage.write(key: _kLocaleKey, value: locale?.languageCode ?? '');
+    // Keep number/date formatting in step with the UI language — otherwise a
+    // German user sees "1.234,56"-style prompts but amounts parsed as en_US.
+    applyIntlLocale(locale);
+    await _write(_kLocaleKey, locale?.languageCode ?? '');
   }
 }
 
@@ -206,49 +305,57 @@ final localeProvider =
 
 // ── First launch flag ────────────────────────────────────────────────────────
 
-final firstLaunchDoneProvider = FutureProvider<bool>((ref) async {
-  final v = await _storage.read(key: _kFirstLaunchDoneKey);
-  return v == 'true';
-});
+/// Synchronous now that preferences are preloaded — the router no longer has to
+/// guess an initial route from an unresolved future and then correct itself.
+class FirstLaunchNotifier extends Notifier<bool> {
+  @override
+  bool build() => ref.read(preloadedPrefsProvider).firstLaunchDone;
 
-Future<void> markFirstLaunchDone() async {
-  await _storage.write(key: _kFirstLaunchDoneKey, value: 'true');
+  Future<void> markDone() async {
+    state = true;
+    await _write(_kFirstLaunchDoneKey, 'true');
+  }
 }
+
+final firstLaunchDoneProvider =
+    NotifierProvider<FirstLaunchNotifier, bool>(FirstLaunchNotifier.new);
 
 // ── Default node preference ───────────────────────────────────────────────────
 
-const _kDefaultNodeHostKey = 'pluton_default_node_host';
-const _kDefaultNodePortKey = 'pluton_default_node_port';
-const _kDefaultNodeSSLKey  = 'pluton_default_node_ssl';
-
-typedef DefaultNode = ({String host, int port, bool ssl});
-
 class DefaultNodeNotifier extends Notifier<DefaultNode> {
   @override
-  DefaultNode build() {
-    _load();
-    return (host: kDefaultDaemonHost, port: kDefaultDaemonPort, ssl: kDefaultDaemonSSL);
-  }
-
-  Future<void> _load() async {
-    final host = await _storage.read(key: _kDefaultNodeHostKey);
-    if (host == null) return;
-    final portStr = await _storage.read(key: _kDefaultNodePortKey);
-    final sslStr  = await _storage.read(key: _kDefaultNodeSSLKey);
-    state = (
-      host: host,
-      port: int.tryParse(portStr ?? '') ?? kDefaultDaemonPort,
-      ssl:  sslStr == 'true',
-    );
-  }
+  DefaultNode build() => ref.read(preloadedPrefsProvider).defaultNode;
 
   Future<void> set({required String host, required int port, required bool ssl}) async {
     state = (host: host, port: port, ssl: ssl);
-    await _storage.write(key: _kDefaultNodeHostKey, value: host);
-    await _storage.write(key: _kDefaultNodePortKey, value: port.toString());
-    await _storage.write(key: _kDefaultNodeSSLKey,  value: ssl.toString());
+    await Future.wait([
+      _write(_kDefaultNodeHostKey, host),
+      _write(_kDefaultNodePortKey, port.toString()),
+      _write(_kDefaultNodeSSLKey, ssl.toString()),
+    ]);
   }
 }
 
 final defaultNodeProvider =
     NotifierProvider<DefaultNodeNotifier, DefaultNode>(DefaultNodeNotifier.new);
+
+// ── Last opened wallet ───────────────────────────────────────────────────────
+
+const _kLastWalletKey = 'pluton_last_wallet_name';
+
+/// Name of the most recently opened wallet.
+///
+/// This is what "Delete Wallet Data" deletes. It was previously never written,
+/// so that flow read null, skipped the delete entirely, and still reported
+/// success — leaving the wallet sitting in IndexedDB.
+Future<String?> readLastWalletName() => _read(_kLastWalletKey);
+
+Future<void> saveLastWalletName(String name) => _write(_kLastWalletKey, name);
+
+Future<void> clearLastWalletName() async {
+  try {
+    await _storage.delete(key: _kLastWalletKey);
+  } catch (_) {
+    // Nothing to clear.
+  }
+}

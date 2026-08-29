@@ -92,12 +92,11 @@ class _LanguagePickerScreenState extends ConsumerState<LanguagePickerScreen> {
                     width: double.infinity,
                     child: FilledButton(
                       onPressed: () async {
-                        ref
+                        await ref
                             .read(localeProvider.notifier)
                             .set(Locale(_selectedCode));
-                        await markFirstLaunchDone();
-                        ref.invalidate(firstLaunchDoneProvider);
-                        if (mounted) context.go('/setup');
+                        await ref.read(firstLaunchDoneProvider.notifier).markDone();
+                        if (context.mounted) context.go('/setup');
                       },
                       child: const Text('Continue'),
                     ),
