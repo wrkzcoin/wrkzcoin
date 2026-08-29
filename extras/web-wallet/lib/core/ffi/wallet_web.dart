@@ -17,6 +17,7 @@
 ///   api.close();
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 
@@ -29,6 +30,12 @@ class WalletCApiException implements Exception {
 
   @override
   String toString() => 'WalletCApiException($errorCode): $message';
+}
+
+/// Thrown when the WASM module never becomes usable — a missing/failed
+/// `wallet_wasm.wasm`, a worker that crashed, or missing COOP/COEP headers.
+class WalletEngineUnavailableException extends WalletCApiException {
+  WalletEngineUnavailableException(String message) : super(-2, message);
 }
 
 // ─── event types (match WALLET_EVENT_* in wallet_capi.h) ─────────────────────
@@ -64,6 +71,14 @@ external JSObject get _jsBridge;
 @JS('walletBridgeReady')
 external JSBoolean? get _walletBridgeReadyFlag;
 
+/// Non-null when the bridge failed to initialise; holds the reason.
+@JS('walletBridgeError')
+external JSString? get _walletBridgeErrorFlag;
+
+/// Dismisses the boot splash in index.html.
+@JS('_bootDone')
+external void _bootDone();
+
 /// Extract a readable message from a JS exception (Error or plain value).
 @JS('_extractJsError')
 external JSString _extractJsError(JSAny? err);
@@ -80,12 +95,51 @@ Never _throwJsError(Object e) {
   throw WalletCApiException(-1, msg);
 }
 
+/// How long to wait for the WASM module before giving up.
+///
+/// The previous implementation polled forever, so a missing `wallet_wasm.wasm`
+/// or a server without COOP/COEP headers showed as a spinner that never
+/// resolved and no error anywhere in the UI.
+const Duration kBridgeReadyTimeout = Duration(seconds: 90);
+
+/// Dismisses the HTML boot splash. Safe to call more than once.
+void dismissBootSplash() {
+  try {
+    _bootDone();
+  } catch (_) {
+    // Splash already removed, or index.html predates the helper.
+  }
+}
+
 /// Waits until the WASM wallet module is fully loaded in the worker.
 /// Resolves immediately if already ready; polls at 100 ms intervals otherwise.
+///
+/// Throws [WalletEngineUnavailableException] if the bridge reports a failure or
+/// does not come up within [kBridgeReadyTimeout].
 Future<void> _waitForBridge() async {
+  final deadline = DateTime.now().add(kBridgeReadyTimeout);
+
   for (;;) {
     final ready = _walletBridgeReadyFlag;
     if (ready != null && ready.toDart) return;
+
+    final error = _walletBridgeErrorFlag;
+    if (error != null) {
+      throw WalletEngineUnavailableException(
+        'The wallet engine failed to load: ${error.toDart}',
+      );
+    }
+
+    if (DateTime.now().isAfter(deadline)) {
+      throw WalletEngineUnavailableException(
+        'The wallet engine did not start within '
+        '${kBridgeReadyTimeout.inSeconds}s. Check that wallet_wasm.js and '
+        'wallet_wasm.wasm are served next to index.html, and that the server '
+        'sends the Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy '
+        'headers.',
+      );
+    }
+
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 }
@@ -145,14 +199,33 @@ Future<Map<String, dynamic>> _callMap(String method, [Map<String, dynamic>? para
   return {};
 }
 
-/// For lifecycle methods that need the bridge's async JS methods directly
-/// (create, open, etc. involve IndexedDB).
-Future<dynamic> _callLifecycle(String method, Map<String, dynamic> params) async {
+/// Invokes a named method on the JS bridge with up to two positional
+/// arguments. Reserved for the handful of entry points that genuinely need a
+/// non-object argument (the DOM download, event subscription).
+Future<dynamic> _callNamed(String method, [JSAny? arg1, JSAny? arg2]) async {
   await _waitForBridge();
-  final paramsStr = jsonEncode(params);
-  final paramsObj = _jsonParse(paramsStr.toJS);
-  // Use the specific lifecycle method on the bridge (e.g. bridge.create(opts))
-  final promise = _jsBridge.callMethod(method.toJS, paramsObj);
+  final promise = _jsBridge.callMethod(method.toJS, arg1, arg2);
+  try {
+    if (promise == null || !promise.isA<JSPromise>()) return null;
+    final result = await (promise as JSPromise).toDart;
+    if (result == null) return null;
+    final jsonStr = _jsonStringify(result);
+    return jsonDecode(jsonStr.toDart);
+  } catch (e) {
+    _throwJsError(e);
+  }
+}
+
+/// Runs a stateful (IndexedDB-touching) operation on the worker.
+///
+/// Everything goes through the bridge's uniform `request(method, params)`
+/// entry point. Calling the bridge's named methods instead meant matching each
+/// one's arity by hand, and a single mismatch — an options object passed where
+/// a bare string was expected — was enough to silently break wallet deletion.
+Future<dynamic> _request(String method, [Map<String, dynamic>? params]) async {
+  await _waitForBridge();
+  final paramsObj = _jsonParse(jsonEncode(params ?? const {}).toJS);
+  final promise = _jsBridge.callMethod('request'.toJS, method.toJS, paramsObj);
   try {
     final result = await (promise as JSPromise).toDart;
     if (result == null) return null;
@@ -161,6 +234,22 @@ Future<dynamic> _callLifecycle(String method, Map<String, dynamic> params) async
   } catch (e) {
     _throwJsError(e);
   }
+}
+
+/// [_request] coercing the result to a map.
+Future<Map<String, dynamic>> _requestMap(String method,
+    [Map<String, dynamic>? params]) async {
+  final result = await _request(method, params);
+  if (result is Map<String, dynamic>) return result;
+  if (result is Map) return Map<String, dynamic>.from(result);
+  return {};
+}
+
+/// [_request] coercing the result to a string.
+Future<String> _requestStr(String method, [Map<String, dynamic>? params]) async {
+  final result = await _request(method, params);
+  if (result == null) return '';
+  return result is String ? result : jsonEncode(result);
 }
 
 // ─── JS interop extension for callMethod ─────────────────────────────────────
@@ -186,9 +275,25 @@ external JSAny? _jsCallMethod(JSObject obj, JSString name, JSAny? arg1, JSAny? a
 class WalletCApi {
   bool _open = false;
 
+  /// Broadcasts wallet events pushed from the WASM module, so the UI can react
+  /// to a new transaction or a completed sync instead of polling for them.
+  final StreamController<({WalletEvent type, Map<String, dynamic> data})>
+      _events = StreamController.broadcast();
+
+  bool _eventsStarted = false;
+
   WalletCApi();
 
   bool get isOpen => _open;
+
+  /// Wallet events (synced / incoming transaction) pushed from WASM.
+  Stream<({WalletEvent type, Map<String, dynamic> data})> get events =>
+      _events.stream;
+
+  /// Resolves once the WASM engine is usable, or throws
+  /// [WalletEngineUnavailableException]. Lets the UI show a real error at
+  /// startup rather than an indefinite spinner.
+  Future<void> ensureEngineReady() => _waitForBridge();
 
   // --- version ---
 
@@ -203,7 +308,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
-    await _callLifecycle('open', {
+    await _request('open', {
       'filename': filename,
       'password': password,
       'daemonHost': daemonHost,
@@ -212,13 +317,14 @@ class WalletCApi {
       'syncThreads': syncThreads,
     });
     _open = true;
+    await _startEvents();
   }
 
   Future<void> create(
       String filename, String password,
       String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
-    await _callLifecycle('create', {
+    await _request('create', {
       'filename': filename,
       'password': password,
       'daemonHost': daemonHost,
@@ -227,6 +333,7 @@ class WalletCApi {
       'syncThreads': syncThreads,
     });
     _open = true;
+    await _startEvents();
   }
 
   Future<void> restoreFromSeed(
@@ -234,7 +341,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    await _callLifecycle('restoreFromSeed', {
+    await _request('restoreFromSeed', {
       'mnemonicSeed': mnemonicSeed,
       'filename': filename,
       'password': password,
@@ -245,6 +352,7 @@ class WalletCApi {
       'syncThreads': syncThreads,
     });
     _open = true;
+    await _startEvents();
   }
 
   Future<void> restoreFromKeys(
@@ -252,7 +360,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    await _callLifecycle('restoreFromKeys', {
+    await _request('restoreFromKeys', {
       'privateSpendKey': privateSpendKey,
       'privateViewKey': privateViewKey,
       'filename': filename,
@@ -264,6 +372,7 @@ class WalletCApi {
       'syncThreads': syncThreads,
     });
     _open = true;
+    await _startEvents();
   }
 
   Future<void> restoreViewWallet(
@@ -271,7 +380,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
-    await _callLifecycle('restoreViewWallet', {
+    await _request('restoreViewWallet', {
       'privateViewKey': privateViewKey,
       'address': address,
       'filename': filename,
@@ -283,21 +392,26 @@ class WalletCApi {
       'syncThreads': syncThreads,
     });
     _open = true;
+    await _startEvents();
   }
 
   Future<void> close() async {
-    if (_open) {
-      await _callLifecycle('close', {});
-      _open = false;
-    }
+    if (!_open) return;
+    // Mark closed first so pollers stop touching a wallet that is going away.
+    _open = false;
+    await _stopEvents();
+    await _request('close');
   }
 
   Future<void> save() async {
-    await _callLifecycle('save', {});
+    await _request('save');
   }
 
   Future<void> changePassword(String newPassword) async {
-    await _call('changePassword', {'newPassword': newPassword});
+    // Routed through the lifecycle channel: the worker re-encrypts *and*
+    // re-persists, otherwise IndexedDB keeps the old ciphertext and the new
+    // password fails to open the wallet on the next page load.
+    await _request('changePassword', {'newPassword': newPassword});
   }
 
   Future<String> exportJson() async {
@@ -306,14 +420,34 @@ class WalletCApi {
     return jsonEncode(result);
   }
 
+  /// Delete a stored wallet.
+  ///
+  /// The filename is passed as a bare string. Wrapping it in a map made the
+  /// JS proxy wrap it a second time, so IndexedDB received an object where a
+  /// key was expected and threw DataError — the delete silently did nothing.
   Future<void> deleteFile(String filename) async {
-    await _callLifecycle('deleteFile', {'filename': filename});
+    await _request('deleteFile', {'filename': filename});
   }
 
   Future<List<String>> listWallets() async {
-    final result = await _callLifecycle('listWallets', {});
+    final result = await _request('listWallets');
     if (result is List) return result.map((e) => e.toString()).toList();
     return [];
+  }
+
+  /// Save the encrypted wallet file to the user's device.
+  Future<void> downloadWallet([String? filename]) async {
+    await _callNamed('downloadWallet', filename?.toJS);
+  }
+
+  /// Browser storage usage, or null when the API is unavailable.
+  Future<({int usage, int quota})?> storageEstimate() async {
+    final m = await _request('storageEstimate');
+    if (m is! Map) return null;
+    return (
+      usage: (m['usage'] as num?)?.toInt() ?? 0,
+      quota: (m['quota'] as num?)?.toInt() ?? 0,
+    );
   }
 
   // --- sync / node ---
@@ -403,8 +537,8 @@ class WalletCApi {
 
   Future<String> sendBasic(String destination, int amount,
       {String paymentId = '', bool sendAll = false,
-      bool broadcast = true}) async {
-    return _callStr('sendBasic', {
+      bool broadcast = true}) {
+    return _requestStr('sendBasic', {
       'destination': destination,
       'amount': amount,
       'paymentId': paymentId,
@@ -413,15 +547,13 @@ class WalletCApi {
     });
   }
 
-  Future<String> sendPrepared(String preparedTxHash) async {
-    return _callStr('sendPrepared', {
-      'preparedTxHash': preparedTxHash,
-    });
+  Future<String> sendPrepared(String preparedTxHash) {
+    return _requestStr('sendPrepared', {'preparedTxHash': preparedTxHash});
   }
 
   Future<Map<String, dynamic>> sendAdvanced(String requestJson,
-      {bool broadcast = true}) async {
-    return _callMap('sendAdvancedJson', {
+      {bool broadcast = true}) {
+    return _requestMap('sendAdvancedJson', {
       'requestJson': requestJson,
       'broadcast': broadcast,
     });
@@ -441,8 +573,8 @@ class WalletCApi {
   // --- sweep ---
 
   Future<Map<String, dynamic>> sweepToAddress(String destination,
-      {String paymentId = '', int amountToSweep = 0}) async {
-    return _callMap('sweepToAddress', {
+      {String paymentId = '', int amountToSweep = 0}) {
+    return _requestMap('sweepToAddress', {
       'destination': destination,
       'paymentId': paymentId,
       'amountToSweep': amountToSweep,
@@ -484,28 +616,28 @@ class WalletCApi {
 
   // --- subwallets ---
 
-  Future<Map<String, dynamic>> addSubwallet() async {
-    return _callMap('addSubwallet');
+  Future<Map<String, dynamic>> addSubwallet() {
+    return _requestMap('addSubwallet');
   }
 
   Future<String> importSubwalletFromKey(String privateSpendKeyHex,
-      {int scanHeight = 0}) async {
-    return _callStr('importSubwalletFromKey', {
+      {int scanHeight = 0}) {
+    return _requestStr('importSubwalletFromKey', {
       'privateSpendKey': privateSpendKeyHex,
       'scanHeight': scanHeight,
     });
   }
 
   Future<String> importSubwalletFromIndex(int walletIndex,
-      {int scanHeight = 0}) async {
-    return _callStr('importSubwalletFromIndex', {
+      {int scanHeight = 0}) {
+    return _requestStr('importSubwalletFromIndex', {
       'walletIndex': walletIndex,
       'scanHeight': scanHeight,
     });
   }
 
   Future<void> deleteSubwallet(String address) async {
-    await _call('deleteSubwallet', {'address': address});
+    await _request('deleteSubwallet', {'address': address});
   }
 
   // --- integrated address ---
@@ -520,31 +652,80 @@ class WalletCApi {
 
   // --- events ---
 
-  ({WalletEvent type, Map<String, dynamic> data})? pollEvent(
-      {int timeoutMs = 0}) {
-    // pollEvent is still synchronous for compatibility with the polling timer.
-    // In worker mode, events arrive via callbacks instead.
-    return null;
+  /// Subscribes to WASM wallet events and republishes them on [events].
+  ///
+  /// This machinery existed on both sides of the worker but nothing ever
+  /// switched it on, so the UI refetched the entire transaction history on a
+  /// timer instead of being told when something changed.
+  Future<void> _startEvents() async {
+    if (_eventsStarted) return;
+    _eventsStarted = true;
+    try {
+      await _waitForBridge();
+      final callback = ((JSAny? type, JSAny? data) {
+        if (_events.isClosed) return;
+        final eventType = type != null && type.isA<JSNumber>()
+            ? (type as JSNumber).toDartInt
+            : 0;
+        if (eventType == 0) return;
+
+        Map<String, dynamic> payload = const {};
+        if (data != null) {
+          try {
+            final decoded = jsonDecode(_jsonStringify(data).toDart);
+            if (decoded is Map) payload = Map<String, dynamic>.from(decoded);
+          } catch (_) {
+            // Malformed payload — the event type alone is still useful.
+          }
+        }
+        _events.add((type: WalletEvent.fromInt(eventType), data: payload));
+      }).toJS;
+
+      final promise =
+          _jsBridge.callMethod('startEventPolling'.toJS, callback, 1000.toJS);
+      if (promise != null && promise.isA<JSPromise>()) {
+        await (promise as JSPromise).toDart;
+      }
+    } catch (_) {
+      // Non-fatal: the providers keep a slow polling fallback.
+      _eventsStarted = false;
+    }
+  }
+
+  Future<void> _stopEvents() async {
+    if (!_eventsStarted) return;
+    _eventsStarted = false;
+    try {
+      await _callNamed('stopEventPolling');
+    } catch (_) {
+      // Bridge already gone.
+    }
+  }
+
+  /// Releases the event stream. Call when the app shuts down.
+  Future<void> dispose() async {
+    await _stopEvents();
+    await _events.close();
   }
 
   // --- logging ---
 
-  void setLogLevel(String levelName) {
+  Future<void> setLogLevel(String levelName) async {
     // Map Dart WalletLogLevel enum names to C++ Logger::LogLevel numeric values:
     // disabled=0, fatal=1, warning=2, info=3, debug=4, trace=5
     const nameToLevel = {
       'disabled': 0, 'fatal': 1, 'warning': 2, 'info': 3, 'debug': 4, 'trace': 5,
     };
     final numericLevel = nameToLevel[levelName.toLowerCase()] ?? 3;
-    _call('setLogLevel', {'level': numericLevel});
+    await _call('setLogLevel', {'level': numericLevel});
   }
 
   Future<Map<String, dynamic>> takeLogsAsync() => _callMap('takeLogsJson');
   // takeLogs() is kept for API compatibility but the log viewer uses takeLogsAsync().
   Map<String, dynamic> takeLogs() => {};
 
-  void clearLogs() {
-    _call('clearLogs');
+  Future<void> clearLogs() async {
+    await _call('clearLogs');
   }
 
   // --- TX PoW progress ---
@@ -558,15 +739,10 @@ class WalletCApi {
     );
   }
 
-  ({bool active, int elapsedMs, int nonces}) getPowStatus() {
-    // Sync fallback for UI polling — returns inactive
-    return (active: false, elapsedMs: 0, nonces: 0);
-  }
-
   // --- scan coinbase ---
 
-  void setScanCoinbase(bool scan) {
-    _call('setScanCoinbase', {'scan': scan});
+  Future<void> setScanCoinbase(bool scan) async {
+    await _call('setScanCoinbase', {'scan': scan});
   }
 
   // --- error helpers ---
