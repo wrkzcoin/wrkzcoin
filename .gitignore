@@ -29,3 +29,5 @@ extras/mobile-wallet/android/local.properties
 extras/mobile-wallet/build/**
 extras/mobile-wallet/android/.gradle/**
 extras/web-wallet/.dart_tool/**
+extras/web-wallet/build/**
+extras/web-wallet/.flutter-plugins-dependencies

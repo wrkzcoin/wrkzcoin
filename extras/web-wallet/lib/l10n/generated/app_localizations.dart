@@ -1550,6 +1550,366 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Русский'**
   String get languageRu;
+
+  /// Page not found
+  ///
+  /// In en, this message translates to:
+  /// **'Page not found'**
+  String get pageNotFound;
+
+  /// Back to wallet
+  ///
+  /// In en, this message translates to:
+  /// **'Back to wallet'**
+  String get backToWallet;
+
+  /// Hide
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get hide;
+
+  /// MAX
+  ///
+  /// In en, this message translates to:
+  /// **'MAX'**
+  String get max;
+
+  /// View in explorer
+  ///
+  /// In en, this message translates to:
+  /// **'View in explorer'**
+  String get viewInExplorer;
+
+  /// Pending confirmation
+  ///
+  /// In en, this message translates to:
+  /// **'Pending confirmation'**
+  String get pendingConfirmation;
+
+  /// A WRKZ address starts with “Wrkz”
+  ///
+  /// In en, this message translates to:
+  /// **'A WRKZ address starts with “Wrkz”'**
+  String get addressWrongPrefix;
+
+  /// Wrong length — a WRKZ address is 98 characters (120 or 186 if integrated)
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong length — a WRKZ address is 98 characters (120 or 186 if integrated)'**
+  String get addressWrongLength;
+
+  /// Contains characters that are not valid in an address (0, O, I and l are never used)
+  ///
+  /// In en, this message translates to:
+  /// **'Contains characters that are not valid in an address (0, O, I and l are never used)'**
+  String get addressBadCharacters;
+
+  /// Already saved as “{name}”
+  ///
+  /// In en, this message translates to:
+  /// **'Already saved as “{name}”'**
+  String addressAlreadySaved(String name);
+
+  /// Amount must be greater than zero
+  ///
+  /// In en, this message translates to:
+  /// **'Amount must be greater than zero'**
+  String get amountMustBePositive;
+
+  /// At most {places} decimal places
+  ///
+  /// In en, this message translates to:
+  /// **'At most {places} decimal places'**
+  String amountTooManyDecimals(int places);
+
+  /// Amount is too large
+  ///
+  /// In en, this message translates to:
+  /// **'Amount is too large'**
+  String get amountTooLarge;
+
+  /// More than your available balance ({amount} {ticker}, plus fee)
+  ///
+  /// In en, this message translates to:
+  /// **'More than your available balance ({amount} {ticker}, plus fee)'**
+  String amountExceedsBalance(String amount, String ticker);
+
+  /// Network fee
+  ///
+  /// In en, this message translates to:
+  /// **'Network fee'**
+  String get networkFee;
+
+  /// Fast
+  ///
+  /// In en, this message translates to:
+  /// **'Fast'**
+  String get feeFast;
+
+  /// Economy
+  ///
+  /// In en, this message translates to:
+  /// **'Economy'**
+  String get feeEconomy;
+
+  /// Pays {amount} {ticker} to skip the transaction proof of work. Sends in seconds.
+  ///
+  /// In en, this message translates to:
+  /// **'Pays {amount} {ticker} to skip the transaction proof of work. Sends in seconds.'**
+  String feeFastHint(String amount, String ticker);
+
+  /// Pays the network minimum, but your browser must compute the transaction proof of work —...
+  ///
+  /// In en, this message translates to:
+  /// **'Pays the network minimum, but your browser must compute the transaction proof of work — this can take several minutes.'**
+  String get feeEconomyHint;
+
+  /// This address already contains a payment ID — leave the payment ID field empty.
+  ///
+  /// In en, this message translates to:
+  /// **'This address already contains a payment ID — leave the payment ID field empty.'**
+  String get paymentIdWithIntegrated;
+
+  /// This sends your entire balance, minus fees, to:
+  ///
+  /// In en, this message translates to:
+  /// **'This sends your entire balance, minus fees, to:'**
+  String get sweepConfirmBody;
+
+  /// Too many attempts — try again in {seconds}s
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts — try again in {seconds}s'**
+  String tooManyAttempts(int seconds);
+
+  /// Security
+  ///
+  /// In en, this message translates to:
+  /// **'Security'**
+  String get sectionSecurity;
+
+  /// Auto-lock
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-lock'**
+  String get autoLock;
+
+  /// Lock the wallet after a period of inactivity
+  ///
+  /// In en, this message translates to:
+  /// **'Lock the wallet after a period of inactivity'**
+  String get autoLockSubtitle;
+
+  /// Never
+  ///
+  /// In en, this message translates to:
+  /// **'Never'**
+  String get autoLockNever;
+
+  /// {minutes} min
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min'**
+  String autoLockMinutes(int minutes);
+
+  /// Confirm password
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm password'**
+  String get confirmPassword;
+
+  /// Confirm new password
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm new password'**
+  String get confirmPasswordField;
+
+  /// New password
+  ///
+  /// In en, this message translates to:
+  /// **'New password'**
+  String get newPassword;
+
+  /// Change Password
+  ///
+  /// In en, this message translates to:
+  /// **'Change Password'**
+  String get changePassword;
+
+  /// Re-encrypt this wallet with a new password
+  ///
+  /// In en, this message translates to:
+  /// **'Re-encrypt this wallet with a new password'**
+  String get changePasswordSubtitle;
+
+  /// Enter your current wallet password.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter your current wallet password.'**
+  String get changePasswordPurpose;
+
+  /// Password changed
+  ///
+  /// In en, this message translates to:
+  /// **'Password changed'**
+  String get passwordChanged;
+
+  /// Passwords do not match
+  ///
+  /// In en, this message translates to:
+  /// **'Passwords do not match'**
+  String get passwordsDoNotMatch;
+
+  /// Use a password of at least {length} characters
+  ///
+  /// In en, this message translates to:
+  /// **'Use a password of at least {length} characters'**
+  String passwordTooShort(int length);
+
+  /// Seed Phrase & Private Keys
+  ///
+  /// In en, this message translates to:
+  /// **'Seed Phrase & Private Keys'**
+  String get showSeedAndKeys;
+
+  /// Reveal your recovery seed and keys (asks for your password)
+  ///
+  /// In en, this message translates to:
+  /// **'Reveal your recovery seed and keys (asks for your password)'**
+  String get showSeedAndKeysSubtitle;
+
+  /// Your seed phrase and private keys will be shown on screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Your seed phrase and private keys will be shown on screen.'**
+  String get revealSecretsPurpose;
+
+  /// Anyone with these can spend your funds. Make sure nobody can see your screen, and never...
+  ///
+  /// In en, this message translates to:
+  /// **'Anyone with these can spend your funds. Make sure nobody can see your screen, and never share them — no support channel will ever ask for them.'**
+  String get secretsWarning;
+
+  /// Tap to reveal
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to reveal'**
+  String get tapToReveal;
+
+  /// This is a view-only wallet — it has no seed phrase or spend key.
+  ///
+  /// In en, this message translates to:
+  /// **'This is a view-only wallet — it has no seed phrase or spend key.'**
+  String get viewOnlyNoSeed;
+
+  /// Confirm your backup
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm your backup'**
+  String get verifySeedTitle;
+
+  /// Type the requested words from the phrase you just wrote down.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the requested words from the phrase you just wrote down.'**
+  String get verifySeedSubtitle;
+
+  /// Word #{number}
+  ///
+  /// In en, this message translates to:
+  /// **'Word #{number}'**
+  String wordNumber(int number);
+
+  /// Ask me different words
+  ///
+  /// In en, this message translates to:
+  /// **'Ask me different words'**
+  String get askDifferentWords;
+
+  /// Download Wallet File
+  ///
+  /// In en, this message translates to:
+  /// **'Download Wallet File'**
+  String get downloadWalletFile;
+
+  /// Save an encrypted backup of this wallet to your device
+  ///
+  /// In en, this message translates to:
+  /// **'Save an encrypted backup of this wallet to your device'**
+  String get downloadWalletFileSubtitle;
+
+  /// Encrypted wallet file downloaded — keep it somewhere safe.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted wallet file downloaded — keep it somewhere safe.'**
+  String get walletFileDownloaded;
+
+  /// This file is NOT encrypted. It contains your private keys in plain text — anyone who op...
+  ///
+  /// In en, this message translates to:
+  /// **'This file is NOT encrypted. It contains your private keys in plain text — anyone who opens it can spend your funds.\n\nOnly save it somewhere you control, and delete it when you are done.'**
+  String get exportJsonWarning;
+
+  /// Could not save the wallet to browser storage: {error}
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save the wallet to browser storage: {error}'**
+  String autosaveFailed(String error);
+
+  /// Wallet data deleted
+  ///
+  /// In en, this message translates to:
+  /// **'Wallet data deleted'**
+  String get walletDataDeleted;
+
+  /// Delete failed: {error}
+  ///
+  /// In en, this message translates to:
+  /// **'Delete failed: {error}'**
+  String deleteFailed(String error);
+
+  /// Your browser is blocking notifications for this site. Enable them in site settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Your browser is blocking notifications for this site. Enable them in site settings.'**
+  String get notificationsBlocked;
+
+  /// Enter a name for this wallet
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name for this wallet'**
+  String get walletNameRequired;
+
+  /// Enter a daemon host
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a daemon host'**
+  String get daemonHostRequired;
+
+  /// Port must be between 1 and 65535
+  ///
+  /// In en, this message translates to:
+  /// **'Port must be between 1 and 65535'**
+  String get invalidPort;
+
+  /// Private spend key must be 64 hexadecimal characters
+  ///
+  /// In en, this message translates to:
+  /// **'Private spend key must be 64 hexadecimal characters'**
+  String get invalidSpendKey;
+
+  /// Private view key must be 64 hexadecimal characters
+  ///
+  /// In en, this message translates to:
+  /// **'Private view key must be 64 hexadecimal characters'**
+  String get invalidViewKey;
+
+  /// A seed phrase has {expected} words — you entered {actual}
+  ///
+  /// In en, this message translates to:
+  /// **'A seed phrase has {expected} words — you entered {actual}'**
+  String seedWordCount(int expected, int actual);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

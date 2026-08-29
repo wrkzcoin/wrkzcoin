@@ -1,0 +1,18 @@
+# Matches extras/desktop-wallet — flutter_lints was already a dev dependency
+# here but no analysis_options.yaml existed, so none of the rules ran.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # A dropped Future in a wallet is a save that silently never happened.
+    - unawaited_futures
+    - use_build_context_synchronously
+    - cancel_subscriptions
+    - close_sinks
+    - avoid_print
+    - prefer_final_locals
+
+analyzer:
+  errors:
+    unawaited_futures: warning
+    use_build_context_synchronously: warning

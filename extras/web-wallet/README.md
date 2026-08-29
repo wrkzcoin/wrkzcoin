@@ -105,11 +105,13 @@ cp build-wasm/wasm/wallet_wasm.wasm extras/web-wallet/web/
 cp build-wasm/wasm/wallet_wasm.worker.js extras/web-wallet/web/
 ```
 
-Also copy the JS bridge files:
+Also copy the JS bridge files. `wallet_worker.js` is required too — the WASM
+module is hosted in a dedicated Web Worker so the UI thread stays responsive:
 
 ```bash
-cp extras/web-wallet-wasm/wasm/js/wallet_bridge.js extras/web-wallet/web/
-cp extras/web-wallet-wasm/wasm/js/wallet_storage.js extras/web-wallet/web/
+cd extras/web-wallet
+tool/sync_wasm_js.sh          # copies bridge + storage + worker from web-wallet-wasm
+tool/sync_wasm_js.sh --check  # CI: fail if the two copies have drifted
 ```
 
 ### 3. Build the Flutter web app
@@ -305,13 +307,20 @@ extras/web-wallet/
 │   ├── features/         # UI screens (overview, receive, transfer, etc.)
 │   ├── l10n/             # ARB translation files (9 languages)
 │   └── shared/           # Theme, formatters, reusable widgets
+├── test/                 # Unit tests for amount parsing + address validation
+├── tool/
+│   └── sync_wasm_js.sh   # Copies the JS bridge from web-wallet-wasm
 ├── web/
 │   ├── index.html        # Loads Flutter + WASM bridge
 │   ├── manifest.json     # PWA manifest
-│   ├── wallet_bridge.js  # ← copy from web-wallet-wasm/wasm/js/
-│   ├── wallet_storage.js # ← copy from web-wallet-wasm/wasm/js/
+│   ├── favicon.png       # Browser tab icon
+│   ├── icons/            # PWA icons (192/512, plus maskable + apple-touch)
+│   ├── wallet_bridge.js  # ← tool/sync_wasm_js.sh
+│   ├── wallet_storage.js # ← tool/sync_wasm_js.sh
+│   ├── wallet_worker.js  # ← tool/sync_wasm_js.sh
 │   ├── wallet_wasm.js    # ← copy from WASM build output
 │   └── wallet_wasm.wasm  # ← copy from WASM build output
+├── analysis_options.yaml
 ├── pubspec.yaml
 └── l10n.yaml
 
@@ -355,14 +364,26 @@ extras/web-wallet-wasm/
 
 ### Storage
 
-| Store             | Contents                                    |
-|-------------------|---------------------------------------------|
-| `wallet_files`    | Encrypted wallet binary (IndexedDB)         |
-| `wallet_meta`     | Last-opened wallet name, preferences        |
-| `localStorage`    | Theme, language, notification preferences    |
+| Store             | Contents                                                |
+|-------------------|---------------------------------------------------------|
+| `wallet_files`    | Encrypted wallet binary (IndexedDB)                     |
+| `wallet_meta`     | Reserved for wallet-level metadata (IndexedDB)          |
+| `localStorage`    | Theme, language, node, auto-lock, address book, and the password *verifier* |
 
 All wallet data is encrypted by `wallet_capi` before reaching the browser.
 The browser never sees private keys or seed phrases in plaintext.
+
+The wallet asks for [persistent storage](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist)
+on startup so the browser will not evict the wallet file under disk pressure.
+If the browser refuses, a warning is logged — a seed backup is the only real
+guarantee, which is why the wallet insists you verify it at creation time.
+
+> **`flutter_secure_storage` is not secure on the web.** Its web backend keeps
+> the AES key in `localStorage` right next to the ciphertext, so anything that
+> can read `localStorage` can read the values. Nothing that must stay secret is
+> stored through it. The lock screen keeps only a PBKDF2-SHA256 verifier
+> (random salt, 310 000 iterations) — enough to check a password, useless for
+> recovering one.
 
 ---
 
@@ -388,6 +409,9 @@ Translation files are in `lib/l10n/app_*.arb`. To add a new language:
 | Wallet won't connect to daemon | The daemon must have CORS enabled or be behind a reverse proxy that adds `Access-Control-Allow-Origin`. |
 | Blank screen after build | Run `flutter clean && flutter pub get && flutter build web`. |
 | l10n errors / `S` undefined | Run `flutter pub get` — this generates `l10n/generated/`. |
+| Stuck on "Loading wallet engine…" | The boot screen now reports the reason. Usually `wallet_wasm.js`/`.wasm` are missing from `web/`, or COOP/COEP headers are absent. |
+| "Browser storage quota exceeded" | Free up site storage. The wallet reports save failures instead of silently dropping them. |
+| Amount field rejects `1,234` | Ambiguous between 1234 and 1.234 depending on locale. The active language decides; type an unambiguous value (`1234` or `1234.00`) to be sure. |
 
 ---
 
@@ -395,13 +419,33 @@ Translation files are in `lib/l10n/app_*.arb`. To add a new language:
 
 - Private keys and seed phrases are handled entirely within the WASM sandbox.
   They never leave the WebAssembly linear memory except when explicitly
-  requested by the user (e.g., "show seed phrase" screen).
+  requested by the user (the "Seed Phrase & Private Keys" screen, which is
+  gated behind a password prompt and a tap-to-reveal).
 - Wallet files stored in IndexedDB are encrypted with the user's password
-  (same encryption as the desktop wallet).
+  (same encryption as the desktop wallet). A minimum password length is
+  enforced at creation — an empty password leaves the file effectively
+  unencrypted.
+- **The wallet password is never persisted.** Only a PBKDF2-SHA256 verifier is
+  kept, so the lock screen can check a password without being able to recover
+  one. Failed unlock attempts back off exponentially.
+- The wallet auto-locks after a configurable idle period (default 15 minutes,
+  Settings → Security). Locking stops all background polling as well as
+  changing the route.
+- Responses from the WASM module are **not** logged to the console by default.
+  Set `window.walletBridgeDebug = true` to enable verbose logging; methods
+  returning key material stay redacted even then.
 - The web wallet is a **client-side application** — no data is sent to any
   server other than the daemon node for blockchain sync.
 - For maximum security, serve over HTTPS and consider Content Security Policy
   headers that restrict script sources.
+
+### What the browser can still see
+
+This is a hot wallet in a browser tab. An attacker who can execute script on
+the origin (XSS, a malicious extension, a compromised CDN) can drive the
+wallet as the user. HTTPS, a strict CSP, and keeping the origin free of
+third-party scripts are load-bearing, not optional. For large balances, use
+the desktop wallet.
 
 ---
 

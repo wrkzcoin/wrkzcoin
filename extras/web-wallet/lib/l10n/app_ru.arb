@@ -1,8 +1,6 @@
 {
   "@@locale": "ru",
-
   "appTitle": "PLUTON v2",
-
   "tabOverview": "Обзор",
   "tabReceive": "Получить",
   "tabTransfer": "Перевод",
@@ -10,7 +8,6 @@
   "tabAddressBook": "Адресная книга",
   "tabSettings": "Настройки",
   "tabAbout": "О приложении",
-
   "lockWallet": "Заблокировать кошелёк",
   "send": "Отправить",
   "receive": "Получить",
@@ -18,38 +15,69 @@
   "available": "Доступно",
   "locked": "Заблокировано",
   "total": "Итого",
-
   "availableBalance": "Доступный баланс",
   "lockedUnconfirmed": "Заблокировано (неподтверждённые): {amount} {ticker}",
-  "@lockedUnconfirmed": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@lockedUnconfirmed": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "totalBalance": "Итого: {amount} {ticker}",
-  "@totalBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@totalBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "balanceIncompleteWhileSyncing": "Баланс может быть неполным во время синхронизации",
   "errorPrefix": "Ошибка: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "network": "Сеть",
   "syncStatus": "Статус синхронизации",
   "synced": "Синхронизировано",
-  "syncing": "Синхронизация\u2026",
+  "syncing": "Синхронизация…",
   "walletBlock": "Блок кошелька",
   "networkBlock": "Блок сети",
   "peers": "Пиры",
   "walletType": "Тип кошелька",
   "viewOnly": "Только просмотр",
   "full": "Полный",
-
   "nodeConnectionIssue": "Проблема подключения к ноде",
-  "switchNodeInSettings": "Сменить ноду в Настройках \u2192",
+  "switchNodeInSettings": "Сменить ноду в Настройках →",
   "recentTransactions": "Последние транзакции",
-  "viewAll": "Показать все \u2192",
+  "viewAll": "Показать все →",
   "noTransactionsYet": "Транзакций пока нет",
   "received": "Получено",
   "sent": "Отправлено",
-
   "syncingProgress": "Синхронизация {pct}% (блок {wallet} / {network})",
-  "@syncingProgress": { "placeholders": { "pct": { "type": "String" }, "wallet": { "type": "int" }, "network": { "type": "int" } } },
-
+  "@syncingProgress": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "wallet": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
   "shareAddressSubtitle": "Поделитесь своим адресом для получения WRKZ",
   "yourAddress": "Ваш адрес",
   "generateIntegratedAddress": "Сгенерировать интегрированный адрес",
@@ -61,21 +89,35 @@
   "integratedAddress": "Интегрированный адрес",
   "paymentIdShort": "Короткий (16)",
   "paymentIdLong": "Длинный (64)",
-  "paymentIdLabel": "Идентификатор платежа \u00b7 {label}",
-  "@paymentIdLabel": { "placeholders": { "label": { "type": "String" } } },
+  "paymentIdLabel": "Идентификатор платежа · {label}",
+  "@paymentIdLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "enterPaymentIdError": "Введите идентификатор платежа (16 или 64 hex-символа)",
   "paymentIdInvalidError": "Идентификатор платежа должен содержать 16 или 64 шестнадцатеричных символа",
   "copyAddress": "Копировать адрес",
   "copyPaymentId": "Копировать идентификатор платежа",
   "copy": "Копировать",
   "copied": "Скопировано!",
-
   "sendWrkzToAny": "Отправить WRKZ на любой адрес",
   "sweepAllDescription": "Отправить все средства на адрес (консолидация UTXO)",
   "sweepAll": "Отправить всё",
   "sweepWarning": "Отправка всего объединяет все UTXO в один выход. Используйте эту функцию, когда транзакции не проходят из-за слишком большого количества входов.",
   "sweepAvailableBalance": "Доступно: {amount} {ticker} (весь баланс будет отправлен за вычетом комиссии)",
-  "@sweepAvailableBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@sweepAvailableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "destinationAddress": "Адрес назначения",
   "addressBook": "Адресная книга",
   "sweepAllFunds": "Отправить все средства",
@@ -99,15 +141,20 @@
   "enterDestinationAddress": "Введите адрес назначения",
   "enterValidAmount": "Введите корректную сумму",
   "computingPow": "Вычисление PoW... {seconds}с",
-  "@computingPow": { "placeholders": { "seconds": { "type": "int" } } },
+  "@computingPow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "stepFillDetails": "Заполните данные",
   "stepReview": "Проверка",
   "stepDone": "Готово",
   "sweepFailed": "Ошибка отправки всех средств",
   "addressBookTitle": "Адресная книга",
-
   "transactionHistory": "История транзакций",
-  "searchByHash": "Поиск по хешу, адресу или идентификатору платежа\u2026",
+  "searchByHash": "Поиск по хешу, адресу или идентификатору платежа…",
   "all": "Все",
   "filterReceived": "Полученные",
   "filterSent": "Отправленные",
@@ -118,11 +165,22 @@
   "hash": "Хеш",
   "address": "Адрес",
   "block": "Блок",
-  "showingRange": "Показано {start}\u2013{end} из {total}",
-  "@showingRange": { "placeholders": { "start": { "type": "int" }, "end": { "type": "int" }, "total": { "type": "int" } } },
+  "showingRange": "Показано {start}–{end} из {total}",
+  "@showingRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "previous": "Назад",
   "next": "Далее",
-
   "walletLocked": "Кошелёк заблокирован",
   "enterPasswordToContinue": "Введите пароль кошелька для продолжения",
   "password": "Пароль",
@@ -132,7 +190,6 @@
   "closeWallet": "Закрыть кошелёк",
   "closeWalletDescription": "Кошелёк будет сохранён и закрыт.\n\nВы вернётесь на экран входа.",
   "cancel": "Отмена",
-
   "welcomeToPluton": "Добро пожаловать в PLUTON v2",
   "selectOptionToStart": "Выберите действие для начала работы",
   "createNewWallet": "Создать новый кошелёк",
@@ -158,7 +215,6 @@
   "privateSpendKey": "Приватный ключ траты",
   "seedBackupConfirm": "Я записал(а) мнемоническую фразу и приватные ключи в безопасном месте.",
   "backedUpContinue": "Резервная копия сделана — Продолжить",
-
   "settings": "Настройки",
   "sectionDaemonNode": "Нода демона",
   "nodeDescription": "Подключение к локальной или удалённой ноде. Изменения вступают в силу немедленно.",
@@ -167,7 +223,6 @@
   "apply": "Применить",
   "nodeUpdatedSuccess": "Нода успешно обновлена",
   "nodeUnreachable": "Не удаётся подключиться к текущей ноде. Введите новый адрес ноды ниже и нажмите Применить.",
-
   "sectionWallet": "Кошелёк",
   "saveWallet": "Сохранить кошелёк",
   "saveWalletSubtitle": "Сохранить текущее состояние на диск",
@@ -176,9 +231,21 @@
   "exportToJsonSubtitle": "Сохранить данные кошелька в формате JSON",
   "exportJsonTitle": "Экспорт JSON кошелька",
   "exportedTo": "Экспортировано в {path}",
-  "@exportedTo": { "placeholders": { "path": { "type": "String" } } },
+  "@exportedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "exportFailed": "Ошибка экспорта: {error}",
-  "@exportFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "resetScanHeight": "Сбросить высоту сканирования",
   "resetScanHeightSubtitle": "Пересканировать блокчейн с указанной высоты",
   "resetScanHeightDescription": "Введите высоту блока для пересканирования. Используйте 0 для полного пересканирования.",
@@ -188,18 +255,15 @@
   "autosaveSubtitle": "Сохранять кошелёк на диск после синхронизации и каждые 5 минут",
   "scanCoinbaseTx": "Сканировать Coinbase-транзакции",
   "scanCoinbaseSubtitle": "Включить награды майнера при синхронизации (по умолчанию выключено)",
-
   "sectionAppearance": "Внешний вид",
   "theme": "Тема",
   "themeSubtitle": "Выберите цветовую схему приложения",
   "themeSystem": "Системная",
   "themeLight": "Светлая",
   "themeDark": "Тёмная",
-
   "sectionNotifications": "Уведомления",
   "incomingTxAlerts": "Уведомления о входящих транзакциях",
   "incomingTxAlertsSubtitle": "Показывать уведомление на рабочем столе при получении WRKZ",
-
   "sectionDebugLogs": "Отладка и логи",
   "logLevel": "Уровень логирования",
   "logLevelSubtitle": "Управляет детализацией логов библиотеки кошелька",
@@ -207,14 +271,19 @@
   "viewLogsSubtitle": "Вывод логов библиотеки кошелька в реальном времени",
   "walletLogs": "Логи кошелька",
   "logEntries": "{count} записей",
-  "@logEntries": { "placeholders": { "count": { "type": "int" } } },
+  "@logEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "autoScroll": "Автопрокрутка",
   "copyAll": "Копировать всё",
   "clear": "Очистить",
   "close": "Закрыть",
   "noLogsYet": "Логов пока нет. Установите уровень логирования выше «Отключено» для просмотра.",
   "logsCopied": "Логи скопированы в буфер обмена",
-
   "sectionDangerZone": "Опасная зона",
   "deleteWalletData": "Удалить данные кошелька",
   "deleteWalletDataSubtitle": "Безвозвратно удалить файл кошелька с диска",
@@ -224,10 +293,15 @@
   "typeDeleteToConfirm": "Введите DELETE для подтверждения:",
   "deleteHint": "DELETE",
   "deletePermanently": "Удалить безвозвратно",
-
   "aboutTitle": "О приложении",
   "versionInfo": "Версия {version} — Веб-кошелёк WRKZ",
-  "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
+  "@versionInfo": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "aboutDescription": "PLUTON v2 — официальный веб-кошелёк для WrkzCoin (WRKZ), быстрой и лёгкой криптовалюты на основе CryptoNote.\n\nСоздан на Flutter, работает на wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Исходный код и релизы",
@@ -239,7 +313,6 @@
   "websiteSubtitle": "wrkz.work",
   "license": "Лицензия",
   "licenseText": "Выпущено под лицензией MIT.\nИспользуйте на свой риск. Всегда делайте резервную копию мнемонической фразы.",
-
   "addButton": "Добавить",
   "noSavedAddresses": "Нет сохранённых адресов",
   "tapAddToSave": "Нажмите «Добавить», чтобы сохранить часто используемый адрес.",
@@ -253,18 +326,27 @@
   "editEntry": "Редактировать запись",
   "deleteEntry": "Удалить запись",
   "removeFromAddressBook": "Удалить «{name}» из адресной книги?",
-  "@removeFromAddressBook": { "placeholders": { "name": { "type": "String" } } },
+  "@removeFromAddressBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Удалить",
   "edit": "Редактировать",
-
   "wrkzReceived": "WRKZ получены",
   "youReceivedAmount": "Вы получили {amount}",
-  "@youReceivedAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@youReceivedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "show": "Показать",
   "exit": "Выход",
   "plutonWallet": "Кошелёк PLUTON",
-
   "language": "Язык",
   "selectLanguage": "Выбор языка",
   "chooseLanguage": "Выберите предпочтительный язык",
@@ -276,5 +358,65 @@
   "languageJa": "日本語",
   "languageEs": "Español",
   "languagePt": "Português",
-  "languageRu": "Русский"
+  "languageRu": "Русский",
+  "pageNotFound": "Page not found",
+  "backToWallet": "Back to wallet",
+  "hide": "Hide",
+  "max": "MAX",
+  "viewInExplorer": "View in explorer",
+  "pendingConfirmation": "Pending confirmation",
+  "addressWrongPrefix": "A WRKZ address starts with “Wrkz”",
+  "addressWrongLength": "Wrong length — a WRKZ address is 98 characters (120 or 186 if integrated)",
+  "addressBadCharacters": "Contains characters that are not valid in an address (0, O, I and l are never used)",
+  "addressAlreadySaved": "Already saved as “{name}”",
+  "amountMustBePositive": "Amount must be greater than zero",
+  "amountTooManyDecimals": "At most {places} decimal places",
+  "amountTooLarge": "Amount is too large",
+  "amountExceedsBalance": "More than your available balance ({amount} {ticker}, plus fee)",
+  "networkFee": "Network fee",
+  "feeFast": "Fast",
+  "feeEconomy": "Economy",
+  "feeFastHint": "Pays {amount} {ticker} to skip the transaction proof of work. Sends in seconds.",
+  "feeEconomyHint": "Pays the network minimum, but your browser must compute the transaction proof of work — this can take several minutes.",
+  "paymentIdWithIntegrated": "This address already contains a payment ID — leave the payment ID field empty.",
+  "sweepConfirmBody": "This sends your entire balance, minus fees, to:",
+  "tooManyAttempts": "Too many attempts — try again in {seconds}s",
+  "sectionSecurity": "Security",
+  "autoLock": "Auto-lock",
+  "autoLockSubtitle": "Lock the wallet after a period of inactivity",
+  "autoLockNever": "Never",
+  "autoLockMinutes": "{minutes} min",
+  "confirmPassword": "Confirm password",
+  "confirmPasswordField": "Confirm new password",
+  "newPassword": "New password",
+  "changePassword": "Change Password",
+  "changePasswordSubtitle": "Re-encrypt this wallet with a new password",
+  "changePasswordPurpose": "Enter your current wallet password.",
+  "passwordChanged": "Password changed",
+  "passwordsDoNotMatch": "Passwords do not match",
+  "passwordTooShort": "Use a password of at least {length} characters",
+  "showSeedAndKeys": "Seed Phrase & Private Keys",
+  "showSeedAndKeysSubtitle": "Reveal your recovery seed and keys (asks for your password)",
+  "revealSecretsPurpose": "Your seed phrase and private keys will be shown on screen.",
+  "secretsWarning": "Anyone with these can spend your funds. Make sure nobody can see your screen, and never share them — no support channel will ever ask for them.",
+  "tapToReveal": "Tap to reveal",
+  "viewOnlyNoSeed": "This is a view-only wallet — it has no seed phrase or spend key.",
+  "verifySeedTitle": "Confirm your backup",
+  "verifySeedSubtitle": "Type the requested words from the phrase you just wrote down.",
+  "wordNumber": "Word #{number}",
+  "askDifferentWords": "Ask me different words",
+  "downloadWalletFile": "Download Wallet File",
+  "downloadWalletFileSubtitle": "Save an encrypted backup of this wallet to your device",
+  "walletFileDownloaded": "Encrypted wallet file downloaded — keep it somewhere safe.",
+  "exportJsonWarning": "This file is NOT encrypted. It contains your private keys in plain text — anyone who opens it can spend your funds.\n\nOnly save it somewhere you control, and delete it when you are done.",
+  "autosaveFailed": "Could not save the wallet to browser storage: {error}",
+  "walletDataDeleted": "Wallet data deleted",
+  "deleteFailed": "Delete failed: {error}",
+  "notificationsBlocked": "Your browser is blocking notifications for this site. Enable them in site settings.",
+  "walletNameRequired": "Enter a name for this wallet",
+  "daemonHostRequired": "Enter a daemon host",
+  "invalidPort": "Port must be between 1 and 65535",
+  "invalidSpendKey": "Private spend key must be 64 hexadecimal characters",
+  "invalidViewKey": "Private view key must be 64 hexadecimal characters",
+  "seedWordCount": "A seed phrase has {expected} words — you entered {actual}"
 }

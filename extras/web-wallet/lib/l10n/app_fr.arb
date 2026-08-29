@@ -1,8 +1,6 @@
 {
   "@@locale": "fr",
-
   "appTitle": "PLUTON v2",
-
   "tabOverview": "Aperçu",
   "tabReceive": "Recevoir",
   "tabTransfer": "Transférer",
@@ -10,7 +8,6 @@
   "tabAddressBook": "Carnet d'adresses",
   "tabSettings": "Paramètres",
   "tabAbout": "À propos",
-
   "lockWallet": "Verrouiller le portefeuille",
   "send": "Envoyer",
   "receive": "Recevoir",
@@ -18,38 +15,69 @@
   "available": "Disponible",
   "locked": "Verrouillé",
   "total": "Total",
-
   "availableBalance": "Solde disponible",
   "lockedUnconfirmed": "Verrouillé (non confirmé) : {amount} {ticker}",
-  "@lockedUnconfirmed": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@lockedUnconfirmed": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "totalBalance": "Total : {amount} {ticker}",
-  "@totalBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@totalBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "balanceIncompleteWhileSyncing": "Le solde peut être incomplet pendant la synchronisation",
   "errorPrefix": "Erreur : {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "network": "Réseau",
   "syncStatus": "État de la synchronisation",
   "synced": "Synchronisé",
-  "syncing": "Synchronisation\u2026",
+  "syncing": "Synchronisation…",
   "walletBlock": "Bloc du portefeuille",
   "networkBlock": "Bloc du réseau",
   "peers": "Pairs",
   "walletType": "Type de portefeuille",
   "viewOnly": "Lecture seule",
   "full": "Complet",
-
   "nodeConnectionIssue": "Problème de connexion au nœud",
-  "switchNodeInSettings": "Changer de nœud dans les Paramètres \u2192",
+  "switchNodeInSettings": "Changer de nœud dans les Paramètres →",
   "recentTransactions": "Transactions récentes",
-  "viewAll": "Voir tout \u2192",
+  "viewAll": "Voir tout →",
   "noTransactionsYet": "Aucune transaction pour le moment",
   "received": "Reçu",
   "sent": "Envoyé",
-
   "syncingProgress": "Synchronisation {pct}% (bloc {wallet} / {network})",
-  "@syncingProgress": { "placeholders": { "pct": { "type": "String" }, "wallet": { "type": "int" }, "network": { "type": "int" } } },
-
+  "@syncingProgress": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "wallet": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
   "shareAddressSubtitle": "Partagez votre adresse pour recevoir des WRKZ",
   "yourAddress": "Votre adresse",
   "generateIntegratedAddress": "Générer une adresse intégrée",
@@ -61,21 +89,35 @@
   "integratedAddress": "Adresse intégrée",
   "paymentIdShort": "Court (16)",
   "paymentIdLong": "Long (64)",
-  "paymentIdLabel": "Identifiant de paiement \u00b7 {label}",
-  "@paymentIdLabel": { "placeholders": { "label": { "type": "String" } } },
+  "paymentIdLabel": "Identifiant de paiement · {label}",
+  "@paymentIdLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "enterPaymentIdError": "Entrez un identifiant de paiement (16 ou 64 caractères hex)",
   "paymentIdInvalidError": "L'identifiant de paiement doit contenir 16 ou 64 caractères hexadécimaux",
   "copyAddress": "Copier l'adresse",
   "copyPaymentId": "Copier l'identifiant de paiement",
   "copy": "Copier",
   "copied": "Copié !",
-
   "sendWrkzToAny": "Envoyer des WRKZ à n'importe quelle adresse",
   "sweepAllDescription": "Envoyer tous les fonds à une adresse (consolide les UTXOs)",
   "sweepAll": "Tout balayer",
   "sweepWarning": "Le balayage consolide tous les UTXOs en une seule sortie. Utilisez ceci lorsque les transactions échouent en raison de trop d'entrées.",
   "sweepAvailableBalance": "Disponible : {amount} {ticker} (le solde entier sera envoyé moins les frais)",
-  "@sweepAvailableBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@sweepAvailableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "destinationAddress": "Adresse de destination",
   "addressBook": "Carnet d'adresses",
   "sweepAllFunds": "Balayer tous les fonds",
@@ -99,15 +141,20 @@
   "enterDestinationAddress": "Entrez une adresse de destination",
   "enterValidAmount": "Entrez un montant valide",
   "computingPow": "Calcul du PoW... {seconds}s",
-  "@computingPow": { "placeholders": { "seconds": { "type": "int" } } },
+  "@computingPow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "stepFillDetails": "Remplir les détails",
   "stepReview": "Vérifier",
   "stepDone": "Terminé",
   "sweepFailed": "Échec du balayage",
   "addressBookTitle": "Carnet d'adresses",
-
   "transactionHistory": "Historique des transactions",
-  "searchByHash": "Rechercher par hash, adresse ou identifiant de paiement\u2026",
+  "searchByHash": "Rechercher par hash, adresse ou identifiant de paiement…",
   "all": "Tout",
   "filterReceived": "Reçu",
   "filterSent": "Envoyé",
@@ -118,11 +165,22 @@
   "hash": "Hash",
   "address": "Adresse",
   "block": "Bloc",
-  "showingRange": "Affichage de {start}\u2013{end} sur {total}",
-  "@showingRange": { "placeholders": { "start": { "type": "int" }, "end": { "type": "int" }, "total": { "type": "int" } } },
+  "showingRange": "Affichage de {start}–{end} sur {total}",
+  "@showingRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "previous": "Précédent",
   "next": "Suivant",
-
   "walletLocked": "Portefeuille verrouillé",
   "enterPasswordToContinue": "Entrez le mot de passe de votre portefeuille pour continuer",
   "password": "Mot de passe",
@@ -132,7 +190,6 @@
   "closeWallet": "Fermer le portefeuille",
   "closeWalletDescription": "Cela sauvegardera et fermera le portefeuille.\n\nVous serez redirigé vers l'écran de connexion.",
   "cancel": "Annuler",
-
   "welcomeToPluton": "Bienvenue sur PLUTON v2",
   "selectOptionToStart": "Sélectionnez une option pour commencer",
   "createNewWallet": "Créer un nouveau portefeuille",
@@ -157,8 +214,7 @@
   "privateViewKey": "Clé privée de visualisation",
   "privateSpendKey": "Clé privée de dépense",
   "seedBackupConfirm": "J'ai noté ma phrase de récupération et mes clés privées dans un endroit sûr.",
-  "backedUpContinue": "J'ai sauvegardé mon portefeuille \u2014 Continuer",
-
+  "backedUpContinue": "J'ai sauvegardé mon portefeuille — Continuer",
   "settings": "Paramètres",
   "sectionDaemonNode": "Nœud du daemon",
   "nodeDescription": "Connectez-vous à un nœud daemon local ou distant. Les modifications prennent effet immédiatement.",
@@ -167,7 +223,6 @@
   "apply": "Appliquer",
   "nodeUpdatedSuccess": "Nœud mis à jour avec succès",
   "nodeUnreachable": "Impossible de joindre le nœud actuel. Entrez une nouvelle adresse de nœud ci-dessous et appuyez sur Appliquer.",
-
   "sectionWallet": "Portefeuille",
   "saveWallet": "Sauvegarder le portefeuille",
   "saveWalletSubtitle": "Écrire l'état actuel sur le disque",
@@ -176,9 +231,21 @@
   "exportToJsonSubtitle": "Sauvegarder les données du portefeuille en fichier JSON",
   "exportJsonTitle": "Exporter le JSON du portefeuille",
   "exportedTo": "Exporté vers {path}",
-  "@exportedTo": { "placeholders": { "path": { "type": "String" } } },
+  "@exportedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "exportFailed": "Échec de l'exportation : {error}",
-  "@exportFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "resetScanHeight": "Réinitialiser la hauteur de scan",
   "resetScanHeightSubtitle": "Rescanner la blockchain depuis une hauteur spécifique",
   "resetScanHeightDescription": "Entrez une hauteur de bloc à partir de laquelle rescanner. Utilisez 0 pour un rescan complet.",
@@ -188,18 +255,15 @@
   "autosaveSubtitle": "Sauvegarder le portefeuille sur le disque après la synchronisation et toutes les 5 minutes",
   "scanCoinbaseTx": "Scanner les transactions Coinbase",
   "scanCoinbaseSubtitle": "Inclure les récompenses de minage lors de la synchronisation (désactivé par défaut)",
-
   "sectionAppearance": "Apparence",
   "theme": "Thème",
   "themeSubtitle": "Choisir le schéma de couleurs de l'application",
   "themeSystem": "Système",
   "themeLight": "Clair",
   "themeDark": "Sombre",
-
   "sectionNotifications": "Notifications",
   "incomingTxAlerts": "Alertes de transactions entrantes",
   "incomingTxAlertsSubtitle": "Afficher une notification de bureau lorsque des WRKZ sont reçus",
-
   "sectionDebugLogs": "Débogage et journaux",
   "logLevel": "Niveau de journalisation",
   "logLevelSubtitle": "Contrôle la verbosité de la bibliothèque du portefeuille",
@@ -207,14 +271,19 @@
   "viewLogsSubtitle": "Sortie en direct du journal de la bibliothèque du portefeuille",
   "walletLogs": "Journaux du portefeuille",
   "logEntries": "{count} entrées",
-  "@logEntries": { "placeholders": { "count": { "type": "int" } } },
+  "@logEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "autoScroll": "Défilement automatique",
   "copyAll": "Tout copier",
   "clear": "Effacer",
   "close": "Fermer",
   "noLogsYet": "Aucun journal pour le moment. Définissez un niveau de journalisation supérieur à Désactivé pour voir la sortie.",
   "logsCopied": "Journaux copiés dans le presse-papiers",
-
   "sectionDangerZone": "Zone de danger",
   "deleteWalletData": "Supprimer les données du portefeuille",
   "deleteWalletDataSubtitle": "Supprimer définitivement le fichier du portefeuille du disque",
@@ -224,10 +293,15 @@
   "typeDeleteToConfirm": "Tapez SUPPRIMER pour confirmer :",
   "deleteHint": "SUPPRIMER",
   "deletePermanently": "Supprimer définitivement",
-
   "aboutTitle": "À propos",
-  "versionInfo": "Version {version} \u2014 Portefeuille web WRKZ",
-  "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
+  "versionInfo": "Version {version} — Portefeuille web WRKZ",
+  "@versionInfo": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "aboutDescription": "PLUTON v2 est le portefeuille web officiel pour WrkzCoin (WRKZ), une cryptomonnaie rapide et légère basée sur CryptoNote.\n\nCréé avec Flutter, propulsé par wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Voir le code source et les versions",
@@ -239,7 +313,6 @@
   "websiteSubtitle": "wrkz.work",
   "license": "Licence",
   "licenseText": "Publié sous la licence MIT.\nUtilisation à vos propres risques. Sauvegardez toujours votre phrase de récupération.",
-
   "addButton": "Ajouter",
   "noSavedAddresses": "Aucune adresse enregistrée",
   "tapAddToSave": "Appuyez sur Ajouter pour enregistrer une adresse fréquemment utilisée.",
@@ -253,28 +326,97 @@
   "editEntry": "Modifier l'entrée",
   "deleteEntry": "Supprimer l'entrée",
   "removeFromAddressBook": "Supprimer « {name} » de votre carnet d'adresses ?",
-  "@removeFromAddressBook": { "placeholders": { "name": { "type": "String" } } },
+  "@removeFromAddressBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Supprimer",
   "edit": "Modifier",
-
   "wrkzReceived": "WRKZ reçus",
   "youReceivedAmount": "Vous avez reçu {amount}",
-  "@youReceivedAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@youReceivedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "show": "Afficher",
   "exit": "Quitter",
   "plutonWallet": "Portefeuille PLUTON",
-
   "language": "Langue",
   "selectLanguage": "Sélectionner la langue",
   "chooseLanguage": "Choisissez votre langue préférée",
   "languageEn": "English",
   "languageFr": "Français",
   "languageDe": "Deutsch",
-  "languageZh": "\u4e2d\u6587",
-  "languageVi": "Ti\u1ebfng Vi\u1ec7t",
-  "languageJa": "\u65e5\u672c\u8a9e",
+  "languageZh": "中文",
+  "languageVi": "Tiếng Việt",
+  "languageJa": "日本語",
   "languageEs": "Español",
   "languagePt": "Português",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageRu": "Русский",
+  "pageNotFound": "Page not found",
+  "backToWallet": "Back to wallet",
+  "hide": "Hide",
+  "max": "MAX",
+  "viewInExplorer": "View in explorer",
+  "pendingConfirmation": "Pending confirmation",
+  "addressWrongPrefix": "A WRKZ address starts with “Wrkz”",
+  "addressWrongLength": "Wrong length — a WRKZ address is 98 characters (120 or 186 if integrated)",
+  "addressBadCharacters": "Contains characters that are not valid in an address (0, O, I and l are never used)",
+  "addressAlreadySaved": "Already saved as “{name}”",
+  "amountMustBePositive": "Amount must be greater than zero",
+  "amountTooManyDecimals": "At most {places} decimal places",
+  "amountTooLarge": "Amount is too large",
+  "amountExceedsBalance": "More than your available balance ({amount} {ticker}, plus fee)",
+  "networkFee": "Network fee",
+  "feeFast": "Fast",
+  "feeEconomy": "Economy",
+  "feeFastHint": "Pays {amount} {ticker} to skip the transaction proof of work. Sends in seconds.",
+  "feeEconomyHint": "Pays the network minimum, but your browser must compute the transaction proof of work — this can take several minutes.",
+  "paymentIdWithIntegrated": "This address already contains a payment ID — leave the payment ID field empty.",
+  "sweepConfirmBody": "This sends your entire balance, minus fees, to:",
+  "tooManyAttempts": "Too many attempts — try again in {seconds}s",
+  "sectionSecurity": "Security",
+  "autoLock": "Auto-lock",
+  "autoLockSubtitle": "Lock the wallet after a period of inactivity",
+  "autoLockNever": "Never",
+  "autoLockMinutes": "{minutes} min",
+  "confirmPassword": "Confirm password",
+  "confirmPasswordField": "Confirm new password",
+  "newPassword": "New password",
+  "changePassword": "Change Password",
+  "changePasswordSubtitle": "Re-encrypt this wallet with a new password",
+  "changePasswordPurpose": "Enter your current wallet password.",
+  "passwordChanged": "Password changed",
+  "passwordsDoNotMatch": "Passwords do not match",
+  "passwordTooShort": "Use a password of at least {length} characters",
+  "showSeedAndKeys": "Seed Phrase & Private Keys",
+  "showSeedAndKeysSubtitle": "Reveal your recovery seed and keys (asks for your password)",
+  "revealSecretsPurpose": "Your seed phrase and private keys will be shown on screen.",
+  "secretsWarning": "Anyone with these can spend your funds. Make sure nobody can see your screen, and never share them — no support channel will ever ask for them.",
+  "tapToReveal": "Tap to reveal",
+  "viewOnlyNoSeed": "This is a view-only wallet — it has no seed phrase or spend key.",
+  "verifySeedTitle": "Confirm your backup",
+  "verifySeedSubtitle": "Type the requested words from the phrase you just wrote down.",
+  "wordNumber": "Word #{number}",
+  "askDifferentWords": "Ask me different words",
+  "downloadWalletFile": "Download Wallet File",
+  "downloadWalletFileSubtitle": "Save an encrypted backup of this wallet to your device",
+  "walletFileDownloaded": "Encrypted wallet file downloaded — keep it somewhere safe.",
+  "exportJsonWarning": "This file is NOT encrypted. It contains your private keys in plain text — anyone who opens it can spend your funds.\n\nOnly save it somewhere you control, and delete it when you are done.",
+  "autosaveFailed": "Could not save the wallet to browser storage: {error}",
+  "walletDataDeleted": "Wallet data deleted",
+  "deleteFailed": "Delete failed: {error}",
+  "notificationsBlocked": "Your browser is blocking notifications for this site. Enable them in site settings.",
+  "walletNameRequired": "Enter a name for this wallet",
+  "daemonHostRequired": "Enter a daemon host",
+  "invalidPort": "Port must be between 1 and 65535",
+  "invalidSpendKey": "Private spend key must be 64 hexadecimal characters",
+  "invalidViewKey": "Private view key must be 64 hexadecimal characters",
+  "seedWordCount": "A seed phrase has {expected} words — you entered {actual}"
 }

@@ -646,12 +646,12 @@ class SRu extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Версия $version — Десктопный кошелёк WRKZ';
+    return 'Версия $version — Веб-кошелёк WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 — официальный десктопный кошелёк для WrkzCoin (WRKZ), быстрой и лёгкой криптовалюты на основе CryptoNote.\n\nСоздан на Flutter, работает на wallet-api.';
+      'PLUTON v2 — официальный веб-кошелёк для WrkzCoin (WRKZ), быстрой и лёгкой криптовалюты на основе CryptoNote.\n\nСоздан на Flutter, работает на wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -785,4 +785,223 @@ class SRu extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get pageNotFound => 'Page not found';
+
+  @override
+  String get backToWallet => 'Back to wallet';
+
+  @override
+  String get hide => 'Hide';
+
+  @override
+  String get max => 'MAX';
+
+  @override
+  String get viewInExplorer => 'View in explorer';
+
+  @override
+  String get pendingConfirmation => 'Pending confirmation';
+
+  @override
+  String get addressWrongPrefix => 'A WRKZ address starts with “Wrkz”';
+
+  @override
+  String get addressWrongLength =>
+      'Wrong length — a WRKZ address is 98 characters (120 or 186 if integrated)';
+
+  @override
+  String get addressBadCharacters =>
+      'Contains characters that are not valid in an address (0, O, I and l are never used)';
+
+  @override
+  String addressAlreadySaved(String name) {
+    return 'Already saved as “$name”';
+  }
+
+  @override
+  String get amountMustBePositive => 'Amount must be greater than zero';
+
+  @override
+  String amountTooManyDecimals(int places) {
+    return 'At most $places decimal places';
+  }
+
+  @override
+  String get amountTooLarge => 'Amount is too large';
+
+  @override
+  String amountExceedsBalance(String amount, String ticker) {
+    return 'More than your available balance ($amount $ticker, plus fee)';
+  }
+
+  @override
+  String get networkFee => 'Network fee';
+
+  @override
+  String get feeFast => 'Fast';
+
+  @override
+  String get feeEconomy => 'Economy';
+
+  @override
+  String feeFastHint(String amount, String ticker) {
+    return 'Pays $amount $ticker to skip the transaction proof of work. Sends in seconds.';
+  }
+
+  @override
+  String get feeEconomyHint =>
+      'Pays the network minimum, but your browser must compute the transaction proof of work — this can take several minutes.';
+
+  @override
+  String get paymentIdWithIntegrated =>
+      'This address already contains a payment ID — leave the payment ID field empty.';
+
+  @override
+  String get sweepConfirmBody =>
+      'This sends your entire balance, minus fees, to:';
+
+  @override
+  String tooManyAttempts(int seconds) {
+    return 'Too many attempts — try again in ${seconds}s';
+  }
+
+  @override
+  String get sectionSecurity => 'Security';
+
+  @override
+  String get autoLock => 'Auto-lock';
+
+  @override
+  String get autoLockSubtitle => 'Lock the wallet after a period of inactivity';
+
+  @override
+  String get autoLockNever => 'Never';
+
+  @override
+  String autoLockMinutes(int minutes) {
+    return '$minutes min';
+  }
+
+  @override
+  String get confirmPassword => 'Confirm password';
+
+  @override
+  String get confirmPasswordField => 'Confirm new password';
+
+  @override
+  String get newPassword => 'New password';
+
+  @override
+  String get changePassword => 'Change Password';
+
+  @override
+  String get changePasswordSubtitle =>
+      'Re-encrypt this wallet with a new password';
+
+  @override
+  String get changePasswordPurpose => 'Enter your current wallet password.';
+
+  @override
+  String get passwordChanged => 'Password changed';
+
+  @override
+  String get passwordsDoNotMatch => 'Passwords do not match';
+
+  @override
+  String passwordTooShort(int length) {
+    return 'Use a password of at least $length characters';
+  }
+
+  @override
+  String get showSeedAndKeys => 'Seed Phrase & Private Keys';
+
+  @override
+  String get showSeedAndKeysSubtitle =>
+      'Reveal your recovery seed and keys (asks for your password)';
+
+  @override
+  String get revealSecretsPurpose =>
+      'Your seed phrase and private keys will be shown on screen.';
+
+  @override
+  String get secretsWarning =>
+      'Anyone with these can spend your funds. Make sure nobody can see your screen, and never share them — no support channel will ever ask for them.';
+
+  @override
+  String get tapToReveal => 'Tap to reveal';
+
+  @override
+  String get viewOnlyNoSeed =>
+      'This is a view-only wallet — it has no seed phrase or spend key.';
+
+  @override
+  String get verifySeedTitle => 'Confirm your backup';
+
+  @override
+  String get verifySeedSubtitle =>
+      'Type the requested words from the phrase you just wrote down.';
+
+  @override
+  String wordNumber(int number) {
+    return 'Word #$number';
+  }
+
+  @override
+  String get askDifferentWords => 'Ask me different words';
+
+  @override
+  String get downloadWalletFile => 'Download Wallet File';
+
+  @override
+  String get downloadWalletFileSubtitle =>
+      'Save an encrypted backup of this wallet to your device';
+
+  @override
+  String get walletFileDownloaded =>
+      'Encrypted wallet file downloaded — keep it somewhere safe.';
+
+  @override
+  String get exportJsonWarning =>
+      'This file is NOT encrypted. It contains your private keys in plain text — anyone who opens it can spend your funds.\n\nOnly save it somewhere you control, and delete it when you are done.';
+
+  @override
+  String autosaveFailed(String error) {
+    return 'Could not save the wallet to browser storage: $error';
+  }
+
+  @override
+  String get walletDataDeleted => 'Wallet data deleted';
+
+  @override
+  String deleteFailed(String error) {
+    return 'Delete failed: $error';
+  }
+
+  @override
+  String get notificationsBlocked =>
+      'Your browser is blocking notifications for this site. Enable them in site settings.';
+
+  @override
+  String get walletNameRequired => 'Enter a name for this wallet';
+
+  @override
+  String get daemonHostRequired => 'Enter a daemon host';
+
+  @override
+  String get invalidPort => 'Port must be between 1 and 65535';
+
+  @override
+  String get invalidSpendKey =>
+      'Private spend key must be 64 hexadecimal characters';
+
+  @override
+  String get invalidViewKey =>
+      'Private view key must be 64 hexadecimal characters';
+
+  @override
+  String seedWordCount(int expected, int actual) {
+    return 'A seed phrase has $expected words — you entered $actual';
+  }
 }
