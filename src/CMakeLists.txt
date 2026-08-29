@@ -1,18 +1,18 @@
-# Build statically when requested by top-level STATIC option.
+﻿# Build statically when requested by top-level STATIC option.
 if (STATIC)
     add_definitions(-DSTATICLIB)
 endif ()
 
 # Add external libraries as include dirs, so we can do #include "httplib" for example
-include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
+# With WRKZ_SYSTEM_ROCKSDB the headers come from the found package/library target
+# instead, so the bundled tree must stay off the include path.
+if (NOT WRKZ_SYSTEM_ROCKSDB)
+    include_directories(${CMAKE_SOURCE_DIR}/external/rocksdb/include)
+endif ()
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-linenoise)
 include_directories(${CMAKE_SOURCE_DIR}/external/cpp-httplib)
 include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
-# Crypto++ is included as <cryptopp/...> through the external/ include dir above.
-# Its own directory must NOT be on the include path: it ships generically named
-# headers (zlib.h, config.h, sha.h, ...) that shadow system headers - with
-# CPPHTTPLIB_ZLIB_SUPPORT on, httplib's #include <zlib.h> picked up Crypto++'s.
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
 
@@ -338,11 +338,9 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif ()
 
 if (WRKZ_BUILD_EXECUTABLES)
-    if (MSVC)
-        target_link_libraries(Wrkzd System CryptoNoteCore rocksdb libzstd Errors)
-    else ()
-        target_link_libraries(Wrkzd System CryptoNoteCore rocksdblib libzstd Errors)
-    endif ()
+    # WRKZ_ROCKSDB_LIBS is set by external/CMakeLists.txt and names whichever
+    # RocksDB (plus bundled zstd, when we build it) this configuration uses.
+    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} Errors)
 endif ()
 
 # Add the dependencies we need
@@ -354,14 +352,14 @@ target_link_libraries(Errors Crypto SubWallets Utilities)
 target_link_libraries(Logging Common)
 target_link_libraries(Nigel Errors CryptoNoteCore)
 target_link_libraries(NodeRpcProxy Rpc)
-target_link_libraries(P2P upnpc-static Serialization System CryptoNoteCore)
+target_link_libraries(P2P libminiupnpc-static Serialization System CryptoNoteCore)
 target_link_libraries(Rpc P2P Utilities CryptoNoteCore)
 target_link_libraries(Serialization Common Crypto)
 target_link_libraries(SubWallets Common Logger)
 target_link_libraries(Transfers CryptoNoteCore)
 target_link_libraries(Utilities Common Errors)
 target_link_libraries(Wallet NodeRpcProxy Transfers CryptoNoteCore Common WalletBackend)
-target_link_libraries(WalletBackend Serialization Mnemonics Nigel cryptopp-static __filesystem Utilities SubWallets Logger Config Wallet)
+target_link_libraries(WalletBackend Serialization Mnemonics Nigel __filesystem Utilities SubWallets Logger Config Wallet)
 if (WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(cryptotest Crypto Common)
     target_link_libraries(masternodetest CryptoNoteCore Utilities Common Crypto)
@@ -543,3 +541,4 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_custom_target(cli DEPENDS Wrkzd zedwallet++)
     add_custom_target(wrkz-wallet DEPENDS zedwallet++)
 endif ()
+

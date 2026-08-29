@@ -40,7 +40,10 @@ class DaemonCommandsHandler
         std::shared_ptr<Logging::LoggerManager> log,
         const std::string ip,
         const uint32_t port,
-        const DaemonConfig::DaemonConfiguration &config);
+        const DaemonConfig::DaemonConfiguration &config,
+        /* When the RPC server bound a local socket, the console talks to it
+           over that instead of looping back out through TCP. */
+        const std::string rpcIpcPath = "");
 
     bool start_handling()
     {

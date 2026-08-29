@@ -33,7 +33,8 @@ namespace PaymentService
 
         options.add_options("Daemon")(
             "daemon-address",
-            "The daemon host to use for node operations",
+            "The daemon host to use for node operations. An absolute path, an @name or an ipc://path connects "
+            "over the daemon's local IPC socket instead (--rpc-ipc-path on the daemon)",
             cxxopts::value<std::string>()->default_value(config.daemonAddress),
             "<ip>")(
             "daemon-port",
@@ -104,7 +105,22 @@ namespace PaymentService
             "bind-port",
             "TCP port for the RPC service",
             cxxopts::value<int>()->default_value(std::to_string(config.bindPort)),
-            "<port>");
+            "<port>")(
+            "bind-ipc-path",
+            "Serve the RPC on a local IPC socket at this path instead of a TCP port, for example "
+            "/run/wrkz/wrkz-service.sock. Prefix with @ for the Linux abstract namespace. Empty disables IPC "
+            "(default). Not available on Windows",
+            cxxopts::value<std::string>()->default_value(config.bindIpcPath),
+            "<path>")(
+            "bind-ipc-mode",
+            "Octal permissions for the IPC socket file. The default 0600 restricts it to the user running the "
+            "service; use 0660 together with --bind-ipc-group to share it",
+            cxxopts::value<std::string>()->default_value(Common::Ipc::formatMode(config.bindIpcMode)),
+            "<mode>")(
+            "bind-ipc-group",
+            "Group to own the IPC socket file, for a 0660 shared setup",
+            cxxopts::value<std::string>()->default_value(config.bindIpcGroup),
+            "<group>");
 
         options.add_options("Notifications")(
             "tx-notify",
@@ -234,6 +250,26 @@ namespace PaymentService
             if (cli.count("bind-port") > 0)
             {
                 config.bindPort = cli["bind-port"].as<int>();
+            }
+
+            if (cli.count("bind-ipc-path") > 0)
+            {
+                config.bindIpcPath = cli["bind-ipc-path"].as<std::string>();
+            }
+
+            if (cli.count("bind-ipc-mode") > 0)
+            {
+                const std::string mode = cli["bind-ipc-mode"].as<std::string>();
+
+                if (!Common::Ipc::parseMode(mode, config.bindIpcMode))
+                {
+                    throw std::runtime_error("bind-ipc-mode must be octal permissions such as 0600: " + mode);
+                }
+            }
+
+            if (cli.count("bind-ipc-group") > 0)
+            {
+                config.bindIpcGroup = cli["bind-ipc-group"].as<std::string>();
             }
 
             if (cli.count("enable-cors") > 0)
@@ -451,6 +487,25 @@ namespace PaymentService
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
                 }
+                else if (cfgKey.compare("bind-ipc-path") == 0)
+                {
+                    config.bindIpcPath = cfgValue;
+                    updated = true;
+                }
+                else if (cfgKey.compare("bind-ipc-mode") == 0)
+                {
+                    if (!Common::Ipc::parseMode(cfgValue, config.bindIpcMode))
+                    {
+                        throw std::runtime_error("Invalid value for " + cfgKey + ", expected octal such as 0600");
+                    }
+
+                    updated = true;
+                }
+                else if (cfgKey.compare("bind-ipc-group") == 0)
+                {
+                    config.bindIpcGroup = cfgValue;
+                    updated = true;
+                }
                 else if (cfgKey.compare("enable-cors") == 0)
                 {
                     config.corsHeader = cfgValue;
@@ -563,6 +618,26 @@ namespace PaymentService
             config.bindAddress = j["bind-address"].get<std::string>();
         }
 
+        if (j.contains("bind-ipc-path"))
+        {
+            config.bindIpcPath = j["bind-ipc-path"].get<std::string>();
+        }
+
+        if (j.contains("bind-ipc-mode"))
+        {
+            const std::string mode = j["bind-ipc-mode"].get<std::string>();
+
+            if (!Common::Ipc::parseMode(mode, config.bindIpcMode))
+            {
+                throw std::runtime_error("Invalid value for bind-ipc-mode, expected octal such as 0600: " + mode);
+            }
+        }
+
+        if (j.contains("bind-ipc-group"))
+        {
+            config.bindIpcGroup = j["bind-ipc-group"].get<std::string>();
+        }
+
         if (j.contains("tx-notify"))
         {
             config.txNotify = j["tx-notify"].get<std::string>();
@@ -617,6 +692,9 @@ namespace PaymentService
         j["container-password"] = config.containerPassword;
         j["bind-address"] = config.bindAddress;
         j["bind-port"] = config.bindPort;
+        j["bind-ipc-path"] = config.bindIpcPath;
+        j["bind-ipc-mode"] = Common::Ipc::formatMode(config.bindIpcMode);
+        j["bind-ipc-group"] = config.bindIpcGroup;
         j["tx-notify"] = config.txNotify;
         j["tx-confirmed-notify"] = config.txConfirmedNotify;
         j["notify-during-sync"] = config.notifyDuringSync;

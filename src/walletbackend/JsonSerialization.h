@@ -6,7 +6,7 @@
 #pragma once
 
 #include "CryptoTypes.h"
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 #include <common/StringTools.h>
 #include <subwallets/SubWallet.h>

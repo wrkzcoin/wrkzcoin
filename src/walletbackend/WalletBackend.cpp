@@ -18,12 +18,8 @@
 #include <crypto/crypto.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Currency.h>
-#include <cryptopp/aes.h>
-#include <cryptopp/algparam.h>
-#include <cryptopp/filters.h>
-#include <cryptopp/modes.h>
-#include <cryptopp/pwdbased.h>
-#include <cryptopp/sha.h>
+#include "crypto/WalletCrypto.h"
+
 #include <errors/ValidateParameters.h>
 #include <fstream>
 #include <future>
@@ -543,10 +539,8 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
         }
     }
 
-    using namespace CryptoPP;
-
     /* The salt we use for both PBKDF2, and AES decryption */
-    byte salt[16];
+    uint8_t salt[WalletCrypto::SALT_SIZE];
 
     /* Check the file is large enough for the salt */
     if (buffer.size() < sizeof(salt))
@@ -560,47 +554,25 @@ std::tuple<Error, std::shared_ptr<WalletBackend>> WalletBackend::openWallet(
     /* Remove the salt, don't need it anymore */
     buffer.erase(buffer.begin(), buffer.begin() + sizeof(salt));
 
-    /* The key we use for AES decryption, generated with PBKDF2 */
-    byte key[16];
+    /* The key we use for AES decryption, generated with PBKDF2-HMAC-SHA256 */
+    const auto key =
+        WalletCrypto::deriveKey(password, salt, sizeof(salt), Constants::PBKDF2_ITERATIONS, WalletCrypto::KEY_SIZE);
 
-    /* Using SHA256 as the algorithm */
-    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+    /* Decrypt, handling padding. The salt doubles as the IV.
 
-    /* Generate the AES Key using pbkdf2 */
-    pbkdf2.DeriveKey(
-        key,
-        sizeof(key),
-        0,
-        (byte *)password.c_str(),
-        password.size(),
-        salt,
-        sizeof(salt),
-        Constants::PBKDF2_ITERATIONS);
-
-    CBC_Mode<AES>::Decryption cbcDecryption;
-
-    /* Initialize our decrypter with the key and salt/iv */
-    cbcDecryption.SetKeyWithIV(key, sizeof(key), salt);
-
-    /* This will store the decrypted data */
-    std::string decryptedData;
-
-    try
-    {
-        /* Decrypt, handling padding */
-        StringSource(
-            (byte *)buffer.data(),
-            buffer.size(),
-            true,
-            new StreamTransformationFilter(cbcDecryption, new StringSink(decryptedData)));
-    }
-    /* do NOT report an alternate error for invalid padding. It allows them
+       do NOT report an alternate error for invalid padding. It allows them
        to do a padding oracle attack, I believe. Just report the wrong password
        error. */
-    catch (const CryptoPP::Exception &)
+    const auto decrypted = WalletCrypto::decrypt(std::string(buffer.begin(), buffer.end()), key.data(), salt);
+
+    if (!decrypted)
     {
         return {WRONG_PASSWORD, nullptr};
     }
+
+    /* This stores the decrypted data. Not const: hasMagicIdentifier() strips
+       the identifier prefix from it in place below. */
+    std::string decryptedData = *decrypted;
 
     /* Check that the decrypted data has the 'isCorrectPassword' identifier,
        and remove it it does. If it doesn't, return an error. */
@@ -661,41 +633,18 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
     /* Add magic identifier, and get wallet as a JSON string */
     std::string walletData = identiferAsString + walletJSON;
 
-    using namespace CryptoPP;
-
-    /* The key we use for AES encryption, generated with PBKDF2 */
-    byte key[16];
-
     /* The salt we use for both PBKDF2, and AES Encryption */
-    byte salt[16];
+    uint8_t salt[WalletCrypto::SALT_SIZE];
 
     /* Generate 16 random bytes for the salt */
-    Random::randomBytes(16, salt);
+    Random::randomBytes(sizeof(salt), salt);
 
-    /* Using SHA256 as the algorithm */
-    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+    /* The key we use for AES encryption, generated with PBKDF2-HMAC-SHA256 */
+    const auto key =
+        WalletCrypto::deriveKey(password, salt, sizeof(salt), Constants::PBKDF2_ITERATIONS, WalletCrypto::KEY_SIZE);
 
-    /* Generate the AES Key using pbkdf2 */
-    pbkdf2.DeriveKey(
-        key,
-        sizeof(key),
-        0,
-        (byte *)password.c_str(),
-        password.size(),
-        salt,
-        sizeof(salt),
-        Constants::PBKDF2_ITERATIONS);
-
-    CBC_Mode<AES>::Encryption cbcEncryption;
-
-    /* Initialize our encryptor with the key and salt/iv */
-    cbcEncryption.SetKeyWithIV(key, sizeof(key), salt);
-
-    /* This will store the encrypted data */
-    std::string encryptedData;
-
-    /* Encrypt, and pad */
-    StringSource(walletData, true, new StreamTransformationFilter(cbcEncryption, new StringSink(encryptedData)));
+    /* Encrypt, and pad. The salt doubles as the IV. */
+    const std::string encryptedData = WalletCrypto::encrypt(walletData, key.data(), salt);
 
 #if defined(__EMSCRIPTEN__)
     /* WASM: write to in-memory store (JS side persists to IndexedDB) */

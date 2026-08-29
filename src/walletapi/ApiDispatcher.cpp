@@ -19,9 +19,8 @@
 #include <common/StringTools.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Mixins.h>
-#include <cryptopp/modes.h>
-#include <cryptopp/pwdbased.h>
-#include <cryptopp/sha.h>
+#include "crypto/WalletCrypto.h"
+
 #include <errors/ValidateParameters.h>
 #include <iomanip>
 #include <iostream>
@@ -39,11 +38,17 @@ ApiDispatcher::ApiDispatcher(
     const std::string corsHeader,
     unsigned int walletSyncThreads,
     const std::string txNotify,
-    const bool notifyDuringSync):
+    const bool notifyDuringSync,
+    const std::string rpcIpcPath,
+    const uint32_t rpcIpcMode,
+    const std::string rpcIpcGroup):
     m_notifyDuringSync(notifyDuringSync),
     m_port(bindPort),
     m_host(rpcBindIp),
     m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
+    m_ipcPath(rpcIpcPath),
+    m_ipcMode(rpcIpcMode),
+    m_ipcGroup(rpcIpcGroup),
     m_corsHeader(corsHeader),
     m_rpcPassword(rpcPassword)
 {
@@ -103,6 +108,16 @@ ApiDispatcher::ApiDispatcher(
                       << WarningMsg(httplib::to_string(error)) << std::endl;
         });
         setupRoutes(*m_ipv6Server);
+    }
+
+    if (!m_ipcPath.empty())
+    {
+        m_ipcServer = std::make_unique<httplib::Server>();
+        m_ipcServer->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            std::cout << WarningMsg("IPC API server error: ")
+                      << WarningMsg(httplib::to_string(error)) << std::endl;
+        });
+        setupRoutes(*m_ipcServer);
     }
 }
 
@@ -404,6 +419,32 @@ void ApiDispatcher::attachTransactionNotifier()
 
 void ApiDispatcher::start()
 {
+    /* Bind the IPC socket first and on this thread: the permission window in
+       Ipc::bindServer is closed with the process umask, which is shared by
+       every thread, so it must not overlap another listener starting. */
+    if (m_ipcServer)
+    {
+        std::string error;
+
+        if (Common::Ipc::bindServer(*m_ipcServer, m_ipcPath, m_ipcMode, m_ipcGroup, error))
+        {
+            m_ipcBound = true;
+
+            m_ipcThread = std::thread([this]() {
+                if (!m_ipcServer->listen_after_bind())
+                {
+                    std::cout << WarningMsg("IPC API server on " + m_ipcPath + " stopped unexpectedly.") << std::endl;
+                }
+            });
+        }
+        else
+        {
+            /* Same policy as the IPv6 listener: warn and keep serving on the
+               listeners that did come up. */
+            std::cout << WarningMsg("Failed to start IPC API server: ") << WarningMsg(error) << std::endl;
+        }
+    }
+
     if (!m_ipv6Host.empty())
     {
         m_ipv6Thread = std::thread([this]() {
@@ -428,6 +469,13 @@ void ApiDispatcher::start()
     }
 }
 
+std::string ApiDispatcher::getIpcPath() const
+{
+    /* Reported only once the bind actually succeeded, so nothing announces a
+       socket that was never created. */
+    return m_ipcBound ? m_ipcPath : std::string();
+}
+
 void ApiDispatcher::stop()
 {
     m_server->stop();
@@ -436,6 +484,20 @@ void ApiDispatcher::stop()
     {
         m_ipv6Server->stop();
         m_ipv6Thread.join();
+    }
+
+    if (m_ipcThread.joinable())
+    {
+        m_ipcServer->stop();
+        m_ipcThread.join();
+    }
+
+    /* Nothing else removes the socket file, and a leftover one blocks the next
+       start until it is cleared by hand. */
+    if (m_ipcBound)
+    {
+        Common::Ipc::cleanup(m_ipcPath);
+        m_ipcBound = false;
     }
 }
 
@@ -2040,23 +2102,13 @@ void ApiDispatcher::publicKeysToAddresses(nlohmann::json &j) const
 
 std::string ApiDispatcher::hashPassword(const std::string password) const
 {
-    using namespace CryptoPP;
+    /* Hash the password with PBKDF2-HMAC-SHA256 */
+    const auto key = WalletCrypto::deriveKey(
+        password, m_salt, sizeof(m_salt), ApiConstants::PBKDF2_ITERATIONS, WalletCrypto::KEY_SIZE);
 
-    /* Using SHA256 as the algorithm */
-    CryptoPP::PKCS5_PBKDF2_HMAC<CryptoPP::SHA256> pbkdf2;
+    uint8_t keyArray[WalletCrypto::KEY_SIZE];
 
-    byte key[16];
+    std::copy(key.begin(), key.end(), keyArray);
 
-    /* Hash the password with pbkdf2 */
-    pbkdf2.DeriveKey(
-        key,
-        sizeof(key),
-        0,
-        (byte *)password.c_str(),
-        password.size(),
-        m_salt,
-        sizeof(m_salt),
-        ApiConstants::PBKDF2_ITERATIONS);
-
-    return Common::podToHex(key);
+    return Common::podToHex(keyArray);
 }

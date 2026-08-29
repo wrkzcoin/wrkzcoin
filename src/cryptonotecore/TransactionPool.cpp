@@ -10,6 +10,8 @@
 #include "common/TransactionExtra.h"
 #include "common/int-util.h"
 
+#include <config/CryptoNoteConfig.h>
+
 #include <algorithm>
 #include <functional>
 #include <tuple>
@@ -170,6 +172,19 @@ namespace CryptoNote
             return false;
         }
 
+        /* If the pool is already full and this is worse than everything in it,
+           taking it in would only mean evicting it again a moment later. Reject
+           it here so a flood of low fee spam cannot churn the pool. */
+        const uint64_t transactionSize = pendingTx.cachedTransaction.getTransactionBinaryArray().size();
+
+        if (m_poolSizeBytes + transactionSize > CryptoNote::parameters::CRYPTONOTE_MEMPOOL_MAX_SIZE_BYTES
+            && isLeastProfitableLocked(pendingTx))
+        {
+            logger(Logging::DEBUGGING) << "pushTransaction: pool is full and the transaction is less "
+                                          "profitable than everything in it";
+            return false;
+        }
+
         mergeStates(poolState, transactionState);
 
         logger(Logging::DEBUGGING) << "pushed transaction " << pendingTx.getTransactionHash() << " to pool";
@@ -186,7 +201,87 @@ namespace CryptoNote
             m_transactionsByPaymentId.emplace(*transactionPaymentId, inserted);
         }
 
+        m_poolSizeBytes += transactionSize;
+
+        const auto evicted = evictToFitLocked();
+
+        m_evictedTransactions.insert(m_evictedTransactions.end(), evicted.begin(), evicted.end());
+
+        /* The caller asked us to hold this transaction, so tell them we did not
+           if the budget forced it straight back out again. */
+        return m_transactionsByHash.count(transactionHash) > 0;
+    }
+
+    bool TransactionPool::isLeastProfitableLocked(const PendingTransactionInfo &candidate) const
+    {
+        if (m_pendingTransactions.empty())
+        {
+            return false;
+        }
+
+        const TransactionPriorityComparator preferred {};
+
+        for (const auto &pooled : m_pendingTransactions)
+        {
+            /* Something in the pool is worse than the candidate, so the candidate
+               is not the one that would be dropped first. */
+            if (preferred(candidate, pooled))
+            {
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    std::vector<Crypto::Hash> TransactionPool::evictToFitLocked()
+    {
+        std::vector<Crypto::Hash> evicted;
+
+        if (m_poolSizeBytes <= CryptoNote::parameters::CRYPTONOTE_MEMPOOL_MAX_SIZE_BYTES)
+        {
+            return evicted;
+        }
+
+        /* Shed down to a low water mark rather than just back under the cap.
+           Evicting the exact overflow would leave the pool full again, so the
+           next transaction would sort the whole pool all over again - under a
+           sustained flood that is an O(n log n) sort per accepted transaction.
+           Clearing headroom amortises the sort over the admissions that follow. */
+        const uint64_t target = CryptoNote::parameters::CRYPTONOTE_MEMPOOL_MAX_SIZE_BYTES
+            / 100 * CryptoNote::parameters::CRYPTONOTE_MEMPOOL_EVICT_TO_PERCENT;
+
+        /* Most preferred first, so the tail is what we shed. */
+        const auto ordered = transactionsByPriority();
+
+        for (auto it = ordered.rbegin(); it != ordered.rend(); ++it)
+        {
+            if (m_poolSizeBytes <= target)
+            {
+                break;
+            }
+
+            const Crypto::Hash hash = (*it)->getTransactionHash();
+
+            removeTransactionLocked(hash);
+
+            evicted.push_back(hash);
+        }
+
+        if (!evicted.empty())
+        {
+            logger(Logging::WARNING) << "Transaction pool exceeded its size budget - evicted "
+                                     << evicted.size() << " of the least profitable transactions";
+        }
+
+        return evicted;
+    }
+
+    std::vector<Crypto::Hash> TransactionPool::takeEvictedTransactions()
+    {
+        std::scoped_lock lock(m_transactionsMutex);
+
+        return std::move(m_evictedTransactions);
     }
 
     const std::optional<CachedTransaction> TransactionPool::tryGetTransaction(const Crypto::Hash &hash) const
@@ -203,6 +298,20 @@ namespace CryptoNote
         return std::nullopt;
     }
 
+    const CachedTransaction *TransactionPool::tryGetTransactionRef(const Crypto::Hash &hash) const
+    {
+        std::scoped_lock lock(m_transactionsMutex);
+
+        const auto it = m_transactionsByHash.find(hash);
+
+        if (it == m_transactionsByHash.end())
+        {
+            return nullptr;
+        }
+
+        return &it->second->cachedTransaction;
+    }
+
     const CachedTransaction &TransactionPool::getTransaction(const Crypto::Hash &hash) const
     {
         std::scoped_lock lock(m_transactionsMutex);
@@ -217,6 +326,11 @@ namespace CryptoNote
     {
         std::scoped_lock lock(m_transactionsMutex);
 
+        return removeTransactionLocked(hash);
+    }
+
+    bool TransactionPool::removeTransactionLocked(const Crypto::Hash &hash)
+    {
         auto it = m_transactionsByHash.find(hash);
         if (it == m_transactionsByHash.end())
         {
@@ -242,6 +356,10 @@ namespace CryptoNote
             }
         }
 
+        const uint64_t transactionSize = pendingTx->cachedTransaction.getTransactionBinaryArray().size();
+
+        m_poolSizeBytes = m_poolSizeBytes > transactionSize ? m_poolSizeBytes - transactionSize : 0;
+
         m_pendingTransactions.erase(pendingTx);
         m_transactionsByHash.erase(it);
 
@@ -255,11 +373,13 @@ namespace CryptoNote
 
         std::scoped_lock lock(m_transactionsMutex);
 
-        for (const PendingTransactionInfo *transaction : transactionsByPriority())
+        /* Counting is order independent, so walk the list directly. This used to
+           go through transactionsByPriority(), which sorts the entire pool - and
+           this runs once for every transaction offered to the pool, so under a
+           flood the sorting cost grew with the square of the pool size. */
+        for (const auto &transaction : m_pendingTransactions)
         {
-            size_t transactionFee = transaction->cachedTransaction.getTransactionFee();
-
-            if (transactionFee == 0)
+            if (transaction.cachedTransaction.getTransactionFee() == 0)
             {
                 fusionTransactionCount++;
             }

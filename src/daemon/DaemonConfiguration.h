@@ -6,13 +6,14 @@
 
 #pragma once
 
+#include "common/IpcSocket.h"
 #include "common/PathTools.h"
 #include "common/Util.h"
 
 #include <config/CryptoNoteConfig.h>
 #include <config/NetworkParameters.h>
 #include <logging/ILogger.h>
-#include "json.hpp"
+#include "json_fwd.hpp"
 #include <thread>
 
 namespace DaemonConfig
@@ -79,8 +80,12 @@ namespace DaemonConfig
             rpcMaxRequestBodyBytes = 2 * 1024 * 1024;
             rpcMaxRequestsPerMinute = 240;
             rpcMaxGlobalIndexesRange = 5000;
-            rpcMaxBlockCount = 100;
+            rpcMaxBlockCount = 1000;
             rpcTrustProxy = false;
+            rpcIpcPath = "";
+            rpcIpcMode = Common::Ipc::DEFAULT_MODE;
+            rpcIpcGroup = "";
+            rpcIpcRequireToken = false;
             zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::getNetworkParameters(networkType).zmqPubPort);
             noZmq = false;
             blockNotify = "";
@@ -196,6 +201,16 @@ namespace DaemonConfig
         uint32_t rpcMaxBlockCount;
 
         bool rpcTrustProxy;
+
+        /* Local IPC (AF_UNIX) RPC endpoint. Empty = disabled, which is the
+           default: an operator has to name a path to open one. */
+        std::string rpcIpcPath;
+
+        uint32_t rpcIpcMode;
+
+        std::string rpcIpcGroup;
+
+        bool rpcIpcRequireToken;
 
         std::string zmqPub;
 

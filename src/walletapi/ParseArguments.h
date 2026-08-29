@@ -7,6 +7,7 @@
 
 #include <optional>
 
+#include <common/IpcSocket.h>
 #include <config/CryptoNoteConfig.h>
 #include <logger/Logger.h>
 
@@ -23,6 +24,15 @@ struct ApiConfig
 
     /* Whether to enable the IPv6 listener */
     bool rpcUseIpv6 = false;
+
+    /* Local IPC socket to also serve the API on (empty = disabled) */
+    std::string rpcIpcPath;
+
+    /* Permission bits for the IPC socket file */
+    uint32_t rpcIpcMode = Common::Ipc::DEFAULT_MODE;
+
+    /* Optional group to own the IPC socket file */
+    std::string rpcIpcGroup;
 
     /* Password the user must supply with each request */
     std::string rpcPassword;

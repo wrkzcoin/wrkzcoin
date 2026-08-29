@@ -10,6 +10,7 @@
 #include <system/IpAddress.h>
 #include <system/IpResolver.h>
 #include <system/TcpConnector.h>
+#include <utilities/Utilities.h>
 
 namespace CryptoNote
 {
@@ -56,8 +57,19 @@ namespace CryptoNote
     {
         try
         {
-            auto ipAddr = System::IpResolver(m_dispatcher).resolve(m_address);
-            m_connection = System::TcpConnector(m_dispatcher).connect(ipAddr, m_port);
+            /* An absolute path or an "@name" is a local socket, not a host, so
+               there is nothing to resolve and no port to dial. */
+            if (Utilities::isIpcDaemonAddress(m_address))
+            {
+                m_connection =
+                    System::TcpConnector(m_dispatcher).connect(Utilities::ipcDaemonPath(m_address));
+            }
+            else
+            {
+                auto ipAddr = System::IpResolver(m_dispatcher).resolve(m_address);
+                m_connection = System::TcpConnector(m_dispatcher).connect(ipAddr, m_port);
+            }
+
             m_streamBuf.reset(new System::TcpStreambuf(m_connection));
             m_connected = true;
         }

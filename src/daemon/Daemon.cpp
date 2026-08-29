@@ -16,6 +16,7 @@
 #include "common/PathTools.h"
 #include "common/ScopeExit.h"
 #include "common/SignalHandler.h"
+#include "common/IpcSocket.h"
 #include "common/StdInputStream.h"
 #include "common/StdOutputStream.h"
 #include "common/Util.h"
@@ -594,6 +595,35 @@ int main(int argc, char *argv[])
 
         RpcMode rpcMode = explorerMode ? RpcMode::Explorer : RpcMode::Standard;
 
+        std::string rpcIpcPath = config.rpcIpcPath;
+
+        if (!rpcIpcPath.empty() && !Common::Ipc::supported())
+        {
+            logger(WARNING) << "Ignoring --rpc-ipc-path: " << Common::Ipc::unsupportedReason() << ".";
+            rpcIpcPath = "";
+        }
+
+        if (!rpcIpcPath.empty())
+        {
+            if ((config.rpcIpcMode & 0007) != 0)
+            {
+                logger(WARNING) << "--rpc-ipc-mode " << Common::Ipc::formatMode(config.rpcIpcMode)
+                                << " leaves the RPC socket open to every user on this machine.";
+            }
+            else if ((config.rpcIpcMode & 0070) != 0 && config.rpcIpcGroup.empty())
+            {
+                logger(WARNING) << "--rpc-ipc-mode " << Common::Ipc::formatMode(config.rpcIpcMode)
+                                << " grants group access, but no --rpc-ipc-group was given, so the socket keeps the "
+                                   "daemon user's primary group.";
+            }
+
+            if (Common::Ipc::isAbstract(rpcIpcPath))
+            {
+                logger(WARNING) << "Abstract namespace socket " << rpcIpcPath
+                                << " carries no permissions; every process in this network namespace can reach the RPC.";
+            }
+        }
+
         RpcServer rpcServer(
             config.rpcPort,
             config.rpcInterface,
@@ -608,6 +638,10 @@ int main(int argc, char *argv[])
             config.rpcMaxGlobalIndexesRange,
             config.rpcMaxBlockCount,
             config.rpcTrustProxy,
+            rpcIpcPath,
+            config.rpcIpcMode,
+            config.rpcIpcGroup,
+            config.rpcIpcRequireToken,
             rpcMode,
             ccore,
             p2psrv,
@@ -630,6 +664,11 @@ int main(int argc, char *argv[])
         if (config.rpcUseIpv6 && !config.rpcBindIpv6Address.empty())
         {
             logger(INFO) << "Starting core rpc server on IPv6 address [" << config.rpcBindIpv6Address << "]:" << config.rpcPort;
+        }
+
+        if (!rpcIpcPath.empty())
+        {
+            logger(INFO) << "Starting core rpc server on local " << Common::Ipc::describe(rpcIpcPath);
         }
 
         rpcServer.start();
@@ -757,7 +796,9 @@ int main(int argc, char *argv[])
             }
         }
 
-        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config);
+        /* Empty unless the IPC listener actually came up, so the console never
+           gets pointed at a socket that failed to bind */
+        DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config, rpcServer.getIpcPath());
         dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)

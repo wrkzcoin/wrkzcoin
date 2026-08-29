@@ -11,6 +11,7 @@
 
 #include "linenoise.hpp"
 
+#include <common/IpcSocket.h>
 #include <config/WalletConfig.h>
 #include <errors/ValidateParameters.h>
 #include <utilities/ColouredMsg.h>
@@ -364,8 +365,21 @@ std::tuple<std::string, uint16_t, bool> getDaemonAddress()
             continue;
         }
 
+        const bool ipc = Utilities::isIpcDaemonAddress(host);
+
+        if (ipc && !Common::Ipc::supported())
+        {
+            std::cout << WarningMsg("\n" + Common::Ipc::unsupportedReason() + ". Try again.\n");
+            continue;
+        }
+
+        /* There is no TLS on a local socket; the kernel already decides who
+           may open it. */
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-        ssl = Utilities::confirm("Does this daemon support SSL?", false);
+        if (!ipc)
+        {
+            ssl = Utilities::confirm("Does this daemon support SSL?", false);
+        }
 #endif
 
         return {host, port, ssl};

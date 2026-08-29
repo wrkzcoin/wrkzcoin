@@ -94,6 +94,32 @@ template<typename T> class ThreadSafeDeque
         return true;
     }
 
+    /* Delete the front item from the queue, returning it. Lets a caller
+       maintaining a running size total subtract the item it just dropped
+       without walking or copying the queue. */
+    T pop_front_and_get()
+    {
+        /* Acquire the lock */
+        std::unique_lock<std::mutex> lock(m_mutex);
+
+        if (m_deque.empty())
+        {
+            throw std::runtime_error("Cannot remove from an empty queue!");
+        }
+
+        T item = std::move(m_deque.front());
+
+        m_deque.pop_front();
+
+        /* Unlock the mutex before notifying, so it doesn't block after
+           waking up */
+        lock.unlock();
+
+        m_consumedData.notify_all();
+
+        return item;
+    }
+
     /* Delete the front item from the queue */
     void pop_front()
     {
@@ -277,6 +303,34 @@ template<typename T> class ThreadSafeDeque
         return results;
     }
 
+    /* back_n, but applying a projection to each element under the lock rather
+       than copying the elements out. Callers that only want one field of a
+       large element (a hash out of a block, say) would otherwise deep copy the
+       whole thing just to throw it away. Elements are returned tail first, to
+       match back_n. */
+    template<typename Projection>
+    auto back_n_transform(const size_t numElements, Projection projection) const
+        -> std::vector<decltype(projection(std::declval<const T &>()))>
+    {
+        /* Acquire the lock */
+        std::unique_lock<std::mutex> lock(m_mutex);
+
+        std::vector<decltype(projection(std::declval<const T &>()))> results;
+
+        const size_t toTake = std::min(numElements, m_deque.size());
+
+        results.reserve(toTake);
+
+        auto it = m_deque.rbegin();
+
+        for (size_t i = 0; i < toTake; ++i, ++it)
+        {
+            results.push_back(projection(*it));
+        }
+
+        return results;
+    }
+
     void clear()
     {
         /* Acquire the lock */
@@ -296,13 +350,17 @@ template<typename T> class ThreadSafeDeque
         return m_deque.size() * sizeof(T) + sizeof(m_deque);
     }
 
-    size_t memoryUsage(std::function<size_t(T)> memUsage) const
+    /* Note - both the functor parameter and the accumulate lambda take their
+       item by const reference. Taking either by value deep copies every
+       element of the queue on each call, which for a queue of block data is
+       enormously expensive - and this is only summing sizes. */
+    size_t memoryUsage(const std::function<size_t(const T &)> &memUsage) const
     {
         /* Acquire the lock */
         std::unique_lock<std::mutex> lock(m_mutex);
 
         return std::accumulate(
-            m_deque.begin(), m_deque.end(), sizeof(m_deque), [&memUsage](const auto acc, const auto item) {
+            m_deque.begin(), m_deque.end(), sizeof(m_deque), [&memUsage](const size_t acc, const T &item) {
                 return acc + memUsage(item);
             });
     }

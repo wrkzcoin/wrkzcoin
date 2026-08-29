@@ -43,6 +43,10 @@ BlockDownloader &BlockDownloader::operator=(BlockDownloader &&old)
 
     m_storedBlocks = std::move(old.m_storedBlocks);
 
+    m_storedBlocksBytes = old.m_storedBlocksBytes.load();
+
+    m_arrivalIndex = old.m_arrivalIndex;
+
     m_daemon = std::move(old.m_daemon);
 
     m_startTimestamp = std::move(old.m_startTimestamp);
@@ -116,7 +120,15 @@ void BlockDownloader::downloader()
 
             if (!blocksDownloaded)
             {
-                Utilities::sleepUnlessStopping(std::chrono::seconds(5), m_shouldStop);
+                /* A rate limited daemon will keep rejecting us for the rest of
+                   its current window, and every rejected request burns another
+                   slot. Wait out a larger part of the window instead of
+                   retrying on the standard interval. */
+                const auto backoff = m_daemon->lastRequestWasRateLimited()
+                    ? std::chrono::seconds(20)
+                    : std::chrono::seconds(5);
+
+                Utilities::sleepUnlessStopping(backoff, m_shouldStop);
                 break;
             }
         }
@@ -125,18 +137,26 @@ void BlockDownloader::downloader()
     }
 }
 
+size_t BlockDownloader::storedBlockMemoryUsage(const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block)
+{
+    return std::get<0>(block).memoryUsage();
+}
+
 bool BlockDownloader::shouldFetchMoreBlocks() const
 {
-    size_t ramUsage = m_storedBlocks.memoryUsage([](const auto block) { return std::get<0>(block).memoryUsage(); });
+    const size_t ramUsage = m_storedBlocksBytes.load();
 
     if (ramUsage + WalletConfig::maxBodyResponseSize < WalletConfig::blockStoreMemoryLimit)
     {
-        std::stringstream stream;
+        if (Logger::logger.shouldLog(Logger::DEBUG))
+        {
+            std::stringstream stream;
 
-        stream << "Approximate ram usage of stored blocks: " << Utilities::prettyPrintBytes(ramUsage)
-               << ", fetching more.";
+            stream << "Approximate ram usage of stored blocks: " << Utilities::prettyPrintBytes(ramUsage)
+                   << ", fetching more.";
 
-        Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
+            Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
+        }
 
         return true;
     }
@@ -146,7 +166,18 @@ bool BlockDownloader::shouldFetchMoreBlocks() const
 
 void BlockDownloader::dropBlock(const uint64_t blockHeight, const Crypto::Hash blockHash)
 {
-    m_storedBlocks.pop_front();
+    const auto dropped = m_storedBlocks.pop_front_and_get();
+
+    const size_t droppedBytes = storedBlockMemoryUsage(dropped);
+
+    /* Guard against the counter going negative if a block was stored before
+       tracking began (e.g. across a move) - saturate at zero instead. */
+    size_t expected = m_storedBlocksBytes.load();
+
+    while (!m_storedBlocksBytes.compare_exchange_weak(expected, expected > droppedBytes ? expected - droppedBytes : 0))
+    {
+    }
+
     m_synchronizationStatus.storeBlockHash(blockHash, blockHeight);
 
     /* Indicate to the downloader that it should try and download more */
@@ -169,24 +200,23 @@ std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> BlockDownloader:
 
     const auto blocks = m_storedBlocks.front_n(blockCount);
 
-    Logger::logger.log(
-        "Fetched " + std::to_string(blocks.size()) + " blocks from internal store", Logger::DEBUG, {Logger::SYNC});
+    if (Logger::logger.shouldLog(Logger::DEBUG))
+    {
+        Logger::logger.log(
+            "Fetched " + std::to_string(blocks.size()) + " blocks from internal store", Logger::DEBUG, {Logger::SYNC});
+    }
 
     return blocks;
 }
 
 std::vector<Crypto::Hash> BlockDownloader::getStoredBlockCheckpoints() const
 {
-    const auto blocks = m_storedBlocks.back_n(Constants::LAST_KNOWN_BLOCK_HASHES_SIZE);
-
-    std::vector<Crypto::Hash> result;
-
-    result.resize(blocks.size());
-
-    std::transform(
-        blocks.begin(), blocks.end(), result.begin(), [](const auto block) { return std::get<0>(block).blockHash; });
-
-    return result;
+    /* Project straight to the hashes under the queue's lock. Copying the
+       blocks out first meant deep copying fifty blocks - transactions,
+       outputs and all - before every sync request, to read one hash each. */
+    return m_storedBlocks.back_n_transform(
+        Constants::LAST_KNOWN_BLOCK_HASHES_SIZE,
+        [](const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block) { return std::get<0>(block).blockHash; });
 }
 
 std::vector<Crypto::Hash> BlockDownloader::getBlockCheckpoints() const
@@ -249,7 +279,7 @@ bool BlockDownloader::downloadBlocks()
 
     const auto blockCheckpoints = getBlockCheckpoints();
 
-    if (blockCheckpoints.size() > 0)
+    if (blockCheckpoints.size() > 0 && Logger::logger.shouldLog(Logger::DEBUG))
     {
         std::stringstream stream;
 
@@ -304,21 +334,33 @@ bool BlockDownloader::downloadBlocks()
         m_subWallets->convertSyncTimestampToHeight(previousStartTimestamp, m_startHeight);
     }
 
-    std::stringstream stream;
+    if (Logger::logger.shouldLog(Logger::DEBUG))
+    {
+        std::stringstream stream;
 
-    stream << "Downloaded " << blocks.size() << " blocks from daemon, [" << blocks.front().blockHeight << ", "
-           << blocks.back().blockHeight << "]";
+        stream << "Downloaded " << blocks.size() << " blocks from daemon, [" << blocks.front().blockHeight
+               << ", " << blocks.back().blockHeight << "]";
 
-    Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
+        Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
+    }
 
     std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> blocksWithIndex;
+
+    blocksWithIndex.reserve(blocks.size());
+
+    size_t addedBytes = 0;
 
     for (const auto &block : blocks)
     {
         blocksWithIndex.push_back({block, m_arrivalIndex++});
+
+        addedBytes += storedBlockMemoryUsage(blocksWithIndex.back());
     }
 
-    m_storedBlocks.push_back_n(blocksWithIndex.begin(), blocksWithIndex.end());
+    if (m_storedBlocks.push_back_n(blocksWithIndex.begin(), blocksWithIndex.end()))
+    {
+        m_storedBlocksBytes += addedBytes;
+    }
 
     return true;
 }

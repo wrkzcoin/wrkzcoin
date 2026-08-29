@@ -246,8 +246,14 @@ void WalletSynchronizer::blockProcessingThread()
         {
             for (const auto &[block, arrivalIndex] : chunk)
             {
-                Logger::logger.log(
-                    "Processing block " + std::to_string(block.blockHeight), Logger::DEBUG, {Logger::SYNC});
+                /* Guarded - this runs for every block on the chain, and
+                   building the string plus the category vector costs more
+                   than the check when the line is going to be dropped. */
+                if (Logger::logger.shouldLog(Logger::DEBUG))
+                {
+                    Logger::logger.log(
+                        "Processing block " + std::to_string(block.blockHeight), Logger::DEBUG, {Logger::SYNC});
+                }
 
                 auto ourInputs = processBlockOutputs(block);
 
@@ -387,11 +393,14 @@ void WalletSynchronizer::completeBlockProcessing(
 
     for (const auto &tx : blockScanInfo.transactionsToAdd)
     {
-        std::stringstream stream;
+        if (Logger::logger.shouldLog(Logger::INFO))
+        {
+            std::stringstream stream;
 
-        stream << "Adding transaction: " << tx.hash;
+            stream << "Adding transaction: " << tx.hash;
 
-        Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC, Logger::TRANSACTIONS});
+            Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC, Logger::TRANSACTIONS});
+        }
 
         m_subWallets->addTransaction(tx);
         m_eventHandler->onTransaction.fire(tx);
@@ -399,11 +408,14 @@ void WalletSynchronizer::completeBlockProcessing(
 
     for (const auto &[publicKey, input] : blockScanInfo.inputsToAdd)
     {
-        std::stringstream stream;
+        if (Logger::logger.shouldLog(Logger::INFO))
+        {
+            std::stringstream stream;
 
-        stream << "Adding input: " << input.key;
+            stream << "Adding input: " << input.key;
 
-        Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC});
+            Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC});
+        }
 
         m_subWallets->storeTransactionInput(publicKey, input);
     }
@@ -412,11 +424,14 @@ void WalletSynchronizer::completeBlockProcessing(
        don't double spend it */
     for (const auto &[publicKey, keyImage] : blockScanInfo.keyImagesToMarkSpent)
     {
-        std::stringstream stream;
+        if (Logger::logger.shouldLog(Logger::INFO))
+        {
+            std::stringstream stream;
 
-        stream << "Marking key image: " << keyImage << " as spent";
+            stream << "Marking key image: " << keyImage << " as spent";
 
-        Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC});
+            Logger::logger.log(stream.str(), Logger::INFO, {Logger::SYNC});
+        }
 
         m_subWallets->markInputAsSpent(keyImage, publicKey, block.blockHeight);
     }
@@ -431,7 +446,11 @@ void WalletSynchronizer::completeBlockProcessing(
         m_eventHandler->onSynced.fire(block.blockHeight);
     }
 
-    Logger::logger.log("Finished processing block " + std::to_string(block.blockHeight), Logger::DEBUG, {Logger::SYNC});
+    if (Logger::logger.shouldLog(Logger::DEBUG))
+    {
+        Logger::logger.log(
+            "Finished processing block " + std::to_string(block.blockHeight), Logger::DEBUG, {Logger::SYNC});
+    }
 }
 
 BlockScanTmpInfo WalletSynchronizer::processBlockTransactions(
@@ -581,8 +600,6 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
 
     Crypto::generate_key_derivation(rawTX.transactionPublicKey, m_privateViewKey, derivation);
 
-    const std::vector<Crypto::PublicKey> spendKeys = m_subWallets->m_publicSpendKeys;
-
     uint64_t outputIndex = 0;
 
     for (const auto &output : rawTX.keyOutputs)
@@ -591,11 +608,8 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
 
         Crypto::underive_public_key(derivation, outputIndex, output.key, derivedSpendKey);
 
-        /* See if the derived spend key matches any of our spend keys */
-        const auto ourSpendKey = std::find(spendKeys.begin(), spendKeys.end(), derivedSpendKey);
-
-        /* If it does, the transaction belongs to us */
-        if (ourSpendKey != spendKeys.end())
+        /* If the derived spend key is one of ours, the output belongs to us */
+        if (m_subWallets->isOurSpendKey(derivedSpendKey))
         {
             /* We need to fill in the key image of the transaction input -
                we'll let the subwallet do this since we need the private spend

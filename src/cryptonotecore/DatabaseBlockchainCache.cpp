@@ -349,6 +349,12 @@ namespace CryptoNote
             return true;
         }
 
+        /* Rough per transaction cost, used only to decide how many blocks'
+         * transaction bodies it is safe to pull out of the database at once.
+         * Deliberately on the small side so the real byte budget, applied once
+         * the blocks are assembled, stays the binding limit. */
+        constexpr uint64_t ESTIMATED_WALLET_SYNC_TRANSACTION_BYTES = 512;
+
         WalletTypes::RawTransaction toWalletRawTransaction(const CachedTransactionInfo &txInfo)
         {
             WalletTypes::RawTransaction tx;
@@ -893,6 +899,10 @@ namespace CryptoNote
             writeBatch.removeClosestTimestampBlockIndex(midnight);
             midnight += ONE_DAY_SECONDS;
         }
+
+        /* Entries are going away, so anything we remembered about which
+           midnights are present is no longer safe to rely on. */
+        knownClosestTimestampMidnight.reset();
 
         logger(Logging::TRACE) << "deleted closest timestamp";
     }
@@ -1499,8 +1509,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "push block with hash " << cachedBlock.getBlockHash() << ", and "
                                    << cachedTransactions.size() + 1 << " transactions"; //+1 for base transaction
 
-        // TODO: cache top block difficulty, size, timestamp, coins; use it here
-        auto lastBlockInfo = getCachedBlockInfo(getTopBlockIndex());
+        auto lastBlockInfo = getTopBlockInfo();
         auto cumulativeDifficulty = lastBlockInfo.cumulativeDifficulty + blockDifficulty;
         auto alreadyGeneratedCoins = lastBlockInfo.alreadyGeneratedCoins + generatedCoins;
         auto alreadyGeneratedTransactions = lastBlockInfo.alreadyGeneratedTransactions + cachedTransactions.size() + 1;
@@ -1533,19 +1542,26 @@ namespace CryptoNote
             pushTransaction(transaction, getTopBlockIndex() + 1, transactionIndex++, batch);
         }
 
-        auto closestBlockIndexDb =
-            requestClosestBlockIndexByTimestamp(roundToMidnight(cachedBlock.getBlock().timestamp), database);
-        if (!closestBlockIndexDb.second)
-        {
-            logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash()
-                                   << " request closest block index by timestamp failed";
-            throw std::runtime_error("Couldn't get closest to timestamp block index");
-        }
+        const uint64_t blockMidnight = roundToMidnight(cachedBlock.getBlock().timestamp);
 
-        if (!closestBlockIndexDb.first)
+        /* Only one entry exists per midnight, so once we have established that
+           this day is present every further block of that day can skip the
+           lookup. Blocks arrive in time order during a sync, which makes this
+           roughly one read per day instead of one per block. */
+        if (knownClosestTimestampMidnight != blockMidnight)
         {
-            batch.insertClosestTimestampBlockIndex(
-                roundToMidnight(cachedBlock.getBlock().timestamp), getTopBlockIndex() + 1);
+            auto closestBlockIndexDb = requestClosestBlockIndexByTimestamp(blockMidnight, database);
+            if (!closestBlockIndexDb.second)
+            {
+                logger(Logging::ERROR) << "push block " << cachedBlock.getBlockHash()
+                                       << " request closest block index by timestamp failed";
+                throw std::runtime_error("Couldn't get closest to timestamp block index");
+            }
+
+            if (!closestBlockIndexDb.first)
+            {
+                batch.insertClosestTimestampBlockIndex(blockMidnight, getTopBlockIndex() + 1);
+            }
         }
 
         insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
@@ -1568,6 +1584,10 @@ namespace CryptoNote
         {
             unitsCache.pop_front();
         }
+
+        /* Set only now the write has gone through, so a failed push cannot
+           leave us believing in an entry that was never committed. */
+        knownClosestTimestampMidnight = blockMidnight;
     }
 
     PushedBlockInfo DatabaseBlockchainCache::getPushedBlockInfo(uint32_t blockIndex) const
@@ -1869,6 +1889,24 @@ namespace CryptoNote
     {
         assert(blockIndex <= getTopBlockIndex());
         return getCachedBlockInfo(blockIndex).cumulativeDifficulty;
+    }
+
+    CachedBlockInfo DatabaseBlockchainCache::getTopBlockInfo() const
+    {
+        /* unitsCache holds the most recent blocks, ending at the top one, so
+           its back entry is the info pushBlock would otherwise read back out
+           of the database. Check it against the memoised top hash rather than
+           trusting the invariant blindly - these values seed the next block's
+           cumulative difficulty and emission totals, so a stale entry would
+           corrupt the chain rather than merely slow things down. The compare
+           is 32 bytes in memory; the read it replaces is a database round
+           trip on every block applied. */
+        if (!unitsCache.empty() && unitsCache.back().blockHash == getTopBlockHash())
+        {
+            return unitsCache.back();
+        }
+
+        return getCachedBlockInfo(getTopBlockIndex());
     }
 
     CachedBlockInfo DatabaseBlockchainCache::getCachedBlockInfo(uint32_t index) const
@@ -2638,7 +2676,8 @@ namespace CryptoNote
     std::vector<WalletTypes::WalletBlockInfo> DatabaseBlockchainCache::getWalletSyncBlocks(
         uint32_t startIndex,
         uint32_t endIndex,
-        bool skipCoinbaseTransactions) const
+        bool skipCoinbaseTransactions,
+        uint64_t maxResponseBytes) const
     {
         std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
 
@@ -2658,6 +2697,34 @@ namespace CryptoNote
         const auto blockResult = readDatabase(blockBatch);
         const auto &cachedBlocks = blockResult.getCachedBlocks();
         const auto &hashesByBlock = blockResult.getTransactionHashesByBlocks();
+
+        /* Transaction counts are known now the header batch is in, so decide how
+         * far the range can actually go before reading any transaction bodies.
+         * Reading the whole range first and trimming afterwards would let a
+         * flood of large blocks balloon our memory before we ever look at the
+         * budget. The first block is always included so sync cannot stall. */
+        const uint64_t transactionBudget =
+            std::max<uint64_t>(1, maxResponseBytes / ESTIMATED_WALLET_SYNC_TRANSACTION_BYTES);
+
+        uint32_t cappedEndIndex = startIndex;
+        uint64_t transactionsSoFar = 0;
+
+        for (uint32_t index = startIndex; index < endIndex; ++index)
+        {
+            const auto hashesIt = hashesByBlock.find(index);
+
+            const uint64_t blockTransactions = hashesIt == hashesByBlock.end() ? 0 : hashesIt->second.size();
+
+            if (index != startIndex && transactionsSoFar + blockTransactions > transactionBudget)
+            {
+                break;
+            }
+
+            transactionsSoFar += blockTransactions;
+            cappedEndIndex = index + 1;
+        }
+
+        endIndex = cappedEndIndex;
 
         /* Then a single round trip for every transaction in the whole range. */
         BlockchainReadBatch transactionBatch;
@@ -2684,6 +2751,8 @@ namespace CryptoNote
             : std::unordered_map<Crypto::Hash, ExtendedTransactionInfo>();
 
         walletBlocks.reserve(endIndex - startIndex);
+
+        uint64_t responseBytes = 0;
 
         for (uint32_t index = startIndex; index < endIndex; ++index)
         {
@@ -2726,7 +2795,16 @@ namespace CryptoNote
                 walletBlock.transactions.push_back(toWalletRawTransaction(transactionIt->second));
             }
 
+            responseBytes += walletBlock.memoryUsage();
+
             walletBlocks.push_back(std::move(walletBlock));
+
+            /* Budget is checked after appending so the first block always goes
+             * out, however large it is. */
+            if (responseBytes >= maxResponseBytes)
+            {
+                break;
+            }
         }
 
         return walletBlocks;

@@ -10,6 +10,7 @@
 
 #include <charconv>
 #include <cmath>
+#include <common/IpcSocket.h>
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/CryptoNoteFormatUtils.h>
 #include <cryptonotecore/Currency.h>
@@ -167,14 +168,23 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     std::shared_ptr<Logging::LoggerManager> log,
     const std::string ip,
     const uint32_t port,
-    const DaemonConfig::DaemonConfiguration &config):
+    const DaemonConfig::DaemonConfiguration &config,
+    const std::string rpcIpcPath):
     m_core(core),
     m_srv(srv),
     logger(log, "daemon"),
     m_logManager(log),
-    m_rpcServer(ip.c_str(), port),
+    m_rpcServer(rpcIpcPath.empty() ? ip : rpcIpcPath, port),
     m_config(config)
 {
+    /* The console is the most local caller the daemon has. When an IPC socket
+       is up it goes over that: one less loopback TCP connection, and it keeps
+       working without the console needing the access token. */
+    if (!rpcIpcPath.empty())
+    {
+        Common::Ipc::configureClient(m_rpcServer);
+    }
+
     m_consoleHandler.setHandler(
         "?",
         std::bind(&DaemonCommandsHandler::help, this, std::placeholders::_1),

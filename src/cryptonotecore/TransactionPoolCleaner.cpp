@@ -48,6 +48,16 @@ namespace CryptoNote
         return transactionPool->tryGetTransaction(hash);
     }
 
+    const CachedTransaction *TransactionPoolCleanWrapper::tryGetTransactionRef(const Crypto::Hash &hash) const
+    {
+        return transactionPool->tryGetTransactionRef(hash);
+    }
+
+    std::vector<Crypto::Hash> TransactionPoolCleanWrapper::takeEvictedTransactions()
+    {
+        return transactionPool->takeEvictedTransactions();
+    }
+
     bool TransactionPoolCleanWrapper::removeTransaction(const Crypto::Hash &hash)
     {
         return transactionPool->removeTransaction(hash);

@@ -47,6 +47,9 @@ namespace CryptoNote
 
         void start(const std::string &bindAddress, uint16_t bindPort);
 
+        /* Serves on a local AF_UNIX socket instead of a TCP port. */
+        void startIpc(const std::string &socketPath, const uint32_t socketMode, const std::string &socketGroup);
+
       protected:
         static void makeErrorResponse(const std::error_code &ec, Common::JsonValue &resp);
 

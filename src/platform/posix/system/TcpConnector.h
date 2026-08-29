@@ -40,6 +40,11 @@ namespace System
 
         TcpConnection connect(const IpAddress &address, uint16_t port);
 
+        /* Connects to an AF_UNIX socket. socketPath is a filesystem path, or
+           "@name" for the Linux abstract namespace. Throws where the platform
+           has no usable local sockets. */
+        TcpConnection connect(const std::string &socketPath);
+
       private:
         void *context;
 

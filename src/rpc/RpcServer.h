@@ -13,7 +13,7 @@
 
 #include "httplib_fwd.h"
 #include "JsonHelper.h"
-#include "json.hpp"
+#include "json_fwd.hpp"
 
 #include <cryptonotecore/Core.h>
 #include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
@@ -47,6 +47,10 @@ class RpcServer
         const uint32_t rpcMaxGlobalIndexesRange,
         const uint32_t rpcMaxBlockCount,
         const bool rpcTrustProxy,
+        const std::string rpcIpcPath,
+        const uint32_t rpcIpcMode,
+        const std::string rpcIpcGroup,
+        const bool rpcIpcRequireToken,
         const RpcMode rpcMode,
         const std::shared_ptr<CryptoNote::Core> core,
         const std::shared_ptr<CryptoNote::NodeServer> p2p,
@@ -67,6 +71,10 @@ class RpcServer
     /* Gets the IP/port combo the server is running on */
     std::tuple<std::string, uint16_t> getConnectionInfo();
 
+    /* The local socket RPC is being served on, or empty if IPC is disabled or
+       failed to bind. Only meaningful after start(). */
+    std::string getIpcPath() const;
+
   private:
     //////////////////////////////
     /* Private member functions */
@@ -78,8 +86,13 @@ class RpcServer
     /* Starts listening for requests on the server (IPv6) */
     void listenIpv6();
 
-    /* Registers all HTTP routes on the given server instance */
-    void setupRoutes(httplib::Server &srv);
+    /* Serves the already bound local IPC socket */
+    void listenIpc();
+
+    /* Registers all HTTP routes on the given server instance. isIpc marks the
+       local socket listener, whose callers are vouched for by the kernel
+       rather than by an address or a token. */
+    void setupRoutes(httplib::Server &srv, const bool isIpc);
 
     std::optional<nlohmann::json> getJsonBody(
         const httplib::Request &req,
@@ -93,6 +106,7 @@ class RpcServer
         const RpcMode routePermissions,
         const bool bodyRequired,
         const bool syncRequired,
+        const bool isIpc,
         std::function<std::tuple<Error, uint16_t>(
             const httplib::Request &req,
             httplib::Response &res,
@@ -225,6 +239,9 @@ class RpcServer
     /* Our IPv6 server instance (only used when m_ipv6Host is non-empty) */
     std::unique_ptr<httplib::Server> m_ipv6Server;
 
+    /* Our local IPC server instance (only used when m_ipcPath is non-empty) */
+    std::unique_ptr<httplib::Server> m_ipcServer;
+
     /* The server host (IPv4) */
     const std::string m_host;
 
@@ -254,11 +271,31 @@ class RpcServer
 
     const bool m_rpcTrustProxy;
 
+    /* The local socket to accept RPC on (empty = IPC disabled) */
+    const std::string m_ipcPath;
+
+    /* Permission bits the socket file is created with */
+    const uint32_t m_ipcMode;
+
+    /* Optional group to hand the socket file to, for a 0660 setup */
+    const std::string m_ipcGroup;
+
+    /* Whether --rpc-access-token is still demanded of IPC callers. Off by
+       default: the socket's mode already decides who may connect, and the
+       kernel enforces it where a shared secret only asks politely. */
+    const bool m_ipcRequireToken;
+
     /* The thread running the IPv4 server */
     std::thread m_serverThread;
 
     /* The thread running the IPv6 server (only used when m_ipv6Host is non-empty) */
     std::thread m_ipv6Thread;
+
+    /* The thread running the IPC server (only used when m_ipcPath is non-empty) */
+    std::thread m_ipcThread;
+
+    /* Set once the IPC socket is bound, so shutdown knows to unlink it */
+    bool m_ipcBound = false;
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;
@@ -273,4 +310,9 @@ class RpcServer
 
     std::mutex m_rateLimitMutex;
     std::unordered_map<std::string, std::pair<uint64_t, uint32_t>> m_rateLimitByIp;
+
+    /* The window m_rateLimitByIp holds counts for. When the window rolls over
+       the map is cleared rather than left to accumulate an entry per address
+       seen since the node started. */
+    uint64_t m_rateLimitWindowStart = 0;
 };

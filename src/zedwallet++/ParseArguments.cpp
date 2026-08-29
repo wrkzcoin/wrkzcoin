@@ -12,6 +12,7 @@
 
 #include "version.h"
 
+#include <common/IpcSocket.h>
 #include <config/CliHeader.h>
 #include <config/Config.h>
 #include <config/CryptoNoteConfig.h>
@@ -49,7 +50,8 @@ ZedConfig parseArguments(int argc, char **argv)
 
     options.add_options("Daemon")(
         "r,remote-daemon",
-        "The daemon host:port to use for node operations. For IPv6 use bracket notation, e.g. [::1]:17856",
+        "The daemon host:port to use for node operations. For IPv6 use bracket notation, e.g. [::1]:17856. "
+        "An absolute path, an @name or an ipc://path connects over the daemon's local IPC socket instead",
         cxxopts::value<std::string>(remoteDaemon)->default_value(defaultRemoteDaemon),
         "<host:port>")
 
@@ -159,6 +161,15 @@ ZedConfig parseArguments(int argc, char **argv)
         if (!Utilities::parseDaemonAddressFromString(config.host, config.port, remoteDaemon))
         {
             std::cout << "There was an error parsing the --remote-daemon you specified" << std::endl;
+            exit(1);
+        }
+
+        /* Without this the path would be handed to the resolver as a hostname
+           and fail later with a connection error that says nothing useful. */
+        if (Utilities::isIpcDaemonAddress(config.host) && !Common::Ipc::supported())
+        {
+            std::cout << "--remote-daemon names an IPC socket, but " << Common::Ipc::unsupportedReason() << "."
+                      << std::endl;
             exit(1);
         }
     }

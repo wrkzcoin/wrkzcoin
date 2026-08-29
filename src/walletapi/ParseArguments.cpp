@@ -36,6 +36,8 @@ ApiConfig parseArguments(int argc, char **argv)
 
     std::string logFilePath;
 
+    std::string rpcIpcMode;
+
     options.add_options("Core")(
         "h,help",
         "Display this help message",
@@ -86,7 +88,25 @@ ApiConfig parseArguments(int argc, char **argv)
 
         ("rpc-use-ipv6",
          "Enable IPv6 support for the API service",
-         cxxopts::value<bool>(rpcUseIpv6)->default_value("false")->implicit_value("true"));
+         cxxopts::value<bool>(rpcUseIpv6)->default_value("false")->implicit_value("true"))
+
+        ("rpc-ipc-path",
+         "Also serve the API on a local IPC socket at this path, for example /run/wrkz/wallet-api.sock. "
+         "Prefix with @ for the Linux abstract namespace. Empty disables IPC (default). Not available on Windows. "
+         "The X-API-KEY password is still required on this socket",
+         cxxopts::value<std::string>(config.rpcIpcPath),
+         "<path>")
+
+        ("rpc-ipc-mode",
+         "Octal permissions for the IPC socket file. The default 0600 restricts it to the user running the "
+         "API; use 0660 together with --rpc-ipc-group to share it",
+         cxxopts::value<std::string>(rpcIpcMode)->default_value(Common::Ipc::formatMode(config.rpcIpcMode)),
+         "<mode>")
+
+        ("rpc-ipc-group",
+         "Group to own the IPC socket file, for a 0660 shared setup",
+         cxxopts::value<std::string>(config.rpcIpcGroup),
+         "<group>");
 
     options.add_options("Notifications")
         ("tx-notify",
@@ -195,6 +215,18 @@ ApiConfig parseArguments(int argc, char **argv)
     if (scanCoinbaseTransactions)
     {
         Config::config.wallet.skipCoinbaseTransactions = false;
+    }
+
+    if (!rpcIpcMode.empty() && !Common::Ipc::parseMode(rpcIpcMode, config.rpcIpcMode))
+    {
+        std::cout << "rpc-ipc-mode must be octal permissions such as 0600, got: " << rpcIpcMode << std::endl;
+        exit(1);
+    }
+
+    if (!config.rpcIpcPath.empty() && !Common::Ipc::supported())
+    {
+        std::cout << "Ignoring --rpc-ipc-path: " << Common::Ipc::unsupportedReason() << "." << std::endl;
+        config.rpcIpcPath = "";
     }
 
     return config;

@@ -130,6 +130,40 @@ namespace CryptoNote
             return vect;
         }
 
+        /* How many raw blocks to pull out of the chain at a time while
+           assembling a byte bounded response. */
+        constexpr uint64_t RAW_BLOCK_FETCH_CHUNK = 100;
+
+        size_t rawBlockSize(const RawBlock &rawBlock)
+        {
+            size_t size = rawBlock.block.size();
+
+            for (const auto &transaction : rawBlock.transactions)
+            {
+                size += transaction.size();
+            }
+
+            return size;
+        }
+
+        /* Drops trailing blocks once the budget is exceeded, always keeping the
+           first block so a single oversized block cannot stall a sync. */
+        void trimRawBlocksToByteBudget(std::vector<RawBlock> &blocks, const uint64_t maxResponseBytes)
+        {
+            uint64_t responseBytes = 0;
+
+            for (size_t i = 0; i < blocks.size(); ++i)
+            {
+                responseBytes += rawBlockSize(blocks[i]);
+
+                if (responseBytes >= maxResponseBytes)
+                {
+                    blocks.resize(i + 1);
+                    return;
+                }
+            }
+        }
+
         UseGenesis addGenesisBlock = UseGenesis(true);
 
         class TransactionSpentInputsChecker
@@ -205,6 +239,27 @@ namespace CryptoNote
             }
 
             return blockTemplate;
+        }
+
+        /* Whether any of the transaction's key images already appear in state.
+           Equivalent to hasIntersections(state, extractSpentOutputs(tx)) without
+           materialising the intermediate set. */
+        bool spendsKeyImageIn(const TransactionValidatorState &state, const CachedTransaction &transaction)
+        {
+            for (const auto &input : transaction.getTransaction().inputs)
+            {
+                if (!std::holds_alternative<KeyInput>(input))
+                {
+                    continue;
+                }
+
+                if (state.spentKeyImages.count(std::get<KeyInput>(input).keyImage) != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         TransactionValidatorState extractSpentOutputs(const CachedTransaction &transaction)
@@ -397,6 +452,19 @@ namespace CryptoNote
     }
 
     bool Core::hasBlock(const Crypto::Hash &blockHash) const
+    {
+        /* Walks the chain segments, which addBlock mutates under this mutex.
+           Called from the protocol handler for every block id it considers
+           requesting, so it has to be safe against a concurrent block add. */
+        std::shared_lock lock(m_chainMutex);
+
+        return hasBlockUnsafe(blockHash);
+    }
+
+    /* Assumes the caller holds m_chainMutex (shared or unique). addBlock needs
+       this because it already holds the mutex exclusively - going through the
+       locking form there would deadlock, as a shared mutex is not recursive. */
+    bool Core::hasBlockUnsafe(const Crypto::Hash &blockHash) const
     {
         throwIfNotInitialized();
         return findSegmentContainingBlock(blockHash) != nullptr;
@@ -815,6 +883,10 @@ namespace CryptoNote
         std::vector<WalletTypes::WalletBlockInfo> &walletBlocks,
         std::optional<WalletTypes::TopBlock> &topBlockInfo) const
     {
+        /* Reads chainsLeaves and walks the chain segments, both of which
+           addBlock mutates under the same mutex. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         try
@@ -825,12 +897,14 @@ namespace CryptoNote
             uint64_t currentIndex = mainChain->getTopBlockIndex();
             Crypto::Hash currentHash = mainChain->getTopBlockHash();
 
-            uint64_t actualBlockCount = std::min(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, blockCount);
+            /* The RPC layer has already bounded blockCount by the operator's
+               --rpc-max-block-count. Clamping again to the protocol default
+               here would silently cap every wallet at 100 blocks per request
+               no matter how the node was configured, which is the single
+               biggest limit on wallet sync speed over a network link. */
+            uint64_t actualBlockCount = blockCount == 0 ? BLOCKS_SYNCHRONIZING_DEFAULT_COUNT : blockCount;
 
-            if (actualBlockCount == 0)
-            {
-                actualBlockCount = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
-            }
+            actualBlockCount = std::min(actualBlockCount, BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
             auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
 
@@ -902,7 +976,8 @@ namespace CryptoNote
                 walletBlocks = dbCache->getWalletSyncBlocks(
                     static_cast<uint32_t>(startIndex),
                     static_cast<uint32_t>(endIndex),
-                    skipCoinbaseTransactions);
+                    skipCoinbaseTransactions,
+                    BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES);
             }
             else
             {
@@ -916,6 +991,10 @@ namespace CryptoNote
                 {
                     rawBlocks = mainChain->getBlocksByHeight(startIndex, endIndex);
                 }
+
+                /* Same byte budget the database backed path applies, so an
+                   in memory segment can't produce an unbounded response. */
+                trimRawBlocksToByteBudget(rawBlocks, BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES);
 
                 for (const auto &rawBlock : rawBlocks)
                 {
@@ -971,6 +1050,10 @@ namespace CryptoNote
         std::vector<RawBlock> &blocks,
         std::optional<WalletTypes::TopBlock> &topBlockInfo) const
     {
+        /* Reads chainsLeaves and walks the chain segments, both of which
+           addBlock mutates under the same mutex. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         try
@@ -981,12 +1064,14 @@ namespace CryptoNote
             uint64_t currentIndex = mainChain->getTopBlockIndex();
             Crypto::Hash currentHash = mainChain->getTopBlockHash();
 
-            uint64_t actualBlockCount = std::min(BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, blockCount);
+            /* The RPC layer has already bounded blockCount by the operator's
+               --rpc-max-block-count. Clamping again to the protocol default
+               here would silently cap every wallet at 100 blocks per request
+               no matter how the node was configured, which is the single
+               biggest limit on wallet sync speed over a network link. */
+            uint64_t actualBlockCount = blockCount == 0 ? BLOCKS_SYNCHRONIZING_DEFAULT_COUNT : blockCount;
 
-            if (actualBlockCount == 0)
-            {
-                actualBlockCount = BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
-            }
+            actualBlockCount = std::min(actualBlockCount, BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
             auto [success, timestampBlockHeight] = mainChain->getBlockHeightForTimestamp(startTimestamp);
 
@@ -1056,10 +1141,48 @@ namespace CryptoNote
             if (skipCoinbaseTransactions)
             {
                 blocks = mainChain->getNonEmptyBlocks(startIndex, actualBlockCount);
+
+                trimRawBlocksToByteBudget(blocks, BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES);
             }
             else
             {
-                blocks = mainChain->getBlocksByHeight(startIndex, endIndex);
+                /* Pull the range in sub chunks and stop once we have enough
+                   bytes. Raw blocks carry ring signatures, so a range that is
+                   modest on a quiet chain can be hundreds of megabytes during a
+                   transaction flood - fetching it whole and trimming afterwards
+                   would mean paying that memory cost anyway. */
+                uint64_t responseBytes = 0;
+
+                for (uint64_t chunkStart = startIndex; chunkStart < endIndex; chunkStart += RAW_BLOCK_FETCH_CHUNK)
+                {
+                    const uint64_t chunkEnd = std::min<uint64_t>(chunkStart + RAW_BLOCK_FETCH_CHUNK, endIndex);
+
+                    auto chunk = mainChain->getBlocksByHeight(chunkStart, chunkEnd);
+
+                    if (chunk.empty())
+                    {
+                        break;
+                    }
+
+                    for (auto &rawBlock : chunk)
+                    {
+                        responseBytes += rawBlockSize(rawBlock);
+
+                        blocks.push_back(std::move(rawBlock));
+
+                        /* Checked after appending so we always return at least
+                           one block, however large it is. */
+                        if (responseBytes >= BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES)
+                        {
+                            break;
+                        }
+                    }
+
+                    if (responseBytes >= BLOCKS_SYNCHRONIZING_MAX_RESPONSE_BYTES)
+                    {
+                        break;
+                    }
+                }
             }
 
             if (blocks.empty())
@@ -2649,7 +2772,8 @@ namespace CryptoNote
         std::string blockStr = os.str();
 
         logger(Logging::DEBUGGING) << "Request to add block " << blockStr;
-        if (hasBlock(cachedBlock.getBlockHash()))
+        /* We already hold m_chainMutex exclusively - see hasBlockUnsafe */
+        if (hasBlockUnsafe(cachedBlock.getBlockHash()))
         {
             logger(Logging::DEBUGGING) << "Block " << blockStr << " already exists";
             return error::AddBlockErrorCode::ALREADY_EXISTS;
@@ -3220,8 +3344,15 @@ namespace CryptoNote
        in the pool, there are only a subset of normal transaction validation
        tests that need to be completed to determine if the transaction can
        stay in the pool at this time. */
+    /* Runs after every block that lands on the main chain, so its cost is paid
+       once per block against the whole pool. During a transaction flood the pool
+       is the largest thing in the node, which is exactly when this must stay
+       cheap - hence borrowing each transaction rather than copying it, testing
+       key images directly against the block's set rather than building a
+       throwaway validator state per entry, and taking the block state by
+       reference rather than copying its key images on every call. */
     void Core::checkAndRemoveInvalidPoolTransactions(
-        const TransactionValidatorState blockTransactionsState)
+        const TransactionValidatorState &blockTransactionsState)
     {
         auto &pool = *transactionPool;
 
@@ -3229,19 +3360,19 @@ namespace CryptoNote
 
         const auto maxTransactionSize = getMaximumTransactionAllowedSize(blockMedianSize, currency);
 
+        const uint32_t topBlockIndex = getTopBlockIndex();
+
+        std::vector<Crypto::Hash> toRemove;
+
         for (const auto &poolTxHash : poolHashes)
         {
-            const auto poolTx = pool.tryGetTransaction(poolTxHash);
+            const CachedTransaction *poolTx = pool.tryGetTransactionRef(poolTxHash);
 
             /* Tx got removed by another thread */
-            if (!poolTx)
+            if (poolTx == nullptr)
             {
                 continue;
             }
-
-            const auto poolTxState = extractSpentOutputs(*poolTx);
-
-            auto [mixinSuccess, err] = Mixins::validate({*poolTx}, getTopBlockIndex());
 
             bool isValid = true;
 
@@ -3251,7 +3382,7 @@ namespace CryptoNote
                 isValid = false;
             }
             /* If the transaction does not have the right number of mixins, fail */
-            else if (!mixinSuccess)
+            else if (!std::get<0>(Mixins::validate({*poolTx}, topBlockIndex)))
             {
                 isValid = false;
             }
@@ -3261,7 +3392,7 @@ namespace CryptoNote
                 isValid = false;
             }
             /* If the the transaction contains outputs that were spent in the new block, fail */
-            else if (hasIntersections(blockTransactionsState, poolTxState))
+            else if (spendsKeyImageIn(blockTransactionsState, *poolTx))
             {
                 isValid = false;
             }
@@ -3276,13 +3407,18 @@ namespace CryptoNote
                 isValid = false;
             }
 
-            /* If the transaction is no longer valid, remove it from the pool
-               and tell everyone else that they should also remove it from the pool */
             if (!isValid)
             {
-                pool.removeTransaction(poolTxHash);
-                notifyObservers(makeDelTransactionMessage({poolTxHash}, Messages::DeleteTransaction::Reason::NotActual));
+                toRemove.push_back(poolTxHash);
             }
+        }
+
+        /* If the transaction is no longer valid, remove it from the pool
+           and tell everyone else that they should also remove it from the pool */
+        for (const auto &poolTxHash : toRemove)
+        {
+            pool.removeTransaction(poolTxHash);
+            notifyObservers(makeDelTransactionMessage({poolTxHash}, Messages::DeleteTransaction::Reason::NotActual));
         }
     }
 
@@ -3606,11 +3742,24 @@ namespace CryptoNote
             }
         }
 
-        if (!transactionPool->pushTransaction(std::move(cachedTransaction), std::move(validatorState)))
+        const bool pushed = transactionPool->pushTransaction(std::move(cachedTransaction), std::move(validatorState));
+
+        /* Anything the pool shed to stay inside its size budget has to be
+           announced, or peers keep offering it back to us and wallets keep
+           showing it as pending. */
+        const auto evicted = transactionPool->takeEvictedTransactions();
+
+        if (!evicted.empty())
+        {
+            notifyObservers(
+                makeDelTransactionMessage(std::vector<Crypto::Hash>(evicted), Messages::DeleteTransaction::Reason::NotActual));
+        }
+
+        if (!pushed)
         {
             logger(Logging::DEBUGGING) << "Failed to push transaction " << transactionHash
-                                       << " to pool, already exists";
-            return {false, "Transaction already exists in pool"};
+                                       << " to pool, already exists or the pool is full";
+            return {false, "Transaction was not accepted into the pool"};
         }
 
         logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been added to pool";

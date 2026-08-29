@@ -1,8 +1,0 @@
-name: build-for-benchmarks
-runs:
-  using: composite
-  steps:
-  - uses: "./.github/actions/pre-steps"
-  - name: Linux build for benchmarks
-    run: make V=1 J=8 -j8 release
-    shell: bash

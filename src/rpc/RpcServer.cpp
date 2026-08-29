@@ -17,6 +17,7 @@
 
 #include <config/Constants.h>
 #include <common/CryptoNoteTools.h>
+#include <common/IpcSocket.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
 #include <serialization/SerializationTools.h>
@@ -69,6 +70,10 @@ RpcServer::RpcServer(
     const uint32_t rpcMaxGlobalIndexesRange,
     const uint32_t rpcMaxBlockCount,
     const bool rpcTrustProxy,
+    const std::string rpcIpcPath,
+    const uint32_t rpcIpcMode,
+    const std::string rpcIpcGroup,
+    const bool rpcIpcRequireToken,
     const RpcMode rpcMode,
     const std::shared_ptr<CryptoNote::Core> core,
     const std::shared_ptr<CryptoNote::NodeServer> p2p,
@@ -85,6 +90,10 @@ RpcServer::RpcServer(
     m_rpcMaxGlobalIndexesRange(std::max<uint32_t>(100, rpcMaxGlobalIndexesRange)),
     m_rpcMaxBlockCount(std::max<uint32_t>(1, rpcMaxBlockCount)),
     m_rpcTrustProxy(rpcTrustProxy),
+    m_ipcPath(rpcIpcPath),
+    m_ipcMode(rpcIpcMode),
+    m_ipcGroup(rpcIpcGroup),
+    m_ipcRequireToken(rpcIpcRequireToken),
     m_rpcMode(rpcMode),
     m_core(core),
     m_p2p(p2p),
@@ -106,7 +115,7 @@ RpcServer::RpcServer(
         );
     });
 
-    setupRoutes(*m_server);
+    setupRoutes(*m_server, false);
 
     if (!m_ipv6Host.empty())
     {
@@ -123,11 +132,30 @@ RpcServer::RpcServer(
                 { Logger::DAEMON_RPC }
             );
         });
-        setupRoutes(*m_ipv6Server);
+        setupRoutes(*m_ipv6Server, false);
+    }
+
+    if (!m_ipcPath.empty())
+    {
+        m_ipcServer = std::make_unique<httplib::Server>();
+
+        applyServerTuning(*m_ipcServer);
+        m_ipcServer->set_read_timeout(std::chrono::seconds(m_rpcReadTimeout));
+        m_ipcServer->set_write_timeout(std::chrono::seconds(m_rpcWriteTimeout));
+        m_ipcServer->set_payload_max_length(static_cast<size_t>(m_rpcMaxRequestBodyBytes));
+        m_ipcServer->set_error_logger([](const httplib::Error &error, const httplib::Request *) {
+            Logger::logger.log(
+                "RPC IPC server error: " + httplib::to_string(error),
+                Logger::WARNING,
+                { Logger::DAEMON_RPC }
+            );
+        });
+
+        setupRoutes(*m_ipcServer, true);
     }
 }
 
-void RpcServer::setupRoutes(httplib::Server &srv)
+void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
 {
     const bool bodyRequired = true;
     const bool bodyNotRequired = false;
@@ -137,8 +165,8 @@ void RpcServer::setupRoutes(httplib::Server &srv)
 
     /* Route the request through our middleware function, before forwarding
        to the specified function */
-    const auto router = [this](const auto function, const RpcMode routePermissions, const bool isBodyRequired, const bool syncRequired) {
-        return [this, function, routePermissions, isBodyRequired, syncRequired](const httplib::Request &req, httplib::Response &res) {
+    const auto router = [this, isIpc](const auto function, const RpcMode routePermissions, const bool isBodyRequired, const bool syncRequired) {
+        return [=](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
             middleware(
@@ -147,6 +175,7 @@ void RpcServer::setupRoutes(httplib::Server &srv)
                 routePermissions,
                 isBodyRequired,
                 syncRequired,
+                isIpc,
                 std::bind(function, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)
             );
         };
@@ -249,6 +278,42 @@ RpcServer::~RpcServer()
 
 void RpcServer::start()
 {
+    /* Bind the IPC socket on this thread, before anything else starts. The
+       permission window in Ipc::bindServer is closed with the process umask,
+       which every thread shares, so it must not overlap another listener
+       coming up. */
+    if (m_ipcServer)
+    {
+        std::string error;
+
+        if (Common::Ipc::bindServer(*m_ipcServer, m_ipcPath, m_ipcMode, m_ipcGroup, error))
+        {
+            m_ipcBound = true;
+
+            Logger::logger.log(
+                "RPC IPC listener bound to " + Common::Ipc::describe(m_ipcPath) + " with mode "
+                    + Common::Ipc::formatMode(m_ipcMode)
+                    + (m_ipcGroup.empty() ? "" : " group " + m_ipcGroup),
+                Logger::INFO,
+                { Logger::DAEMON_RPC }
+            );
+
+            m_ipcThread = std::thread(&RpcServer::listenIpc, this);
+        }
+        else
+        {
+            /* Same policy as the IPv6 listener: a failed extra listener warns
+               and the node keeps serving on the ones that did come up. */
+            std::cout << WarningMsg("Failed to start RPC IPC listener: " + error) << std::endl;
+
+            Logger::logger.log(
+                "Failed to start RPC IPC listener: " + error,
+                Logger::WARNING,
+                { Logger::DAEMON_RPC }
+            );
+        }
+    }
+
     m_serverThread = std::thread(&RpcServer::listen, this);
 
     if (!m_ipv6Host.empty())
@@ -280,6 +345,14 @@ void RpcServer::listenIpv6()
     }
 }
 
+void RpcServer::listenIpc()
+{
+    if (!m_ipcServer->listen_after_bind())
+    {
+        std::cout << WarningMsg("RPC IPC listener on " + m_ipcPath + " stopped unexpectedly.") << std::endl;
+    }
+}
+
 void RpcServer::stop()
 {
     m_server->stop();
@@ -287,6 +360,11 @@ void RpcServer::stop()
     if (!m_ipv6Host.empty())
     {
         m_ipv6Server->stop();
+    }
+
+    if (m_ipcServer && m_ipcBound)
+    {
+        m_ipcServer->stop();
     }
 
     if (m_serverThread.joinable())
@@ -298,11 +376,32 @@ void RpcServer::stop()
     {
         m_ipv6Thread.join();
     }
+
+    if (m_ipcThread.joinable())
+    {
+        m_ipcThread.join();
+    }
+
+    /* Nothing else removes the socket file, and a leftover one blocks the next
+       start until it is cleared by hand. */
+    if (m_ipcBound)
+    {
+        Common::Ipc::cleanup(m_ipcPath);
+        m_ipcBound = false;
+    }
 }
 
 std::tuple<std::string, uint16_t> RpcServer::getConnectionInfo()
 {
     return {m_host, m_port};
+}
+
+std::string RpcServer::getIpcPath() const
+{
+    /* Reported only once the bind actually succeeded, so a caller that routes
+       itself over IPC never ends up pointed at a socket that was never
+       created. */
+    return m_ipcBound ? m_ipcPath : std::string();
 }
 
 std::optional<nlohmann::json> RpcServer::getJsonBody(
@@ -350,12 +449,16 @@ void RpcServer::middleware(
     const RpcMode routePermissions,
     const bool bodyRequired,
     const bool syncRequired,
+    const bool isIpc,
     std::function<std::tuple<Error, uint16_t>(
         const httplib::Request &req,
         httplib::Response &res,
         const nlohmann::json &body)> handler)
 {
-    const std::string clientIp = getClientIp(req);
+    /* An AF_UNIX peer has no address. httplib leaves remote_addr empty and
+       puts the peer's process id in remote_port instead, which is the only
+       thing worth naming this caller by in a log. */
+    const std::string clientIp = isIpc ? ("ipc pid " + std::to_string(req.remote_port)) : getClientIp(req);
 
     Logger::logger.log(
         "[" + clientIp + "] Incoming " + req.method + " request: " + req.path + ", User-Agent: " + req.get_header_value("User-Agent"),
@@ -376,7 +479,12 @@ void RpcServer::middleware(
         return;
     }
 
-    if (!m_rpcAccessToken.empty())
+    /* On the IPC socket the mode on the socket file already decided who is
+       allowed to be here, and the kernel enforced it. Demanding the shared
+       secret on top adds nothing, and would mean every local integration has
+       to be handed the token to do what its uid already entitles it to. An
+       operator who wants both can set --rpc-ipc-require-token. */
+    if (!m_rpcAccessToken.empty() && (!isIpc || m_ipcRequireToken))
     {
         std::string providedToken = req.get_header_value("X-API-Key");
 
@@ -397,7 +505,11 @@ void RpcServer::middleware(
         }
     }
 
-    if (!clientIp.empty() && clientIp != "127.0.0.1" && clientIp != "::1")
+    /* IPC callers are exempt for the same reason loopback is: the rate limiter
+       exists to blunt anonymous remote traffic, and a process that cleared the
+       socket's permissions is neither anonymous nor remote. Rate limiting it
+       would only throttle a local wallet mid-sync. */
+    if (!isIpc && !clientIp.empty() && clientIp != "127.0.0.1" && clientIp != "::1")
     {
         if (isRateLimited(clientIp))
         {
@@ -533,6 +645,18 @@ bool RpcServer::isRateLimited(const std::string &clientIp)
     const uint64_t windowStart = now - (now % 60);
 
     std::lock_guard<std::mutex> lock(m_rateLimitMutex);
+
+    /* The map is keyed by remote address, so without this it grows without
+       bound - one entry per address that ever touched the node, which an
+       attacker on a large address range controls directly. Entries from an
+       older window carry no state worth keeping, so drop them when we roll
+       over into a new one. */
+    if (windowStart != m_rateLimitWindowStart)
+    {
+        m_rateLimitByIp.clear();
+        m_rateLimitWindowStart = windowStart;
+    }
+
     auto &entry = m_rateLimitByIp[clientIp];
 
     if (entry.first != windowStart)
@@ -1142,6 +1266,11 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         ? getBoolFromJSON(body, "skipCoinbaseTransactions")
         : false;
 
+    /* Opt in, so wallets that predate the flag keep receiving key_offsets */
+    const bool skipInputKeyOffsets = hasMember(body, "skipInputKeyOffsets")
+        ? getBoolFromJSON(body, "skipInputKeyOffsets")
+        : false;
+
     std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
     std::optional<WalletTypes::TopBlock> topBlockInfo;
 
@@ -1173,6 +1302,16 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
                 nlohmann::json outObj;
                 outObj["key"] = Common::podToHex(output.key);
                 outObj["amount"] = output.amount;
+
+                /* We already have this from the database. Sending it saves the
+                   wallet a whole extra /get_global_indexes_for_range round trip
+                   for every block that turns out to contain one of its outputs.
+                   Wallets that don't know the field ignore it. */
+                if (output.globalOutputIndex)
+                {
+                    outObj["globalIndex"] = *output.globalOutputIndex;
+                }
+
                 cbOutputs.push_back(outObj);
             }
             nlohmann::json cbTx;
@@ -1192,21 +1331,36 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
                 nlohmann::json outObj;
                 outObj["key"] = Common::podToHex(output.key);
                 outObj["amount"] = output.amount;
+
+                if (output.globalOutputIndex)
+                {
+                    outObj["globalIndex"] = *output.globalOutputIndex;
+                }
+
                 txOutputs.push_back(outObj);
             }
 
             nlohmann::json txInputs = nlohmann::json::array();
             for (const auto &input : transaction.keyInputs)
             {
-                nlohmann::json offsets = nlohmann::json::array();
-                for (const auto &offset : input.outputIndexes)
-                {
-                    offsets.push_back(offset);
-                }
                 nlohmann::json inputObj;
                 inputObj["amount"] = input.amount;
-                inputObj["key_offsets"] = offsets;
                 inputObj["k_image"] = Common::podToHex(input.keyImage);
+
+                /* The ring member offsets are only needed to build a spend, and
+                   a syncing wallet builds its own from get_random_outs. They are
+                   a large slice of the response body, so a wallet that has said
+                   it doesn't want them gets them omitted. */
+                if (!skipInputKeyOffsets)
+                {
+                    nlohmann::json offsets = nlohmann::json::array();
+                    for (const auto &offset : input.outputIndexes)
+                    {
+                        offsets.push_back(offset);
+                    }
+                    inputObj["key_offsets"] = offsets;
+                }
+
                 txInputs.push_back(inputObj);
             }
 

@@ -541,21 +541,17 @@ namespace SendTransaction
 
         uint64_t outputIndex = 0;
 
-        for (const auto output : keyOutputs)
+        for (const auto &output : keyOutputs)
         {
             Crypto::PublicKey spendKey;
 
             /* Not our output */
             Crypto::underive_public_key(derivation, outputIndex, output.key, spendKey);
 
-            const auto spendKeys = subWallets->m_publicSpendKeys;
-
             /* See if the derived spend key is one of ours */
-            const auto it = std::find(spendKeys.begin(), spendKeys.end(), spendKey);
-
-            if (it != spendKeys.end())
+            if (subWallets->isOurSpendKey(spendKey))
             {
-                Crypto::PublicKey ourSpendKey = *it;
+                const Crypto::PublicKey ourSpendKey = spendKey;
 
                 WalletTypes::UnconfirmedInput input;
 

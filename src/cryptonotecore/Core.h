@@ -73,6 +73,10 @@ namespace CryptoNote
 
         virtual bool hasBlock(const Crypto::Hash &blockHash) const override;
 
+        /* hasBlock without taking m_chainMutex, for callers that already hold
+           it. A shared mutex is not recursive, so addBlock must use this. */
+        bool hasBlockUnsafe(const Crypto::Hash &blockHash) const;
+
         virtual BlockTemplate getBlockByIndex(uint32_t index) const override;
 
         virtual BlockTemplate getBlockByHash(const Crypto::Hash &blockHash) const override;
@@ -614,7 +618,7 @@ namespace CryptoNote
         void copyTransactionsToPool(IBlockchainCache *alt);
 
         void checkAndRemoveInvalidPoolTransactions(
-            const TransactionValidatorState blockTransactionsState);
+            const TransactionValidatorState &blockTransactionsState);
 
         bool isTransactionInChain(const Crypto::Hash &txnHash);
 
