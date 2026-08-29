@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,6 +33,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   String? _newWalletViewKey;
   String? _newWalletSpendKey;
   bool _seedConfirmed = false;
+  bool _seedRevealed = false;
+
+  /// Indices of the seed words the user must retype to prove they wrote the
+  /// phrase down. A self-attested checkbox proves nothing, and the funds are
+  /// unrecoverable if the seed is lost.
+  List<int> _challengeIndices = const [];
+  final _challengeCtrls = <int, TextEditingController>{};
 
   // SSL for daemon — updated from defaultNodeProvider when entering a form
   bool _daemonSSL = kDefaultDaemonSSL;
@@ -56,12 +65,42 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _fileCtrl, _passCtrl, _passConfirmCtrl, _daemonHostCtrl, _daemonPortCtrl,
       _viewKeyCtrl, _spendKeyCtrl, _seedCtrl, _scanHeightCtrl,
     ]) { c.dispose(); }
+    for (final c in _challengeCtrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
+  /// Shared pre-flight for every "open a wallet" path.
+  /// Returns an error message, or null when the form is usable.
+  String? _validateCommon(S? tr, {required bool requireConfirm}) {
+    if (_fileCtrl.text.trim().isEmpty) {
+      return tr?.walletNameRequired ?? 'Enter a name for this wallet';
+    }
+    // An empty or trivial password leaves the file in browser storage
+    // effectively unencrypted; the form used to accept anything.
+    if (_passCtrl.text.length < kMinPasswordLength) {
+      return tr?.passwordTooShort(kMinPasswordLength) ??
+          'Use a password of at least $kMinPasswordLength characters';
+    }
+    if (requireConfirm && _passCtrl.text != _passConfirmCtrl.text) {
+      return tr?.passwordsDoNotMatch ?? 'Passwords do not match.';
+    }
+    if (_daemonHostCtrl.text.trim().isEmpty) {
+      return tr?.daemonHostRequired ?? 'Enter a daemon host';
+    }
+    final port = int.tryParse(_daemonPortCtrl.text.trim());
+    if (port == null || port < 1 || port > 65535) {
+      return tr?.invalidPort ?? 'Port must be between 1 and 65535';
+    }
+    return null;
+  }
+
   Future<void> _doCreate() async {
-    if (_passCtrl.text != _passConfirmCtrl.text) {
-      setState(() => _error = 'Passwords do not match.');
+    final tr = S.of(context);
+    final problem = _validateCommon(tr, requireConfirm: true);
+    if (problem != null) {
+      setState(() => _error = problem);
       return;
     }
     setState(() { _loading = true; _error = null; });
@@ -78,16 +117,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       final seed = await ffi.getMnemonicSeed();
       final keys = await ffi.getSpendKeysJson(address);
       final viewKey = await ffi.getPrivateViewKey();
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      await ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
 
       await storeWalletPassword(_passCtrl.text);
+      // Record which wallet is current, so Settings > Delete Wallet Data knows
+      // what to remove. This was never written before, and the delete silently
+      // removed nothing.
+      await saveLastWalletName(_fileCtrl.text.trim());
       setState(() {
         _newWalletAddress = address;
         _newWalletSeed = seed;
         _newWalletSpendKey = keys['privateSpendKey'] as String? ?? '';
         _newWalletViewKey = viewKey;
         _seedConfirmed = false;
+        _seedRevealed = false;
         _mode = _SetupMode.backupSeed;
+        _makeChallenge();
       });
     } on WalletCApiException catch (e) {
       setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
@@ -99,6 +144,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doOpen() async {
+    final tr = S.of(context);
+    if (_fileCtrl.text.trim().isEmpty) {
+      setState(() => _error = tr?.walletNameRequired ?? 'Select a wallet to open');
+      return;
+    }
+    if (_passCtrl.text.isEmpty) {
+      setState(() => _error = tr?.enterPasswordToContinue ?? 'Enter your wallet password');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -109,8 +163,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      await ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
+      await saveLastWalletName(_fileCtrl.text.trim());
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
@@ -123,6 +178,21 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportSeed() async {
+    final tr = S.of(context);
+    final problem = _validateCommon(tr, requireConfirm: false);
+    if (problem != null) {
+      setState(() => _error = problem);
+      return;
+    }
+    // A 25-word mnemonic is the only thing restoreFromSeed accepts; catching
+    // the count here beats an opaque failure from inside the WASM module.
+    final words = _seedCtrl.text.trim().split(RegExp(r'\s+'))
+        ..removeWhere((w) => w.isEmpty);
+    if (words.length != kMnemonicWordCount) {
+      setState(() => _error = tr?.seedWordCount(kMnemonicWordCount, words.length) ??
+          'A seed phrase has $kMnemonicWordCount words — you entered ${words.length}');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -135,8 +205,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      await ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
+      await saveLastWalletName(_fileCtrl.text.trim());
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
@@ -149,6 +220,23 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportKeys() async {
+    final tr = S.of(context);
+    final problem = _validateCommon(tr, requireConfirm: false);
+    if (problem != null) {
+      setState(() => _error = problem);
+      return;
+    }
+    final hex64 = RegExp(r'^[0-9a-fA-F]{64}$');
+    if (!hex64.hasMatch(_spendKeyCtrl.text.trim())) {
+      setState(() => _error = tr?.invalidSpendKey ??
+          'Private spend key must be 64 hexadecimal characters');
+      return;
+    }
+    if (!hex64.hasMatch(_viewKeyCtrl.text.trim())) {
+      setState(() => _error = tr?.invalidViewKey ??
+          'Private view key must be 64 hexadecimal characters');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -162,8 +250,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      await ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
       await storeWalletPassword(_passCtrl.text);
+      await saveLastWalletName(_fileCtrl.text.trim());
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
@@ -194,7 +283,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     if (confirmed != true) return;
     try {
       await ref.read(walletCApiProvider).deleteFile(name);
-    } catch (_) {}
+      final remaining = await ref.read(walletCApiProvider).listWallets();
+      if (remaining.contains(name)) {
+        throw StateError('Browser storage still reports "$name" after deletion.');
+      }
+    } catch (e) {
+      // Swallowing this is how the broken delete stayed invisible: the dialog
+      // closed, the list reloaded unchanged, and nothing said why.
+      if (mounted) {
+        setState(() => _error = (S.of(context)?.deleteFailed('$e') ?? 'Delete failed: $e'));
+      }
+    }
     // Reload the list
     setState(() { _savedWallets = null; _selectedWallet = null; });
     await _loadSavedWallets();
@@ -204,15 +303,22 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     try {
       final wallets = await ref.read(walletCApiProvider).listWallets()
           .timeout(const Duration(seconds: 10));
-      if (mounted) setState(() {
+      if (!mounted) return;
+      setState(() {
         _savedWallets = wallets;
         if (wallets.isNotEmpty) {
           _selectedWallet = wallets.first;
           _fileCtrl.text = wallets.first;
         }
       });
-    } catch (_) {
-      if (mounted) setState(() => _savedWallets = []);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savedWallets = [];
+        // Listing browser storage should not fail silently — if it does, the
+        // Open Wallet screen just looks empty for no stated reason.
+        _error = S.of(context)?.errorPrefix('$e') ?? 'Error: $e';
+      });
     }
   }
 
@@ -439,42 +545,72 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         _BackupField(value: _newWalletAddress ?? ''),
 
         const SizedBox(height: 16),
-        Text(tr?.seedPhrase25Words ?? 'Seed Phrase (25 words)', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 6),
-        _BackupField(value: _newWalletSeed ?? '', monospace: true, maxLines: 4),
 
-        const SizedBox(height: 16),
-        Text(tr?.privateViewKey ?? 'Private View Key', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 6),
-        _BackupField(value: _newWalletViewKey ?? '', monospace: true),
+        // Key material is hidden until the user asks for it, so it is not
+        // simply sitting on screen in an office, a cafe, or a screen share.
+        if (!_seedRevealed)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.visibility_outlined, size: 16),
+              label: Text(tr?.tapToReveal ?? 'Tap to reveal seed phrase and keys'),
+              onPressed: () => setState(() => _seedRevealed = true),
+            ),
+          )
+        else ...[
+          Text(tr?.seedPhrase25Words ?? 'Seed Phrase (25 words)', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          _BackupField(value: _newWalletSeed ?? '', monospace: true, maxLines: 4),
 
-        const SizedBox(height: 16),
-        Text(tr?.privateSpendKey ?? 'Private Spend Key', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 6),
-        _BackupField(value: _newWalletSpendKey ?? '', monospace: true),
+          const SizedBox(height: 16),
+          Text(tr?.privateViewKey ?? 'Private View Key', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          _BackupField(value: _newWalletViewKey ?? '', monospace: true),
 
-        const SizedBox(height: 24),
-        // Confirmation checkbox
-        InkWell(
-          onTap: () => setState(() => _seedConfirmed = !_seedConfirmed),
-          borderRadius: BorderRadius.circular(6),
-          child: Row(
-            children: [
-              Checkbox(
-                value: _seedConfirmed,
-                onChanged: (v) => setState(() => _seedConfirmed = v ?? false),
-                activeColor: kPrimary,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  tr?.seedBackupConfirm ?? 'I have written down my seed phrase and private keys in a safe place.',
-                  style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
-                ),
-              ),
-            ],
+          const SizedBox(height: 16),
+          Text(tr?.privateSpendKey ?? 'Private Spend Key', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 6),
+          _BackupField(value: _newWalletSpendKey ?? '', monospace: true),
+
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
+
+          // Prove the phrase was written down. The old flow was a single
+          // self-attested checkbox, which people tick without reading — and
+          // there is no recovery once the seed is gone.
+          Text(tr?.verifySeedTitle ?? 'Confirm your backup',
+              style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(
+            tr?.verifySeedSubtitle ??
+                'Type the requested words from the phrase you just wrote down.',
+            style: TextStyle(fontSize: 12, color: context.textSecondary),
           ),
-        ),
+          const SizedBox(height: 12),
+          ..._challengeIndices.map((i) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: _challengeCtrls[i],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onChanged: (_) => setState(_recheckChallenge),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: tr?.wordNumber(i + 1) ?? 'Word #${i + 1}',
+                    suffixIcon: _isChallengeWordCorrect(i)
+                        ? const Icon(Icons.check_circle, color: kSuccess, size: 18)
+                        : null,
+                  ),
+                ),
+              )),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: () => setState(_makeChallenge),
+            child: Text(tr?.askDifferentWords ?? 'Ask me different words'),
+          ),
+        ],
+
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
@@ -490,6 +626,55 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ),
       ],
     );
+  }
+
+  // ── Seed verification ─────────────────────────────────────────────────────
+
+  List<String> get _seedWords => (_newWalletSeed ?? '')
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .toList();
+
+  /// Picks three distinct words to ask about, spread across the phrase.
+  void _makeChallenge() {
+    for (final c in _challengeCtrls.values) {
+      c.dispose();
+    }
+    _challengeCtrls.clear();
+
+    final words = _seedWords;
+    if (words.length < 6) {
+      _challengeIndices = const [];
+      _seedConfirmed = words.isNotEmpty;
+      return;
+    }
+
+    // Deterministic-but-varied: one word from each third of the phrase.
+    final third = words.length ~/ 3;
+    final rnd = Random.secure();
+    _challengeIndices = [
+      rnd.nextInt(third),
+      third + rnd.nextInt(third),
+      2 * third + rnd.nextInt(words.length - 2 * third),
+    ]..sort();
+
+    for (final i in _challengeIndices) {
+      _challengeCtrls[i] = TextEditingController();
+    }
+    _seedConfirmed = false;
+  }
+
+  bool _isChallengeWordCorrect(int index) {
+    final words = _seedWords;
+    if (index >= words.length) return false;
+    final typed = _challengeCtrls[index]?.text.trim().toLowerCase() ?? '';
+    return typed.isNotEmpty && typed == words[index].toLowerCase();
+  }
+
+  void _recheckChallenge() {
+    _seedConfirmed = _challengeIndices.isNotEmpty &&
+        _challengeIndices.every(_isChallengeWordCorrect);
   }
 }
 
@@ -763,7 +948,7 @@ class _PreWalletSettingsDialogState extends ConsumerState<_PreWalletSettingsDial
                   style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
               Text(tr?.nodeDescription ?? 'Used when creating or opening a wallet.',
-                  style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                  style: TextStyle(fontSize: 12, color: context.textSecondary)),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -785,7 +970,7 @@ class _PreWalletSettingsDialogState extends ConsumerState<_PreWalletSettingsDial
                   const SizedBox(width: 8),
                   Column(
                     children: [
-                      Text(tr?.ssl ?? 'SSL', style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                      Text(tr?.ssl ?? 'SSL', style: TextStyle(fontSize: 12, color: context.textSecondary)),
                       Switch(value: _ssl, onChanged: (v) => setState(() { _ssl = v; _saved = false; })),
                     ],
                   ),
@@ -839,7 +1024,7 @@ class _PreWalletSettingsDialogState extends ConsumerState<_PreWalletSettingsDial
                         Text(tr?.logLevel ?? 'Log Level',
                             style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface)),
                         Text(tr?.logLevelSubtitle ?? 'Controls wallet library verbosity',
-                            style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                            style: TextStyle(fontSize: 12, color: context.textSecondary)),
                       ],
                     ),
                   ),

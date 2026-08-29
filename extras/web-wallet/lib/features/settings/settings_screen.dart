@@ -4,7 +4,6 @@ import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web/web.dart' as web;
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
@@ -13,24 +12,13 @@ import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/copy_button.dart';
 import '../../l10n/generated/app_localizations.dart';
 
-const _storage = FlutterSecureStorage();
-const _kLastWalletKey = 'pluton_last_wallet_name';
-
-// -- Last-opened wallet persistence -------------------------------------------
-
-final lastWalletPathProvider = FutureProvider<String?>((ref) async {
-  return _storage.read(key: _kLastWalletKey);
-});
-
-Future<void> saveLastWalletPath(String name) async {
-  await _storage.write(key: _kLastWalletKey, value: name);
-}
-
-Future<void> clearLastWalletPath() async {
-  await _storage.delete(key: _kLastWalletKey);
-}
+// Last-opened wallet persistence now lives in app_providers.dart
+// (readLastWalletName / saveLastWalletName / clearLastWalletName) so the setup
+// screen can record it. It was previously declared here and never written,
+// which is why "Delete Wallet Data" had no wallet name to delete.
 
 // -- Screen -------------------------------------------------------------------
 
@@ -80,7 +68,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         int.tryParse(_nodePortCtrl.text) ?? kDefaultDaemonPort,
         ssl: _nodeSSL,
       );
-      ref.read(statusProvider.notifier).refresh();
+      await ref.read(statusProvider.notifier).refresh();
+      if (!mounted) return;
       setState(() => _nodeSuccess = tr?.nodeUpdatedSuccess ?? 'Node updated successfully');
     } on WalletCApiException catch (e) {
       setState(() => _nodeError = e.message);
@@ -110,8 +99,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   /// Export wallet JSON as a browser download.
+  ///
+  /// This writes an *unencrypted* dump containing key material, so it asks
+  /// first — previously one tap put the keys in the downloads folder with no
+  /// warning at all.
   Future<void> _exportJson() async {
     final tr = S.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.exportJsonTitle ?? 'Export to JSON'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: kWarning, size: 36),
+              const SizedBox(height: 12),
+              Text(
+                dlgTr?.exportJsonWarning ??
+                    'This file is NOT encrypted. It contains your private keys in '
+                    'plain text — anyone who opens it can spend your funds.\n\n'
+                    'Only save it somewhere you control, and delete it when you are done.',
+                style: const TextStyle(height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dlgTr?.cancel ?? 'Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: kWarning),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dlgTr?.iUnderstandContinue ?? 'I understand, continue'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       final jsonStr = await ref.read(walletCApiProvider).exportJson();
       // Trigger browser download via Blob + anchor click
@@ -150,46 +181,307 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _resetScanHeight() async {
-    final heightCtrl = TextEditingController(text: '0');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final dlgTr = S.of(ctx);
-        return AlertDialog(
-          title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: heightCtrl,
-                decoration: InputDecoration(labelText: dlgTr?.scanHeight ?? 'Scan height'),
-                keyboardType: TextInputType.number,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(dlgTr?.reset ?? 'Reset')),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) return;
+
+  /// Download the encrypted wallet file.
+  ///
+  /// Unlike the JSON export this stays encrypted with the wallet password, so
+  /// it is the backup people should actually be taking. The bridge already
+  /// supported it; nothing in the UI ever called it.
+  Future<void> _downloadWalletFile() async {
+    final tr = S.of(context);
     try {
-      await ref.read(walletCApiProvider).reset(
-        scanHeight: int.tryParse(heightCtrl.text) ?? 0,
+      final name = await readLastWalletName();
+      await ref.read(walletCApiProvider).downloadWallet(name);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tr?.walletFileDownloaded ??
+              'Encrypted wallet file downloaded — keep it somewhere safe.'),
+          backgroundColor: kSuccess,
+        ),
       );
-      ref.read(statusProvider.notifier).refresh();
-    } on WalletCApiException catch (e) {
-      if (mounted) {
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: kError),
+      );
+    }
+  }
+
+  /// Asks for the wallet password and returns true when it checks out.
+  /// Gates every action that reveals key material.
+  Future<bool> _confirmPassword(String purpose) async {
+    final ctrl = TextEditingController();
+    var wrong = false;
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final dlgTr = S.of(ctx);
+            return AlertDialog(
+              title: Text(dlgTr?.confirmPassword ?? 'Confirm password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(purpose),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ctrl,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: dlgTr?.password ?? 'Password',
+                      errorText: wrong
+                          ? (dlgTr?.incorrectPassword ?? 'Incorrect password')
+                          : null,
+                    ),
+                    onSubmitted: (_) async {
+                      if (await verifyWalletPassword(ctrl.text)) {
+                        if (ctx.mounted) Navigator.pop(ctx, true);
+                      } else {
+                        setLocal(() => wrong = true);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(dlgTr?.cancel ?? 'Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    if (await verifyWalletPassword(ctrl.text)) {
+                      if (ctx.mounted) Navigator.pop(ctx, true);
+                    } else {
+                      setLocal(() => wrong = true);
+                    }
+                  },
+                  child: Text(dlgTr?.continueButton ?? 'Continue'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+      return ok == true;
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
+  /// Reveal the seed phrase and private keys.
+  ///
+  /// There was previously no way to see these again after wallet creation —
+  /// if you skipped writing them down, they were gone.
+  Future<void> _showSecrets() async {
+    final tr = S.of(context);
+    final ok = await _confirmPassword(
+      tr?.revealSecretsPurpose ??
+          'Your seed phrase and private keys will be shown on screen.',
+    );
+    if (!ok || !mounted) return;
+
+    final ffi = ref.read(walletCApiProvider);
+    String seed = '';
+    String viewKey = '';
+    String spendKey = '';
+    try {
+      final address = await ffi.getPrimaryAddress();
+      viewKey = await ffi.getPrivateViewKey();
+      if (!await ffi.isViewWallet()) {
+        seed = await ffi.getMnemonicSeed();
+        final keys = await ffi.getSpendKeysJson(address);
+        spendKey = keys['privateSpendKey'] as String? ?? '';
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: kError),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _SecretsDialog(
+        seed: seed,
+        viewKey: viewKey,
+        spendKey: spendKey,
+      ),
+    );
+  }
+
+  /// Change the wallet password.
+  ///
+  /// Goes through the bridge's async channel so the re-encrypted file is
+  /// written back to browser storage; the local verifier is updated to match,
+  /// otherwise the lock screen would keep checking against the old password.
+  Future<void> _changePassword() async {
+    final tr = S.of(context);
+    final currentOk = await _confirmPassword(
+      tr?.changePasswordPurpose ?? 'Enter your current wallet password.',
+    );
+    if (!currentOk || !mounted) return;
+
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    String? newPassword;
+    try {
+      newPassword = await showDialog<String>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final dlgTr = S.of(ctx);
+            String? error;
+            void submit() {
+              if (newCtrl.text.length < kMinPasswordLength) {
+                setLocal(() => error = dlgTr?.passwordTooShort(kMinPasswordLength) ??
+                    'Use at least $kMinPasswordLength characters');
+                return;
+              }
+              if (newCtrl.text != confirmCtrl.text) {
+                setLocal(() => error = dlgTr?.passwordsDoNotMatch ?? 'Passwords do not match');
+                return;
+              }
+              Navigator.pop(ctx, newCtrl.text);
+            }
+
+            return AlertDialog(
+              title: Text(dlgTr?.changePassword ?? 'Change password'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: newCtrl,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: dlgTr?.newPassword ?? 'New password',
+                      errorText: error,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmCtrl,
+                    obscureText: true,
+                    onSubmitted: (_) => submit(),
+                    decoration: InputDecoration(
+                      labelText: dlgTr?.confirmPasswordField ?? 'Confirm new password',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: Text(dlgTr?.cancel ?? 'Cancel'),
+                ),
+                FilledButton(onPressed: submit, child: Text(dlgTr?.save ?? 'Save')),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      newCtrl.dispose();
+      confirmCtrl.dispose();
+    }
+
+    if (newPassword == null || !mounted) return;
+
+    try {
+      await ref.read(walletCApiProvider).changePassword(newPassword);
+      await storeWalletPassword(newPassword);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tr?.passwordChanged ?? 'Password changed'),
+          backgroundColor: kSuccess,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: kError),
+      );
+    }
+  }
+
+  /// Turning notifications on has to request browser permission from inside a
+  /// user gesture. Asking when a transaction arrives — as this used to — is
+  /// blocked outright by current browsers.
+  Future<void> _setNotifications(bool enabled) async {
+    await ref.read(notificationsEnabledProvider.notifier).set(enabled);
+    if (!enabled) return;
+    try {
+      if (web.Notification.permission == 'default') {
+        await web.Notification.requestPermission().toDart;
+      }
+      if (!mounted) return;
+      if (web.Notification.permission == 'denied') {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: kError),
+          SnackBar(
+            content: Text(S.of(context)?.notificationsBlocked ??
+                'Your browser is blocking notifications for this site. Enable them in site settings.'),
+            backgroundColor: kWarning,
+          ),
         );
       }
+    } catch (_) {
+      // Notification API unavailable — the toggle is simply inert.
+    }
+  }
+
+  Future<void> _resetScanHeight() async {
+    // Disposed in the finally below — dialog-local controllers were leaking.
+    final heightCtrl = TextEditingController(text: '0');
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          final dlgTr = S.of(ctx);
+          return AlertDialog(
+            title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: heightCtrl,
+                  decoration: InputDecoration(labelText: dlgTr?.scanHeight ?? 'Scan height'),
+                  keyboardType: TextInputType.number,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(dlgTr?.reset ?? 'Reset')),
+            ],
+          );
+        },
+      );
+      if (confirmed != true) return;
+      try {
+        await ref.read(walletCApiProvider).reset(
+          scanHeight: int.tryParse(heightCtrl.text) ?? 0,
+        );
+        await ref.read(statusProvider.notifier).refresh();
+      } on WalletCApiException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message), backgroundColor: kError),
+          );
+        }
+      }
+    } finally {
+      heightCtrl.dispose();
     }
   }
 
@@ -233,57 +525,89 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     // Step 2: type "DELETE" to confirm
     final typeCtrl = TextEditingController();
-    final step2 = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final dlgTr = S.of(ctx);
-        return AlertDialog(
-          title: Text(dlgTr?.finalConfirmation ?? 'Final Confirmation'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dlgTr?.typeDeleteToConfirm ?? 'Type DELETE to confirm:'),
-              const SizedBox(height: 10),
-              TextField(
-                controller: typeCtrl,
-                autofocus: true,
-                decoration: InputDecoration(hintText: dlgTr?.deleteHint ?? 'DELETE'),
+    final bool? step2;
+    try {
+      step2 = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          final dlgTr = S.of(ctx);
+          return AlertDialog(
+            title: Text(dlgTr?.finalConfirmation ?? 'Final Confirmation'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dlgTr?.typeDeleteToConfirm ?? 'Type DELETE to confirm:'),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: typeCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(hintText: dlgTr?.deleteHint ?? 'DELETE'),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: kError),
+                onPressed: () => Navigator.pop(ctx, typeCtrl.text == (dlgTr?.deleteHint ?? 'DELETE')),
+                child: Text(dlgTr?.deletePermanently ?? 'Delete permanently'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: kError),
-              onPressed: () => Navigator.pop(ctx, typeCtrl.text == (dlgTr?.deleteHint ?? 'DELETE')),
-              child: Text(dlgTr?.deletePermanently ?? 'Delete permanently'),
-            ),
-          ],
-        );
-      },
-    );
+          );
+        },
+      );
+    } finally {
+      typeCtrl.dispose();
+    }
     if (step2 != true) return;
 
+    final ffi = ref.read(walletCApiProvider);
     try {
-      final ffi = ref.read(walletCApiProvider);
-      // Save before closing so the data is in a clean state before we delete it
-      try { await ffi.save(); } catch (_) {}
-
-      // Delete via WASM bridge (removes from IndexedDB)
-      final walletName = await _storage.read(key: _kLastWalletKey);
-      if (walletName != null) {
-        await ffi.deleteFile(walletName);
+      // Work out which file to remove *before* closing the wallet. The name is
+      // recorded when the wallet is opened; if that record is missing, fall
+      // back to enumerating browser storage rather than deleting nothing and
+      // still reporting success — which is what used to happen.
+      var walletName = await readLastWalletName();
+      if (walletName == null || walletName.isEmpty) {
+        final stored = await ffi.listWallets();
+        if (stored.length == 1) walletName = stored.single;
       }
 
-      ffi.close();
-      await clearLastWalletPath();
+      if (walletName == null || walletName.isEmpty) {
+        throw StateError(
+            'Could not determine which wallet to delete. Open the wallet again, '
+            'or remove it from the Open Wallet screen.');
+      }
+
+      await ffi.close();
+      await ffi.deleteFile(walletName);
+
+      // Verify it is actually gone before telling the user it was deleted.
+      final remaining = await ffi.listWallets();
+      if (remaining.contains(walletName)) {
+        throw StateError('Browser storage still reports "$walletName" after deletion.');
+      }
+
+      await clearLastWalletName();
       await clearWalletPassword();
+      if (!mounted) return;
       ref.read(walletOpenProvider.notifier).state = false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(S.of(context)?.walletDataDeleted ?? 'Wallet data deleted'),
+          backgroundColor: kSuccess,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: kError),
+          SnackBar(
+            content: Text(S.of(context)?.deleteFailed(e.toString()) ??
+                'Delete failed: $e'),
+            backgroundColor: kError,
+            duration: const Duration(seconds: 10),
+          ),
         );
       }
     }
@@ -298,6 +622,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
+    final autoLockMinutes = ref.watch(autoLockMinutesProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -318,7 +643,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               nodeAsync.whenOrNull(
                 error: (e, _) => _NodeWarningBanner(
                   message: tr?.nodeUnreachable ?? 'Cannot reach the current node. Enter a new node address below and tap Apply.',
-                  onSwitch: () => _scrollToNodeForm(),
                 ),
               ) ?? const SizedBox.shrink(),
 
@@ -330,7 +654,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       Text(
                         tr?.nodeDescription ?? 'Connect to a local or remote daemon node. Changes take effect immediately.',
-                        style: const TextStyle(color: kTextSecondary, fontSize: 13),
+                        style: TextStyle(color: context.textSecondary, fontSize: 13),
                       ),
                       const SizedBox(height: 16),
                       Row(
@@ -353,7 +677,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           const SizedBox(width: 10),
                           Column(
                             children: [
-                              Text(tr?.ssl ?? 'SSL', style: const TextStyle(color: kTextSecondary, fontSize: 12)),
+                              Text(tr?.ssl ?? 'SSL', style: TextStyle(color: context.textSecondary, fontSize: 12)),
                               Switch(value: _nodeSSL, onChanged: (v) => setState(() => _nodeSSL = v)),
                             ],
                           ),
@@ -402,6 +726,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       title: tr?.saveWallet ?? 'Save Wallet',
                       subtitle: tr?.saveWalletSubtitle ?? 'Flush current state to browser storage',
                       onTap: _saveWallet,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.download_outlined,
+                      title: tr?.downloadWalletFile ?? 'Download Wallet File',
+                      subtitle: tr?.downloadWalletFileSubtitle ??
+                          'Save an encrypted backup of this wallet to your device',
+                      onTap: _downloadWalletFile,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.key_outlined,
+                      title: tr?.showSeedAndKeys ?? 'Seed Phrase & Private Keys',
+                      subtitle: tr?.showSeedAndKeysSubtitle ??
+                          'Reveal your recovery seed and keys (asks for your password)',
+                      onTap: _showSecrets,
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingsTile(
+                      icon: Icons.lock_reset_outlined,
+                      title: tr?.changePassword ?? 'Change Password',
+                      subtitle: tr?.changePasswordSubtitle ??
+                          'Re-encrypt this wallet with a new password',
+                      onTap: _changePassword,
                     ),
                     const Divider(height: 1, indent: 56),
                     _SettingsTile(
@@ -471,6 +819,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
+              // -- Security section ---------------------------------------------
+              _SectionHeader(title: tr?.sectionSecurity ?? 'Security', icon: Icons.shield_outlined),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.timer_outlined, size: 20, color: context.textSecondary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(tr?.autoLock ?? 'Auto-lock',
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                            Text(
+                                tr?.autoLockSubtitle ??
+                                    'Lock the wallet after a period of inactivity',
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                      DropdownButton<int>(
+                        value: kAutoLockChoices.contains(autoLockMinutes)
+                            ? autoLockMinutes
+                            : kDefaultAutoLockMinutes,
+                        underline: const SizedBox.shrink(),
+                        items: kAutoLockChoices
+                            .map((m) => DropdownMenuItem(
+                                  value: m,
+                                  child: Text(
+                                    m == 0
+                                        ? (tr?.autoLockNever ?? 'Never')
+                                        : (tr?.autoLockMinutes(m) ?? '$m min'),
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ))
+                            .toList(),
+                        onChanged: (m) {
+                          if (m != null) {
+                            unawaited(ref.read(autoLockMinutesProvider.notifier).set(m));
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // -- Appearance section ------------------------------------------
               _SectionHeader(title: tr?.sectionAppearance ?? 'Appearance', icon: Icons.palette_outlined),
               const SizedBox(height: 12),
@@ -479,7 +878,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   child: Row(
                     children: [
-                      const Icon(Icons.brightness_6_outlined, size: 20, color: kTextSecondary),
+                      Icon(Icons.brightness_6_outlined, size: 20, color: context.textSecondary),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -514,7 +913,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   child: Row(
                     children: [
-                      const Icon(Icons.notifications_active_outlined, size: 20, color: kTextSecondary),
+                      Icon(Icons.notifications_active_outlined, size: 20, color: context.textSecondary),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -527,7 +926,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       Switch(
                         value: notificationsEnabled,
-                        onChanged: (v) => ref.read(notificationsEnabledProvider.notifier).set(v),
+                        onChanged: (v) => unawaited(_setNotifications(v)),
                       ),
                     ],
                   ),
@@ -545,7 +944,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                       child: Row(
                         children: [
-                          const Icon(Icons.tune_outlined, size: 20, color: kTextSecondary),
+                          Icon(Icons.tune_outlined, size: 20, color: context.textSecondary),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -616,10 +1015,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  void _scrollToNodeForm() {
-    _nodeHostCtrl.selection = TextSelection(
-        baseOffset: 0, extentOffset: _nodeHostCtrl.text.length);
-  }
 }
 
 // -- Local helper widgets -----------------------------------------------------
@@ -680,8 +1075,7 @@ class _SettingsTile extends StatelessWidget {
 
 class _NodeWarningBanner extends StatelessWidget {
   final String message;
-  final VoidCallback onSwitch;
-  const _NodeWarningBanner({required this.message, required this.onSwitch});
+  const _NodeWarningBanner({required this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -732,6 +1126,151 @@ class _InlineError extends StatelessWidget {
   }
 }
 
+// -- Seed / private key reveal ------------------------------------------------
+
+/// Shows key material behind an explicit tap-to-reveal, with a reminder that
+/// the screen is now the weakest link.
+class _SecretsDialog extends StatefulWidget {
+  final String seed;
+  final String viewKey;
+  final String spendKey;
+
+  const _SecretsDialog({
+    required this.seed,
+    required this.viewKey,
+    required this.spendKey,
+  });
+
+  @override
+  State<_SecretsDialog> createState() => _SecretsDialogState();
+}
+
+class _SecretsDialogState extends State<_SecretsDialog> {
+  bool _revealed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tr = S.of(context);
+    return AlertDialog(
+      title: Text(tr?.showSeedAndKeys ?? 'Seed Phrase & Private Keys'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: kError.withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: kError.withAlpha(80)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.visibility_off_outlined, color: kError, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        tr?.secretsWarning ??
+                            'Anyone with these can spend your funds. Make sure nobody can '
+                            'see your screen, and never share them — no support channel '
+                            'will ever ask for them.',
+                        style: const TextStyle(color: kError, fontSize: 12, height: 1.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (!_revealed)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: Text(tr?.tapToReveal ?? 'Tap to reveal'),
+                    onPressed: () => setState(() => _revealed = true),
+                  ),
+                )
+              else ...[
+                if (widget.seed.isNotEmpty) ...[
+                  Text(tr?.seedPhrase25Words ?? 'Seed Phrase (25 words)',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  _SecretField(value: widget.seed, maxLines: 4),
+                  const SizedBox(height: 16),
+                ],
+                Text(tr?.privateViewKey ?? 'Private View Key',
+                    style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 6),
+                _SecretField(value: widget.viewKey),
+                if (widget.spendKey.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Text(tr?.privateSpendKey ?? 'Private Spend Key',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  _SecretField(value: widget.spendKey),
+                ],
+                if (widget.seed.isEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(tr?.viewOnlyNoSeed ??
+                      'This is a view-only wallet — it has no seed phrase or spend key.',
+                      style: TextStyle(color: context.textSecondary, fontSize: 12)),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(tr?.close ?? 'Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SecretField extends StatelessWidget {
+  final String value;
+  final int maxLines;
+  const _SecretField({required this.value, this.maxLines = 1});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.dividerColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: SelectableText(
+              value,
+              maxLines: maxLines,
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.5,
+                fontFamily: 'monospace',
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          CopyButton(text: value, size: 16),
+        ],
+      ),
+    );
+  }
+}
+
 // -- Log viewer dialog --------------------------------------------------------
 
 class _LogEntry {
@@ -761,14 +1300,15 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
   Timer? _timer;
   bool _autoScroll = true;
 
-  static const _levelColors = {
-    'fatal': kError,
-    'error': kError,
-    'warning': kWarning,
-    'info': kTextPrimary,
-    'debug': kTextSecondary,
-    'trace': kTextDisabled,
-  };
+  /// Log-level tint. Resolved per build so it tracks the active theme rather
+  /// than being frozen to the dark palette.
+  static Color _levelColor(BuildContext context, String level) => switch (level) {
+        'fatal' || 'error' => kError,
+        'warning' => kWarning,
+        'debug' => context.textSecondary,
+        'trace' => context.textDisabled,
+        _ => context.textPrimary,
+      };
 
   @override
   void initState() {
@@ -829,17 +1369,17 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
               padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
               child: Row(
                 children: [
-                  const Icon(Icons.article_outlined, size: 18, color: kTextSecondary),
+                  Icon(Icons.article_outlined, size: 18, color: context.textSecondary),
                   const SizedBox(width: 8),
                   Text(tr?.walletLogs ?? 'Wallet Logs', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
                   Text(tr?.logEntries(count) ?? '$count entries',
-                      style: const TextStyle(fontSize: 12, color: kTextDisabled)),
+                      style: TextStyle(fontSize: 12, color: context.textDisabled)),
                   const SizedBox(width: 12),
                   // Auto-scroll toggle
                   Row(
                     children: [
-                      Text(tr?.autoScroll ?? 'Auto-scroll', style: const TextStyle(fontSize: 12, color: kTextSecondary)),
+                      Text(tr?.autoScroll ?? 'Auto-scroll', style: TextStyle(fontSize: 12, color: context.textSecondary)),
                       const SizedBox(width: 4),
                       Switch(
                         value: _autoScroll,
@@ -873,7 +1413,7 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
               child: _entries.isEmpty
                   ? Center(
                       child: Text(tr?.noLogsYet ?? 'No logs yet. Set a log level above Disabled to see output.',
-                          style: const TextStyle(color: kTextDisabled, fontSize: 13)),
+                          style: TextStyle(color: context.textDisabled, fontSize: 13)),
                     )
                   : ListView.builder(
                       controller: _scroll,
@@ -881,7 +1421,7 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
                       itemCount: _entries.length,
                       itemBuilder: (_, i) {
                         final e = _entries[i];
-                        final color = _levelColors[e.level] ?? kTextPrimary;
+                        final color = _levelColor(context, e.level);
                         return SelectableText(
                           e.pretty,
                           style: TextStyle(
