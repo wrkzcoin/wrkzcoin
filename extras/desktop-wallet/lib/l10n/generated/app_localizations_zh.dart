@@ -759,4 +759,25 @@ class SZh extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired => '该交易已失效，请返回重新创建。';
+
+  @override
+  String get deleteConfirmMismatch => '请准确输入 DELETE 以确认。';
+
+  @override
+  String get unlockNeedsReopen => '无法在此设备上验证密码。请使用“改为关闭钱包”，然后重新打开钱包。';
+
+  @override
+  String get exportJsonWarningTitle => '导出未加密的钱包？';
+
+  @override
+  String get exportJsonWarningBody =>
+      '导出的文件以明文包含您的私有查看密钥和私有花费密钥。任何读取该文件的人都能动用您的资金。\n\n请仅保存到您掌控的存储中，并在使用完毕后立即删除。';
+
+  @override
+  String passwordTooShort(int count) {
+    return '密码至少需要$count个字符';
+  }
 }

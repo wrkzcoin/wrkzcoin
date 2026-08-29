@@ -1,8 +1,6 @@
 {
   "@@locale": "es",
-
   "appTitle": "PLUTON v2",
-
   "tabOverview": "Resumen",
   "tabReceive": "Recibir",
   "tabTransfer": "Transferir",
@@ -10,7 +8,6 @@
   "tabAddressBook": "Libreta de direcciones",
   "tabSettings": "Configuración",
   "tabAbout": "Acerca de",
-
   "lockWallet": "Bloquear billetera",
   "send": "Enviar",
   "receive": "Recibir",
@@ -18,38 +15,69 @@
   "available": "Disponible",
   "locked": "Bloqueado",
   "total": "Total",
-
   "availableBalance": "Saldo disponible",
   "lockedUnconfirmed": "Bloqueado (sin confirmar): {amount} {ticker}",
-  "@lockedUnconfirmed": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@lockedUnconfirmed": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "totalBalance": "Total: {amount} {ticker}",
-  "@totalBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@totalBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "balanceIncompleteWhileSyncing": "El saldo puede estar incompleto durante la sincronización",
   "errorPrefix": "Error: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "network": "Red",
   "syncStatus": "Estado de sincronización",
   "synced": "Sincronizado",
-  "syncing": "Sincronizando\u2026",
+  "syncing": "Sincronizando…",
   "walletBlock": "Bloque de la billetera",
   "networkBlock": "Bloque de la red",
   "peers": "Pares",
   "walletType": "Tipo de billetera",
   "viewOnly": "Solo lectura",
   "full": "Completa",
-
   "nodeConnectionIssue": "Problema de conexión con el nodo",
-  "switchNodeInSettings": "Cambiar nodo en Configuración \u2192",
+  "switchNodeInSettings": "Cambiar nodo en Configuración →",
   "recentTransactions": "Transacciones recientes",
-  "viewAll": "Ver todas \u2192",
+  "viewAll": "Ver todas →",
   "noTransactionsYet": "Aún no hay transacciones",
   "received": "Recibido",
   "sent": "Enviado",
-
   "syncingProgress": "Sincronizando {pct}% (bloque {wallet} / {network})",
-  "@syncingProgress": { "placeholders": { "pct": { "type": "String" }, "wallet": { "type": "int" }, "network": { "type": "int" } } },
-
+  "@syncingProgress": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "wallet": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
   "shareAddressSubtitle": "Comparte tu dirección para recibir WRKZ",
   "yourAddress": "Tu dirección",
   "generateIntegratedAddress": "Generar dirección integrada",
@@ -61,21 +89,35 @@
   "integratedAddress": "Dirección integrada",
   "paymentIdShort": "Corto (16)",
   "paymentIdLong": "Largo (64)",
-  "paymentIdLabel": "ID de pago \u00b7 {label}",
-  "@paymentIdLabel": { "placeholders": { "label": { "type": "String" } } },
+  "paymentIdLabel": "ID de pago · {label}",
+  "@paymentIdLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "enterPaymentIdError": "Ingresa un ID de pago (16 o 64 caracteres hexadecimales)",
   "paymentIdInvalidError": "El ID de pago debe tener 16 o 64 caracteres hexadecimales",
   "copyAddress": "Copiar dirección",
   "copyPaymentId": "Copiar ID de pago",
   "copy": "Copiar",
   "copied": "¡Copiado!",
-
   "sendWrkzToAny": "Enviar WRKZ a cualquier dirección",
   "sweepAllDescription": "Enviar todos los fondos a una dirección (consolida UTXOs)",
   "sweepAll": "Enviar todo",
   "sweepWarning": "Enviar todo consolida todas las UTXOs en una sola salida. Úsalo cuando las transacciones fallen por demasiadas entradas.",
   "sweepAvailableBalance": "Disponible: {amount} {ticker} (se enviará el saldo completo menos la comisión)",
-  "@sweepAvailableBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@sweepAvailableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "destinationAddress": "Dirección de destino",
   "addressBook": "Libreta de direcciones",
   "sweepAllFunds": "Enviar todos los fondos",
@@ -99,15 +141,20 @@
   "enterDestinationAddress": "Ingresa una dirección de destino",
   "enterValidAmount": "Ingresa un monto válido",
   "computingPow": "Calculando PoW... {seconds}s",
-  "@computingPow": { "placeholders": { "seconds": { "type": "int" } } },
+  "@computingPow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "stepFillDetails": "Completar datos",
   "stepReview": "Revisar",
   "stepDone": "Listo",
   "sweepFailed": "El envío total falló",
   "addressBookTitle": "Libreta de direcciones",
-
   "transactionHistory": "Historial de transacciones",
-  "searchByHash": "Buscar por hash, dirección o ID de pago\u2026",
+  "searchByHash": "Buscar por hash, dirección o ID de pago…",
   "all": "Todas",
   "filterReceived": "Recibidas",
   "filterSent": "Enviadas",
@@ -118,11 +165,22 @@
   "hash": "Hash",
   "address": "Dirección",
   "block": "Bloque",
-  "showingRange": "Mostrando {start}\u2013{end} de {total}",
-  "@showingRange": { "placeholders": { "start": { "type": "int" }, "end": { "type": "int" }, "total": { "type": "int" } } },
+  "showingRange": "Mostrando {start}–{end} de {total}",
+  "@showingRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "previous": "Anterior",
   "next": "Siguiente",
-
   "walletLocked": "Billetera bloqueada",
   "enterPasswordToContinue": "Ingresa la contraseña de tu billetera para continuar",
   "password": "Contraseña",
@@ -132,7 +190,6 @@
   "closeWallet": "Cerrar billetera",
   "closeWalletDescription": "Esto guardará y cerrará la billetera.\n\nSerás devuelto a la pantalla de inicio de sesión.",
   "cancel": "Cancelar",
-
   "welcomeToPluton": "Bienvenido a PLUTON v2",
   "selectOptionToStart": "Selecciona una opción para comenzar",
   "createNewWallet": "Crear nueva billetera",
@@ -157,8 +214,7 @@
   "privateViewKey": "Clave privada de visualización",
   "privateSpendKey": "Clave privada de gasto",
   "seedBackupConfirm": "He anotado mi frase semilla y claves privadas en un lugar seguro.",
-  "backedUpContinue": "He respaldado mi billetera \u2014 Continuar",
-
+  "backedUpContinue": "He respaldado mi billetera — Continuar",
   "settings": "Configuración",
   "sectionDaemonNode": "Nodo del daemon",
   "nodeDescription": "Conéctate a un nodo daemon local o remoto. Los cambios surten efecto inmediatamente.",
@@ -167,7 +223,6 @@
   "apply": "Aplicar",
   "nodeUpdatedSuccess": "Nodo actualizado correctamente",
   "nodeUnreachable": "No se puede alcanzar el nodo actual. Ingresa una nueva dirección de nodo abajo y pulsa Aplicar.",
-
   "sectionWallet": "Billetera",
   "saveWallet": "Guardar billetera",
   "saveWalletSubtitle": "Guardar estado actual en disco",
@@ -176,9 +231,21 @@
   "exportToJsonSubtitle": "Guardar datos de la billetera como archivo JSON",
   "exportJsonTitle": "Exportar JSON de billetera",
   "exportedTo": "Exportado a {path}",
-  "@exportedTo": { "placeholders": { "path": { "type": "String" } } },
+  "@exportedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "exportFailed": "Error al exportar: {error}",
-  "@exportFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "resetScanHeight": "Restablecer altura de escaneo",
   "resetScanHeightSubtitle": "Reescanear blockchain desde una altura específica",
   "resetScanHeightDescription": "Ingresa una altura de bloque desde la cual reescanear. Usa 0 para un escaneo completo.",
@@ -188,18 +255,15 @@
   "autosaveSubtitle": "Guardar billetera en disco después de sincronizar y cada 5 minutos",
   "scanCoinbaseTx": "Escanear transacciones Coinbase",
   "scanCoinbaseSubtitle": "Incluir recompensas de minería al sincronizar (desactivado por defecto)",
-
   "sectionAppearance": "Apariencia",
   "theme": "Tema",
   "themeSubtitle": "Elegir esquema de colores de la aplicación",
   "themeSystem": "Sistema",
   "themeLight": "Claro",
   "themeDark": "Oscuro",
-
   "sectionNotifications": "Notificaciones",
   "incomingTxAlerts": "Alertas de transacciones entrantes",
   "incomingTxAlertsSubtitle": "Mostrar una notificación de escritorio al recibir WRKZ",
-
   "sectionDebugLogs": "Depuración y registros",
   "logLevel": "Nivel de registro",
   "logLevelSubtitle": "Controla la verbosidad de la biblioteca de billetera",
@@ -207,14 +271,19 @@
   "viewLogsSubtitle": "Salida en vivo del registro de la biblioteca de billetera",
   "walletLogs": "Registros de billetera",
   "logEntries": "{count} entradas",
-  "@logEntries": { "placeholders": { "count": { "type": "int" } } },
+  "@logEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "autoScroll": "Desplazamiento automático",
   "copyAll": "Copiar todo",
   "clear": "Limpiar",
   "close": "Cerrar",
   "noLogsYet": "Aún no hay registros. Establece un nivel de registro superior a Desactivado para ver la salida.",
   "logsCopied": "Registros copiados al portapapeles",
-
   "sectionDangerZone": "Zona de peligro",
   "deleteWalletData": "Eliminar datos de billetera",
   "deleteWalletDataSubtitle": "Eliminar permanentemente el archivo de billetera del disco",
@@ -224,10 +293,15 @@
   "typeDeleteToConfirm": "Escribe ELIMINAR para confirmar:",
   "deleteHint": "ELIMINAR",
   "deletePermanently": "Eliminar permanentemente",
-
   "aboutTitle": "Acerca de",
-  "versionInfo": "Versión {version} \u2014 Billetera de escritorio WRKZ",
-  "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
+  "versionInfo": "Versión {version} — Billetera de escritorio WRKZ",
+  "@versionInfo": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "aboutDescription": "PLUTON v2 es la billetera de escritorio oficial para WrkzCoin (WRKZ), una criptomoneda rápida y ligera basada en CryptoNote.\n\nDesarrollada con Flutter, impulsada por wallet-api.",
   "github": "GitHub",
   "githubSubtitle": "Ver código fuente y versiones",
@@ -239,7 +313,6 @@
   "websiteSubtitle": "wrkz.work",
   "license": "Licencia",
   "licenseText": "Publicado bajo la licencia MIT.\nÚsalo bajo tu propio riesgo. Siempre respalda tu frase semilla.",
-
   "addButton": "Añadir",
   "noSavedAddresses": "No hay direcciones guardadas",
   "tapAddToSave": "Pulsa Añadir para guardar una dirección de uso frecuente.",
@@ -253,28 +326,43 @@
   "editEntry": "Editar entrada",
   "deleteEntry": "Eliminar entrada",
   "removeFromAddressBook": "¿Eliminar \"{name}\" de tu libreta de direcciones?",
-  "@removeFromAddressBook": { "placeholders": { "name": { "type": "String" } } },
+  "@removeFromAddressBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Eliminar",
   "edit": "Editar",
-
   "wrkzReceived": "WRKZ recibido",
   "youReceivedAmount": "Recibiste {amount}",
-  "@youReceivedAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@youReceivedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "show": "Mostrar",
   "exit": "Salir",
   "plutonWallet": "Billetera PLUTON",
-
   "language": "Idioma",
   "selectLanguage": "Seleccionar idioma",
   "chooseLanguage": "Elige tu idioma preferido",
   "languageEn": "English",
-  "languageFr": "Fran\u00e7ais",
+  "languageFr": "Français",
   "languageDe": "Deutsch",
-  "languageZh": "\u4e2d\u6587",
-  "languageVi": "Ti\u1ebfng Vi\u1ec7t",
-  "languageJa": "\u65e5\u672c\u8a9e",
-  "languageEs": "Espa\u00f1ol",
-  "languagePt": "Portugu\u00eas",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageZh": "中文",
+  "languageVi": "Tiếng Việt",
+  "languageJa": "日本語",
+  "languageEs": "Español",
+  "languagePt": "Português",
+  "languageRu": "Русский",
+  "preparedTransactionExpired": "Esta transacción ya no es válida. Vuelva atrás y créela de nuevo.",
+  "deleteConfirmMismatch": "Escriba exactamente DELETE para confirmar.",
+  "unlockNeedsReopen": "No se puede verificar la contraseña en este dispositivo. Use «Cerrar cartera» y vuelva a abrirla.",
+  "exportJsonWarningTitle": "¿Exportar la cartera sin cifrar?",
+  "exportJsonWarningBody": "El archivo exportado contiene su clave de visualización privada y sus claves de gasto privadas en texto plano. Cualquiera que lo lea puede gastar sus fondos.\n\nGuárdelo solo en un almacenamiento que usted controle y elimínelo en cuanto termine.",
+  "passwordTooShort": "La contraseña debe tener al menos {count} caracteres"
 }

@@ -1550,6 +1550,42 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Русский'**
   String get languageRu;
+
+  /// Added by the wallet review fixes
+  ///
+  /// In en, this message translates to:
+  /// **'This transaction is no longer valid. Go back and create it again.'**
+  String get preparedTransactionExpired;
+
+  /// Added by the wallet review fixes
+  ///
+  /// In en, this message translates to:
+  /// **'Type DELETE exactly to confirm.'**
+  String get deleteConfirmMismatch;
+
+  /// Added by the wallet review fixes
+  ///
+  /// In en, this message translates to:
+  /// **'Cannot verify the password on this device. Use “Close wallet instead” and open the wallet again.'**
+  String get unlockNeedsReopen;
+
+  /// Added by the wallet review fixes
+  ///
+  /// In en, this message translates to:
+  /// **'Export unencrypted wallet?'**
+  String get exportJsonWarningTitle;
+
+  /// Added by the wallet review fixes
+  ///
+  /// In en, this message translates to:
+  /// **'The exported file contains your private view key and private spend keys in plain text. Anyone who reads it can spend your funds.\n\nSave it only to storage you control, and delete it as soon as you are done.'**
+  String get exportJsonWarningBody;
+
+  /// Shown when a chosen wallet password is below the minimum length
+  ///
+  /// In en, this message translates to:
+  /// **'Password must be at least {count} characters'**
+  String passwordTooShort(int count);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

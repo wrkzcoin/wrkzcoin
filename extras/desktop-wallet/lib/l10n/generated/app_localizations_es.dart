@@ -786,4 +786,28 @@ class SEs extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Esta transacción ya no es válida. Vuelva atrás y créela de nuevo.';
+
+  @override
+  String get deleteConfirmMismatch =>
+      'Escriba exactamente DELETE para confirmar.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'No se puede verificar la contraseña en este dispositivo. Use «Cerrar cartera» y vuelva a abrirla.';
+
+  @override
+  String get exportJsonWarningTitle => '¿Exportar la cartera sin cifrar?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'El archivo exportado contiene su clave de visualización privada y sus claves de gasto privadas en texto plano. Cualquiera que lo lea puede gastar sus fondos.\n\nGuárdelo solo en un almacenamiento que usted controle y elimínelo en cuanto termine.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'La contraseña debe tener al menos $count caracteres';
+  }
 }

@@ -23,6 +23,10 @@ class _AuthNotifier extends ChangeNotifier {
   bool walletOpen = false;
   bool walletLocked = false;
   bool firstLaunchDone = true;
+
+  /// `notifyListeners` is protected, so expose an explicit trigger rather than
+  /// calling it from outside the class.
+  void refresh() => notifyListeners();
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -34,15 +38,15 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   ref.listen<bool>(walletOpenProvider, (_, next) {
     auth.walletOpen = next;
-    auth.notifyListeners();
+    auth.refresh();
   });
   ref.listen<bool>(walletLockedProvider, (_, next) {
     auth.walletLocked = next;
-    auth.notifyListeners();
+    auth.refresh();
   });
   ref.listen<AsyncValue<bool>>(firstLaunchDoneProvider, (_, next) {
     auth.firstLaunchDone = next.valueOrNull ?? true;
-    auth.notifyListeners();
+    auth.refresh();
   });
 
   ref.onDispose(auth.dispose);

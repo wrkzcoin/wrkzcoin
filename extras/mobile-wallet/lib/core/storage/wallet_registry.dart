@@ -125,6 +125,7 @@ class WalletRegistry {
     if (!await file.exists()) {
       _wallets = [];
       _lastOpened = null;
+      await _adoptOrphanWalletFiles();
       return;
     }
     try {
@@ -135,8 +136,48 @@ class WalletRegistry {
           [];
       _lastOpened = json['lastOpened'] as String?;
     } catch (_) {
+      // A corrupt index must not look like "you have no wallets" — the wallet
+      // files themselves are the real data. Preserve the bad file for
+      // forensics, then rebuild the list from what is on disk.
       _wallets = [];
       _lastOpened = null;
+      try {
+        await file.rename('${file.path}.corrupt-'
+            '${DateTime.now().millisecondsSinceEpoch}');
+      } catch (_) {
+        // Non-fatal: recovery below matters more than keeping the copy.
+      }
+    }
+    await _adoptOrphanWalletFiles();
+  }
+
+  /// Adds registry entries for any `*.wallet` file in the wallets directory
+  /// that the index does not know about.
+  Future<void> _adoptOrphanWalletFiles() async {
+    try {
+      final dir = Directory(walletsDir);
+      if (!await dir.exists()) return;
+      final known = _wallets.map((w) => w.filename).toSet();
+      var recovered = false;
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        if (!name.endsWith(AppConfig.walletFileExtension)) continue;
+        final filename = name.substring(
+            0, name.length - AppConfig.walletFileExtension.length);
+        if (filename.isEmpty || known.contains(filename)) continue;
+        final stat = await entity.stat();
+        _wallets.add(WalletEntry(
+          caption: filename,
+          filename: filename,
+          createdAt: stat.modified,
+        ));
+        known.add(filename);
+        recovered = true;
+      }
+      if (recovered) await _save();
+    } catch (_) {
+      // Recovery is best effort; never let it stop the app from starting.
     }
   }
 

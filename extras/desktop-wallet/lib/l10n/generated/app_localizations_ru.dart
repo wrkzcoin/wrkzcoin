@@ -785,4 +785,28 @@ class SRu extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Эта транзакция больше не действительна. Вернитесь и создайте её заново.';
+
+  @override
+  String get deleteConfirmMismatch => 'Введите точно DELETE для подтверждения.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Не удалось проверить пароль на этом устройстве. Используйте «Закрыть кошелёк» и откройте кошелёк заново.';
+
+  @override
+  String get exportJsonWarningTitle =>
+      'Экспортировать незашифрованный кошелёк?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'Экспортируемый файл содержит ваш приватный ключ просмотра и приватные ключи траты в открытом виде. Любой, кто его прочитает, сможет потратить ваши средства.\n\nСохраняйте его только в хранилище, которое вы контролируете, и удалите сразу после использования.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'Пароль должен содержать не менее $count символов';
+  }
 }

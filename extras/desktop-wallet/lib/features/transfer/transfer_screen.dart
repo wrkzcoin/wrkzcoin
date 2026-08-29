@@ -9,6 +9,7 @@ import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/utils/address_validator.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/copy_button.dart';
 import '../addressbook/address_book_provider.dart';
@@ -76,23 +77,28 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     final dest = _addressCtrl.text.trim();
     final amountRaw = _amountCtrl.text.trim();
     if (dest.isEmpty) { setState(() => _error = tr?.enterDestinationAddress ?? 'Enter a destination address'); return; }
+    if (!isValidWrkzAddress(dest)) { setState(() => _error = tr?.invalidWrkzAddress ?? 'Invalid WRKZ address'); return; }
     final atomic = parseAmount(amountRaw);
     if (atomic == null || atomic <= 0) { setState(() => _error = tr?.enterValidAmount ?? 'Enter a valid amount'); return; }
+    final paymentId = _paymentIdCtrl.text.trim();
+    if (!isValidPaymentId(paymentId)) { setState(() => _error = tr?.paymentIdInvalidError ?? 'Payment ID must be 16 or 64 hex characters'); return; }
 
     setState(() { _loading = true; _error = null; });
     _startPowPolling();
     try {
       final ffi = ref.read(walletCApiProvider);
-      final paymentId = _paymentIdCtrl.text.trim();
       final requestJson = jsonEncode({
         'destinations': [{'address': dest, 'amount': atomic}],
         if (paymentId.isNotEmpty) 'paymentID': paymentId,
       });
       final result = await ffi.sendAdvanced(requestJson, broadcast: false);
+      if (!mounted) return;
       setState(() { _prepared = SendResult.fromJson(result); _step = _TransferStep.review; });
     } on WalletCApiException catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       _stopPowPolling();
@@ -109,6 +115,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       final txHash = await ffi.sendPrepared(_prepared!.transactionHash);
       ref.read(balanceProvider.notifier).refresh();
       ref.read(transactionsProvider.notifier).refresh();
+      if (!mounted) return;
       setState(() {
         _sent = SendResult(
           transactionHash: txHash,
@@ -118,12 +125,24 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         _step = _TransferStep.success;
       });
     } on WalletCApiException catch (e) {
-      setState(() => _error = e.message);
+      if (!mounted) return;
+      setState(() => _error = _describeSendError(e));
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// A prepared transaction goes stale once one of its inputs is spent
+  /// elsewhere; say so plainly instead of surfacing the raw native error.
+  String _describeSendError(WalletCApiException e) {
+    if (e.message.toLowerCase().contains('prepared')) {
+      return S.of(context)?.preparedTransactionExpired ??
+          'This transaction is no longer valid. Go back and create it again.';
+    }
+    return e.message;
   }
 
   /// Sweep all funds to an address.
@@ -131,33 +150,38 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     final tr = S.of(context);
     final dest = _addressCtrl.text.trim();
     if (dest.isEmpty) { setState(() => _error = tr?.enterDestinationAddress ?? 'Enter a destination address'); return; }
+    if (!isValidWrkzAddress(dest)) { setState(() => _error = tr?.invalidWrkzAddress ?? 'Invalid WRKZ address'); return; }
     setState(() { _loading = true; _error = null; });
     _startPowPolling();
     try {
       final ffi = ref.read(walletCApiProvider);
       final result = await ffi.sweepToAddress(dest);
-      final results = result['results'] as List<dynamic>;
+      final results = result['results'] as List<dynamic>? ?? const [];
       final successes = results
           .whereType<Map>()
           .where((r) => r.containsKey('txHash'))
           .toList();
       if (successes.isEmpty) {
-        final first = results.first as Map<String, dynamic>;
+        // `results` can be empty as well as all-errors; don't index blindly.
+        final first = results.whereType<Map>().firstOrNull;
         throw WalletCApiException(
-          first['error'] as int? ?? -1,
-          first['errorMessage'] as String? ?? (tr?.sweepFailed ?? 'Sweep failed'),
+          (first?['error'] as num?)?.toInt() ?? -1,
+          first?['errorMessage'] as String? ?? (tr?.sweepFailed ?? 'Sweep failed'),
         );
       }
       final hashes = successes.map((r) => r['txHash'] as String).join(', ');
       ref.read(balanceProvider.notifier).refresh();
       ref.read(transactionsProvider.notifier).refresh();
+      if (!mounted) return;
       setState(() {
         _sent = SendResult(transactionHash: hashes, fee: 0, relayedToNetwork: true);
         _step = _TransferStep.success;
       });
     } on WalletCApiException catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     } finally {
       _stopPowPolling();
@@ -165,9 +189,18 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     }
   }
 
-  /// Go back from review to form (prepared tx stays in memory but won't be sent).
+  /// Go back from review to form, dropping the prepared transaction from the
+  /// native cache (a no-op on wallet_capi builds without the export).
   Future<void> _cancelPrepared() async {
-    setState(() { _prepared = null; _step = _TransferStep.form; });
+    final hash = _prepared?.transactionHash;
+    if (hash != null && hash.isNotEmpty) {
+      try {
+        ref.read(walletCApiProvider).deletePrepared(hash);
+      } catch (_) {
+        // Best effort — the entry is dropped when the wallet closes.
+      }
+    }
+    setState(() { _prepared = null; _step = _TransferStep.form; _error = null; });
   }
 
   void _reset() {

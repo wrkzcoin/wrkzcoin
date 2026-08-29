@@ -1,8 +1,6 @@
 {
   "@@locale": "ja",
-
   "appTitle": "PLUTON v2",
-
   "tabOverview": "概要",
   "tabReceive": "受取",
   "tabTransfer": "送金",
@@ -10,7 +8,6 @@
   "tabAddressBook": "アドレス帳",
   "tabSettings": "設定",
   "tabAbout": "情報",
-
   "lockWallet": "ウォレットをロック",
   "send": "送金",
   "receive": "受取",
@@ -18,38 +15,69 @@
   "available": "利用可能",
   "locked": "ロック中",
   "total": "合計",
-
   "availableBalance": "利用可能残高",
   "lockedUnconfirmed": "ロック中（未確認）: {amount} {ticker}",
-  "@lockedUnconfirmed": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@lockedUnconfirmed": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "totalBalance": "合計: {amount} {ticker}",
-  "@totalBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@totalBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "balanceIncompleteWhileSyncing": "同期中は残高が不完全な場合があります",
   "errorPrefix": "エラー: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "network": "ネットワーク",
   "syncStatus": "同期状態",
   "synced": "同期完了",
-  "syncing": "同期中\u2026",
+  "syncing": "同期中…",
   "walletBlock": "ウォレットブロック",
   "networkBlock": "ネットワークブロック",
   "peers": "ピア",
   "walletType": "ウォレットの種類",
   "viewOnly": "閲覧専用",
   "full": "フル",
-
   "nodeConnectionIssue": "ノード接続の問題",
-  "switchNodeInSettings": "設定でノードを切り替える \u2192",
+  "switchNodeInSettings": "設定でノードを切り替える →",
   "recentTransactions": "最近のトランザクション",
-  "viewAll": "すべて表示 \u2192",
+  "viewAll": "すべて表示 →",
   "noTransactionsYet": "トランザクションはまだありません",
   "received": "受取済み",
   "sent": "送金済み",
-
   "syncingProgress": "同期中 {pct}%（ブロック {wallet} / {network}）",
-  "@syncingProgress": { "placeholders": { "pct": { "type": "String" }, "wallet": { "type": "int" }, "network": { "type": "int" } } },
-
+  "@syncingProgress": {
+    "placeholders": {
+      "pct": {
+        "type": "String"
+      },
+      "wallet": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
   "shareAddressSubtitle": "WRKZを受け取るためにアドレスを共有してください",
   "yourAddress": "あなたのアドレス",
   "generateIntegratedAddress": "統合アドレスを生成",
@@ -61,21 +89,35 @@
   "integratedAddress": "統合アドレス",
   "paymentIdShort": "短縮 (16)",
   "paymentIdLong": "長形 (64)",
-  "paymentIdLabel": "ペイメントID \u00b7 {label}",
-  "@paymentIdLabel": { "placeholders": { "label": { "type": "String" } } },
+  "paymentIdLabel": "ペイメントID · {label}",
+  "@paymentIdLabel": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "enterPaymentIdError": "ペイメントIDを入力してください（16または64文字の16進数）",
   "paymentIdInvalidError": "ペイメントIDは16または64文字の16進数である必要があります",
   "copyAddress": "アドレスをコピー",
   "copyPaymentId": "ペイメントIDをコピー",
   "copy": "コピー",
   "copied": "コピーしました！",
-
   "sendWrkzToAny": "任意のアドレスにWRKZを送金",
   "sweepAllDescription": "すべての資金をアドレスに送金します（UTXOを統合）",
   "sweepAll": "全額スイープ",
   "sweepWarning": "スイープはすべてのUTXOを1つの出力に統合します。入力が多すぎてトランザクションが失敗する場合に使用してください。",
   "sweepAvailableBalance": "利用可能: {amount} {ticker}（手数料を差し引いた全残高が送金されます）",
-  "@sweepAvailableBalance": { "placeholders": { "amount": { "type": "String" }, "ticker": { "type": "String" } } },
+  "@sweepAvailableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      },
+      "ticker": {
+        "type": "String"
+      }
+    }
+  },
   "destinationAddress": "送金先アドレス",
   "addressBook": "アドレス帳",
   "sweepAllFunds": "全額スイープ",
@@ -99,15 +141,20 @@
   "enterDestinationAddress": "送金先アドレスを入力してください",
   "enterValidAmount": "有効な金額を入力してください",
   "computingPow": "PoW計算中... {seconds}秒",
-  "@computingPow": { "placeholders": { "seconds": { "type": "int" } } },
+  "@computingPow": {
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
   "stepFillDetails": "詳細を入力",
   "stepReview": "確認",
   "stepDone": "完了",
   "sweepFailed": "スイープに失敗しました",
   "addressBookTitle": "アドレス帳",
-
   "transactionHistory": "トランザクション履歴",
-  "searchByHash": "ハッシュ、アドレス、ペイメントIDで検索\u2026",
+  "searchByHash": "ハッシュ、アドレス、ペイメントIDで検索…",
   "all": "すべて",
   "filterReceived": "受取済み",
   "filterSent": "送金済み",
@@ -118,11 +165,22 @@
   "hash": "ハッシュ",
   "address": "アドレス",
   "block": "ブロック",
-  "showingRange": "{start}\u2013{end} / {total} 件を表示中",
-  "@showingRange": { "placeholders": { "start": { "type": "int" }, "end": { "type": "int" }, "total": { "type": "int" } } },
+  "showingRange": "{start}–{end} / {total} 件を表示中",
+  "@showingRange": {
+    "placeholders": {
+      "start": {
+        "type": "int"
+      },
+      "end": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "previous": "前へ",
   "next": "次へ",
-
   "walletLocked": "ウォレットはロックされています",
   "enterPasswordToContinue": "続行するにはウォレットのパスワードを入力してください",
   "password": "パスワード",
@@ -132,7 +190,6 @@
   "closeWallet": "ウォレットを閉じる",
   "closeWalletDescription": "ウォレットを保存して閉じます。\n\nログイン画面に戻ります。",
   "cancel": "キャンセル",
-
   "welcomeToPluton": "PLUTON v2 へようこそ",
   "selectOptionToStart": "オプションを選択して開始してください",
   "createNewWallet": "新しいウォレットを作成",
@@ -157,8 +214,7 @@
   "privateViewKey": "秘密ビューキー",
   "privateSpendKey": "秘密スペンドキー",
   "seedBackupConfirm": "シードフレーズと秘密鍵を安全な場所に書き留めました。",
-  "backedUpContinue": "ウォレットをバックアップしました \u2014 続行",
-
+  "backedUpContinue": "ウォレットをバックアップしました — 続行",
   "settings": "設定",
   "sectionDaemonNode": "デーモンノード",
   "nodeDescription": "ローカルまたはリモートのデーモンノードに接続します。変更は即座に反映されます。",
@@ -167,7 +223,6 @@
   "apply": "適用",
   "nodeUpdatedSuccess": "ノードが正常に更新されました",
   "nodeUnreachable": "現在のノードに接続できません。下に新しいノードアドレスを入力して「適用」をタップしてください。",
-
   "sectionWallet": "ウォレット",
   "saveWallet": "ウォレットを保存",
   "saveWalletSubtitle": "現在の状態をディスクに保存",
@@ -176,9 +231,21 @@
   "exportToJsonSubtitle": "ウォレットデータをJSONファイルとして保存",
   "exportJsonTitle": "ウォレットJSONエクスポート",
   "exportedTo": "{path} にエクスポートしました",
-  "@exportedTo": { "placeholders": { "path": { "type": "String" } } },
+  "@exportedTo": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
   "exportFailed": "エクスポートに失敗しました: {error}",
-  "@exportFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@exportFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "resetScanHeight": "スキャン高をリセット",
   "resetScanHeightSubtitle": "指定したブロック高からブロックチェーンを再スキャン",
   "resetScanHeightDescription": "再スキャンを開始するブロック高を入力してください。フルスキャンの場合は0を使用してください。",
@@ -188,18 +255,15 @@
   "autosaveSubtitle": "同期後および5分ごとにウォレットをディスクに保存",
   "scanCoinbaseTx": "コインベーストランザクションをスキャン",
   "scanCoinbaseSubtitle": "同期時にマイナー報酬を含める（デフォルトではオフ）",
-
   "sectionAppearance": "外観",
   "theme": "テーマ",
   "themeSubtitle": "アプリの配色を選択",
   "themeSystem": "システム",
   "themeLight": "ライト",
   "themeDark": "ダーク",
-
   "sectionNotifications": "通知",
   "incomingTxAlerts": "入金トランザクションの通知",
   "incomingTxAlertsSubtitle": "WRKZを受信したときにデスクトップ通知を表示",
-
   "sectionDebugLogs": "デバッグとログ",
   "logLevel": "ログレベル",
   "logLevelSubtitle": "ウォレットライブラリの詳細度を制御",
@@ -207,14 +271,19 @@
   "viewLogsSubtitle": "ウォレットライブラリのリアルタイムログ出力",
   "walletLogs": "ウォレットログ",
   "logEntries": "{count} 件のエントリ",
-  "@logEntries": { "placeholders": { "count": { "type": "int" } } },
+  "@logEntries": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "autoScroll": "自動スクロール",
   "copyAll": "すべてコピー",
   "clear": "クリア",
   "close": "閉じる",
   "noLogsYet": "ログはまだありません。出力を表示するにはログレベルを「無効」以上に設定してください。",
   "logsCopied": "ログをクリップボードにコピーしました",
-
   "sectionDangerZone": "危険ゾーン",
   "deleteWalletData": "ウォレットデータを削除",
   "deleteWalletDataSubtitle": "ウォレットファイルをディスクから完全に削除",
@@ -224,10 +293,15 @@
   "typeDeleteToConfirm": "確認するにはDELETEと入力してください：",
   "deleteHint": "DELETE",
   "deletePermanently": "完全に削除",
-
   "aboutTitle": "情報",
-  "versionInfo": "バージョン {version} \u2014 WRKZ デスクトップウォレット",
-  "@versionInfo": { "placeholders": { "version": { "type": "String" } } },
+  "versionInfo": "バージョン {version} — WRKZ デスクトップウォレット",
+  "@versionInfo": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "aboutDescription": "PLUTON v2はWrkzCoin（WRKZ）の公式デスクトップウォレットです。WRKZは高速で軽量なCryptoNoteベースの暗号通貨です。\n\nFlutterで構築され、wallet-apiを使用しています。",
   "github": "GitHub",
   "githubSubtitle": "ソースコードとリリースを表示",
@@ -239,7 +313,6 @@
   "websiteSubtitle": "wrkz.work",
   "license": "ライセンス",
   "licenseText": "MITライセンスの下で公開されています。\n自己責任でご利用ください。シードフレーズは必ずバックアップしてください。",
-
   "addButton": "追加",
   "noSavedAddresses": "保存されたアドレスはありません",
   "tapAddToSave": "「追加」をタップしてよく使うアドレスを保存してください。",
@@ -253,28 +326,43 @@
   "editEntry": "エントリを編集",
   "deleteEntry": "エントリを削除",
   "removeFromAddressBook": "「{name}」をアドレス帳から削除しますか？",
-  "@removeFromAddressBook": { "placeholders": { "name": { "type": "String" } } },
+  "@removeFromAddressBook": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "削除",
   "edit": "編集",
-
   "wrkzReceived": "WRKZを受信しました",
   "youReceivedAmount": "{amount} を受信しました",
-  "@youReceivedAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@youReceivedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "show": "表示",
   "exit": "終了",
   "plutonWallet": "PLUTONウォレット",
-
   "language": "言語",
   "selectLanguage": "言語を選択",
   "chooseLanguage": "お好みの言語を選択してください",
   "languageEn": "English",
-  "languageFr": "Fran\u00e7ais",
+  "languageFr": "Français",
   "languageDe": "Deutsch",
-  "languageZh": "\u4e2d\u6587",
-  "languageVi": "Ti\u1ebfng Vi\u1ec7t",
-  "languageJa": "\u65e5\u672c\u8a9e",
-  "languageEs": "Espa\u00f1ol",
-  "languagePt": "Portugu\u00eas",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageZh": "中文",
+  "languageVi": "Tiếng Việt",
+  "languageJa": "日本語",
+  "languageEs": "Español",
+  "languagePt": "Português",
+  "languageRu": "Русский",
+  "preparedTransactionExpired": "この取引は無効になりました。戻って作成し直してください。",
+  "deleteConfirmMismatch": "確認するにはDELETEと正確に入力してください。",
+  "unlockNeedsReopen": "このデバイスではパスワードを検証できません。「ウォレットを閉じる」を使ってから、ウォレットを開き直してください。",
+  "exportJsonWarningTitle": "暗号化されていないウォレットをエクスポートしますか？",
+  "exportJsonWarningBody": "エクスポートされたファイルには、プライベートビューキーとプライベートスペンドキーが平文で含まれます。読んだ人は誰でもあなたの資金を使えます。\n\n自分が管理する保存先にのみ保存し、用が済んだらすぐに削除してください。",
+  "passwordTooShort": "パスワードは{count}文字以上でなければなりません"
 }

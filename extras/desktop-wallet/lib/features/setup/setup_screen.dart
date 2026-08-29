@@ -52,7 +52,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     super.dispose();
   }
 
+  /// Enforces the minimum password length on the paths that establish a new
+  /// wallet password. Returns false and shows the error when it is too short.
+  bool _passwordMeetsPolicy() {
+    if (_passCtrl.text.length >= kMinPasswordLength) return true;
+    setState(() => _error = S.of(context)?.passwordTooShort(kMinPasswordLength) ??
+        'Password must be at least $kMinPasswordLength characters');
+    return false;
+  }
+
   Future<void> _doCreate() async {
+    if (!_passwordMeetsPolicy()) return;
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -68,7 +78,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       final keys = await ffi.getSpendKeysJson(address);
       final viewKey = await ffi.getPrivateViewKey();
 
-      await storeWalletPassword(_passCtrl.text);
+      await storePasswordVerifier(_passCtrl.text);
       setState(() {
         _newWalletAddress = address;
         _newWalletSeed = seed;
@@ -97,7 +107,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
@@ -110,6 +120,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportSeed() async {
+    if (!_passwordMeetsPolicy()) return;
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -122,7 +133,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {
@@ -135,6 +146,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportKeys() async {
+    if (!_passwordMeetsPolicy()) return;
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
@@ -148,7 +160,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
     } on WalletCApiException catch (e) {

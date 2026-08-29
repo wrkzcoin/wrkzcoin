@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
@@ -54,7 +55,8 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     );
     if (result == null || !mounted) return;
 
-    final tr = S.of(context)!;
+    // Accepts a bare address or a wrkz:<address>?amount=…&paymentId=… URI.
+    final scanned = parseAddressPayload(result);
 
     // Confirmation dialog
     final use = await showDialog<bool>(
@@ -64,7 +66,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         return AlertDialog(
           title: Text(dtr.scannedAddress),
           content: SelectableText(
-            result,
+            scanned.address,
             style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
           ),
           actions: [
@@ -80,16 +82,22 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         );
       },
     );
-    if (use == true) {
-      _addressCtrl.text = result;
-    }
+    if (use != true) return;
+    setState(() {
+      _addressCtrl.text = scanned.address;
+      if (scanned.amount != null && parseAmount(scanned.amount!) != null) {
+        _amountCtrl.text = scanned.amount!;
+      }
+      if (scanned.paymentId != null && isValidPaymentId(scanned.paymentId!)) {
+        _pidCtrl.text = scanned.paymentId!;
+      }
+    });
   }
 
   // ── prepare ──────────────────────────────────────────────────────────────
 
   Future<void> _prepare() async {
     final tr = S.of(context)!;
-
     final address = _addressCtrl.text.trim();
     if (address.isEmpty) {
       setState(() => _error = tr.recipientRequired);
@@ -106,6 +114,11 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         setState(() => _error = tr.enterValidAmount);
         return;
       }
+    }
+
+    if (!isValidPaymentId(_pidCtrl.text.trim())) {
+      setState(() => _error = tr.paymentIdInvalid);
+      return;
     }
 
     setState(() {
@@ -135,6 +148,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         ref.read(balanceProvider.notifier).refresh();
         ref.read(transactionsProvider.notifier).refresh();
         hapticHeavy();
+        if (!mounted) return;
         setState(() {
           _sentTxHash = txHash;
           _step = _TransferStep.success;
@@ -157,17 +171,29 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       _prepared = result;
       _preparedFee = (result['fee'] as num?)?.toInt() ?? 0;
 
+      if (!mounted) return;
       setState(() {
         _step = _TransferStep.review;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = _describeError(e);
         _loading = false;
       });
       hapticError();
     }
+  }
+
+  /// A prepared transaction goes stale once one of its inputs is spent
+  /// elsewhere; say so plainly instead of surfacing the raw native error.
+  String _describeError(Object e) {
+    final tr = S.of(context)!;
+    if (e.toString().toLowerCase().contains('prepared')) {
+      return tr.preparedTransactionExpired;
+    }
+    return e.toString();
   }
 
   // ── send ─────────────────────────────────────────────────────────────────
@@ -181,19 +207,22 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      final txHash = _prepared!['transactionHash'] as String;
-      await ffi.sendPrepared(txHash);
+      final preparedHash = _prepared!['transactionHash'] as String;
+      // Report the hash the network actually accepted, not the prepared one.
+      final txHash = await ffi.sendPrepared(preparedHash);
       ref.read(balanceProvider.notifier).refresh();
       ref.read(transactionsProvider.notifier).refresh();
       hapticHeavy();
+      if (!mounted) return;
       setState(() {
-        _sentTxHash = txHash;
+        _sentTxHash = txHash.isNotEmpty ? txHash : preparedHash;
         _step = _TransferStep.success;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = _describeError(e);
         _loading = false;
       });
       hapticError();
@@ -210,6 +239,27 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       _sentTxHash = '';
       _error = null;
       _sweepMode = false;
+    });
+  }
+
+  /// Returns to the form, dropping the prepared transaction from the native
+  /// cache (a no-op on wallet_capi builds without the export).
+  void _cancelPrepared() {
+    final prepared = _prepared;
+    if (prepared != null) {
+      final hash = prepared['transactionHash'] as String?;
+      if (hash != null && hash.isNotEmpty) {
+        try {
+          ref.read(walletCApiProvider).deletePrepared(hash);
+        } catch (_) {
+          // Best effort — the entry is dropped when the wallet closes.
+        }
+      }
+    }
+    setState(() {
+      _step = _TransferStep.form;
+      _prepared = null;
+      _error = null;
     });
   }
 
@@ -310,29 +360,16 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
         // Payment ID
         TextField(
           controller: _pidCtrl,
+          onChanged: (_) => setState(() {}),
           decoration: InputDecoration(
             labelText: tr.paymentIdOptional,
             hintText: tr.hexCharacters,
+            errorText: isValidPaymentId(_pidCtrl.text.trim())
+                ? null
+                : tr.mustBeHex,
           ),
         ),
         const SizedBox(height: 8),
-
-        // Validate PID if entered
-        if (_pidCtrl.text.trim().isNotEmpty) ...[
-          Builder(builder: (_) {
-            final pid = _pidCtrl.text.trim();
-            final valid = (pid.length == 16 || pid.length == 64) &&
-                RegExp(r'^[0-9a-fA-F]+$').hasMatch(pid);
-            if (!valid) {
-              return Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(tr.mustBeHex,
-                    style: TextStyle(color: kError, fontSize: 12)),
-              );
-            }
-            return const SizedBox.shrink();
-          }),
-        ],
 
         // Error
         if (_error != null) ...[
@@ -444,10 +481,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
           children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: () => setState(() {
-                  _step = _TransferStep.form;
-                  _error = null;
-                }),
+                onPressed: _loading ? null : _cancelPrepared,
                 child: Text(tr.back),
               ),
             ),
@@ -549,7 +583,11 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                       size: 20,
                       color:
                           Theme.of(context).textTheme.bodySmall?.color),
-                  onPressed: () => hapticLight(),
+                  tooltip: tr.share,
+                  onPressed: () {
+                    hapticLight();
+                    Share.share(_sentTxHash);
+                  },
                 ),
               ],
             ),
@@ -592,7 +630,7 @@ class _QrScanPageState extends State<_QrScanPage> {
       body: MobileScanner(
         controller: _controller,
         onDetect: (capture) {
-          if (_scanned) return;
+          if (_scanned || !mounted) return;
           final barcode = capture.barcodes.firstOrNull;
           if (barcode?.rawValue == null) return;
           _scanned = true;

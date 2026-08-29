@@ -52,34 +52,62 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     final available = await isBiometricAvailable();
     if (!available) return;
     final ok = await authenticateWithBiometric();
-    if (ok && mounted) {
-      await _openWallet();
-    }
+    if (!ok || !mounted) return;
+
+    final filename = ref.read(activeWalletFilenameProvider);
+    if (filename == null) return;
+    // Biometric unlock is the only path that needs the escrowed password.
+    final password = await readWalletPassword(filename);
+    if (password == null || !mounted) return;
+    await _openWallet(password);
   }
 
   Future<void> _unlock() async {
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
 
+    final password = _passCtrl.text;
+    if (password.isEmpty) {
+      setState(() =>
+          _error = S.of(context)?.enterYourPassword ?? 'Enter your password');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
-    final ok = await verifyWalletPassword(filename, _passCtrl.text);
-    if (!ok) {
-      hapticError();
-      setState(() {
-        _loading = false;
-        _error = S.of(context)?.incorrectPassword ?? 'Incorrect password';
-      });
-      return;
+    final ffi = ref.read(walletCApiProvider);
+
+    // When the wallet is already open — auto-lock re-auth — the file cannot
+    // arbitrate, so fall back to the stored verifier. A null result means
+    // "cannot tell" (no verifier, or a keychain that lost it); accept the
+    // password rather than locking the user out of a wallet they can still
+    // open. `_openWallet` re-checks against the file whenever it has to open.
+    if (ffi.isOpen) {
+      final ok = await verifyPasswordAgainstVerifier(filename, password);
+      if (ok == false) {
+        hapticError();
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _error = S.of(context)?.incorrectPassword ?? 'Incorrect password';
+        });
+        return;
+      }
     }
 
-    await _openWallet();
+    await _openWallet(password);
   }
 
-  Future<void> _openWallet() async {
+  /// Opens the wallet (if it is not open already) and, on success, refreshes
+  /// the stored verifier.
+  ///
+  /// The wallet file is the authority here: a wrong password surfaces as a
+  /// native error, which is what gets reported. Nothing rejects the user
+  /// before the file has had a chance to answer.
+  Future<void> _openWallet(String password) async {
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
 
@@ -89,18 +117,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
         final registry = ref.read(walletRegistryProvider);
         final walletPath = registry.getWalletPath(filename);
 
-        final password = _passCtrl.text.isNotEmpty
-            ? _passCtrl.text
-            : await _getStoredPassword(filename);
-
-        if (password == null) {
-          setState(() {
-            _loading = false;
-            _error = S.of(context)?.enterYourPassword ?? 'Enter your password';
-          });
-          return;
-        }
-
         await ffi.open(
           walletPath,
           password,
@@ -108,6 +124,9 @@ class _LockScreenState extends ConsumerState<LockScreen> {
           AppConfig.defaultDaemonPort,
           ssl: AppConfig.defaultDaemonSsl,
         );
+        // The password just proved itself against the file — (re)record the
+        // verifier so a lost or stale keychain entry self-heals.
+        await storePasswordVerifier(filename, password);
       }
 
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
@@ -121,16 +140,23 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       if (mounted) context.go('/overview');
     } catch (e) {
       hapticError();
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = _describeUnlockError(e);
       });
     }
   }
 
-  Future<String?> _getStoredPassword(String filename) async {
-    final key = AppConfig.walletPasswordKey(filename);
-    return readPref(key);
+  String _describeUnlockError(Object e) {
+    final tr = S.of(context);
+    final text = e.toString();
+    // wallet_capi reports a bad password as a decryption failure.
+    if (text.toLowerCase().contains('password') ||
+        text.toLowerCase().contains('decrypt')) {
+      return tr?.incorrectPassword ?? 'Incorrect password';
+    }
+    return text;
   }
 
   @override

@@ -779,4 +779,27 @@ class SEn extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'This transaction is no longer valid. Go back and create it again.';
+
+  @override
+  String get deleteConfirmMismatch => 'Type DELETE exactly to confirm.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Cannot verify the password on this device. Use “Close wallet instead” and open the wallet again.';
+
+  @override
+  String get exportJsonWarningTitle => 'Export unencrypted wallet?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'The exported file contains your private view key and private spend keys in plain text. Anyone who reads it can spend your funds.\n\nSave it only to storage you control, and delete it as soon as you are done.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'Password must be at least $count characters';
+  }
 }

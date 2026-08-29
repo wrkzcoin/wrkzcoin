@@ -45,8 +45,13 @@ class Transaction {
   DateTime get dateTime =>
       DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
 
-  bool get isIncoming =>
-      transfers.any((t) => t.type == TransferType.incoming);
+  /// Direction of the transaction as a whole.
+  ///
+  /// Derived from the net signed [totalAmount], not from the individual
+  /// transfers: a send that routes change into a *different* subwallet
+  /// produces a positive transfer alongside the negative one, which would
+  /// otherwise make an outgoing transaction look incoming.
+  bool get isIncoming => totalAmount >= 0;
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     final transfersList = (json['transfers'] as List<dynamic>?)

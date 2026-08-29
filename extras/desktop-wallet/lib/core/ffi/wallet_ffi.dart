@@ -15,6 +15,7 @@
 ///   api.close();
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -283,20 +284,15 @@ class WalletCApi {
   late final _FnVersionStrDart _versionString;
   late final _FnDeleteFileDart _walletDeleteFile;
   late final _FnCloseDart _walletClose;
-  late final _FnChangePwDart _walletChangePassword;
-  late final _FnJsonOutDart _walletExportJson;
   late final _FnSyncStatusDart _walletGetSyncStatus;
   late final _FnDaemonOnlineDart _walletDaemonOnline;
   late final _FnJsonOutDart _walletGetStatusJson;
   late final _FnJsonOutDart _walletGetNodeInfoJson;
-  late final _FnSwapNodeDart _walletSwapNode;
-  late final _FnResetDart _walletReset;
   late final _FnTotalBalanceDart _walletGetTotalBalance;
   late final _FnAddressBalanceDart _walletGetBalanceForAddress;
   late final _FnJsonOutDart _walletGetBalancesJson;
   late final _FnJsonOutDart _walletGetAddressesJson;
   late final _FnJsonOutDart _walletGetPrimaryAddress;
-  late final _FnTxJsonDart _walletGetTransactionsJson;
   late final _FnWithHashDart _walletGetTxPrivateKey;
   late final _FnWithHashDart _walletGetTransactionsStatusJson;
   late final _FnJsonOutDart _walletGetPrivateViewKey;
@@ -319,8 +315,34 @@ class WalletCApi {
   late final _FnClearLogsDart _walletClearLogs;
   late final _FnPowStatusDart _walletGetPowStatus;
   _FnSetScanCoinbaseDart? _walletSetScanCoinbase;
+  _FnDeleteSubDart? _walletDeletePrepared;
 
   bool get isOpen => _handle != null && _handle!.address != 0;
+
+  // ── close/in-flight coordination ──────────────────────────────────────────
+  // Heavy operations hand the raw handle address to a background isolate.
+  // `wallet_close` does a bare `delete` on the C++ side, so closing while one
+  // of those is in flight is a use-after-free. Track them and make [close]
+  // wait.
+  int _inFlight = 0;
+  bool _closing = false;
+  Completer<void>? _idle;
+
+  Future<T> _guarded<T>(Future<T> Function() body) async {
+    if (_closing) {
+      throw StateError('wallet_capi: wallet is closing');
+    }
+    _inFlight++;
+    try {
+      return await body();
+    } finally {
+      _inFlight--;
+      if (_inFlight == 0) {
+        _idle?.complete();
+        _idle = null;
+      }
+    }
+  }
 
   // ── constructor ───────────────────────────────────────────────────────────
 
@@ -351,12 +373,6 @@ class WalletCApi {
             'wallet_delete_file');
     _walletClose =
         _lib.lookupFunction<_FnCloseNative, _FnCloseDart>('wallet_close');
-    _walletChangePassword =
-        _lib.lookupFunction<_FnChangePwNative, _FnChangePwDart>(
-            'wallet_change_password');
-    _walletExportJson =
-        _lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
-            'wallet_export_json');
     _walletGetSyncStatus =
         _lib.lookupFunction<_FnSyncStatusNative, _FnSyncStatusDart>(
             'wallet_get_sync_status');
@@ -369,11 +385,6 @@ class WalletCApi {
     _walletGetNodeInfoJson =
         _lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
             'wallet_get_node_info_json');
-    _walletSwapNode =
-        _lib.lookupFunction<_FnSwapNodeNative, _FnSwapNodeDart>(
-            'wallet_swap_node');
-    _walletReset =
-        _lib.lookupFunction<_FnResetNative, _FnResetDart>('wallet_reset');
     _walletGetTotalBalance =
         _lib.lookupFunction<_FnTotalBalanceNative, _FnTotalBalanceDart>(
             'wallet_get_total_balance');
@@ -389,9 +400,6 @@ class WalletCApi {
     _walletGetPrimaryAddress =
         _lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
             'wallet_get_primary_address');
-    _walletGetTransactionsJson =
-        _lib.lookupFunction<_FnTxJsonNative, _FnTxJsonDart>(
-            'wallet_get_transactions_json');
     _walletGetTxPrivateKey =
         _lib.lookupFunction<_FnWithHashNative, _FnWithHashDart>(
             'wallet_get_tx_private_key');
@@ -462,6 +470,13 @@ class WalletCApi {
     } catch (_) {
       _walletSetScanCoinbase = null;
     }
+    try {
+      _walletDeletePrepared =
+          _lib.lookupFunction<_FnDeleteSubNative, _FnDeleteSubDart>(
+              'wallet_delete_prepared');
+    } catch (_) {
+      _walletDeletePrepared = null; // symbol not in this build
+    }
   }
 
   // ── internal helpers ─────────────────────────────────────────────────────
@@ -482,6 +497,23 @@ class WalletCApi {
       throw StateError('wallet_capi: no wallet is open');
     }
     return h;
+  }
+
+  /// Refuses to open a second wallet over a live handle — doing so would
+  /// overwrite [_handle] and leak the previous WalletBackend, whose
+  /// synchronizer thread keeps running against the old file.
+  void _requireClosed() {
+    if (isOpen) {
+      throw StateError(
+          'wallet_capi: a wallet is already open — close it first');
+    }
+  }
+
+  /// Runs a blocking native call on a background isolate, so slow work
+  /// (PBKDF2, synchronizer pauses, daemon round-trips) never blocks the UI.
+  Future<T> _offThread<T>(T Function(int handleAddress) body) {
+    final ha = _requireHandle().address;
+    return _guarded(() => Isolate.run(() => body(ha)));
   }
 
   /// Calls a C function that returns a heap-allocated JSON string via
@@ -536,6 +568,7 @@ class WalletCApi {
   Future<void> open(
       String filename, String password, String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
+    _requireClosed();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnOpenNative, _FnOpenDart>('wallet_open');
@@ -563,6 +596,7 @@ class WalletCApi {
   Future<void> create(
       String filename, String password, String daemonHost, int daemonPort,
       {bool ssl = false, int syncThreads = 0}) async {
+    _requireClosed();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnOpenNative, _FnOpenDart>('wallet_create');
@@ -591,6 +625,7 @@ class WalletCApi {
       String mnemonicSeed, String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+    _requireClosed();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreSeedNative, _FnRestoreSeedDart>(
@@ -623,6 +658,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+    _requireClosed();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreKeysNative, _FnRestoreKeysDart>(
@@ -656,6 +692,7 @@ class WalletCApi {
       String filename, String password,
       String daemonHost, int daemonPort,
       {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+    _requireClosed();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreViewNative, _FnRestoreViewDart>(
@@ -684,17 +721,29 @@ class WalletCApi {
     _handle = Pointer<_WalletHandleOpaque>.fromAddress(r.addr);
   }
 
-  void close() {
+  /// Closes the wallet, waiting for any in-flight background operation first.
+  ///
+  /// `wallet_close` deletes the C++ handle outright, so returning before a
+  /// concurrent save/send/sweep isolate has finished would leave that isolate
+  /// dereferencing freed memory.
+  Future<void> close() async {
     final h = _handle;
-    if (h != null && h.address != 0) {
-      _walletClose(h);
+    if (h == null || h.address == 0) return;
+    _closing = true;
+    try {
+      if (_inFlight > 0) {
+        _idle ??= Completer<void>();
+        await _idle!.future;
+      }
       _handle = null;
+      _walletClose(h);
+    } finally {
+      _closing = false;
     }
   }
 
   Future<void> save() async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnHandleOnlyNative, _FnHandleOnlyDart>(
           'wallet_save');
@@ -706,18 +755,60 @@ class WalletCApi {
     if (r.status != 0) throw WalletCApiException(r.status, r.err);
   }
 
-  Future<void> changePassword(String newPassword) =>
-      Future(() => using((arena) {
-            _check(_walletChangePassword(
-              _requireHandle(),
-              newPassword.toNativeUtf8(allocator: arena),
-            ));
-          }));
+  /// Re-encrypts the wallet file under [newPassword].
+  ///
+  /// Runs off-thread: the native side re-derives the key with PBKDF2 and
+  /// rewrites the whole file, which is far too slow for the UI isolate.
+  Future<void> changePassword(String newPassword) async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnChangePwNative, _FnChangePwDart>(
+          'wallet_change_password');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final s = fn(
+          Pointer<_WalletHandleOpaque>.fromAddress(ha),
+          newPassword.toNativeUtf8(allocator: arena),
+        );
+        return (status: s, err: s != 0 ? lastErr().toDartString() : '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+  }
 
   /// Returns the full wallet state as a JSON string.
   /// The caller is responsible for writing the string to a file if needed.
-  Future<String> exportJson() =>
-      Future(() => _strOut(_walletExportJson));
+  /// Returns the full wallet state as a JSON string.
+  ///
+  /// WARNING: the result contains the private view key and every subwallet's
+  /// private spend key in cleartext. Treat it as seed-equivalent material.
+  ///
+  /// Runs off-thread: the native side pauses the synchronizer and serialises
+  /// the entire wallet.
+  Future<String> exportJson() async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
+          'wallet_export_json');
+      final free = lib.lookupFunction<_FnStringFreeNative, _FnStringFreeDart>(
+          'wallet_string_free');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final outStr = arena<Pointer<Utf8>>();
+        final outLen = arena<Size>();
+        final s = fn(
+            Pointer<_WalletHandleOpaque>.fromAddress(ha), outStr, outLen);
+        if (s != 0) return (status: s, data: '', err: lastErr().toDartString());
+        final data = outStr.value.toDartString();
+        free(outStr.value);
+        return (status: 0, data: data, err: '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+    return r.data;
+  }
 
   Future<void> deleteFile(String filename) =>
       Future(() => using((arena) {
@@ -752,18 +843,45 @@ class WalletCApi {
   Future<Map<String, dynamic>> getNodeInfoJson() =>
       Future(() => _jsonOut(_walletGetNodeInfoJson));
 
-  Future<void> swapNode(String host, int port, {bool ssl = false}) =>
-      Future(() => using((arena) {
-            _check(_walletSwapNode(
-              _requireHandle(),
-              host.toNativeUtf8(allocator: arena),
-              port,
-              ssl,
-            ));
-          }));
+  /// Points the wallet at a different daemon.
+  ///
+  /// Runs off-thread: the native side pauses the synchronizer and performs a
+  /// blocking handshake with the new node, which stalls for the full socket
+  /// timeout when the host is unreachable.
+  Future<void> swapNode(String host, int port, {bool ssl = false}) async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnSwapNodeNative, _FnSwapNodeDart>(
+          'wallet_swap_node');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final s = fn(
+          Pointer<_WalletHandleOpaque>.fromAddress(ha),
+          host.toNativeUtf8(allocator: arena),
+          port,
+          ssl,
+        );
+        return (status: s, err: s != 0 ? lastErr().toDartString() : '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+  }
 
-  Future<void> reset({int scanHeight = 0, int timestamp = 0}) =>
-      Future(() => _check(_walletReset(_requireHandle(), scanHeight, timestamp)));
+  /// Rewinds the wallet's scan position. Runs off-thread: the native side
+  /// pauses the synchronizer to do it.
+  Future<void> reset({int scanHeight = 0, int timestamp = 0}) async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnResetNative, _FnResetDart>('wallet_reset');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      final s = fn(Pointer<_WalletHandleOpaque>.fromAddress(ha), scanHeight,
+          timestamp);
+      return (status: s, err: s != 0 ? lastErr().toDartString() : '');
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+  }
 
   // --- balances ---
 
@@ -805,33 +923,49 @@ class WalletCApi {
   // --- transactions ---
 
   /// [startHeight] / [endHeight]: 0,0 = all txs.
+  /// [startHeight] / [endHeight]: 0,0 = all txs.
+  ///
+  /// Runs off-thread, including the JSON decode: this is polled on a timer and
+  /// the payload grows with the whole transaction history.
   Future<Map<String, dynamic>> getTransactionsJson({
     int startHeight = 0,
     int endHeight = 0,
     bool includeUnconfirmed = true,
-  }) =>
-      Future(() => using((arena) {
-            final outStr = arena<Pointer<Utf8>>();
-            final outLen = arena<Size>();
-            _check(_walletGetTransactionsJson(
-              _requireHandle(),
-              startHeight,
-              endHeight,
-              includeUnconfirmed,
-              outStr,
-              outLen,
-            ));
-            final result = outStr.value.toDartString();
-            _walletStringFree(outStr.value);
-            return jsonDecode(result) as Map<String, dynamic>;
-          }));
+  }) async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnTxJsonNative, _FnTxJsonDart>(
+          'wallet_get_transactions_json');
+      final free = lib.lookupFunction<_FnStringFreeNative, _FnStringFreeDart>(
+          'wallet_string_free');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final outStr = arena<Pointer<Utf8>>();
+        final outLen = arena<Size>();
+        final s = fn(
+          Pointer<_WalletHandleOpaque>.fromAddress(ha),
+          startHeight,
+          endHeight,
+          includeUnconfirmed,
+          outStr,
+          outLen,
+        );
+        if (s != 0) return (status: s, data: '', err: lastErr().toDartString());
+        final data = outStr.value.toDartString();
+        free(outStr.value);
+        return (status: 0, data: data, err: '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+    return jsonDecode(r.data) as Map<String, dynamic>;
+  }
 
   /// Returns txHash hex on success.
   Future<String> sendBasic(String destination, int amount,
       {String paymentId = '', bool sendAll = false,
       bool broadcast = true}) async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnSendBasicNative, _FnSendBasicDart>(
           'wallet_send_basic');
@@ -859,8 +993,7 @@ class WalletCApi {
   }
 
   Future<String> sendPrepared(String preparedTxHash) async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnSendPreparedNative, _FnSendPreparedDart>(
           'wallet_send_prepared');
@@ -890,8 +1023,7 @@ class WalletCApi {
   /// Returns {"transactionHash":…,"fee":…,"relayedToNetwork":…}
   Future<Map<String, dynamic>> sendAdvanced(String requestJson,
           {bool broadcast = true}) async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnSendAdvancedNative, _FnSendAdvancedDart>(
           'wallet_send_advanced_json');
@@ -956,8 +1088,7 @@ class WalletCApi {
   /// Returns {"results":[{"txHash":…}|{"error":N,"errorMessage":…},…]}
   Future<Map<String, dynamic>> sweepToAddress(String destination,
       {String paymentId = '', int amountToSweep = 0}) async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnSweepNative, _FnSweepDart>(
           'wallet_sweep_to_address');
@@ -986,8 +1117,7 @@ class WalletCApi {
 
   Future<({int txCount, int totalFee})> estimateSweep(
           {int amountToSweep = 0}) async {
-    final ha = _requireHandle().address;
-    final r = await Isolate.run(() {
+    final r = await _offThread((ha) {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnEstimateSweepNative, _FnEstimateSweepDart>(
           'wallet_estimate_sweep');
@@ -1165,6 +1295,22 @@ class WalletCApi {
 
   void setScanCoinbase(bool scan) {
     _walletSetScanCoinbase?.call(scan);
+  }
+
+  // --- prepared transactions ---
+
+  /// Drops a prepared-but-unsent transaction from the native cache.
+  ///
+  /// Returns false when the running wallet_capi predates the export, in which
+  /// case the entry simply lives until the wallet is closed.
+  bool deletePrepared(String preparedTxHash) {
+    final fn = _walletDeletePrepared;
+    if (fn == null) return false;
+    return using((arena) {
+      final status =
+          fn(_requireHandle(), preparedTxHash.toNativeUtf8(allocator: arena));
+      return status == 0;
+    });
   }
 
   // --- error helpers ---
