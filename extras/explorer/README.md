@@ -94,9 +94,44 @@ server {
 
 1. Build the daemon with explorer support.
 2. Restart the daemon with `--daemon-mode explorer`.
-3. Copy the contents of this folder to your web root.
-4. Configure nginx to serve the static files and proxy `/api/` to the daemon.
-5. Open the explorer in a browser and load a block or transaction page.
+3. **Bump the cache-busting stamp** (see below).
+4. Copy the contents of this folder to your web root, including `vendor/`.
+5. Configure nginx to serve the static files and proxy `/api/` to the daemon.
+6. Open the explorer in a browser and load a block or transaction page.
+
+Copy the whole directory, not individual files. `index.html` loads
+`vendor/wrkz-crypto.js`, so shipping the markup without the vendor directory
+leaves every `Tools` menu item reporting that the crypto module failed to load.
+
+### Cache-busting stamp
+
+`index.html` references its stylesheet and scripts with a `?v=` query string:
+
+```html
+<link rel="stylesheet" href="style.css?v=20260830" />
+<script src="vendor/wrkz-crypto.js?v=20260830"></script>
+<script src="app.js?v=20260830"></script>
+```
+
+**Bump all three to the same new value on every deploy.** A CDN in front of the
+explorer typically caches `.css` and `.js` but not `.html`, so without this a
+deploy can leave browsers running a brand new `index.html` against a stale
+`app.js` and `style.css`. That fails worse than being plainly out of date: the
+new markup renders, but the old script has no handlers for it, so the page looks
+subtly broken rather than merely old.
+
+Changing the value makes them new URLs, so the CDN fetches them fresh and no
+purge is needed. On Linux:
+
+```bash
+sed -i "s/?v=[0-9]\{8\}/?v=$(date +%Y%m%d)/g" index.html
+```
+
+`vendor/TurtleCoinUtils.js` is injected at runtime by `app.js`, which reuses the
+same stamp automatically, so it has no `?v=` of its own to maintain.
+
+`node test/wiring.test.js` fails if the three stamps ever disagree or if one is
+missing, which is the case a manual edit is most likely to get wrong.
 
 ## Wallet and Address Tools
 
@@ -201,6 +236,38 @@ Check:
 - the private key is correct
 - the transaction page JSON includes the transaction public key
 - the daemon was restarted after any RPC changes
+
+### The page looks half-broken after a deploy
+
+Symptoms: the `Tools` button renders as an unstyled box, its caret is huge, and
+clicking it does nothing. That means the browser has the new `index.html` but an
+old `app.js` and `style.css` — no handlers are bound and none of the new rules
+exist.
+
+Check what is actually being served, bypassing the CDN cache:
+
+```bash
+curl -sI "https://your-explorer/app.js?cb=$RANDOM" | grep -i last-modified
+curl -sI  https://your-explorer/app.js            | grep -i last-modified
+```
+
+If those two dates differ, the CDN is holding a stale copy. Bump the
+cache-busting stamp (see "Deploy Steps") so this cannot happen again, and purge
+`app.js` and `style.css` once to clear the copies already cached.
+
+### A file returns 404 even though it is on disk
+
+Confirm nginx is serving the directory you deployed to. Compare the size of a
+file the browser gets against the one you copied:
+
+```bash
+curl -sI https://your-explorer/vendor/TurtleCoinUtils.js | grep -i content-length
+ls -l /path/you/deployed/to/vendor/TurtleCoinUtils.js
+```
+
+If they differ, the `root` in your nginx server block points somewhere else and
+your deploy went to an unused directory. `nginx -T | grep -E 'server_name|root'`
+will show the path actually in use.
 
 ### Tools menu items show "wrkz-crypto.js failed to load"
 

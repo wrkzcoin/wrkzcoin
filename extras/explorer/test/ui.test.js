@@ -60,7 +60,15 @@ const document = {
   body: makeEl('body'),
   _listeners: {},
   getElementById: id => registry.get(id) || null,
-  querySelector: () => null,
+  /* app.js reads its own <script> tag to recover the cache-busting stamp. */
+  querySelector: sel => {
+    if (sel === 'script[src*="app.js"]') {
+      const tag = makeEl('', 'script');
+      tag.src = 'https://explorer.example/app.js?v=TESTSTAMP';
+      return tag;
+    }
+    return null;
+  },
   querySelectorAll: () => [],
   createElement: tag => makeEl('', tag),
   addEventListener: (t, fn) => { (document._listeners[t] = document._listeners[t] || []).push(fn); },
@@ -191,6 +199,11 @@ check('corrupt address reports an error', el('decStatus')._classes.has('err'),
 
 el('decClearBtn').click();
 check('clear empties the decoder', el('decAddr').value === '' && el('decResult').innerHTML === '');
+
+console.log('\n— cache-busting stamp —');
+check('versioned() stamps a runtime-loaded asset',
+  sandbox.versioned('vendor/TurtleCoinUtils.js') === 'vendor/TurtleCoinUtils.js?v=TESTSTAMP',
+  sandbox.versioned && sandbox.versioned('vendor/TurtleCoinUtils.js'));
 
 console.log('\n— tools menu —');
 el('navToolsBtn').click();
