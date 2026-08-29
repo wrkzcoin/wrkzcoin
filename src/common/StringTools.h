@@ -62,6 +62,36 @@ namespace Common
         return toHex(&s, sizeof(s));
     }
 
+    /* Standard base64 with '+' and '/', padded with '='. Four characters per
+       three bytes against hex's two per one, so a 32 byte hash costs 44
+       characters instead of 64 - worth having on the wallet sync path, where
+       almost the entire response body is fixed size keys and hashes. */
+    std::string toBase64(
+        const void *data,
+        uint64_t size); // Returns base64 representation of ('data', 'size'), does not throw
+    std::string toBase64(const std::vector<uint8_t> &data); // Does not throw
+
+    bool fromBase64(
+        const std::string &text,
+        void *data,
+        uint64_t bufferSize,
+        uint64_t &size); // Decodes base64 'text' into buffer 'data' up to 'bufferSize', assigns the decoded size to
+                         // 'size', returns false on error, does not throw
+    bool fromBase64(
+        const std::string &text,
+        std::vector<uint8_t> &data); // Appends decoded bytes of base64 'text' to 'data', returns false on error
+
+    template<class T> std::string podToBase64(const T &s)
+    {
+        return toBase64(&s, sizeof(s));
+    }
+
+    template<typename T> bool podFromBase64(const std::string &text, T &val)
+    {
+        uint64_t outSize;
+        return fromBase64(text, &val, sizeof(val), outSize) && outSize == sizeof(val);
+    }
+
     std::string extract(std::string &text,
                         char delimiter); // Does not throw
     std::string extract(const std::string &text, char delimiter,

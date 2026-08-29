@@ -186,37 +186,58 @@ std::error_code RocksDBWrapper::read(IReadBatch &batch)
     rocksdb::ReadOptions readOptions;
 
     std::vector<std::string> rawKeys(batch.getRawKeys());
-    if (rawKeys.size() > 0)
-    {
-        std::vector<rocksdb::Slice> keySlices;
-        keySlices.reserve(rawKeys.size());
-        for (const std::string &key : rawKeys)
-        {
-            keySlices.emplace_back(rocksdb::Slice(key));
-        }
 
-        std::vector<std::string> values;
-        values.reserve(rawKeys.size());
-        std::vector<rocksdb::Status> statuses = db->MultiGet(readOptions, keySlices, &values);
-
-        std::error_code error;
-        std::vector<bool> resultStates;
-        for (const rocksdb::Status &status : statuses)
-        {
-            if (!status.ok() && !status.IsNotFound())
-            {
-                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
-            }
-            resultStates.push_back(status.ok());
-        }
-
-        batch.submitRawResult(values, resultStates);
-        return std::error_code();
-    } else
+    if (rawKeys.empty())
     {
         logger(ERROR) << "RocksDBWrapper::read: detected rawKeys.size() == 0!!!";
         return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
     }
+
+    std::vector<rocksdb::Slice> keySlices;
+    keySlices.reserve(rawKeys.size());
+    for (const std::string &key : rawKeys)
+    {
+        keySlices.emplace_back(rocksdb::Slice(key));
+    }
+
+    /* The batched MultiGet, rather than the older vector overload that is a
+     * loop over Get in all but name. This one sorts the keys internally,
+     * visits each table file once for all the keys that land in it, and can
+     * issue the reads for a level in parallel - which is what the wallet sync
+     * path wants, since it asks for whole ranges of blocks at a time. */
+    std::vector<rocksdb::PinnableSlice> pinnedValues(rawKeys.size());
+    std::vector<rocksdb::Status> statuses(rawKeys.size());
+
+    db->MultiGet(
+        readOptions,
+        db->DefaultColumnFamily(),
+        keySlices.size(),
+        keySlices.data(),
+        pinnedValues.data(),
+        statuses.data());
+
+    std::vector<std::string> values(rawKeys.size());
+    std::vector<bool> resultStates;
+    resultStates.reserve(rawKeys.size());
+
+    for (size_t i = 0; i < statuses.size(); ++i)
+    {
+        if (!statuses[i].ok() && !statuses[i].IsNotFound())
+        {
+            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        if (statuses[i].ok())
+        {
+            values[i].assign(pinnedValues[i].data(), pinnedValues[i].size());
+        }
+
+        resultStates.push_back(statuses[i].ok());
+    }
+
+    batch.submitRawResult(values, resultStates);
+
+    return std::error_code();
 }
 
 std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
@@ -301,6 +322,19 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     dbOptions.skip_stats_update_on_db_open = true;
     dbOptions.compaction_readahead_size  = 2 * 1024 * 1024;
 
+    /* Almost every read here is a point lookup, and wallets syncing past the
+     * same stretch of chain ask for the same keys over and over. A row cache
+     * answers those from the finished key/value pair, skipping the block
+     * decompression and index search a block cache hit still pays for. Carved
+     * out of the configured read cache rather than added on top, so the memory
+     * an operator asked for is the memory they get. */
+    const uint64_t rowCacheSize = config.readCacheSize / 8;
+
+    if (rowCacheSize > 0)
+    {
+        dbOptions.row_cache = rocksdb::NewLRUCache(rowCacheSize);
+    }
+
     rocksdb::ColumnFamilyOptions fOptions;
     fOptions.write_buffer_size = static_cast<size_t>(config.writeBufferSize);
     // merge two memtables when flushing to L0
@@ -341,7 +375,7 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     fOptions.bottommost_compression = compressionLevel;
 
     rocksdb::BlockBasedTableOptions tableOptions;
-    tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize);
+    tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize - rowCacheSize);
 
     /* This workload is almost entirely point lookups - block hash to index,
      * index to raw block, transaction hash to transaction. Without a bloom

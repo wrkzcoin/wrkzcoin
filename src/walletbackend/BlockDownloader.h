@@ -93,6 +93,18 @@ class BlockDownloader
     /* Downloads a set of blocks, if needed */
     bool downloadBlocks();
 
+    /* Fetches several consecutive height windows at once, so the wait for one
+       response overlaps the wait for the next instead of following it. Only
+       used a long way behind the chain tip, where the windows cannot straddle
+       a reorganisation, and only once downloadBlocks() has established where
+       we are. Returns false when it could not run or did not finish a window,
+       which sends the caller back to the sequential path. */
+    bool downloadBlocksInParallel();
+
+    /* Puts the assembled blocks into the store and updates the running byte
+       total. Returns the number added. */
+    size_t storeDownloadedBlocks(const std::vector<WalletTypes::WalletBlockInfo> &blocks);
+
     /* Approximate heap footprint of one stored block */
     static size_t storedBlockMemoryUsage(const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block);
 
@@ -139,4 +151,13 @@ class BlockDownloader
     std::thread m_downloadThread;
 
     uint32_t m_arrivalIndex = 0;
+
+    /* The next height the parallel path may ask for. Zero means it is not
+       primed: only a checkpoint driven download can say where we are on the
+       chain, so the sequential path sets this and any failure clears it,
+       sending us back through the path that can recover from a fork.
+
+       Atomic because stop() clears it from the stopping thread while the
+       download thread may still be setting it. */
+    std::atomic<uint64_t> m_nextDownloadHeight = 0;
 };

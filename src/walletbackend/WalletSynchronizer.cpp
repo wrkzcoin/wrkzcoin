@@ -830,8 +830,19 @@ bool WalletSynchronizer::syncStep()
         return false;
     }
 
-    /* Refresh daemon block counts — normally done by Nigel's background thread. */
-    m_daemon->refreshInfo();
+    /* Refresh daemon block counts — normally done by Nigel's background thread,
+       which does it every ten seconds. This path is driven as fast as the
+       daemon will answer, and an /info round trip per batch would be a second
+       request for every one that actually moves blocks, so keep the same
+       cadence the background thread uses. */
+    const auto now = std::chrono::steady_clock::now();
+
+    if (m_lastInfoRefresh == std::chrono::steady_clock::time_point()
+        || now - m_lastInfoRefresh >= std::chrono::seconds(10))
+    {
+        m_daemon->refreshInfo();
+        m_lastInfoRefresh = now;
+    }
 
     /* Download a batch of blocks from the daemon into the internal store. */
     m_blockDownloader.downloadStep();

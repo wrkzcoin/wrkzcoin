@@ -116,9 +116,18 @@ namespace CryptoNote
             const uint64_t startHeight,
             const uint64_t startTimestamp,
             const uint64_t blockCount,
+            const uint64_t endHeight,
             const bool skipCoinbaseTransactions,
+            const bool skipEmptyBlocks,
             std::vector<WalletTypes::WalletBlockInfo> &walletBlocks,
-            std::optional<WalletTypes::TopBlock> &topBlockInfo) const override;
+            std::optional<WalletTypes::TopBlock> &topBlockInfo,
+            uint64_t &scannedToHeight) const override;
+
+        virtual bool getWalletSyncStartIndex(
+            const std::vector<Crypto::Hash> &knownBlockHashes,
+            const uint64_t startHeight,
+            const uint64_t startTimestamp,
+            uint64_t &startIndex) const override;
 
         virtual bool getRawBlocks(
             const std::vector<Crypto::Hash> &knownBlockHashes,
@@ -306,6 +315,14 @@ namespace CryptoNote
             const bool isPoolTransaction);
 
         uint32_t findBlockchainSupplement(const std::vector<Crypto::Hash> &remoteBlockIds) const;
+
+        /* Assumes the chain lock is held and the caller has already converted
+           any start timestamp to a height. */
+        uint64_t resolveWalletSyncStartIndex(
+            IBlockchainCache *mainChain,
+            const std::vector<Crypto::Hash> &knownBlockHashes,
+            const uint64_t startHeight,
+            const uint64_t timestampBlockHeight) const;
 
         std::vector<Crypto::Hash> getBlockHashes(uint32_t startBlockIndex, uint32_t maxCount) const;
 

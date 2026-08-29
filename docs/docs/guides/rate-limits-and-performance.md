@@ -8,7 +8,36 @@ Primary knobs (daemon config/CLI):
 - `rpc-max-body-bytes`: max request body bytes.
 - `rpc-max-global-index-range`: cap for `/get_global_indexes_for_range`.
 - `rpc-max-block-count`: cap for block sync/raw block methods.
+- `rpc-sync-cache-size`: megabytes of finished wallet sync responses to keep (0 disables).
 - `rpc-read-timeout` and `rpc-write-timeout`.
+- `db-read-buffer-size`: the database read cache. An eighth of it is used as a row
+  cache, which answers repeated point lookups without touching a data block.
+
+## Response compression
+
+Whether the daemon compresses its responses is decided when it is **built**, not
+configured: `cmake` looks for zlib and only enables it if it is there. Without
+it, every syncing wallet pulls several times as many bytes. Check it with:
+
+```bash
+curl -s "$DAEMON_RPC_URL/info" | grep -o '"compression":"[^"]*"'
+```
+
+`"none"` means the build found no zlib. Install the zlib development package
+(`zlib1g-dev` on Debian/Ubuntu, `zlib-devel` on Fedora/RHEL) and rebuild. The
+daemon also prints a warning on startup when it is missing.
+
+## Serving many wallets
+
+`rpc-sync-cache-size` (default 64 MB) keeps finished `/getwalletsyncdata` bodies
+around. Wallets syncing past the same height ask for the same range, so without
+it a node rebuilds the identical answer once per wallet: thousands of database
+reads, a full reassembly, and the encoding of the result, every time.
+
+Only ranges well below the chain tip are cached, so a reorganisation cannot make
+a cached body wrong; the cache is dropped outright if the tip ever moves
+backwards. Raise it on a public node serving many wallets, or set it to `0` on a
+node that only serves one.
 
 ## Recommended starting points
 

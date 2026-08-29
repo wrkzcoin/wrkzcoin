@@ -14,6 +14,7 @@
 #include <config/WalletConfig.h>
 #include <logger/Logger.h>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <rpc/CoreRpcServerCommandsDefinitions.h>
 #include <string>
@@ -23,6 +24,23 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+/* What one wallet sync request came back with. */
+struct WalletSyncResponse
+{
+    bool success = false;
+
+    std::vector<WalletTypes::WalletBlockInfo> blocks;
+
+    std::optional<WalletTypes::TopBlock> topBlock;
+
+    /* The highest height the daemon looked at, which is not the same as the
+       highest block it sent - the ones in between held nothing worth sending.
+       Zero when the daemon did not say, either because it predates the field
+       or because it could not vouch for a whole window. A caller must then
+       advance only as far as the last block it actually received. */
+    uint64_t scannedToHeight = 0;
+};
 
 class Nigel
 {
@@ -78,10 +96,39 @@ class Nigel
 
     std::tuple<std::string, uint16_t, bool> nodeAddress() const;
 
-    std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<WalletTypes::TopBlock>> getWalletSyncData(
+    /* Shuts the sockets of any request currently in flight, so a thread
+       blocked waiting for a daemon to answer errors out now rather than when
+       the read timeout expires. Stopping a wallet has to join those threads,
+       and without this it would have to wait out the timeout of whatever
+       request happened to be running.
+
+       Safe to call from another thread while requests are running - that is
+       the only thing httplib guarantees here. The clients recover on their
+       next use, so this is not a teardown. */
+    void abortInFlightRequests();
+
+    /* Whether the daemon lets us bound a request to a height window we chose
+       and tells us how far it looked, which is what makes fetching several
+       windows at once safe rather than a guess about where each ends. */
+    bool daemonSupportsHeightRange() const;
+
+    WalletSyncResponse getWalletSyncData(
         const std::vector<Crypto::Hash> blockHashCheckpoints,
         const uint64_t startHeight,
         const uint64_t startTimestamp,
+        const bool skipCoinbaseTransactions);
+
+    /* Fetches the half open height window [startHeight, endHeight). Uses its
+       own connection, indexed by slot, so several of these can be in flight at
+       once - one httplib client is one socket and cannot be shared.
+
+       Unlike getWalletSyncData this never retries or falls back; a failure is
+       reported so the caller can go back to the sequential path, which is the
+       one that can recover from a fork. */
+    WalletSyncResponse getWalletSyncDataRange(
+        const size_t slot,
+        const uint64_t startHeight,
+        const uint64_t endHeight,
         const bool skipCoinbaseTransactions);
 
     /* Returns a bool on success or not */
@@ -155,6 +202,16 @@ class Nigel
        and making our functions non const) */
     std::shared_ptr<httplib::Client> m_nodeClient = nullptr;
 
+    /* One connection per parallel range fetch slot. An httplib client owns a
+       single socket, so sharing one between concurrent requests would
+       interleave two conversations down the same pipe. Created on first use so
+       a wallet that never fetches in parallel never opens them. */
+    std::vector<std::shared_ptr<httplib::Client>> m_rangeClients;
+
+    std::mutex m_rangeClientMutex;
+
+    std::shared_ptr<httplib::Client> rangeClient(const size_t slot);
+
     /* Stores the HTTP headers included in all Nigel requests */
     std::vector<std::pair<std::string, std::string>> m_requestHeaders;
 
@@ -192,6 +249,19 @@ class Nigel
     /* Whether the daemon is a blockchain cache API
        see: https://github.com/TurtlePay/blockchain-cache-api */
     std::atomic<bool> m_isBlockchainCache = false;
+
+    /* Optional sync behaviours, each switched on only once the daemon has
+       named it in /info. Left off for a daemon that advertises nothing, which
+       is how every release before these existed behaves. */
+    std::atomic<bool> m_daemonSkipsEmptyBlocks = false;
+
+    std::atomic<bool> m_daemonSpeaksBase64 = false;
+
+    std::atomic<bool> m_daemonSupportsHeightRange = false;
+
+    /* The compression warning is worth saying once, not every ten seconds for
+       as long as the wallet is open. */
+    std::atomic<bool> m_warnedAboutCompression = false;
 
     /* The address to send the node fee to (May be "") */
     std::string m_nodeFeeAddress;

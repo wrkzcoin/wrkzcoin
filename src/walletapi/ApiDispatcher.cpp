@@ -1285,8 +1285,11 @@ std::tuple<Error, uint16_t> ApiDispatcher::deletePreparedTransaction(const httpl
 std::tuple<Error, uint16_t>
     ApiDispatcher::saveWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body) const
 {
-    std::scoped_lock lock(m_mutex);
-
+    /* middleware already holds m_mutex for the whole call. Taking it again
+       here deadlocked against itself - a shared_mutex is not recursive, so
+       the second acquisition waits on a lock this very thread is holding.
+       Saving does not reassign m_walletBackend, and WalletBackend orders
+       concurrent saves itself, so the shared lock is all this needs. */
     m_walletBackend->save();
 
     return {SUCCESS, 200};
@@ -1294,8 +1297,8 @@ std::tuple<Error, uint16_t>
 
 std::tuple<Error, uint16_t> ApiDispatcher::resetWallet(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
-
+    /* Held by middleware - see saveWallet. Resetting works through the
+       existing backend rather than replacing it. */
     uint64_t scanHeight = 0;
     uint64_t timestamp = 0;
 
@@ -1311,8 +1314,8 @@ std::tuple<Error, uint16_t> ApiDispatcher::resetWallet(const httplib::Request &r
 
 std::tuple<Error, uint16_t> ApiDispatcher::setNodeInfo(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
-
+    /* Registered as a write operation, so middleware is already holding
+       m_mutex exclusively - see saveWallet. */
     uint16_t daemonPort = CryptoNote::RPC_DEFAULT_PORT;
     bool daemonSSL = false;
 
@@ -1338,8 +1341,8 @@ std::tuple<Error, uint16_t> ApiDispatcher::setNodeInfo(const httplib::Request &r
 std::tuple<Error, uint16_t>
     ApiDispatcher::refreshSync(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body)
 {
-    std::scoped_lock lock(m_mutex);
-
+    /* Registered as a write operation, so middleware is already holding
+       m_mutex exclusively - see saveWallet. */
     const auto [daemonHost, daemonPort, daemonSSL] = m_walletBackend->getNodeAddress();
     m_walletBackend->swapNode(daemonHost, daemonPort, daemonSSL);
 
