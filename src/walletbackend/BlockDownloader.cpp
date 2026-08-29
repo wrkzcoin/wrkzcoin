@@ -7,9 +7,12 @@
 //////////////////////////////////////////
 
 #include <JsonHelper.h>
+#include <algorithm>
 #include <config/Config.h>
 #include <config/WalletConfig.h>
+#include <future>
 #include <logger/Logger.h>
+#include <sstream>
 #include <utilities/FormatTools.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/Constants.h>
@@ -47,6 +50,8 @@ BlockDownloader &BlockDownloader::operator=(BlockDownloader &&old)
 
     m_arrivalIndex = old.m_arrivalIndex;
 
+    m_nextDownloadHeight = old.m_nextDownloadHeight.load();
+
     m_daemon = std::move(old.m_daemon);
 
     m_startTimestamp = std::move(old.m_startTimestamp);
@@ -76,10 +81,26 @@ void BlockDownloader::start()
 
 void BlockDownloader::stop()
 {
+    /* Where we are on the chain is only ever established by a checkpoint
+       driven request, and a restart may be resuming from a different place
+       than we stopped at. Make the first download after this go through that
+       path again rather than trusting a cursor from before the stop. */
+    m_nextDownloadHeight = 0;
+
     m_shouldStop = true;
     m_consumedData = true;
     m_shouldTryFetch.notify_one();
     m_storedBlocks.stop();
+
+    /* The download thread is very likely sitting in an HTTP request, and a
+       daemon is given tens of seconds to answer one. Cut the socket so it
+       returns now: a wallet saves by stopping the synchronizer, and waiting
+       out a read timeout for every save is exactly the stall that stopping
+       without a teardown was meant to avoid. */
+    if (m_daemon != nullptr)
+    {
+        m_daemon->abortInFlightRequests();
+    }
 
     if (m_downloadThread.joinable())
     {
@@ -116,7 +137,12 @@ void BlockDownloader::downloader()
 
         while (shouldFetchMoreBlocks() && !m_shouldStop)
         {
-            const bool blocksDownloaded = downloadBlocks();
+            /* Once the sequential path has established where on the chain we
+               are, and while that is far enough behind the tip that no window
+               can straddle a reorganisation, fetch several windows at once.
+               Falling back is always safe: the sequential path re-derives our
+               position from the block hashes we hold. */
+            const bool blocksDownloaded = downloadBlocksInParallel() || downloadBlocks();
 
             if (!blocksDownloaded)
             {
@@ -288,8 +314,15 @@ bool BlockDownloader::downloadBlocks()
         Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
     }
 
-    const auto [success, blocks, topBlock] = m_daemon->getWalletSyncData(
+    const auto [success, blocks, topBlock, scannedToHeight] = m_daemon->getWalletSyncData(
         blockCheckpoints, m_startHeight, m_startTimestamp, Config::config.wallet.skipCoinbaseTransactions);
+
+    /* Anything but a clean, complete answer leaves us unsure where we are, so
+       the parallel path has to stand down until this path re-establishes it. */
+    if (!success)
+    {
+        m_nextDownloadHeight = 0;
+    }
 
     /* Synced, store the top block so sync status displayes correctly if
        we are not scanning coinbase tx only blocks */
@@ -344,6 +377,25 @@ bool BlockDownloader::downloadBlocks()
         Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
     }
 
+    storeDownloadedBlocks(blocks);
+
+    /* The daemon told us how far it looked, which is not the same as the
+       highest block it sent - the heights in between held nothing for us.
+       That is what lets the parallel path pick up from the right place. */
+    m_nextDownloadHeight = scannedToHeight != 0
+        ? scannedToHeight + 1
+        : blocks.back().blockHeight + 1;
+
+    return true;
+}
+
+size_t BlockDownloader::storeDownloadedBlocks(const std::vector<WalletTypes::WalletBlockInfo> &blocks)
+{
+    if (blocks.empty())
+    {
+        return 0;
+    }
+
     std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> blocksWithIndex;
 
     blocksWithIndex.reserve(blocks.size());
@@ -357,10 +409,133 @@ bool BlockDownloader::downloadBlocks()
         addedBytes += storedBlockMemoryUsage(blocksWithIndex.back());
     }
 
-    if (m_storedBlocks.push_back_n(blocksWithIndex.begin(), blocksWithIndex.end()))
+    if (!m_storedBlocks.push_back_n(blocksWithIndex.begin(), blocksWithIndex.end()))
     {
-        m_storedBlocksBytes += addedBytes;
+        return 0;
     }
+
+    m_storedBlocksBytes += addedBytes;
+
+    return blocks.size();
+}
+
+bool BlockDownloader::downloadBlocksInParallel()
+{
+    const uint64_t firstHeight = m_nextDownloadHeight.load();
+
+    if (WalletConfig::syncRequestConcurrency < 2 || firstHeight == 0 || m_shouldStop
+        || !m_daemon->daemonSupportsHeightRange())
+    {
+        return false;
+    }
+
+    const uint64_t daemonHeight = m_daemon->localDaemonBlockCount();
+
+    /* Each window is addressed by height alone and carries no block hashes, so
+       nothing about it would notice a fork. Only reach for it far enough below
+       the tip that the daemon could not adopt one that deep - it prunes any
+       alternative chain forking further back than that, so it cannot switch to
+       one either. */
+    const uint64_t window = std::min(
+        m_daemon->requestedBlockCount() * CryptoNote::BLOCKS_SYNCHRONIZING_SKIP_EMPTY_SCAN_MULTIPLIER,
+        CryptoNote::BLOCKS_SYNCHRONIZING_SKIP_EMPTY_MAX_SCAN);
+
+    const uint64_t reorgSafetyMargin = 4 * CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_DEPTH;
+
+    const uint64_t span = window * WalletConfig::syncRequestConcurrency + reorgSafetyMargin;
+
+    if (window == 0 || daemonHeight < firstHeight || daemonHeight - firstHeight < span)
+    {
+        return false;
+    }
+
+    /* Name every window up front. That is the whole point of asking by height:
+       we do not have to see one answer to know where the next request starts,
+       so they can all be in flight together. */
+    std::vector<std::future<WalletSyncResponse>> pending;
+
+    pending.reserve(WalletConfig::syncRequestConcurrency);
+
+    for (size_t i = 0; i < WalletConfig::syncRequestConcurrency; i++)
+    {
+        const uint64_t start = firstHeight + (window * i);
+
+        pending.push_back(std::async(std::launch::async, [this, i, start, window] {
+            return m_daemon->getWalletSyncDataRange(
+                i, start, start + window, Config::config.wallet.skipCoinbaseTransactions);
+        }));
+    }
+
+    size_t storedBlocks = 0;
+    size_t completedWindows = 0;
+
+    for (size_t i = 0; i < pending.size(); i++)
+    {
+        /* Every future has to be waited on regardless - each holds a reference
+           to this object - but once we are stopping there is no point putting
+           what they return anywhere. */
+        const auto response = pending[i].get();
+
+        if (m_shouldStop)
+        {
+            continue;
+        }
+
+        const uint64_t windowStart = firstHeight + (window * i);
+        const uint64_t windowEnd = windowStart + window;
+
+        /* Windows have to be stored in order, and a window we cannot vouch for
+           ends the run - taking the ones behind it would leave a hole in the
+           chain we scanned, and a hole is a transaction we never see. The
+           remaining futures are simply dropped; the next round asks again from
+           wherever we actually got to. */
+        if (!response.success || response.scannedToHeight == 0)
+        {
+            break;
+        }
+
+        storedBlocks += storeDownloadedBlocks(response.blocks);
+
+        m_nextDownloadHeight = response.scannedToHeight + 1;
+
+        completedWindows++;
+
+        /* The daemon stopped short of the window, almost certainly on its
+           response size budget. Everything after this is a hole, so stop and
+           let the next round resume from where it reached. */
+        if (response.scannedToHeight + 1 < windowEnd)
+        {
+            break;
+        }
+    }
+
+    if (m_shouldStop)
+    {
+        /* Report success so the caller does not follow up with a sequential
+           request on the way out. */
+        return true;
+    }
+
+    if (completedWindows == 0)
+    {
+        /* Nothing usable came back. Hand the next attempt to the sequential
+           path, which can also tell us whether the chain moved under us. */
+        m_nextDownloadHeight = 0;
+
+        return false;
+    }
+
+    if (Logger::logger.shouldLog(Logger::DEBUG))
+    {
+        std::stringstream stream;
+
+        stream << "Fetched " << completedWindows << " block windows in parallel, " << storedBlocks
+               << " blocks, now at height " << m_nextDownloadHeight.load();
+
+        Logger::logger.log(stream.str(), Logger::DEBUG, {Logger::SYNC});
+    }
+
+    m_daemon->resetRequestedBlockCount();
 
     return true;
 }

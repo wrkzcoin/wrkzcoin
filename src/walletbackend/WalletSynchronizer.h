@@ -6,6 +6,7 @@
 #pragma once
 
 #include <WalletTypes.h>
+#include <chrono>
 #include <memory>
 #include <nigel/Nigel.h>
 #include <subwallets/SubWallets.h>
@@ -208,4 +209,8 @@ class WalletSynchronizer
 
     /* Stores thread ids of the block output processing threads */
     std::vector<std::thread> m_syncThreads;
+
+    /* When syncStep last asked the daemon for its height. Only used on the
+       no-background-thread path, where nothing else refreshes it. */
+    std::chrono::steady_clock::time_point m_lastInfoRefresh;
 };

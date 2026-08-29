@@ -131,7 +131,9 @@ export class WalletBridge {
       this._module._free(resultPtr);
     }
 
-    if (debugEnabled()) {
+    // syncStep now runs back to back for as long as the daemon has blocks to
+    // give, so logging it would drown out everything else even in debug mode.
+    if (debugEnabled() && method !== 'syncStep') {
       if (SENSITIVE_METHODS.has(method)) {
         console.log(`[WalletBridge] ${method} → <redacted>`);
       } else {

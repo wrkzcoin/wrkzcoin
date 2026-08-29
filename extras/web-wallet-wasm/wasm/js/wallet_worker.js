@@ -19,22 +19,61 @@ import { WalletBridge } from './wallet_bridge.js';
 let bridge = null;
 let bridgeReady = false;   // true only after bridge.init() fully completes
 let syncTimer = null;      // drives sync in single-threaded WASM mode
+let syncRunning = false;   // guards against two chains of syncStep at once
 let pthreadsEnabled = false; // true when WASM was built with -pthread
 
+// How long to wait before looking for more blocks once the daemon has none left
+// to give. While it does have blocks, the next step is queued immediately.
 const SYNC_STEP_INTERVAL_MS = 2000;
+
+// Each syncStep downloads one batch and processes up to a chunk of it, so a
+// fixed interval puts a hard ceiling on sync speed that no amount of bandwidth
+// or daemon capacity can lift — a couple of hundred blocks a second, whatever
+// the machine could actually manage. Chaining the next step as soon as the last
+// one reported progress lets it run as fast as the daemon will answer, and falls
+// back to polling only once there is genuinely nothing left to fetch.
+//
+// This runs on a dedicated worker, so a busy sync loop costs the UI thread
+// nothing; yielding through setTimeout still lets postMessage in between steps.
+function scheduleSyncStep(delayMs) {
+  if (pthreadsEnabled || !syncRunning) return;
+
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+
+    if (!syncRunning) return;
+
+    if (!bridgeReady || !bridge) {
+      scheduleSyncStep(SYNC_STEP_INTERVAL_MS);
+      return;
+    }
+
+    let progressed = false;
+
+    try {
+      const result = bridge.call('syncStep', {});
+      progressed = result === true || (result && result.progressed === true);
+    } catch (_) {
+      // A failed step is usually the daemon being unreachable. Back off rather
+      // than spinning on it.
+    }
+
+    scheduleSyncStep(progressed ? 0 : SYNC_STEP_INTERVAL_MS);
+  }, delayMs);
+}
 
 function startSyncTimer() {
   // In pthread builds the WASM background threads drive sync — no JS timer needed.
   if (pthreadsEnabled) return;
-  if (syncTimer) return;
-  syncTimer = setInterval(() => {
-    if (!bridgeReady || !bridge) return;
-    try { bridge.call('syncStep', {}); } catch (_) {}
-  }, SYNC_STEP_INTERVAL_MS);
+  if (syncRunning) return;
+
+  syncRunning = true;
+  scheduleSyncStep(0);
 }
 
 function stopSyncTimer() {
-  if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+  syncRunning = false;
+  if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
 }
 
 /**

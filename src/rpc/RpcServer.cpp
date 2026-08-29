@@ -56,6 +56,17 @@ namespace
     }
 } // namespace
 
+const char *RpcServer::compressionAlgorithm()
+{
+#if defined(CPPHTTPLIB_BROTLI_SUPPORT)
+    return "br";
+#elif defined(CPPHTTPLIB_ZLIB_SUPPORT)
+    return "gzip";
+#else
+    return "none";
+#endif
+}
+
 RpcServer::RpcServer(
     const uint16_t bindPort,
     const std::string rpcBindIp,
@@ -69,6 +80,7 @@ RpcServer::RpcServer(
     const uint32_t rpcMaxRequestsPerMinute,
     const uint32_t rpcMaxGlobalIndexesRange,
     const uint32_t rpcMaxBlockCount,
+    const uint64_t rpcSyncCacheBytes,
     const bool rpcTrustProxy,
     const std::string rpcIpcPath,
     const uint32_t rpcIpcMode,
@@ -97,7 +109,8 @@ RpcServer::RpcServer(
     m_rpcMode(rpcMode),
     m_core(core),
     m_p2p(p2p),
-    m_syncManager(syncManager)
+    m_syncManager(syncManager),
+    m_syncCacheMaxBytes(rpcSyncCacheBytes)
 {
     m_server = std::make_unique<httplib::Server>();
     m_ipv6Server = std::make_unique<httplib::Server>();
@@ -629,6 +642,113 @@ std::string RpcServer::getClientIp(const httplib::Request &req) const
     return forwardedFor.substr(0, comma);
 }
 
+std::optional<std::string> RpcServer::lookupSyncCache(const WalletSyncCacheKey &key)
+{
+    std::lock_guard<std::mutex> lock(m_syncCacheMutex);
+
+    const auto it = m_syncCacheIndex.find(key);
+
+    if (it == m_syncCacheIndex.end())
+    {
+        return std::nullopt;
+    }
+
+    /* Touch it, so a range everyone is currently syncing past outlives one
+       that a single wallet asked for once. */
+    m_syncCacheEntries.splice(m_syncCacheEntries.begin(), m_syncCacheEntries, it->second);
+
+    return it->second->second;
+}
+
+void RpcServer::storeSyncCache(
+    const WalletSyncCacheKey &key,
+    const std::string &body,
+    const std::vector<WalletTypes::WalletBlockInfo> &blocks,
+    const uint64_t topBlockIndex)
+{
+    if (m_syncCacheMaxBytes == 0 || blocks.empty() || body.size() > m_syncCacheMaxBytes)
+    {
+        return;
+    }
+
+    /* The key's start index came from a resolve that ran before the core call,
+       so a reorg in between could have moved the core's own answer earlier.
+       A body that begins below the height we are about to file it under would
+       hand a later caller blocks it did not ask for, so drop it instead. It
+       may legitimately begin above, when everything in between held nothing
+       worth sending. */
+    if (blocks.front().blockHeight < key.startIndex)
+    {
+        return;
+    }
+
+    /* Only cache a range far enough behind the tip that this node will never
+       reorganise it away - it prunes alt chains that fork deeper than
+       CRYPTONOTE_MAX_ALT_BLOCK_DEPTH, so it cannot adopt one either. Doubling
+       that leaves room for the tip to advance while the entry is live. */
+    const uint64_t reorgSafetyMargin = 2 * CryptoNote::parameters::CRYPTONOTE_MAX_ALT_BLOCK_DEPTH;
+
+    const uint64_t highestHeight = blocks.back().blockHeight;
+
+    if (highestHeight + reorgSafetyMargin > topBlockIndex)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_syncCacheMutex);
+
+    /* Another thread may have inserted the same range while we were building
+       ours; keep whichever is already there rather than duplicating it. */
+    if (m_syncCacheIndex.count(key) != 0)
+    {
+        return;
+    }
+
+    m_syncCacheEntries.emplace_front(key, body);
+    m_syncCacheIndex.emplace(key, m_syncCacheEntries.begin());
+    m_syncCacheBytes += body.size();
+
+    while (m_syncCacheBytes > m_syncCacheMaxBytes && !m_syncCacheEntries.empty())
+    {
+        const auto &oldest = m_syncCacheEntries.back();
+
+        m_syncCacheBytes -= oldest.second.size();
+        m_syncCacheIndex.erase(oldest.first);
+        m_syncCacheEntries.pop_back();
+    }
+}
+
+void RpcServer::discardSyncCacheOnReorg(const uint64_t topBlockIndex)
+{
+    if (m_syncCacheMaxBytes == 0)
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(m_syncCacheMutex);
+
+    /* The tip only ever moves backwards when the chain reorganised. Cached
+       bodies describe blocks that may no longer be on the main chain, and
+       there is no cheap way to tell which, so drop the lot. This costs a
+       rebuild roughly never - a node that reorganises this often has bigger
+       problems than its sync cache. */
+    if (topBlockIndex < m_syncCacheTopBlockIndex)
+    {
+        Logger::logger.log(
+            "Chain reorganised, discarding " + std::to_string(m_syncCacheEntries.size())
+                + " cached wallet sync responses",
+            Logger::DEBUG,
+            { Logger::DAEMON_RPC }
+        );
+
+        m_syncCacheEntries.clear();
+        m_syncCacheIndex.clear();
+        m_syncCacheBytes = 0;
+    }
+
+    m_syncCacheTopBlockIndex = topBlockIndex;
+}
+
 bool RpcServer::isRateLimited(const std::string &clientIp)
 {
     if (m_rpcMaxRequestsPerMinute == 0)
@@ -777,6 +897,20 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["version"] = PROJECT_VERSION;
         j["status"] = "OK";
         j["start_time"] = m_core->getStartTime();
+
+        /* Response compression is decided when the daemon is built - httplib
+           only gzips if zlib was found at configure time. A node built on a
+           box without the zlib headers silently sends several times as many
+           bytes to every syncing wallet, forever, with nothing to say so.
+           Publishing it here lets an operator see it, and lets a wallet
+           report it. */
+        j["compression"] = RpcServer::compressionAlgorithm();
+
+        nlohmann::json syncFeatures = nlohmann::json::array();
+        syncFeatures.push_back(CryptoNote::SyncFeatures::SKIP_EMPTY_BLOCKS);
+        syncFeatures.push_back(CryptoNote::SyncFeatures::BASE64_ENCODING);
+        syncFeatures.push_back(CryptoNote::SyncFeatures::HEIGHT_RANGE);
+        j["sync_features"] = syncFeatures;
 
         res.body = j.dump();
 
@@ -1019,17 +1153,86 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         ? getBoolFromJSON(body, "skipInputKeyOffsets")
         : false;
 
+    /* Also opt in - leaving blocks out changes which heights a response
+       covers, and a wallet that does not know that would read the gaps as a
+       chain fork. */
+    const bool skipEmptyBlocks = hasMember(body, "skipEmptyBlocks")
+        ? getBoolFromJSON(body, "skipEmptyBlocks")
+        : false;
+
+    /* Exclusive upper bound on the heights this response may cover. A caller
+       fetching several windows at once needs them to tile the chain exactly,
+       which it cannot arrange if we choose where each one ends. Zero, and
+       absent, both mean unbounded. */
+    const uint64_t endHeight = hasMember(body, "endHeight")
+        ? getUint64FromJSON(body, "endHeight")
+        : 0;
+
+    const std::string encoding = hasMember(body, "encoding")
+        ? getStringFromJSON(body, "encoding")
+        : "hex";
+
+    if (encoding != "hex" && encoding != "base64")
+    {
+        failRequest(400, "encoding must be either 'hex' or 'base64'", res);
+        return {SUCCESS, 400};
+    }
+
+    const bool base64 = encoding == "base64";
+
+    const auto encodePod = [base64](const auto &pod) {
+        return base64 ? Common::podToBase64(pod) : Common::podToHex(pod);
+    };
+
+    /* Every wallet syncing from the same height asks for the same range, and
+       assembling one is thousands of database reads plus the encoding of the
+       result. Serve a body we have already built where we can. */
+    const uint64_t topBlockIndex = m_core->getTopBlockIndex();
+
+    discardSyncCacheOnReorg(topBlockIndex);
+
+    WalletSyncCacheKey cacheKey {};
+    bool cacheable = false;
+
+    uint64_t resolvedStartIndex = 0;
+
+    if (m_syncCacheMaxBytes > 0
+        && m_core->getWalletSyncStartIndex(blockHashCheckpoints, startHeight, startTimestamp, resolvedStartIndex))
+    {
+        cacheKey = {
+            resolvedStartIndex,
+            blockCount,
+            endHeight,
+            skipCoinbaseTransactions,
+            skipInputKeyOffsets,
+            skipEmptyBlocks,
+            base64
+        };
+
+        cacheable = true;
+
+        if (const auto cached = lookupSyncCache(cacheKey))
+        {
+            res.body = *cached;
+            return {SUCCESS, 200};
+        }
+    }
+
     std::vector<WalletTypes::WalletBlockInfo> walletBlocks;
     std::optional<WalletTypes::TopBlock> topBlockInfo;
+    uint64_t scannedToHeight = 0;
 
     const bool success = m_core->getWalletSyncData(
         blockHashCheckpoints,
         startHeight,
         startTimestamp,
         blockCount,
+        endHeight,
         skipCoinbaseTransactions,
+        skipEmptyBlocks,
         walletBlocks,
-        topBlockInfo
+        topBlockInfo,
+        scannedToHeight
     );
 
     if (!success)
@@ -1048,7 +1251,7 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
             for (const auto &output : block.coinbaseTransaction->keyOutputs)
             {
                 nlohmann::json outObj;
-                outObj["key"] = Common::podToHex(output.key);
+                outObj["key"] = encodePod(output.key);
                 outObj["amount"] = output.amount;
 
                 /* We already have this from the database. Sending it saves the
@@ -1064,8 +1267,8 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
             }
             nlohmann::json cbTx;
             cbTx["outputs"] = cbOutputs;
-            cbTx["hash"] = Common::podToHex(block.coinbaseTransaction->hash);
-            cbTx["txPublicKey"] = Common::podToHex(block.coinbaseTransaction->transactionPublicKey);
+            cbTx["hash"] = encodePod(block.coinbaseTransaction->hash);
+            cbTx["txPublicKey"] = encodePod(block.coinbaseTransaction->transactionPublicKey);
             cbTx["unlockTime"] = block.coinbaseTransaction->unlockTime;
             blockObj["coinbaseTX"] = cbTx;
         }
@@ -1077,7 +1280,7 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
             for (const auto &output : transaction.keyOutputs)
             {
                 nlohmann::json outObj;
-                outObj["key"] = Common::podToHex(output.key);
+                outObj["key"] = encodePod(output.key);
                 outObj["amount"] = output.amount;
 
                 if (output.globalOutputIndex)
@@ -1093,7 +1296,7 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
             {
                 nlohmann::json inputObj;
                 inputObj["amount"] = input.amount;
-                inputObj["k_image"] = Common::podToHex(input.keyImage);
+                inputObj["k_image"] = encodePod(input.keyImage);
 
                 /* The ring member offsets are only needed to build a spend, and
                    a syncing wallet builds its own from get_random_outs. They are
@@ -1114,8 +1317,8 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
 
             nlohmann::json txObj;
             txObj["outputs"] = txOutputs;
-            txObj["hash"] = Common::podToHex(transaction.hash);
-            txObj["txPublicKey"] = Common::podToHex(transaction.transactionPublicKey);
+            txObj["hash"] = encodePod(transaction.hash);
+            txObj["txPublicKey"] = encodePod(transaction.transactionPublicKey);
             txObj["unlockTime"] = transaction.unlockTime;
             txObj["paymentID"] = transaction.paymentID;
             txObj["inputs"] = txInputs;
@@ -1124,7 +1327,7 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
 
         blockObj["transactions"] = txArr;
         blockObj["blockHeight"] = block.blockHeight;
-        blockObj["blockHash"] = Common::podToHex(block.blockHash);
+        blockObj["blockHash"] = encodePod(block.blockHash);
         blockObj["blockTimestamp"] = block.blockTimestamp;
         itemsArr.push_back(blockObj);
     }
@@ -1135,14 +1338,27 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
     if (topBlockInfo)
     {
         nlohmann::json topBlock;
-        topBlock["hash"] = Common::podToHex(topBlockInfo->hash);
+        topBlock["hash"] = encodePod(topBlockInfo->hash);
         topBlock["height"] = topBlockInfo->height;
         j["topBlock"] = topBlock;
+    }
+
+    /* How far the daemon actually looked, so a caller can move past a stretch
+       of blocks that held nothing for it without having to ask again to find
+       out there was nothing there. */
+    if (scannedToHeight != 0)
+    {
+        j["scannedToHeight"] = scannedToHeight;
     }
 
     j["synced"] = walletBlocks.empty();
     j["status"] = "OK";
     res.body = j.dump();
+
+    if (cacheable)
+    {
+        storeSyncCache(cacheKey, res.body, walletBlocks, topBlockIndex);
+    }
 
     return {SUCCESS, 200};
 }

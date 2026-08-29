@@ -630,6 +630,7 @@ int main(int argc, char *argv[])
             config.rpcMaxRequestsPerMinute,
             config.rpcMaxGlobalIndexesRange,
             config.rpcMaxBlockCount,
+            config.rpcSyncCacheBytes,
             config.rpcTrustProxy,
             rpcIpcPath,
             config.rpcIpcMode,
@@ -653,6 +654,20 @@ int main(int argc, char *argv[])
 
         // Fire up the RPC Server
         logger(INFO) << "Starting core rpc server on address " << config.rpcInterface << ":" << config.rpcPort;
+
+        /* Whether responses get compressed is fixed when the daemon is built.
+           Without it every syncing wallet pulls several times as many bytes,
+           which is easy to miss because nothing else reports it. */
+        if (std::string(RpcServer::compressionAlgorithm()) == "none")
+        {
+            logger(WARNING) << "RPC response compression is disabled - this build found no zlib at configure time. "
+                            << "Syncing wallets will transfer several times more data than necessary. "
+                            << "Install the zlib development package and rebuild to enable it.";
+        }
+        else
+        {
+            logger(INFO) << "RPC response compression: " << RpcServer::compressionAlgorithm();
+        }
 
         if (config.rpcUseIpv6 && !config.rpcBindIpv6Address.empty())
         {

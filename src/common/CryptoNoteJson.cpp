@@ -23,18 +23,40 @@ namespace
     {
 #if defined(NLOHMANN_JSON_VERSION_MAJOR) && defined(NLOHMANN_JSON_VERSION_MINOR) \
     && ((NLOHMANN_JSON_VERSION_MAJOR > 3) || (NLOHMANN_JSON_VERSION_MAJOR == 3 && NLOHMANN_JSON_VERSION_MINOR >= 12))
-        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!", nullptr);
+        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length, or neither hex nor base64!", nullptr);
 #else
-        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length or not hex!");
+        throw nlohmann::detail::parse_error::create(100, 0, "Wrong length, or neither hex nor base64!");
 #endif
     }
 
+    /* Accepts either encoding, told apart by length alone: a fixed size value
+       is 2N characters as hex and about 1.33N as base64, which can never
+       collide. Doing it here means a peer that sends the shorter form needs no
+       flag threaded through every enclosing structure's deserialiser. */
     template<typename T> void podFromJson(const nlohmann::json &j, T &value)
     {
-        if (!Common::podFromHex(j.get<std::string>(), value.data))
+        const std::string text = j.get<std::string>();
+
+        constexpr size_t byteCount = sizeof(value.data);
+        constexpr size_t hexLength = byteCount * 2;
+        constexpr size_t base64Length = ((byteCount + 2) / 3) * 4;
+
+        if (text.size() == hexLength)
         {
-            throwHexParseError();
+            if (Common::podFromHex(text, value.data))
+            {
+                return;
+            }
         }
+        else if (text.size() == base64Length)
+        {
+            if (Common::podFromBase64(text, value.data))
+            {
+                return;
+            }
+        }
+
+        throwHexParseError();
     }
 } // namespace
 

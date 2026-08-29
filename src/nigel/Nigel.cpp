@@ -88,8 +88,17 @@ inline std::shared_ptr<httplib::Client> getClient(
     }
 
     client->set_connection_timeout(timeout);
-    client->set_read_timeout(timeout);
-    client->set_write_timeout(timeout);
+
+    /* Reaching a node and waiting for it to answer are different problems. An
+     * unreachable node should fail fast, but a node that has accepted a large
+     * sync request is going to take a while to build the response and there is
+     * nothing to gain by hanging up on it partway - we would pay for the
+     * request again, and it would build the answer either way. */
+    const auto responseTimeout =
+        std::max(timeout, std::chrono::seconds(WalletConfig::daemonResponseTimeoutSeconds));
+
+    client->set_read_timeout(responseTimeout);
+    client->set_write_timeout(responseTimeout);
 
     /* Syncing a wallet is tens of thousands of sequential requests to the same
      * daemon. Without this every one of them pays for a fresh TCP handshake,
@@ -375,6 +384,10 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     m_peerCount = 0;
     m_lastKnownHashrate = 0;
     m_isBlockchainCache = false;
+    m_daemonSkipsEmptyBlocks = false;
+    m_daemonSpeaksBase64 = false;
+    m_daemonSupportsHeightRange = false;
+    m_warnedAboutCompression = false;
     m_nodeFeeAddress = "";
     m_nodeFeeAmount = 0;
     m_useRawBlocks = false;
@@ -384,6 +397,12 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     m_daemonSSL = daemonSSL;
 
     m_nodeClient = getClient(m_daemonHost, m_daemonPort, m_daemonSSL, m_timeout);
+
+    {
+        /* These point at the node we just left. */
+        std::lock_guard<std::mutex> lock(m_rangeClientMutex);
+        m_rangeClients.clear();
+    }
 
     init();
 }
@@ -436,12 +455,11 @@ uint64_t Nigel::requestedBlockCount() const
     return m_blockCount;
 }
 
-std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<WalletTypes::TopBlock>>
-    Nigel::getWalletSyncData(
-        const std::vector<Crypto::Hash> blockHashCheckpoints,
-        const uint64_t startHeight,
-        const uint64_t startTimestamp,
-        const bool skipCoinbaseTransactions)
+WalletSyncResponse Nigel::getWalletSyncData(
+    const std::vector<Crypto::Hash> blockHashCheckpoints,
+    const uint64_t startHeight,
+    const uint64_t startTimestamp,
+    const bool skipCoinbaseTransactions)
 {
     Logger::logger.log("Fetching blocks from the daemon", Logger::DEBUG, {Logger::SYNC, Logger::DAEMON});
 
@@ -455,6 +473,25 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
                  Daemons that don't know the flag send them anyway, and our
                  deserializer treats key_offsets as optional either way. */
               {"skipInputKeyOffsets", true}};
+
+    /* A block holding nothing but a coinbase has nothing in it for us once we
+       have said we don't want coinbases, and most blocks on a quiet chain are
+       exactly that. Letting the daemon leave them out is what turns a batch
+       that advances us a thousand heights into one that can advance us tens of
+       thousands. Only asked for where the daemon has said it understands the
+       flag - an older one would send a plain range and we would read the gaps
+       we expected as a fork. */
+    if (skipCoinbaseTransactions && m_daemonSkipsEmptyBlocks)
+    {
+        j["skipEmptyBlocks"] = true;
+    }
+
+    /* Almost the entire response body is fixed size keys and hashes, which
+       cost 64 characters each as hex and 44 as base64. */
+    if (m_daemonSpeaksBase64)
+    {
+        j["encoding"] = "base64";
+    }
 
     const std::string endpoint = m_useRawBlocks ? "/getrawblocks" : "/getwalletsyncdata";
 
@@ -516,7 +553,7 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
             { Logger::SYNC, Logger::DAEMON }
         );
 
-        return { false, {}, std::nullopt };
+        return {};
     }
 
     /* Daemon doesn't support /getrawblocks, or pruned/raw-block path failed:
@@ -590,12 +627,19 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
             topBlock = j.at("topBlock").get<WalletTypes::TopBlock>();
         }
 
-        return std::make_tuple(items, topBlock);
+        uint64_t scannedToHeight = 0;
+
+        if (j.find("scannedToHeight") != j.end())
+        {
+            scannedToHeight = j.at("scannedToHeight").get<uint64_t>();
+        }
+
+        return std::make_tuple(items, topBlock, scannedToHeight);
     });
 
     if (parsedResponse)
     {
-        const auto [ items, topBlock ] = *parsedResponse;
+        const auto [ items, topBlock, scannedToHeight ] = *parsedResponse;
 
         /* On pruned daemons, /getrawblocks may return no usable data for old
            heights even when not synced yet. Switch to reconstruction endpoint. */
@@ -617,10 +661,129 @@ std::tuple<bool, std::vector<WalletTypes::WalletBlockInfo>, std::optional<Wallet
             );
         }
 
-        return { true, items, topBlock };
+        return { true, items, topBlock, scannedToHeight };
     }
 
-    return { false, {}, std::nullopt };
+    return {};
+}
+
+void Nigel::abortInFlightRequests()
+{
+#if !defined(__EMSCRIPTEN__)
+    if (m_nodeClient)
+    {
+        m_nodeClient->stop();
+    }
+
+    std::lock_guard<std::mutex> lock(m_rangeClientMutex);
+
+    for (const auto &client : m_rangeClients)
+    {
+        if (client)
+        {
+            client->stop();
+        }
+    }
+#endif
+}
+
+std::shared_ptr<httplib::Client> Nigel::rangeClient(const size_t slot)
+{
+    std::lock_guard<std::mutex> lock(m_rangeClientMutex);
+
+    if (m_rangeClients.size() <= slot)
+    {
+        m_rangeClients.resize(slot + 1);
+    }
+
+    if (!m_rangeClients[slot])
+    {
+        m_rangeClients[slot] = getClient(m_daemonHost, m_daemonPort, m_daemonSSL, m_timeout);
+    }
+
+    return m_rangeClients[slot];
+}
+
+bool Nigel::daemonSupportsHeightRange() const
+{
+    return m_daemonSupportsHeightRange;
+}
+
+WalletSyncResponse Nigel::getWalletSyncDataRange(
+    const size_t slot,
+    const uint64_t startHeight,
+    const uint64_t endHeight,
+    const bool skipCoinbaseTransactions)
+{
+    if (!m_daemonSupportsHeightRange || endHeight <= startHeight)
+    {
+        return {};
+    }
+
+    /* No checkpoints: the window is addressed by height, which is the whole
+       point - a caller can name several windows before it has seen any of the
+       answers. Fork detection stays with the sequential path, which is why
+       this is only used well below the tip. */
+    json j = {{"blockHashCheckpoints", std::vector<Crypto::Hash>()},
+              {"startHeight", startHeight},
+              {"endHeight", endHeight},
+              {"startTimestamp", 0},
+              {"blockCount", m_blockCount.load()},
+              {"skipCoinbaseTransactions", skipCoinbaseTransactions},
+              {"skipInputKeyOffsets", true}};
+
+    if (skipCoinbaseTransactions && m_daemonSkipsEmptyBlocks)
+    {
+        j["skipEmptyBlocks"] = true;
+    }
+
+    if (m_daemonSpeaksBase64)
+    {
+        j["encoding"] = "base64";
+    }
+
+    const std::string requestBody = j.dump();
+
+#if defined(__EMSCRIPTEN__)
+    const auto res = emscriptenRequestJson(
+        daemonUrl(m_daemonHost, m_daemonPort, m_daemonSSL, "/getwalletsyncdata"),
+        "POST",
+        &requestBody);
+#else
+    const auto res = rangeClient(slot)->Post(
+        "/getwalletsyncdata", toHeaders(m_requestHeaders), requestBody, "application/json");
+#endif
+
+    if (res && res->status == 429)
+    {
+        m_lastRequestRateLimited = true;
+
+        return {};
+    }
+
+    const auto parsedResponse = tryParseJSONResponse(
+        res, "Failed to fetch a block range from daemon", [](const nlohmann::json j) {
+
+        auto items = j.at("items").get<std::vector<WalletTypes::WalletBlockInfo>>();
+
+        uint64_t scannedToHeight = 0;
+
+        if (j.find("scannedToHeight") != j.end())
+        {
+            scannedToHeight = j.at("scannedToHeight").get<uint64_t>();
+        }
+
+        return std::make_tuple(items, scannedToHeight);
+    });
+
+    if (!parsedResponse)
+    {
+        return {};
+    }
+
+    const auto [ items, scannedToHeight ] = *parsedResponse;
+
+    return { true, items, std::nullopt, scannedToHeight };
 }
 
 void Nigel::stop()
@@ -701,6 +864,62 @@ bool Nigel::getDaemonInfo()
         if (j.find("isCacheApi") != j.end())
         {
             m_isBlockchainCache = j.at("isCacheApi").get<bool>();
+        }
+
+        /* Optional sync behaviours only get switched on once the daemon has
+           named them. A daemon too old to advertise anything simply never
+           enables them, and keeps serving what it always has. */
+        bool skipEmptyBlocks = false;
+        bool base64 = false;
+        bool heightRange = false;
+
+        if (j.find("sync_features") != j.end() && j.at("sync_features").is_array())
+        {
+            for (const auto &feature : j.at("sync_features"))
+            {
+                if (!feature.is_string())
+                {
+                    continue;
+                }
+
+                const auto name = feature.get<std::string>();
+
+                if (name == CryptoNote::SyncFeatures::SKIP_EMPTY_BLOCKS)
+                {
+                    skipEmptyBlocks = true;
+                }
+                else if (name == CryptoNote::SyncFeatures::BASE64_ENCODING)
+                {
+                    base64 = true;
+                }
+                else if (name == CryptoNote::SyncFeatures::HEIGHT_RANGE)
+                {
+                    heightRange = true;
+                }
+            }
+        }
+
+        /* A blockchain cache API speaks its own dialect of these endpoints and
+           does not implement our flags, so take it at its word only for the
+           daemon. */
+        m_daemonSkipsEmptyBlocks = skipEmptyBlocks && !m_isBlockchainCache;
+        m_daemonSpeaksBase64 = base64 && !m_isBlockchainCache;
+        m_daemonSupportsHeightRange = heightRange && !m_isBlockchainCache;
+
+        if (j.find("compression") != j.end() && j.at("compression").is_string())
+        {
+            const auto compression = j.at("compression").get<std::string>();
+
+            if (compression == "none" && !m_warnedAboutCompression.exchange(true))
+            {
+                Logger::logger.log(
+                    "The daemon is not compressing its responses, so syncing will transfer several times more "
+                    "data than it needs to. This is decided when the daemon is built - its operator can fix it "
+                    "by installing zlib and rebuilding.",
+                    Logger::WARNING,
+                    { Logger::SYNC, Logger::DAEMON }
+                );
+            }
         }
 
         return true;
