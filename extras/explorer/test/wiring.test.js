@@ -101,12 +101,48 @@ check('no class in index.html is left unstyled', unstyledHtml.length === 0,
 
 // ─── script loading ──────────────────────────────────────────────────────────
 
-check('wrkz-crypto.js is loaded before app.js',
-  html.indexOf('vendor/wrkz-crypto.js') !== -1
-  && html.indexOf('vendor/wrkz-crypto.js') < html.indexOf('src="app.js"'));
+/* Matched against the real <script> tags, so a ?v= stamp on either does not
+   quietly turn this check into a no-op. */
+const cryptoTag = html.search(/<script src="vendor\/wrkz-crypto\.js(\?[^"]*)?"/);
+const appTag = html.search(/<script src="app\.js(\?[^"]*)?"/);
+check('both script tags are present', cryptoTag !== -1 && appTag !== -1,
+  `crypto at ${cryptoTag}, app at ${appTag}`);
+check('wrkz-crypto.js is loaded before app.js', cryptoTag !== -1 && cryptoTag < appTag);
 
 check('the crypto module file exists',
   fs.existsSync(path.join(ROOT, 'vendor', 'wrkz-crypto.js')));
+
+// ─── cache-busting stamps ────────────────────────────────────────────────────
+
+/* index.html is not cached by the CDN but style.css and the scripts are, so a
+   deploy that does not change their URLs can leave a new page running an old
+   app.js. Every CDN-cached asset must therefore carry ?v=, and all of them must
+   carry the SAME value — a half-bumped set is the exact failure this prevents. */
+const CACHED_ASSETS = ['style.css', 'app.js', 'vendor/wrkz-crypto.js'];
+
+const stamps = {};
+for (const asset of CACHED_ASSETS) {
+  const re = new RegExp(`(?:href|src)="${asset.replace(/[.\/]/g, '\\$&')}(\\?v=([^"]*))?"`);
+  const m = html.match(re);
+  check(`${asset} is referenced in index.html`, !!m);
+  if (!m) continue;
+  check(`${asset} carries a ?v= stamp`, !!m[1], 'no version query string');
+  stamps[asset] = m[2];
+}
+
+const values = uniq(Object.values(stamps).filter(v => v !== undefined));
+check('all cache-busting stamps share one value', values.length === 1,
+  `found ${values.length} distinct values: ${values.join(', ')}`);
+check('the stamp is non-empty', values[0] !== '' && values[0] !== undefined);
+
+/* TurtleCoinUtils.js is injected by app.js rather than declared in the markup,
+   so it must reuse the stamp instead of hardcoding a second one. */
+check('app.js derives ASSET_VERSION from its own script tag',
+  /const ASSET_VERSION = \(\(\) => \{[\s\S]*?script\[src\*="app\.js"\]/.test(app));
+check('TurtleCoinUtils.js is loaded through versioned()',
+  app.includes("versioned('vendor/TurtleCoinUtils.js')"));
+check('no other hardcoded ?v= in app.js',
+  !/['"`][^'"`]*\?v=\d/.test(app), 'a second version literal would drift');
 
 // ─── dead code must stay dead ────────────────────────────────────────────────
 

@@ -270,13 +270,25 @@ function hideLoading() {
 
 function setConnStatus() { /* UI element removed */ }
 
+/* The cache-busting stamp index.html put on our own <script> tag. Reused for
+   assets loaded at runtime so there is only ever one value to bump. */
+const ASSET_VERSION = (() => {
+  const tag = document.querySelector('script[src*="app.js"]');
+  const match = tag && tag.src.match(/[?&]v=([^&]*)/);
+  return match ? match[1] : '';
+})();
+
+function versioned(path) {
+  return ASSET_VERSION ? `${path}?v=${encodeURIComponent(ASSET_VERSION)}` : path;
+}
+
 function ensureTurtleCoinUtils() {
   if (window.TurtleCoinUtils) return Promise.resolve(window.TurtleCoinUtils);
   if (turtleCoinUtilsPromise) return turtleCoinUtilsPromise;
 
   turtleCoinUtilsPromise = new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    script.src = 'vendor/TurtleCoinUtils.js';
+    script.src = versioned('vendor/TurtleCoinUtils.js');
     script.async = true;
     script.onload = () => {
       if (window.TurtleCoinUtils) {

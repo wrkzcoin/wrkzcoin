@@ -4,7 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WrkzCoin Block Explorer</title>
-  <link rel="stylesheet" href="style.css" />
+  <!-- ?v= is a cache-busting stamp. index.html itself is not cached by the CDN,
+       but style.css and the scripts are, so without this a deploy can leave a
+       new page loading an old stylesheet and an old app.js — which half-works
+       and is harder to spot than being plainly stale.
+       BUMP ALL THREE ?v= VALUES ON EVERY DEPLOY. See README, "Deploy Steps".
+       vendor/TurtleCoinUtils.js is loaded from app.js and reuses this same
+       stamp automatically, so it does not need its own. -->
+  <link rel="stylesheet" href="style.css?v=20260830" />
 </head>
 <body>
 
@@ -393,7 +400,7 @@
   </footer>
 
   <!-- Address / key primitives. Pure JS, no network access — see vendor/wrkz-crypto.js -->
-  <script src="vendor/wrkz-crypto.js"></script>
-  <script src="app.js"></script>
+  <script src="vendor/wrkz-crypto.js?v=20260830"></script>
+  <script src="app.js?v=20260830"></script>
 </body>
 </html>
