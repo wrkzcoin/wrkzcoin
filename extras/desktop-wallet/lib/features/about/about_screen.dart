@@ -4,7 +4,8 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
-const _kVersion = '1.0.0';
+/// Keep in step with `version:` in pubspec.yaml.
+const _kVersion = '2.0.0';
 const _kGithubUrl = 'https://github.com/wrkzcoin/wrkzcoin';
 const _kDiscordUrl = 'https://chat.wrkz.work/';
 const _kTwitterUrl = 'https://x.com/wrkzcoin';

@@ -91,12 +91,16 @@ class _LanguagePickerScreenState extends ConsumerState<LanguagePickerScreen> {
                     width: double.infinity,
                     child: FilledButton(
                       onPressed: () async {
+                        // Resolve the router before the await so nothing
+                        // reaches for a BuildContext across the async gap.
+                        final router = GoRouter.of(context);
                         ref
                             .read(localeProvider.notifier)
                             .set(Locale(_selectedCode));
                         await markFirstLaunchDone();
                         ref.invalidate(firstLaunchDoneProvider);
-                        if (mounted) context.go('/setup');
+                        if (!mounted) return;
+                        router.go('/setup');
                       },
                       child: const Text('Continue'),
                     ),

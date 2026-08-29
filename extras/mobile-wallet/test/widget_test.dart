@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pluton_mobile/core/api/models/transaction.dart';
 import 'package:pluton_mobile/shared/utils/amount_formatter.dart';
 
 void main() {
@@ -22,8 +23,16 @@ void main() {
       expect(formatAmount(100, showTicker: true), '1.00 WRKZ');
     });
 
-    test('formats negative (absolute)', () {
+    test('formats negative amounts', () {
       expect(formatAmount(-250), '-2.50');
+    });
+
+    test('keeps the sign on sub-unit negatives', () {
+      // `atomic ~/ divisor` truncates toward zero, so the whole part is 0 here
+      // and the minus sign has to be carried explicitly.
+      expect(formatAmount(-50), '-0.50');
+      expect(formatAmount(-1), '-0.01');
+      expect(formatAmount(-99), '-0.99');
     });
   });
 
@@ -42,6 +51,109 @@ void main() {
       expect(parseAmount(''), null);
       expect(parseAmount('abc'), null);
       expect(parseAmount('1.234'), null);
+    });
+
+    test('rejects negative amounts', () {
+      expect(parseAmount('-5'), null);
+      expect(parseAmount('-0.01'), null);
+    });
+  });
+
+  group('Address validation', () {
+    // 98 characters, base58, "Wrkz" prefix.
+    final validAddress = 'Wrkz${'a' * 94}';
+
+    test('accepts a well-formed address', () {
+      expect(validAddress.length, 98);
+      expect(isValidWrkzAddress(validAddress), isTrue);
+    });
+
+    test('rejects a wrong prefix', () {
+      expect(isValidWrkzAddress('Xrkz${'a' * 94}'), isFalse);
+    });
+
+    test('rejects a wrong length', () {
+      expect(isValidWrkzAddress('Wrkz${'a' * 93}'), isFalse);
+    });
+
+    test('rejects non-base58 characters', () {
+      // 0, O, I and l are not in the CryptoNote base58 alphabet.
+      expect(isValidWrkzAddress('Wrkz${'a' * 93}0'), isFalse);
+    });
+  });
+
+  group('Payment ID validation', () {
+    test('accepts empty (means none)', () {
+      expect(isValidPaymentId(''), isTrue);
+    });
+
+    test('accepts 16 and 64 hex characters', () {
+      expect(isValidPaymentId('0' * 16), isTrue);
+      expect(isValidPaymentId('aF' * 32), isTrue);
+    });
+
+    test('rejects other lengths and non-hex', () {
+      expect(isValidPaymentId('0' * 15), isFalse);
+      expect(isValidPaymentId('g' * 16), isFalse);
+    });
+  });
+
+  group('QR payload parsing', () {
+    test('passes a bare address through', () {
+      final r = parseAddressPayload('Wrkzabc');
+      expect(r.address, 'Wrkzabc');
+      expect(r.amount, isNull);
+      expect(r.paymentId, isNull);
+    });
+
+    test('parses a wrkz: URI with parameters', () {
+      final r = parseAddressPayload('wrkz:Wrkzabc?amount=1.50&paymentId=abcd');
+      expect(r.address, 'Wrkzabc');
+      expect(r.amount, '1.50');
+      expect(r.paymentId, 'abcd');
+    });
+
+    test('parses a wrkz: URI without parameters', () {
+      final r = parseAddressPayload('wrkz:Wrkzabc');
+      expect(r.address, 'Wrkzabc');
+      expect(r.amount, isNull);
+    });
+
+    test('trims surrounding whitespace', () {
+      expect(parseAddressPayload('  Wrkzabc  ').address, 'Wrkzabc');
+    });
+  });
+
+  group('Transaction direction', () {
+    Transaction tx(int totalAmount, List<int> transferAmounts) =>
+        Transaction.fromJson({
+          'hash': 'h',
+          'timestamp': 0,
+          'blockHeight': 1,
+          'totalAmount': totalAmount,
+          'transfers': [
+            for (final a in transferAmounts) {'amount': a, 'type': a >= 0 ? 1 : 0},
+          ],
+        });
+
+    test('a plain receive is incoming', () {
+      expect(tx(500, [500]).isIncoming, isTrue);
+    });
+
+    test('a plain send is outgoing', () {
+      expect(tx(-500, [-500]).isIncoming, isFalse);
+    });
+
+    test('a send with change to another subwallet is still outgoing', () {
+      // The positive transfer is this wallet's own change. Judging direction
+      // from the individual transfers would call this incoming.
+      expect(tx(-500, [-1500, 1000]).isIncoming, isFalse);
+    });
+
+    test('tolerates a missing transfers list', () {
+      final t = Transaction.fromJson({'hash': 'h', 'totalAmount': 10});
+      expect(t.transfers, isEmpty);
+      expect(t.isIncoming, isTrue);
     });
   });
 }

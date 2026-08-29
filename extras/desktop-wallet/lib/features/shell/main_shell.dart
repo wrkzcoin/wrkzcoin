@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_notifier/local_notifier.dart';
+import 'package:path/path.dart' as p;
 import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 import '../../core/api/models/transaction.dart';
@@ -31,6 +33,8 @@ class _MainShellState extends ConsumerState<MainShell>
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
   Timer? _trayClickTimer;
+  bool _trayReady = false;
+  bool _shuttingDown = false;
 
   // ── System tray ──────────────────────────────────────────────────────────────
   final _systemTray = SystemTray();
@@ -44,6 +48,9 @@ class _MainShellState extends ConsumerState<MainShell>
   void initState() {
     super.initState();
     windowManager.addListener(this);
+    // Intercept the close so the wallet can be saved and closed first. Whether
+    // closing hides to tray or actually quits is decided in onWindowClose,
+    // once we know if the tray icon exists.
     windowManager.setPreventClose(true);
     _initSystemTray();
   }
@@ -57,11 +64,23 @@ class _MainShellState extends ConsumerState<MainShell>
     super.dispose();
   }
 
+  /// Flutter copies `assets/` into `data/flutter_assets/` next to the
+  /// executable, so the tray icon has to be addressed there — a bare
+  /// `assets/...` path only resolves when running from the project root.
+  String get _trayIconPath {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    final name = Platform.isWindows ? 'app_icon.ico' : 'app_icon.png';
+    final bundled =
+        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'images', name);
+    if (File(bundled).existsSync()) return bundled;
+    return p.join('assets', 'images', name); // `flutter run` from the repo
+  }
+
   Future<void> _initSystemTray() async {
     try {
       await _systemTray.initSystemTray(
         title: 'PLUTON Wallet',
-        iconPath: 'assets/images/app_icon.ico',
+        iconPath: _trayIconPath,
         toolTip: 'PLUTON Wallet',
       );
 
@@ -69,12 +88,11 @@ class _MainShellState extends ConsumerState<MainShell>
       await menu.buildFrom([
         MenuItemLabel(label: 'Show', onClicked: (_) => _showWindow()),
         MenuSeparator(),
-        MenuItemLabel(label: 'Exit', onClicked: (_) {
-          windowManager.setPreventClose(false);
-          windowManager.close();
-        }),
+        MenuItemLabel(label: 'Exit', onClicked: (_) => _quit()),
       ]);
       await _systemTray.setContextMenu(menu);
+      // Only now is hiding the window safe — there is something to restore it.
+      _trayReady = true;
 
       _systemTray.registerSystemTrayEventHandler((eventName) {
         if (eventName == kSystemTrayEventClick) {
@@ -95,8 +113,36 @@ class _MainShellState extends ConsumerState<MainShell>
         }
       });
     } catch (e) {
+      // No tray: leave close/minimise behaving normally so the window stays
+      // reachable.
+      _trayReady = false;
       debugPrint('[tray] init failed: $e');
     }
+  }
+
+  /// Saves and closes the wallet, then lets the window close for real.
+  ///
+  /// Quitting used to bypass this entirely, discarding everything since the
+  /// last autosave and leaving the wallet file open.
+  Future<void> _quit() async {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    _autosaveTimer?.cancel();
+    final ffi = ref.read(walletCApiProvider);
+    if (ffi.isOpen) {
+      try {
+        await ffi.save();
+      } catch (e) {
+        debugPrint('[shutdown] save failed: $e');
+      }
+      try {
+        await ffi.close();
+      } catch (e) {
+        debugPrint('[shutdown] close failed: $e');
+      }
+    }
+    await windowManager.setPreventClose(false);
+    await windowManager.destroy();
   }
 
   // ── Autosave logic ──────────────────────────────────────────────────────────
@@ -111,6 +157,9 @@ class _MainShellState extends ConsumerState<MainShell>
     if (!autosaveOn) {
       _autosaveTimer?.cancel();
       _autosaveTimer = null;
+      // Clear the latch too, so switching autosave back on restarts the timer
+      // instead of leaving it off until the next app launch.
+      _savedAfterSync = false;
       return;
     }
 
@@ -149,10 +198,18 @@ class _MainShellState extends ConsumerState<MainShell>
   // ── Window events ─────────────────────────────────────────────────────────────
 
   @override
-  Future<void> onWindowMinimize() async => windowManager.hide();
+  Future<void> onWindowMinimize() async {
+    if (_trayReady) await windowManager.hide();
+  }
 
   @override
-  Future<void> onWindowClose() async => windowManager.hide();
+  Future<void> onWindowClose() async {
+    if (_trayReady && !_shuttingDown) {
+      await windowManager.hide();
+      return;
+    }
+    await _quit();
+  }
 
   // ── Incoming transaction notifications ────────────────────────────────────────
 
@@ -173,11 +230,11 @@ class _MainShellState extends ConsumerState<MainShell>
     final notificationsEnabled = ref.read(notificationsEnabledProvider);
     for (final tx in txs) {
       if (_knownTxHashes.contains(tx.hash)) continue;
-      if (tx.isIncoming && tx.isConfirmed && notificationsEnabled) {
+      _knownTxHashes.add(tx.hash);
+      if (tx.isIncoming && notificationsEnabled) {
         _showNotification(tx);
       }
     }
-    _knownTxHashes.addAll(txs.map((t) => t.hash));
   }
 
   void _showNotification(Transaction tx) {

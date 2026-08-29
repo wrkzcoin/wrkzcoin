@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wallet files and the keystore-backed preferences must never leave the device
+  through cloud backup or device-to-device transfer: the wallet file is
+  spend-capable, and a restored keystore entry cannot be decrypted anyway,
+  which previously left users unable to unlock a wallet they still had the
+  password for.
+
+  android:allowBackup="false" already disables this on API < 31; these rules
+  cover API 31+ where cloud-backup and device-transfer are configured
+  separately.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

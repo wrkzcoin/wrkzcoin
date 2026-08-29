@@ -24,6 +24,9 @@ dependencies:
   # Secure local storage (last wallet path, theme/log-level prefs)
   flutter_secure_storage: ^9.2.4
 
+  # PBKDF2 for the lock-screen password verifier (core/auth/wallet_auth.dart)
+  crypto: ^3.0.6
+
   # QR code display
   qr_flutter: ^4.1.0
 

@@ -43,6 +43,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     auth.walletLocked = next;
   });
 
+  ref.onDispose(auth.dispose);
+
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: auth,

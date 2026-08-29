@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
+import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
@@ -87,8 +88,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     if (caption.isEmpty) return tr.walletNameRequired;
     if (_mode != _SetupMode.menu && _mode != _SetupMode.backupSeed) {
       if (_passwordCtrl.text.isEmpty) return tr.passwordRequired;
-      if (_passwordCtrl.text.length < 6) {
-        return tr.passwordTooShort;
+      if (_passwordCtrl.text.length < AppConfig.minPasswordLength) {
+        return tr.passwordTooShort(AppConfig.minPasswordLength);
       }
       if (_passwordCtrl.text != _confirmPwCtrl.text) {
         return tr.passwordsDoNotMatch;
@@ -124,10 +125,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _error = null;
     });
 
+    final registry = ref.read(walletRegistryProvider);
+    final ffi = ref.read(walletCApiProvider);
+    // Reserve the name, but remember to release it: if the native call below
+    // fails the registry must not keep an entry pointing at a wallet that was
+    // never created, or the picker fills up with unopenable ghosts.
+    final entry = await registry.addWallet(_captionCtrl.text.trim());
+    var created = false;
+
     try {
-      final registry = ref.read(walletRegistryProvider);
-      final ffi = ref.read(walletCApiProvider);
-      final entry = await registry.addWallet(_captionCtrl.text.trim());
       final walletPath = registry.getWalletPath(entry.filename);
       final password = _passwordCtrl.text;
       final scanHeight = int.tryParse(_scanHeightCtrl.text) ?? 0;
@@ -185,13 +191,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         default:
           break;
       }
+      created = true;
 
-      await storeWalletPassword(entry.filename, password);
+      // Verifier only — the password itself is escrowed exclusively when the
+      // user turns on biometric unlock.
+      await storePasswordVerifier(entry.filename, password);
       await registry.setLastOpened(entry.filename);
       ref.read(activeWalletFilenameProvider.notifier).state = entry.filename;
 
       hapticHeavy();
 
+      if (!mounted) return;
       if (_mode == _SetupMode.create) {
         setState(() {
           _mode = _SetupMode.backupSeed;
@@ -199,9 +209,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         });
       } else {
         await markSeedBackupConfirmed(entry.filename);
-        _openWallet();
+        if (mounted) _openWallet();
       }
     } catch (e) {
+      if (!created) {
+        // Roll the reservation back so a retry does not accumulate
+        // my_wallet_2, my_wallet_3, …
+        await registry.deleteWallet(entry.filename);
+      }
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -211,6 +227,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   void _openWallet() {
+    ref.read(walletCApiProvider).setScanCoinbase(ref.read(scanCoinbaseProvider));
     ref.read(walletOpenProvider.notifier).state = true;
     ref.read(walletLockedProvider.notifier).state = false;
     context.go('/overview');
@@ -543,7 +560,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(_error!,
-                style: TextStyle(color: kError, fontSize: 13)),
+                style: const TextStyle(color: kError, fontSize: 13)),
           ),
         ],
 

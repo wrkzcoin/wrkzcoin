@@ -6,6 +6,7 @@ import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
+import '../../core/storage/wallet_registry.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
@@ -182,38 +183,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (filename == null) return;
 
     final passCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr.enterPasswordTitle),
-        content: TextField(
-          controller: passCtrl,
-          obscureText: true,
-          decoration: InputDecoration(hintText: tr.password),
-          autofocus: true,
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr.enterPasswordTitle),
+          content: TextField(
+            controller: passCtrl,
+            obscureText: true,
+            decoration: InputDecoration(hintText: tr.password),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(tr.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr.confirm),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(tr.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(tr.confirm),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+      );
+      if (ok != true) return;
 
-    final verified = await verifyWalletPassword(filename, passCtrl.text);
-    if (!verified) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr.incorrectPassword)),
-        );
+      // null means "cannot tell" (no verifier recorded) — the wallet is
+      // already open and unlocked, so don't refuse on a missing keychain
+      // entry; only a definite mismatch is a rejection.
+      final verified =
+          await verifyPasswordAgainstVerifier(filename, passCtrl.text);
+      if (verified == false) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr.incorrectPassword)),
+          );
+        }
+        return;
       }
-      return;
+    } finally {
+      passCtrl.dispose();
     }
 
     try {
@@ -289,7 +298,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final currentCtrl = TextEditingController();
     final newCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
+    try {
+      await _changePasswordFlow(tr, filename, currentCtrl, newCtrl, confirmCtrl);
+    } finally {
+      currentCtrl.dispose();
+      newCtrl.dispose();
+      confirmCtrl.dispose();
+    }
+  }
 
+  Future<void> _changePasswordFlow(
+    S tr,
+    String filename,
+    TextEditingController currentCtrl,
+    TextEditingController newCtrl,
+    TextEditingController confirmCtrl,
+  ) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -331,8 +355,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     if (ok != true) return;
 
-    final verified = await verifyWalletPassword(filename, currentCtrl.text);
-    if (!verified) {
+    final verified =
+        await verifyPasswordAgainstVerifier(filename, currentCtrl.text);
+    if (verified == false) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(tr.currentPasswordIncorrect)),
@@ -348,10 +373,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       return;
     }
-    if (newCtrl.text.length < 6) {
+    if (newCtrl.text.length < AppConfig.minPasswordLength) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(tr.passwordTooShort)),
+          SnackBar(
+              content: Text(tr.passwordTooShort(AppConfig.minPasswordLength))),
         );
       }
       return;
@@ -359,7 +385,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       await ref.read(walletCApiProvider).changePassword(newCtrl.text);
-      await storeWalletPassword(filename, newCtrl.text);
+      // Only re-record after the native call succeeded, or the stored material
+      // would describe a password the wallet file no longer accepts.
+      await storePasswordVerifier(filename, newCtrl.text);
+      if (ref.read(biometricEnabledProvider)) {
+        await storeWalletPassword(filename, newCtrl.text);
+      }
       hapticMedium();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -376,11 +407,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _switchWallet() async {
+    final ffi = ref.read(walletCApiProvider);
     try {
-      final ffi = ref.read(walletCApiProvider);
       await ffi.save();
-      ffi.close();
-    } catch (_) {}
+    } catch (_) {
+      // Fall through: the wallet still has to be closed even if the save
+      // failed, otherwise the handle leaks and its synchronizer keeps running.
+    } finally {
+      await ffi.close();
+    }
 
     ref.read(walletOpenProvider.notifier).state = false;
     ref.read(walletLockedProvider.notifier).state = false;
@@ -406,44 +441,88 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final filename = ref.read(activeWalletFilenameProvider);
     if (filename == null) return;
 
+    // Deleting the file is unrecoverable without the seed, so say so loudly
+    // when the user never confirmed a backup.
+    final backedUp = await isSeedBackupConfirmed(filename);
+    if (!mounted) return;
+
     final deleteCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr.deleteWallet),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(tr.deleteWalletTypeCaps),
-            const SizedBox(height: 12),
-            TextField(
-              controller: deleteCtrl,
-              decoration: InputDecoration(hintText: tr.deleteHint),
-              autofocus: true,
+    final bool confirmed;
+    try {
+      confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: Text(tr.deleteWallet),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!backedUp) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: kError.withAlpha(25),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber,
+                              color: kError, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(tr.seedNotBackedUpWarning,
+                                style: const TextStyle(
+                                    color: kError, fontSize: 13)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  Text(tr.deleteWalletTypeCaps),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: deleteCtrl,
+                    decoration: InputDecoration(hintText: tr.deleteHint),
+                    autofocus: true,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(tr.cancel),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: kError),
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(tr.delete),
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(tr.cancel),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: kError),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(tr.delete),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || deleteCtrl.text != 'DELETE') return;
+          ) ??
+          false;
+      if (!confirmed) return;
+      // Say why nothing happened rather than silently returning.
+      if (deleteCtrl.text.trim() != 'DELETE') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr.deleteConfirmMismatch)),
+          );
+        }
+        return;
+      }
+    } finally {
+      deleteCtrl.dispose();
+    }
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      ffi.close();
+      await ffi.close();
       final registry = ref.read(walletRegistryProvider);
       await registry.deleteWallet(filename);
       await clearWalletPassword(filename);
+      await clearPasswordVerifier(filename);
       await clearSeedBackupFlag(filename);
       hapticHeavy();
 
@@ -457,6 +536,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SnackBar(content: Text(tr.errorPrefix(e.toString()))),
         );
       }
+    }
+  }
+
+  /// Turning biometric unlock on escrows the wallet password, because
+  /// unlocking with a fingerprint has to hand the real password to the native
+  /// layer. Turning it off wipes that copy again — it is the only reason the
+  /// password is kept at all.
+  Future<void> _setBiometric(bool enabled) async {
+    final tr = S.of(context)!;
+    final filename = ref.read(activeWalletFilenameProvider);
+    if (filename == null) return;
+
+    if (!enabled) {
+      await clearWalletPassword(filename);
+      ref.read(biometricEnabledProvider.notifier).set(false);
+      return;
+    }
+
+    if (!await isBiometricAvailable()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr.biometricNotAvailable)),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+
+    final passCtrl = TextEditingController();
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr.enterPasswordTitle),
+          content: TextField(
+            controller: passCtrl,
+            obscureText: true,
+            autofocus: true,
+            decoration: InputDecoration(hintText: tr.password),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(tr.cancel)),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(tr.confirm)),
+          ],
+        ),
+      );
+      if (ok != true) return;
+
+      final verified =
+          await verifyPasswordAgainstVerifier(filename, passCtrl.text);
+      if (verified == false) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(tr.incorrectPassword)),
+          );
+        }
+        return;
+      }
+      await storeWalletPassword(filename, passCtrl.text);
+      ref.read(biometricEnabledProvider.notifier).set(true);
+    } finally {
+      passCtrl.dispose();
     }
   }
 
@@ -671,21 +816,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 title: Text(tr.biometricUnlock),
                 subtitle: Text(tr.biometricSubtitle),
                 value: biometric,
-                onChanged: (v) async {
-                  if (v) {
-                    final available = await isBiometricAvailable();
-                    if (!available) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text(tr.biometricNotAvailable)),
-                        );
-                      }
-                      return;
-                    }
-                  }
-                  ref.read(biometricEnabledProvider.notifier).set(v);
-                },
+                onChanged: (v) => _setBiometric(v),
               ),
               ListTile(
                 title: Text(tr.autoLock),
@@ -811,7 +942,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 // ── manage wallets dialog ────────────────────────────────────────────────────
 
 class _ManageWalletsDialog extends StatefulWidget {
-  final dynamic registry;
+  final WalletRegistry registry;
   final String? currentFilename;
 
   const _ManageWalletsDialog({
@@ -827,7 +958,7 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
   @override
   Widget build(BuildContext context) {
     final tr = S.of(context)!;
-    final wallets = widget.registry.wallets.toList();
+    final List<WalletEntry> wallets = widget.registry.wallets.toList();
 
     return AlertDialog(
       title: Text(tr.manageWallets),
@@ -869,7 +1000,7 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
     );
   }
 
-  Future<void> _rename(dynamic entry) async {
+  Future<void> _rename(WalletEntry entry) async {
     final tr = S.of(context)!;
     final ctrl = TextEditingController(text: entry.caption);
     final newName = await showDialog<String>(
@@ -898,7 +1029,7 @@ class _ManageWalletsDialogState extends State<_ManageWalletsDialog> {
     setState(() {});
   }
 
-  Future<void> _delete(dynamic entry) async {
+  Future<void> _delete(WalletEntry entry) async {
     final tr = S.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
