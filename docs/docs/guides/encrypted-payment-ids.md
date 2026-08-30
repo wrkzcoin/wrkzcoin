@@ -164,6 +164,34 @@ it instead. The cost is that a payment you sent to yourself also loses its
 payment ID after a seed restore. Received payments are unaffected; those are
 exactly the ones your view key can read.
 
+### Where that guarantee does not hold
+
+Suppressing depends on the wallet recognising that it spent the inputs, which it
+does by matching key images. Two setups cannot produce key images at all, and
+will show eight bytes of noise where a transaction they sent carried a short
+payment ID:
+
+- **A view-only wallet**, including `wrkz-service` opened in tracking mode. It
+  has no spend keys, so it can never derive a key image. It still sees its own
+  outgoing transactions, because the change output comes back to an address it
+  watches, and it reads them as ordinary incoming payments.
+- **A wallet restored with a scan height** later than the block its inputs
+  arrived in. It never learns those key images, so its own sends look the same
+  way.
+
+The fabricated value lands on a transaction that looks *incoming*, so this
+surfaces as a deposit carrying an unrecognised payment ID rather than a credit
+to the wrong account — the odds of eight random bytes matching a payment ID you
+actually issued are one in 2⁶⁴. Automation that matches on payment IDs should
+still check the direction of the transaction rather than relying on that.
+
+Closing this properly needs the key images exported from the wallet that holds
+the spend keys and imported into the view wallet, the way Monero does it. That
+does not exist here yet. Until it does: attribute short payment IDs in a wallet
+that holds the spend keys, and treat a view wallet's *outgoing* history as
+unreliable for them. Incoming payments — the reason to run a view wallet — are
+correct in every case, because your view key is genuinely the right one.
+
 **The wallet service (`wrkz-service`) supports both.** A short payment ID given
 to `sendTransaction` or `createDelayedTransaction` is carried down to the wallet
 in the clear and encrypted once the transaction — and so its private key —

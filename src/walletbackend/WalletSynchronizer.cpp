@@ -555,7 +555,17 @@ std::string WalletSynchronizer::decryptPaymentID(const WalletTypes::RawTransacti
 
        The exception we give up is a payment to ourselves, where our view key
        genuinely is the right one. That is worth losing on a seed restore to
-       keep the guarantee that we never show a payment ID that is not real. */
+       keep the guarantee that we never show a payment ID that is not real.
+
+       Note that guarantee has a hole this check cannot close. weSpentInputs
+       comes from matching key images, and two setups cannot produce them: a
+       view wallet, which has no spend keys, and a wallet restored with a scan
+       height later than the block its inputs arrived in. Both still see their
+       own sends - the change output comes back to an address they watch - and
+       both will read one as an ordinary incoming payment and decrypt it into
+       noise. Closing that needs key images imported from the wallet holding
+       the spend keys, the way Monero does it. See the "Where that guarantee
+       does not hold" section of docs/docs/guides/encrypted-payment-ids.md. */
     if (weSpentInputs)
     {
         return std::string();
