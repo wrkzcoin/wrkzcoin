@@ -832,6 +832,47 @@ void SubWallets::removeForkedTransactions(const uint64_t forkHeight)
 {
     std::scoped_lock lock(m_mutex);
 
+    /* Put transactions we sent back into the locked container before we drop
+       them.
+
+       This is true on its own terms - a transaction whose block was forked
+       away is pending again, exactly what m_lockedTransactions is for, and
+       checkLockedTransactions() will drop it if the daemon has never heard of
+       it. But the reason it matters is the payment ID.
+
+       A short payment ID on a transaction we sent cannot be recovered from
+       chain data: it was encrypted to the receiver, not to us. The plaintext
+       we recorded at send time lives in m_lockedTransactions until the
+       transaction confirms, at which point addTransaction() hands it to the
+       confirmed copy and erases the locked one. Dropping that confirmed copy
+       without putting the record back loses the payment ID for good, since
+       the rescan on the new chain has nothing to decrypt it with.
+
+       Only transactions we sent need this. An incoming payment ID always
+       comes back on a rescan - a long one is plaintext in tx_extra, and a
+       short one decrypts with our own view key. And a view wallet cannot
+       send, so it must not hold locked transactions at all. */
+    if (!m_isViewWallet)
+    {
+        for (const auto &transaction : m_transactions)
+        {
+            if (transaction.blockHeight < forkHeight || transaction.paymentID.empty()
+                || transaction.totalAmount() >= 0)
+            {
+                continue;
+            }
+
+            WalletTypes::Transaction pending = transaction;
+
+            /* Neither is known again until it is back in a block. This is the
+               shape storeSentTransaction() gives a freshly sent transaction. */
+            pending.blockHeight = 0;
+            pending.timestamp = 0;
+
+            m_lockedTransactions.push_back(pending);
+        }
+    }
+
     const auto it = std::remove_if(m_transactions.begin(), m_transactions.end(), [forkHeight](auto tx) {
         /* Remove the transaction if it's height is >= than the fork height */
         return tx.blockHeight >= forkHeight;
