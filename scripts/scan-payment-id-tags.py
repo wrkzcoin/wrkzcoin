@@ -124,7 +124,7 @@ def extract_extra(blob):
     return r.take(r.varint())
 
 
-def scan_nonce(nonce, counts, findings=None, height=None, extra=None):
+def scan_nonce(nonce, counts, findings=None, height=None, extra=None, census=None):
     """Walk an extra nonce, counting payment ID sub-tags.
 
     field_index matters for diagnosis. The nonce sub-field format carries no
@@ -139,6 +139,13 @@ def scan_nonce(nonce, counts, findings=None, height=None, extra=None):
     while r.remaining() > 0:
         offset = r.pos
         tag = r.byte()
+
+        # Census of the first sub-tag in every nonce. Only field 0 is
+        # trustworthy - past that we may be reading data as tags - but field 0
+        # is enough to answer "which sub-tags are actually in use on chain",
+        # which is what picking a free one safely depends on.
+        if field_index == 0 and census is not None:
+            census[tag] = census.get(tag, 0) + 1
 
         if tag == NONCE_LONG_PAYMENT_ID and r.remaining() >= 32:
             r.take(32)
@@ -167,7 +174,7 @@ def scan_nonce(nonce, counts, findings=None, height=None, extra=None):
         field_index += 1
 
 
-def scan_extra(extra, counts, findings=None, height=None):
+def scan_extra(extra, counts, findings=None, height=None, census=None):
     """Walk tx_extra, descending into the nonce field."""
     r = Reader(extra)
 
@@ -179,7 +186,7 @@ def scan_extra(extra, counts, findings=None, height=None):
         elif tag == TX_EXTRA_TAG_PUBKEY:
             r.take(32)
         elif tag == TX_EXTRA_NONCE:
-            scan_nonce(r.take(r.varint()), counts, findings, height, extra)
+            scan_nonce(r.take(r.varint()), counts, findings, height, extra, census)
         elif tag == TX_EXTRA_MERGE_MINING_TAG:
             r.take(r.varint())
         elif tag == TX_EXTRA_TRANSACTION_POW_NONCE:
@@ -274,6 +281,7 @@ def main():
     downloaded = 0
     requests = 0
     findings = []
+    census = {}
     started = time.time()
     last_print = 0.0
     interactive = sys.stdout.isatty()
@@ -344,7 +352,7 @@ def main():
                 transactions += 1
 
                 try:
-                    scan_extra(extract_extra(bytes.fromhex(tx_hex)), counts, findings, height + offset)
+                    scan_extra(extract_extra(bytes.fromhex(tx_hex)), counts, findings, height + offset, census)
                 except (ValueError, IndexError):
                     undecodable += 1
 
@@ -371,6 +379,25 @@ def main():
 
     if undecodable:
         print("\n  %d transactions could not be decoded (counted as unknown)." % undecodable)
+
+    if census:
+        print("\nEvery extra nonce sub-tag seen in first position:\n")
+
+        for tag in sorted(census):
+            known = {
+                0x00: "long plaintext payment ID",
+                0x01: "short plaintext payment ID (legacy)",
+                0x02: "short payment ID",
+                0x7F: "arbitrary data",
+            }.get(tag, "unknown - not written by this codebase")
+
+            print("  0x%02x  %8d   %s" % (tag, census[tag], known))
+
+        free = [t for t in range(0x00, 0x80) if t not in census]
+
+        print("\n  Lowest sub-tags with no occurrences on chain: %s"
+              % ", ".join("0x%02x" % t for t in free[:8]))
+        print("  Any new sub-tag must come from that list, and 0x7f is arbitrary data.")
 
     if findings:
         # A short payment ID that is not the first field in its nonce was found
