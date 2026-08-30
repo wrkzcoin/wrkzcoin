@@ -41,3 +41,4 @@ nav:
       - Daemon RPC Cookbook: guides/daemon-rpc-cookbook.md
       - Rate Limits and Performance: guides/rate-limits-and-performance.md
       - Wallet CLI Command Reference: guides/cli-command-reference.md
+      - Encrypted Payment IDs: guides/encrypted-payment-ids.md

@@ -809,4 +809,12 @@ class SDe extends S {
   String passwordTooShort(int count) {
     return 'Das Passwort muss mindestens $count Zeichen lang sein';
   }
+
+  @override
+  String get ringSize => 'Ringgröße';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
+  }
 }

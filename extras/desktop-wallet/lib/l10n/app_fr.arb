@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "Impossible de vérifier le mot de passe sur cet appareil. Utilisez « Fermer le portefeuille » puis rouvrez-le.",
   "exportJsonWarningTitle": "Exporter le portefeuille non chiffré ?",
   "exportJsonWarningBody": "Le fichier exporté contient votre clé de vue privée et vos clés de dépense privées en clair. Quiconque le lit peut dépenser vos fonds.\n\nEnregistrez-le uniquement sur un support que vous contrôlez et supprimez-le dès que vous avez terminé.",
-  "passwordTooShort": "Le mot de passe doit comporter au moins {count} caractères"
+  "passwordTooShort": "Le mot de passe doit comporter au moins {count} caractères",
+  "ringSize": "Taille de l'anneau",
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
 }

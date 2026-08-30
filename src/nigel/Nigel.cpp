@@ -15,6 +15,7 @@
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
+#include <errors/Errors.h>
 #include <sstream>
 #include <utilities/Utilities.h>
 #include <version.h>
@@ -1008,9 +1009,43 @@ bool Nigel::getTransactionsStatus(
     return parsedResponse.has_value();
 }
 
-std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
+/* A daemon new enough to return whatever it found answers 200 with short
+   per-amount lists, and the caller sizes the ring from those. An older one
+   rejects the entire request instead, naming CANT_GET_FAKE_OUTPUTS in the body.
+   That is a ring size out of reach, not a node out of reach - report it as such
+   so the caller can retry smaller rather than telling the user their daemon is
+   down. */
+static bool isNotEnoughOutputsResponse(const httplib::Result &res, std::string &error)
+{
+    if (!res || res->status == 200)
+    {
+        return false;
+    }
+
+    try
+    {
+        const nlohmann::json j = nlohmann::json::parse(res->body);
+
+        if (j.value("errorCode", 0) != static_cast<int>(CANT_GET_FAKE_OUTPUTS))
+        {
+            return false;
+        }
+
+        error = j.value("errorMessage", std::string("The daemon does not have enough outputs to mix with"));
+
+        return true;
+    }
+    catch (const nlohmann::json::exception &)
+    {
+        return false;
+    }
+}
+
+RandomOutsResponse
     Nigel::getRandomOutsByAmounts(const std::vector<uint64_t> amounts, const uint64_t requestedOuts) const
 {
+    RandomOutsResponse response;
+
     json j = {{"amounts", amounts}, {"outs_count", requestedOuts}};
 
     /* The blockchain cache doesn't call it outs_count
@@ -1044,8 +1079,13 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
 
         if (parsedResponse)
         {
-            return {true, *parsedResponse};
+            response.success = true;
+            response.outs = *parsedResponse;
+
+            return response;
         }
+
+        response.notEnoughOutputs = isNotEnoughOutputsResponse(res, response.error);
     }
     else
     {
@@ -1071,11 +1111,16 @@ std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
 
         if (parsedResponse)
         {
-            return {true, *parsedResponse};
+            response.success = true;
+            response.outs = *parsedResponse;
+
+            return response;
         }
+
+        response.notEnoughOutputs = isNotEnoughOutputsResponse(res, response.error);
     }
 
-    return {false, {}};
+    return response;
 }
 
 std::tuple<bool, bool, std::string> Nigel::sendTransaction(const CryptoNote::Transaction tx) const

@@ -24,8 +24,14 @@
 
 namespace CryptoNote
 {
+    /* std::is_pod is deprecated in C++20 and gone in C++26. It was always
+       defined as exactly this conjunction, so spelling it out changes nothing
+       but the warning. */
     template<typename T>
-    typename std::enable_if<std::is_pod<T>::value>::type
+    inline constexpr bool is_pod_v = std::is_standard_layout<T>::value && std::is_trivial<T>::value;
+
+    template<typename T>
+    typename std::enable_if<is_pod_v<T>>::type
         serializeAsBinary(std::vector<T> &value, Common::StringView name, CryptoNote::ISerializer &serializer)
     {
         std::string blob;
@@ -58,7 +64,7 @@ namespace CryptoNote
     }
 
     template<typename T>
-    typename std::enable_if<std::is_pod<T>::value>::type
+    typename std::enable_if<is_pod_v<T>>::type
         serializeAsBinary(std::list<T> &value, Common::StringView name, CryptoNote::ISerializer &serializer)
     {
         std::string blob;

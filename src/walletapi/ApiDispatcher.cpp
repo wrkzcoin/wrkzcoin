@@ -980,7 +980,10 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeBasicTransaction(
     {
         {"transactionHash", hash},
         {"fee", preparedTransaction.fee},
-        {"relayedToNetwork", sendTransaction}
+        {"relayedToNetwork", sendTransaction},
+        /* May be lower than the mixin requested, if the denominations spent did
+           not have enough outputs on chain to form a larger ring. */
+        {"mixin", preparedTransaction.mixin}
     };
 
     res.set_content(j.dump(4) + "\n", "application/json");
@@ -1103,7 +1106,10 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
     {
         {"transactionHash", hash},
         {"fee", preparedTransaction.fee},
-        {"relayedToNetwork", sendTransaction}
+        {"relayedToNetwork", sendTransaction},
+        /* May be lower than the mixin requested, if the denominations spent did
+           not have enough outputs on chain to form a larger ring. */
+        {"mixin", preparedTransaction.mixin}
     };
 
     res.set_content(j.dump(4) + "\n", "application/json");

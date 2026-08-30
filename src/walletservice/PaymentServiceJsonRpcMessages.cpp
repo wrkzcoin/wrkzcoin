@@ -328,6 +328,7 @@ namespace PaymentService
     {
         serializer(transactionHash, "transactionHash");
         serializer(fee, "fee");
+        serializer(anonymity, "anonymity");
     }
 
     void CreateDelayedTransaction::Request::serialize(CryptoNote::ISerializer &serializer, const WalletService &service)

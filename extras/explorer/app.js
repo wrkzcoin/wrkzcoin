@@ -103,6 +103,9 @@ const api = {
   getBlockByHash:     h      => apiPost('f_block_json',                { hash: h }),
   getTxByHash:        h      => apiPost('f_transaction_json',          { hash: h }),
   getMempool:         ()     => apiPost('f_on_transactions_pool_json'),
+  // Long (plaintext) payment IDs only. Short ones are encrypted to their
+  // receiver, so the daemon has nothing stable to index and rejects them.
+  getTxsByPaymentId:  p      => apiPost('f_transactions_by_payment_id_json', { paymentId: p }),
 };
 
 // ─── FORMATTING ───────────────────────────────────────────────────────────────
@@ -331,6 +334,7 @@ async function route() {
     case 'home':       return showHome();
     case 'block':      return showBlock(parts[1] || '');
     case 'tx':         return showTx(parts[1] || '');
+    case 'paymentid':  return showPaymentId(parts[1] || '');
     case 'mempool':    return showMempool();
     case 'paper':      return showPaperWallet();
     case 'import':     return showImportSeed();
@@ -437,7 +441,18 @@ async function doSearch(query) {
     } catch (e) { /* not a valid address, keep looking */ }
   }
 
-  // 64-char hex → try TX first, then block
+  // 16-char hex → an encrypted (short) payment ID. Nothing can look one up,
+  // so route to the page that explains why rather than reporting not-found.
+  if (/^[0-9a-fA-F]{16}$/.test(query)) {
+    hideLoading();
+    window.location.hash = `#/paymentid/${query.toLowerCase()}`;
+    return;
+  }
+
+  // 64-char hex is ambiguous: a TX hash, a block hash and a long payment ID
+  // all look identical. Try the two that identify exactly one thing first,
+  // and fall back to the payment ID, which names a set rather than a single
+  // transaction.
   if (/^[0-9a-fA-F]{64}$/.test(query)) {
     // Try transaction
     try {
@@ -451,13 +466,23 @@ async function doSearch(query) {
       await api.getBlockByHash(query);
       window.location.hash = `#/block/${query}`;
       return;
+    } catch (e) { /* try payment id */ }
+
+    // Try payment ID last
+    try {
+      const result = await api.getTxsByPaymentId(query);
+      if (result?.transactionHashes?.length > 0) {
+        hideLoading();
+        window.location.hash = `#/paymentid/${query.toLowerCase()}`;
+        return;
+      }
     } catch (e) { /* not found */ }
   }
 
   hideLoading();
   showError(`No results found for: <code>${escHtml(query)}</code>. `
-          + `Tip: enter a block height (number), a block or transaction hash (64 hex chars), `
-          + `or a Wrkz address to decode.`);
+          + `Tip: enter a block height (number), a block or transaction hash or a payment ID `
+          + `(64 hex chars), or a Wrkz address to decode.`);
 }
 
 // ─── HOME ─────────────────────────────────────────────────────────────────────
@@ -1053,9 +1078,20 @@ function renderTxDetail(result) {
   const { txDetails, block, tx } = result;
 
   const ZERO_PAYMENT_ID = '0000000000000000000000000000000000000000000000000000000000000000';
-  const paymentId = txDetails.paymentId && txDetails.paymentId !== ZERO_PAYMENT_ID
-    ? `<span class="hash-full">${escHtml(txDetails.paymentId)}</span>`
-    : '<span style="color:var(--text-muted)">None</span>';
+  let paymentId = '<span style="color:var(--text-muted)">None</span>';
+
+  if (txDetails.paymentId && txDetails.paymentId !== ZERO_PAYMENT_ID) {
+    // A short payment ID is encrypted against the shared secret between the
+    // sender and the receiver, so what the daemon hands us is ciphertext. Show
+    // it, but never present it as a readable payment ID - only the two parties
+    // to the transaction can recover the plaintext.
+    paymentId = `<span class="hash-full">${escHtml(txDetails.paymentId)}</span>`;
+
+    if (txDetails.paymentIdEncrypted) {
+      paymentId += ' <span class="badge badge-accent" title="Encrypted to the receiver.'
+        + ' Only the sender and receiver can read the real value.">Encrypted</span>';
+    }
+  }
   const txPublicKey = tx?.publicKey || txDetails?.extra?.publicKey || '';
   const txNonce = tx?.nonce || '';
 
@@ -1187,6 +1223,108 @@ function renderTxDetail(result) {
     ${renderCheckTxCard()}
   `;
   initCheckTxEvents({ tx, txDetails });
+}
+
+// ─── PAYMENT ID ───────────────────────────────────────────────────────────────
+
+async function showPaymentId(paymentId) {
+  setPage('paymentid');
+  clearError();
+  showLoading();
+  setHtml('paymentIdDetail', '');
+
+  paymentId = (paymentId || '').trim().toLowerCase();
+
+  /* A short payment ID is encrypted against the shared secret between sender
+     and receiver, so the bytes on chain differ in every transaction it appears
+     in. There is nothing stable to index, and saying so is far more use than
+     an empty result that reads as "never used". */
+  if (paymentId.length === 16) {
+    setHtml('paymentIdDetail', /* html */ `
+      <div class="detail-heading"><h2>Payment ID</h2></div>
+      <div class="detail-card full">
+        <div class="tool-badges">
+          <span class="badge badge-accent">Encrypted</span>
+          <span class="badge">16 characters</span>
+        </div>
+        ${field('Payment ID', paymentId)}
+        <p style="color:var(--text-muted);padding:0.5rem 0;font-size:0.875rem;">
+          Short payment IDs are encrypted to the receiver, so they cannot be
+          looked up. The same payment ID produces different bytes in every
+          transaction, and only the sender and the receiver hold the key needed
+          to read it. Open the transaction directly, or use a wallet that owns
+          one side of it.
+        </p>
+      </div>`);
+    hideLoading();
+    return;
+  }
+
+  if (!/^[0-9a-f]{64}$/.test(paymentId)) {
+    hideLoading();
+    showError(`<code>${escHtml(paymentId)}</code> is not a payment ID. `
+            + `A long payment ID is 64 hexadecimal characters.`);
+    return;
+  }
+
+  try {
+    const result = await api.getTxsByPaymentId(paymentId);
+    renderPaymentIdResults(paymentId, result);
+    clearError();
+  } catch (err) {
+    showError(classifyError(err, 'payment ID'));
+  }
+
+  hideLoading();
+}
+
+function renderPaymentIdResults(paymentId, result) {
+  const hashes = result?.transactionHashes || [];
+  const total = result?.totalCount ?? hashes.length;
+
+  if (hashes.length === 0) {
+    setHtml('paymentIdDetail', /* html */ `
+      <div class="detail-heading"><h2>Payment ID</h2></div>
+      <div class="detail-card full">
+        ${field('Payment ID', paymentId)}
+        <p style="color:var(--text-muted);padding:0.5rem 0;font-size:0.875rem;">
+          No transactions carry this payment ID. Note that only long, plaintext
+          payment IDs can be found this way.
+        </p>
+      </div>`);
+    return;
+  }
+
+  const rows = hashes.map(hash => /* html */ `
+    <tr>
+      <td class="mono"><a href="#/tx/${escHtml(hash)}">${escHtml(hash)}</a></td>
+    </tr>
+  `).join('');
+
+  const truncatedNote = result?.truncated
+    ? `<p style="color:var(--text-muted);padding:0.5rem 0;font-size:0.875rem;">Showing the first ${hashes.length} of ${total} transactions.
+       This payment ID has been reused enough that the node capped the answer.</p>`
+    : '';
+
+  setHtml('paymentIdDetail', /* html */ `
+    <div class="detail-heading"><h2>Payment ID</h2></div>
+    <div class="detail-card full">
+      <div class="tool-badges">
+        <span class="badge badge-accent">Plaintext</span>
+        <span class="badge">${total} transaction${total === 1 ? '' : 's'}</span>
+      </div>
+      ${field('Payment ID', paymentId)}
+    </div>
+    <div class="detail-card full mt">
+      <h3>Transactions (${hashes.length})</h3>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Hash</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      ${truncatedNote}
+    </div>`);
 }
 
 // ─── MEMPOOL ──────────────────────────────────────────────────────────────────

@@ -363,5 +363,7 @@
   "seedNotBackedUpWarning": "Vous n'avez pas confirmé la sauvegarde de la phrase de récupération de ce portefeuille. Le supprimer maintenant rendra les fonds irrécupérables.",
   "wrkzReceived": "WRKZ reçus",
   "retry": "Réessayer",
-  "youReceivedAmount": "Vous avez reçu {amount}"
+  "youReceivedAmount": "Vous avez reçu {amount}",
+  "ringSize": "Taille de l'anneau",
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
 }

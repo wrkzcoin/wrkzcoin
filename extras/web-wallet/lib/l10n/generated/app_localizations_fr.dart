@@ -650,12 +650,12 @@ class SFr extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Version $version — Portefeuille de bureau WRKZ';
+    return 'Version $version — Portefeuille web WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 est le portefeuille de bureau officiel pour WrkzCoin (WRKZ), une cryptomonnaie rapide et légère basée sur CryptoNote.\n\nCréé avec Flutter, propulsé par wallet-api.';
+      'PLUTON v2 est le portefeuille web officiel pour WrkzCoin (WRKZ), une cryptomonnaie rapide et légère basée sur CryptoNote.\n\nCréé avec Flutter, propulsé par wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -789,4 +789,12 @@ class SFr extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Taille de l\'anneau';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
+  }
 }

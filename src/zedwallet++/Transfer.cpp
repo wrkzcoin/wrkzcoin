@@ -17,6 +17,7 @@
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Input.h>
+#include <utilities/Mixins.h>
 #include <zedwallet++/GetInput.h>
 #include <zedwallet++/Utilities.h>
 
@@ -280,7 +281,14 @@ void sendTransaction(
         ? unlockedBalance - nodeFee - preparedTransaction.fee
         : amount;
 
-    if (!confirmTransaction(walletBackend, destination, actualAmount, effectivePaymentID, nodeFee, preparedTransaction.fee))
+    if (!confirmTransaction(
+            walletBackend,
+            destination,
+            actualAmount,
+            effectivePaymentID,
+            nodeFee,
+            preparedTransaction.fee,
+            preparedTransaction.mixin))
     {
         cancel();
         return;
@@ -315,7 +323,8 @@ bool confirmTransaction(
     const uint64_t amount,
     const std::string paymentID,
     const uint64_t nodeFee,
-    const uint64_t fee)
+    const uint64_t fee,
+    const uint64_t mixin)
 {
     std::cout << InformationMsg("\nConfirm Transaction?\n");
 
@@ -329,6 +338,18 @@ bool confirmTransaction(
     if (paymentID != "")
     {
         std::cout << ",\nand a Payment ID of " << SuccessMsg(paymentID);
+
+        /* Worth saying which kind this is: a short payment ID is encrypted to
+           the receiver and nobody else can read it, a long one is written to
+           the chain in the clear for anyone to read. */
+        if (paymentID.length() == WalletConfig::shortPaymentIDLength)
+        {
+            std::cout << InformationMsg("\n(short - encrypted, only the receiver can read it)");
+        }
+        else
+        {
+            std::cout << WarningMsg("\n(long - stored in plaintext, readable by anyone)");
+        }
     }
     else
     {
@@ -341,6 +362,22 @@ bool confirmTransaction(
     std::cout << InformationMsg("Estimated minimum spendable delay after confirmation: ")
               << SuccessMsg(CryptoNote::parameters::MINIMUM_UNLOCK_TIME_BLOCKS) << InformationMsg(" blocks")
               << std::endl;
+
+    /* If we ended up below the network default, the amounts being spent did not
+       have enough outputs on the chain to build the usual ring. Say so before
+       the user approves - this send is less private than they would normally
+       get, and that is not something to discover afterwards. */
+    const auto [minMixin, maxMixin, defaultMixin] =
+        Utilities::getMixinAllowableRange(walletBackend->getStatus().networkBlockCount);
+
+    if (mixin < defaultMixin)
+    {
+        std::cout << WarningMsg("\nRing size reduced to ") << WarningMsg(std::to_string(mixin + 1))
+                  << WarningMsg(" (normally ") << WarningMsg(std::to_string(defaultMixin + 1)) << WarningMsg(").\n")
+                  << InformationMsg("The amounts being sent do not have enough outputs on the chain\n"
+                                    "to form a full ring. This transaction is less private than usual.\n")
+                  << std::endl;
+    }
 
     if (Utilities::confirm("Is this correct?"))
     {

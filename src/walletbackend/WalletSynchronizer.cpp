@@ -16,6 +16,7 @@
 #include <future>
 #include <iostream>
 #include <logger/Logger.h>
+#include <utilities/PaymentIdEncryption.h>
 #include <utilities/ThreadSafeDeque.h>
 #include <utilities/ThreadSafeQueue.h>
 #include <utilities/Utilities.h>
@@ -526,6 +527,57 @@ std::optional<WalletTypes::Transaction> WalletSynchronizer::processCoinbaseTrans
     return std::nullopt;
 }
 
+std::string WalletSynchronizer::decryptPaymentID(const WalletTypes::RawTransaction &tx, const bool weSpentInputs)
+    const
+{
+    /* Only short payment IDs are encrypted. A long payment ID is 64 hex
+       characters and is stored in plaintext, so there is nothing to do.
+
+       We can key off the length alone: the daemon no longer surfaces the
+       legacy plaintext short payment ID, so anything 16 characters long
+       reached us from an encrypted field. */
+    if (tx.paymentID.length() != WalletConfig::shortPaymentIDLength)
+    {
+        return tx.paymentID;
+    }
+
+    /* If we spent inputs here then we sent this transaction, and the payment
+       ID was encrypted to whoever we sent it to - not to us. Decrypting with
+       our own view key would not fail, it would succeed and hand back eight
+       bytes of noise that look exactly like a real payment ID. Report nothing
+       instead.
+
+       In normal operation this costs us nothing: SubWallets::addTransaction
+       puts back the plaintext we recorded when we sent it. It only bites after
+       restoring from seed into a fresh wallet file, where that record is gone.
+       A missing payment ID on a transaction we sent is a far better outcome
+       than a plausible looking wrong one.
+
+       The exception we give up is a payment to ourselves, where our view key
+       genuinely is the right one. That is worth losing on a seed restore to
+       keep the guarantee that we never show a payment ID that is not real.
+
+       Note that guarantee has a hole this check cannot close. weSpentInputs
+       comes from matching key images, and two setups cannot produce them: a
+       view wallet, which has no spend keys, and a wallet restored with a scan
+       height later than the block its inputs arrived in. Both still see their
+       own sends - the change output comes back to an address they watch - and
+       both will read one as an ordinary incoming payment and decrypt it into
+       noise. Closing that needs key images imported from the wallet holding
+       the spend keys, the way Monero does it. See the "Where that guarantee
+       does not hold" section of docs/docs/guides/encrypted-payment-ids.md. */
+    if (weSpentInputs)
+    {
+        return std::string();
+    }
+
+    /* An incoming payment. We reach the shared secret from the transaction
+       public key and our own private view key. Returns an empty string if the
+       transaction public key is not a valid curve point, which again reports
+       nothing rather than something wrong. */
+    return Utilities::encryptPaymentIdHex(tx.paymentID, tx.transactionPublicKey, m_privateViewKey);
+}
+
 std::tuple<std::optional<WalletTypes::Transaction>, std::vector<std::tuple<Crypto::PublicKey, Crypto::KeyImage>>>
     WalletSynchronizer::processTransaction(
         const WalletTypes::WalletBlockInfo &block,
@@ -580,7 +632,7 @@ std::tuple<std::optional<WalletTypes::Transaction>, std::vector<std::tuple<Crypt
             fee,
             block.blockTimestamp,
             block.blockHeight,
-            tx.paymentID,
+            decryptPaymentID(tx, !spentKeyImages.empty()),
             tx.unlockTime,
             isCoinbaseTransaction);
 

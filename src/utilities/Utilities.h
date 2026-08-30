@@ -57,9 +57,23 @@ namespace Utilities
         const size_t transactionSize,
         const uint64_t height);
 
+    /* An upper bound on what a transaction of this shape will serialise to. It
+       deliberately sits above the truth: callers size a fee from it, and the
+       fee has to clear what the network charges for the finished transaction. */
     size_t estimateTransactionSize(
         const uint64_t mixin,
         const size_t numInputs,
+        const size_t numOutputs,
+        const bool havePaymentID,
+        const size_t extraDataSize);
+
+    /* As above, for a transaction whose inputs do not all carry the same ring
+       size. One entry per input. Consensus permits mixed rings - Mixins::validate
+       bounds the largest and smallest, not each one against the other - so the
+       size accounting has to be able to express them even while wallets choose
+       to keep every ring the same. */
+    size_t estimateTransactionSize(
+        const std::vector<uint64_t> &mixins,
         const size_t numOutputs,
         const bool havePaymentID,
         const size_t extraDataSize);

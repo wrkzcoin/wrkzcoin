@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "Das Passwort kann auf diesem Gerät nicht überprüft werden. Verwenden Sie „Wallet stattdessen schließen“ und öffnen Sie die Wallet erneut.",
   "exportJsonWarningTitle": "Unverschlüsselte Wallet exportieren?",
   "exportJsonWarningBody": "Die exportierte Datei enthält Ihren privaten View-Key und Ihre privaten Spend-Keys im Klartext. Wer sie liest, kann Ihr Guthaben ausgeben.\n\nSpeichern Sie sie nur auf einem Datenträger, den Sie kontrollieren, und löschen Sie sie danach sofort.",
-  "passwordTooShort": "Das Passwort muss mindestens {count} Zeichen lang sein"
+  "passwordTooShort": "Das Passwort muss mindestens {count} Zeichen lang sein",
+  "ringSize": "Ringgröße",
+  "ringSizeReduced": "Ringgröße auf {actual} reduziert (normalerweise {normal}). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich."
 }

@@ -648,12 +648,12 @@ class SPt extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Versão $version — Carteira Desktop WRKZ';
+    return 'Versão $version — Carteira Web WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 é a carteira desktop oficial do WrkzCoin (WRKZ), uma criptomoeda rápida e leve baseada em CryptoNote.\n\nConstruída com Flutter, alimentada por wallet-api.';
+      'PLUTON v2 é a carteira web oficial do WrkzCoin (WRKZ), uma criptomoeda rápida e leve baseada em CryptoNote.\n\nConstruída com Flutter, alimentada por wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -787,4 +787,12 @@ class SPt extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Tamanho do anel';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
+  }
 }

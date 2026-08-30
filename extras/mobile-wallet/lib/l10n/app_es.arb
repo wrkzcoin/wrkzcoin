@@ -363,5 +363,7 @@
   "seedNotBackedUpWarning": "No ha confirmado una copia de seguridad de la frase semilla de esta cartera. Eliminarla ahora significa que los fondos no se podrán recuperar.",
   "wrkzReceived": "WRKZ recibidos",
   "retry": "Reintentar",
-  "youReceivedAmount": "Ha recibido {amount}"
+  "youReceivedAmount": "Ha recibido {amount}",
+  "ringSize": "Tamaño del anillo",
+  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual."
 }

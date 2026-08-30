@@ -811,4 +811,12 @@ class SPt extends S {
   String passwordTooShort(int count) {
     return 'A senha deve ter pelo menos $count caracteres';
   }
+
+  @override
+  String get ringSize => 'Tamanho do anel';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
+  }
 }

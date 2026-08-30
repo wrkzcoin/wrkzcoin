@@ -762,4 +762,12 @@ class SVi extends S {
   String youReceivedAmount(String amount) {
     return 'Bạn đã nhận $amount';
   }
+
+  @override
+  String get ringSize => 'Kích thước vòng';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Kích thước vòng giảm xuống $actual (thông thường là $normal). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.';
+  }
 }

@@ -185,10 +185,36 @@ namespace Constants
                                                 9000000000000000000,
                                                 10000000000000000000ull};
 
-    /* Indicates the following data is a payment ID */
+    /* Indicates the following data is a long payment ID (32 bytes). These are
+       stored in plaintext and are visible to anyone reading the chain. */
     const uint8_t TX_EXTRA_PAYMENT_ID_IDENTIFIER = 0x00;
-    /* Indicates the following data is a short encrypted payment ID (8 bytes) */
-    const uint8_t TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER = 0x01;
+
+    /* Two sub-tags carry a legacy plaintext short payment ID (8 bytes).
+
+       0x01 is what the released build wrote. 0x02 was written by a pre-release
+       build and exists in a handful of mainnet transactions - a chain scan
+       found four, all in first position, so they are real fields rather than
+       misparses.
+
+       Despite once being named "encrypted", nothing ever encrypted either of
+       them. We consume both so that anything following them in the nonce still
+       parses, but we no longer create them and we deliberately do not surface
+       them as payment IDs - a missing payment ID is a safer failure than a
+       wrong one. */
+    const uint8_t TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER = 0x01;
+    const uint8_t TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER_PRERELEASE = 0x02;
+
+    /* Indicates the following data is a short payment ID (8 bytes) encrypted
+       against the shared secret between the sender and the receiver, using the
+       same scheme as Monero. Only the two parties to the transaction can
+       recover the plaintext.
+
+       0x03 because both 0x01 and 0x02 are burned by the transactions above.
+       A chain scan of every sub-tag in first position found only 0x00, 0x01
+       and 0x02 in use, so 0x03 is the lowest value that is genuinely free.
+       Do not pick a sub-tag without re-running that scan - see
+       scripts/scan-payment-id-tags.py. */
+    const uint8_t TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER = 0x03;
 
     /* Indicates the following data is a transaction public key */
     const uint8_t TX_EXTRA_PUBKEY_IDENTIFIER = 0x01;

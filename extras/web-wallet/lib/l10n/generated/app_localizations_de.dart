@@ -651,7 +651,7 @@ class SDe extends S {
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 ist das offizielle Desktop-Wallet für WrkzCoin (WRKZ), eine schnelle und leichtgewichtige CryptoNote-basierte Kryptowährung.\n\nErstellt mit Flutter, betrieben von wallet-api.';
+      'PLUTON v2 ist das offizielle Web-Wallet für WrkzCoin (WRKZ), eine schnelle und leichtgewichtige CryptoNote-basierte Kryptowährung.\n\nErstellt mit Flutter, betrieben von wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -785,4 +785,12 @@ class SDe extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Ringgröße';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
+  }
 }

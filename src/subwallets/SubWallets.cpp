@@ -361,9 +361,30 @@ void SubWallets::addUnconfirmedTransaction(const WalletTypes::Transaction tx)
     m_lockedTransactions.push_back(tx);
 }
 
-void SubWallets::addTransaction(const WalletTypes::Transaction tx)
+void SubWallets::addTransaction(WalletTypes::Transaction tx)
 {
     std::scoped_lock lock(m_mutex);
+
+    /* We may already hold the plaintext payment ID for this transaction, from
+       when we sent it.
+
+       A short payment ID is encrypted against the shared secret between the
+       sender and the receiver. If we were the sender and someone else was the
+       receiver, the copy that comes back to us from the chain is ciphertext we
+       have no way to read - our view key is not part of that shared secret.
+       So prefer what we recorded at send time.
+
+       For a long payment ID, and for a transaction we received rather than
+       sent, the two values agree and this is a no-op. */
+    const auto locked = std::find_if(
+        m_lockedTransactions.begin(), m_lockedTransactions.end(), [&tx](const auto &transaction) {
+            return tx.hash == transaction.hash;
+        });
+
+    if (locked != m_lockedTransactions.end() && !locked->paymentID.empty())
+    {
+        tx.paymentID = locked->paymentID;
+    }
 
     /* If we sent this transaction, we will input it into the transactions
        vector instantly. This lets us display the data to the user, and then
@@ -810,6 +831,47 @@ void SubWallets::markInputAsLocked(const Crypto::KeyImage keyImage, const Crypto
 void SubWallets::removeForkedTransactions(const uint64_t forkHeight)
 {
     std::scoped_lock lock(m_mutex);
+
+    /* Put transactions we sent back into the locked container before we drop
+       them.
+
+       This is true on its own terms - a transaction whose block was forked
+       away is pending again, exactly what m_lockedTransactions is for, and
+       checkLockedTransactions() will drop it if the daemon has never heard of
+       it. But the reason it matters is the payment ID.
+
+       A short payment ID on a transaction we sent cannot be recovered from
+       chain data: it was encrypted to the receiver, not to us. The plaintext
+       we recorded at send time lives in m_lockedTransactions until the
+       transaction confirms, at which point addTransaction() hands it to the
+       confirmed copy and erases the locked one. Dropping that confirmed copy
+       without putting the record back loses the payment ID for good, since
+       the rescan on the new chain has nothing to decrypt it with.
+
+       Only transactions we sent need this. An incoming payment ID always
+       comes back on a rescan - a long one is plaintext in tx_extra, and a
+       short one decrypts with our own view key. And a view wallet cannot
+       send, so it must not hold locked transactions at all. */
+    if (!m_isViewWallet)
+    {
+        for (const auto &transaction : m_transactions)
+        {
+            if (transaction.blockHeight < forkHeight || transaction.paymentID.empty()
+                || transaction.totalAmount() >= 0)
+            {
+                continue;
+            }
+
+            WalletTypes::Transaction pending = transaction;
+
+            /* Neither is known again until it is back in a block. This is the
+               shape storeSentTransaction() gives a freshly sent transaction. */
+            pending.blockHeight = 0;
+            pending.timestamp = 0;
+
+            m_lockedTransactions.push_back(pending);
+        }
+    }
 
     const auto it = std::remove_if(m_transactions.begin(), m_transactions.end(), [forkHeight](auto tx) {
         /* Remove the transaction if it's height is >= than the fork height */

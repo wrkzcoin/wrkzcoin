@@ -15,7 +15,11 @@ namespace CryptoNote
 {
     uint64_t getDefaultMixinByHeight(const uint64_t height)
     {
-        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V5_HEIGHT)
+        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V6_HEIGHT)
+        {
+            return CryptoNote::parameters::DEFAULT_MIXIN_V6;
+        }
+        else if (height >= CryptoNote::parameters::MIXIN_LIMITS_V5_HEIGHT)
         {
             return CryptoNote::parameters::DEFAULT_MIXIN_V5;
         }

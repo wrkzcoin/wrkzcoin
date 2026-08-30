@@ -276,5 +276,7 @@
   "languageJa": "\u65e5\u672c\u8a9e",
   "languageEs": "Espa\u00f1ol",
   "languagePt": "Portugu\u00eas",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+  "ringSize": "Tamaño del anillo",
+  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual."
 }

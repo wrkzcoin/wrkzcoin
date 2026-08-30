@@ -394,5 +394,21 @@
         "type": "int"
       }
     }
+  },
+  "ringSize": "Ring size",
+  "@ringSize": {
+    "description": "Label for the ring size a transaction was built with"
+  },
+  "ringSizeReduced": "Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.",
+  "@ringSizeReduced": {
+    "description": "Warning shown before confirming a send whose ring came out below the network default",
+    "placeholders": {
+      "actual": {
+        "type": "int"
+      },
+      "normal": {
+        "type": "int"
+      }
+    }
   }
 }
