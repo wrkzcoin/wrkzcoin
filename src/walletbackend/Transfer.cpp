@@ -72,7 +72,88 @@ namespace SendTransaction
         );
     }
 
+    /* Defined below - sendTransactionAdvanced() wraps this so it can retry at a
+       lower mixin. */
+    static std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvancedWithMixin(
+        std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
+        const uint64_t mixin,
+        const WalletTypes::FeeType fee,
+        std::string paymentID,
+        const std::vector<std::string> addressesToTakeFrom,
+        std::string changeAddress,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets,
+        uint64_t unlockTime,
+        const std::vector<uint8_t> extraData,
+        const bool sendAll,
+        const bool sendTransaction);
+
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
+        std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
+        const uint64_t mixin,
+        const WalletTypes::FeeType fee,
+        std::string paymentID,
+        const std::vector<std::string> addressesToTakeFrom,
+        std::string changeAddress,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets,
+        uint64_t unlockTime,
+        const std::vector<uint8_t> extraData,
+        const bool sendAll,
+        const bool sendTransaction)
+    {
+        auto result = sendTransactionAdvancedWithMixin(
+            addressesAndAmounts,
+            mixin,
+            fee,
+            paymentID,
+            addressesToTakeFrom,
+            changeAddress,
+            daemon,
+            subWallets,
+            unlockTime,
+            extraData,
+            sendAll,
+            sendTransaction
+        );
+
+        /* Some denominations do not have enough outputs on the chain to build a
+           ring at the requested mixin, and there is no partial success - the
+           send just fails. Rather than leaving those funds unspendable, drop to
+           the lowest mixin the network currently accepts and try once more.
+
+           This trades anonymity for the transaction being possible at all, so it
+           only ever happens as a fallback, never as the first attempt. Before a
+           fork that raises the default above the minimum this is a no-op, since
+           the requested mixin already is the minimum. */
+        if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS)
+        {
+            const auto [minMixin, maxMixin, defaultMixin] =
+                Utilities::getMixinAllowableRange(daemon->networkBlockCount());
+
+            if (mixin > minMixin)
+            {
+                result = sendTransactionAdvancedWithMixin(
+                    addressesAndAmounts,
+                    minMixin,
+                    fee,
+                    paymentID,
+                    addressesToTakeFrom,
+                    changeAddress,
+                    daemon,
+                    subWallets,
+                    unlockTime,
+                    extraData,
+                    sendAll,
+                    sendTransaction
+                );
+            }
+        }
+
+        return result;
+    }
+
+    static std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvancedWithMixin(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const uint64_t mixin,
         const WalletTypes::FeeType fee,
