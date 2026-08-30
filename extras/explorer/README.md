@@ -149,6 +149,28 @@ a copy of this folder opened straight off disk.
 
 Searching for an address in the header search box jumps straight to the decoder.
 
+### Searching by payment ID
+
+The header search box accepts a long payment ID as well as a block height, block
+hash, transaction hash and address. Since a long payment ID is 64 hex characters
+and so is a transaction hash and a block hash, the search tries them in that
+order and falls back to the payment ID, which names a set of transactions rather
+than one.
+
+A payment ID with results routes to `#/paymentid/<hex>`, listing every
+transaction that carries it.
+
+This needs the daemon in explorer mode (`--daemon-mode explorer`), because it
+reads a database index. A node reused heavily enough to exceed the node's cap
+returns a truncated list, and the page says so rather than quietly showing part
+of the answer.
+
+**Short payment IDs cannot be looked up.** They are encrypted against the shared
+secret between sender and receiver, so the same payment ID is different bytes in
+every transaction and there is nothing stable to index. Searching for one routes
+to a page that explains this, rather than reporting "not found" — which would
+wrongly suggest the payment ID had never been used.
+
 ### Payment ID lengths
 
 WrkzCoin accepts both payment ID forms, and the tools handle each:

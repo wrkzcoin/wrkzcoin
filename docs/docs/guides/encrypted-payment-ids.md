@@ -14,9 +14,9 @@ a tip bot, and how to migrate.
 | Long | 64 hex chars (32 bytes) | plaintext | anyone | yes, by anything that indexes the chain |
 | Short | 16 hex chars (8 bytes) | encrypted | sender and receiver only | no |
 
-Note "looked up" means by a block explorer or any service that reads blocks and
-builds its own index. The daemon itself exposes no lookup-by-payment-ID
-endpoint, for either kind.
+A daemon in explorer mode can look up a long payment ID directly — see
+[Looking up a payment ID](#looking-up-a-payment-id) below. A short one cannot be
+looked up by anything, including the wallets that can read it.
 
 Nothing about long payment IDs has changed. If you use them today, you can keep
 using them and no action is required.
@@ -122,10 +122,35 @@ short payment ID and more than one destination is refused with
 `SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION`. Change outputs do not count. Use a
 long payment ID if you need to pay several addresses at once.
 
-**Short payment IDs cannot be searched for.** There is no way to ask a daemon or
-a block explorer "show me the transaction with payment ID X" — the value on
-chain is ciphertext, and it differs per transaction. Attribution has to happen
-in the wallet that holds the view key. Long payment IDs are unaffected.
+**Short payment IDs cannot be looked up.** Nothing that reads the chain can
+answer "show me the transaction with payment ID X" — the value on chain is
+ciphertext, and the same payment ID encrypts differently in every transaction.
+Attribution has to happen in the wallet that holds the view key. Long payment
+IDs are unaffected; see below.
+
+### Looking up a payment ID
+
+A daemon in explorer mode (`--daemon-mode explorer`) answers
+`f_transactions_by_payment_id_json`:
+
+```json
+{"jsonrpc":"2.0","id":"0","method":"f_transactions_by_payment_id_json",
+ "params":{"paymentId":"<64 hex characters>"}}
+```
+
+It returns `transactionHashes`, `totalCount` and `truncated`. Results come from
+both the chain and the mempool, so a pending deposit shows up.
+
+Only long payment IDs are indexed — the index is built from tag `0x00` alone, so
+encrypted ones never enter it. Passing a short payment ID is refused with an
+explanation rather than an empty result, because an empty result would wrongly
+read as "this payment ID was never used".
+
+A payment ID reused enough to exceed the node's `--rpc-max-block-count` gets a
+capped list with `truncated` set, rather than an unbounded response.
+
+It is gated behind explorer mode because it reads a database index, which is not
+something a plain node should do for anyone who asks.
 
 **A wallet restored from seed loses payment IDs on transactions it sent.** The
 payment ID was encrypted to the *receiver*, so the sender cannot recover it from

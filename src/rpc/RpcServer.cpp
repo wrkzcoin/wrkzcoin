@@ -16,6 +16,7 @@
 #include "version.h"
 
 #include <config/Constants.h>
+#include <config/WalletConfig.h>
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
 #include <errors/ValidateParameters.h>
@@ -249,6 +250,16 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
         else if (method == "f_on_transactions_pool_json")
         {
             router(&RpcServer::getTransactionsInPool, RpcMode::Explorer, bodyNotRequired, syncNotRequired)(req, res);
+        }
+        else if (method == "f_transactions_by_payment_id_json")
+        {
+            /* Explorer mode: this walks a database index, so it is not
+               something a plain node should answer for anyone who asks. */
+            router(
+                &RpcServer::getTransactionHashesByPaymentId,
+                RpcMode::Explorer,
+                bodyRequired,
+                syncNotRequired)(req, res);
         }
         else
         {
@@ -2177,6 +2188,79 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
     nlohmann::json result;
     result["status"] = "OK";
     result["transactions"] = txArr;
+
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getTransactionHashesByPaymentId(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const nlohmann::json &body)
+{
+    const auto params = getObjectFromJSON(body, "params");
+    const auto paymentIdStr = getStringFromJSON(params, "paymentId");
+
+    /* Only long payment IDs are indexed. A short one is encrypted against the
+       shared secret with its receiver, so the same payment ID produces
+       different bytes in every transaction and there is nothing stable to look
+       up. Say that, rather than returning an empty result that reads as "this
+       payment ID was never used". */
+    if (paymentIdStr.length() == WalletConfig::shortPaymentIDLength)
+    {
+        failJsonRpcRequest(
+            -1,
+            "Short payment IDs are encrypted to their receiver and cannot be looked up. "
+            "Only the sender and the receiver can read one.",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    Crypto::Hash paymentId;
+
+    if (!Common::podFromHex(paymentIdStr, paymentId))
+    {
+        failJsonRpcRequest(
+            -1,
+            "Payment ID specified is not 64 valid hex characters!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    std::vector<Crypto::Hash> hashes = m_core->getTransactionHashesByPaymentId(paymentId);
+
+    /* A payment ID that has been reused - a shared exchange deposit ID, say -
+       can name a very large number of transactions. Bound the answer so one
+       lookup cannot pull an unbounded amount out of the database, and tell the
+       caller when the list was cut short rather than silently truncating. */
+    const size_t total = hashes.size();
+    const bool truncated = total > m_rpcMaxBlockCount;
+
+    if (truncated)
+    {
+        hashes.resize(m_rpcMaxBlockCount);
+    }
+
+    nlohmann::json hashArr = nlohmann::json::array();
+
+    for (const auto &hash : hashes)
+    {
+        hashArr.push_back(Common::podToHex(hash));
+    }
+
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["transactionHashes"] = hashArr;
+    result["totalCount"] = total;
+    result["truncated"] = truncated;
 
     nlohmann::json j;
     j["jsonrpc"] = "2.0";

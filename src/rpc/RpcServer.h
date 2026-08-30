@@ -276,6 +276,13 @@ class RpcServer
     std::tuple<Error, uint16_t>
         getTransactionsInPool(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
+    /* Looks up the transactions carrying a given payment ID. Only long
+       plaintext payment IDs can be found this way - the index is built from
+       them alone, and a short payment ID is encrypted to its receiver so the
+       same one looks different in every transaction it appears in. */
+    std::tuple<Error, uint16_t>
+        getTransactionHashesByPaymentId(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
+
     //////////////////////////////
     /* Private member variables */
     //////////////////////////////
