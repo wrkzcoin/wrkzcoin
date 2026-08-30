@@ -124,19 +124,39 @@ def extract_extra(blob):
     return r.take(r.varint())
 
 
-def scan_nonce(nonce, counts):
-    """Walk an extra nonce, counting payment ID sub-tags."""
+def scan_nonce(nonce, counts, findings=None, height=None, extra=None):
+    """Walk an extra nonce, counting payment ID sub-tags.
+
+    field_index matters for diagnosis. The nonce sub-field format carries no
+    length prefix for payment IDs, so once we walk past something we do not
+    model we are just reading bytes and calling them tags. A hit at field 0 is
+    a real payment ID; a hit further in may be an artifact of walking over
+    unstructured data, and is recorded as such rather than trusted.
+    """
     r = Reader(nonce)
+    field_index = 0
 
     while r.remaining() > 0:
+        offset = r.pos
         tag = r.byte()
 
         if tag == NONCE_LONG_PAYMENT_ID and r.remaining() >= 32:
             r.take(32)
             counts[NONCE_LONG_PAYMENT_ID] += 1
         elif tag in (NONCE_SHORT_PAYMENT_ID, NONCE_ENCRYPTED_SHORT_PAYMENT_ID) and r.remaining() >= 8:
-            r.take(8)
+            value = r.take(8)
             counts[tag] += 1
+
+            if findings is not None:
+                findings.append({
+                    "height": height,
+                    "tag": tag,
+                    "field_index": field_index,
+                    "offset": offset,
+                    "value": value.hex(),
+                    "nonce": nonce.hex(),
+                    "extra": extra.hex() if extra is not None else "",
+                })
         elif tag == NONCE_ARBITRARY_DATA:
             r.take(r.varint())
         else:
@@ -144,8 +164,10 @@ def scan_nonce(nonce, counts):
             # skip, so stop rather than report a misparse as a payment ID.
             return
 
+        field_index += 1
 
-def scan_extra(extra, counts):
+
+def scan_extra(extra, counts, findings=None, height=None):
     """Walk tx_extra, descending into the nonce field."""
     r = Reader(extra)
 
@@ -157,7 +179,7 @@ def scan_extra(extra, counts):
         elif tag == TX_EXTRA_TAG_PUBKEY:
             r.take(32)
         elif tag == TX_EXTRA_NONCE:
-            scan_nonce(r.take(r.varint()), counts)
+            scan_nonce(r.take(r.varint()), counts, findings, height, extra)
         elif tag == TX_EXTRA_MERGE_MINING_TAG:
             r.take(r.varint())
         elif tag == TX_EXTRA_TRANSACTION_POW_NONCE:
@@ -251,6 +273,7 @@ def main():
     undecodable = 0
     downloaded = 0
     requests = 0
+    findings = []
     started = time.time()
     last_print = 0.0
     interactive = sys.stdout.isatty()
@@ -269,9 +292,15 @@ def main():
             format_bytes(downloaded), rate, format_duration(remaining))
 
         if interactive and not final:
-            print(line.ljust(78), end="\r", flush=True)
+            # Pad to whatever the previous line was, so a shorter line cannot
+            # leave a tail of the old one behind it.
+            print(line.ljust(progress.width), end="\r", flush=True)
+            progress.width = len(line)
         else:
-            print(line, flush=True)
+            print(line.ljust(progress.width), flush=True)
+            progress.width = 0
+
+    progress.width = 0
 
     while height <= end:
         count = args.batch
@@ -310,12 +339,12 @@ def main():
                 return 2
             break
 
-        for item in items:
+        for offset, item in enumerate(items):
             for tx_hex in item.get("transactions", []):
                 transactions += 1
 
                 try:
-                    scan_extra(extract_extra(bytes.fromhex(tx_hex)), counts)
+                    scan_extra(extract_extra(bytes.fromhex(tx_hex)), counts, findings, height + offset)
                 except (ValueError, IndexError):
                     undecodable += 1
 
@@ -342,6 +371,29 @@ def main():
 
     if undecodable:
         print("\n  %d transactions could not be decoded (counted as unknown)." % undecodable)
+
+    if findings:
+        # A short payment ID that is not the first field in its nonce was found
+        # by walking over bytes we do not model, so the "tag" may just be data.
+        suspect = [f for f in findings if f["field_index"] != 0]
+
+        print("\nEvery short payment ID found, with where it sat in the nonce:\n")
+
+        for f in findings:
+            print("  height %-9d %s  field %d at offset %d%s"
+                  % (f["height"], TAG_NAMES[f["tag"]].split(" (")[0], f["field_index"], f["offset"],
+                     "   <-- SUSPECT" if f["field_index"] != 0 else ""))
+            print("    value %s" % f["value"])
+            print("    nonce %s" % f["nonce"])
+            print("    extra %s" % f["extra"])
+            print()
+
+        if suspect:
+            print("  %d of these were not the first field in their nonce. The nonce sub-field" % len(suspect))
+            print("  format has no length prefix for payment IDs, so once the walk passes")
+            print("  something it does not model it is reading raw bytes and calling them")
+            print("  tags. Treat those as probable false positives, not real payment IDs.")
+            print()
 
     legacy = counts[NONCE_SHORT_PAYMENT_ID]
 
