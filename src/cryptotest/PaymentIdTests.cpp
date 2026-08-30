@@ -5,10 +5,13 @@
 #include "PaymentIdTests.h"
 
 #include <common/StringTools.h>
+#include <common/TransactionExtra.h>
+#include <config/Constants.h>
 #include <crypto/crypto.h>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <utilities/ParseExtra.h>
 #include <utilities/PaymentIdEncryption.h>
 #include <vector>
 
@@ -180,6 +183,91 @@ namespace PaymentIdTests
         std::cout << "Known answer:                 ";
 
         check("known answer for the fixed test vectors", KNOWN_CIPHERTEXT, ciphertext);
+
+        std::cout << "PASSED" << std::endl;
+
+        /* The whole path, not just the cipher: build a tx_extra the way a
+           transaction does, then read it back the way the daemon and the
+           wallet do. This is what catches a sub-tag that the writer and the
+           reader disagree about. */
+        std::cout << "tx_extra round trip:          ";
+
+        std::vector<uint8_t> paymentIdBin;
+
+        Common::fromHex(ciphertext, paymentIdBin);
+
+        std::vector<uint8_t> extraNonce;
+        extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER);
+        extraNonce.insert(extraNonce.end(), paymentIdBin.begin(), paymentIdBin.end());
+
+        std::vector<uint8_t> extra;
+
+        if (!CryptoNote::addTransactionPublicKeyToExtra(extra, txPublicKey)
+            || !CryptoNote::addExtraNonceToTransactionExtra(extra, extraNonce))
+        {
+            fail("building tx_extra", "a public key and a nonce field", "write failure");
+        }
+
+        Utilities::ParsedExtra parsed = Utilities::parseExtra(extra);
+
+        check("transaction public key survives the round trip",
+              Common::podToHex(txPublicKey),
+              Common::podToHex(parsed.transactionPublicKey));
+
+        if (!parsed.paymentIDEncrypted)
+        {
+            fail("parsing the encrypted payment ID", "paymentIDEncrypted set", "not set");
+        }
+
+        check("ciphertext survives the round trip", ciphertext, parsed.paymentID);
+
+        /* And the receiver gets back to the plaintext using nothing but what
+           the transaction carries plus their own view key. */
+        check(
+            "receiver recovers the payment ID from tx_extra alone",
+            PAYMENT_ID,
+            Utilities::encryptPaymentIdHex(parsed.paymentID, parsed.transactionPublicKey, receiverPrivateViewKey));
+
+        std::cout << "PASSED" << std::endl;
+
+        /* The two legacy plaintext sub-tags must be consumed but never
+           reported - a wrong payment ID credits the wrong account, a missing
+           one gets investigated. Anything after them still has to parse,
+           which is the reason we consume rather than stop. */
+        std::cout << "Legacy sub-tags ignored:      ";
+
+        for (const uint8_t legacyTag : {Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER,
+                                        Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER_PRERELEASE})
+        {
+            std::vector<uint8_t> legacyNonce;
+            legacyNonce.push_back(legacyTag);
+            legacyNonce.insert(legacyNonce.end(), paymentIdBin.begin(), paymentIdBin.end());
+
+            /* An arbitrary data field behind it, so we can tell the parser
+               stepped over the legacy field by exactly the right amount. */
+            const std::vector<uint8_t> arbitrary = {0xde, 0xad, 0xbe, 0xef};
+
+            legacyNonce.push_back(Constants::TX_EXTRA_ARBITRARY_DATA_IDENTIFIER);
+            legacyNonce.push_back(static_cast<uint8_t>(arbitrary.size()));
+            legacyNonce.insert(legacyNonce.end(), arbitrary.begin(), arbitrary.end());
+
+            std::vector<uint8_t> legacyExtra;
+
+            if (!CryptoNote::addTransactionPublicKeyToExtra(legacyExtra, txPublicKey)
+                || !CryptoNote::addExtraNonceToTransactionExtra(legacyExtra, legacyNonce))
+            {
+                fail("building legacy tx_extra", "a public key and a nonce field", "write failure");
+            }
+
+            const Utilities::ParsedExtra legacyParsed = Utilities::parseExtra(legacyExtra);
+
+            check("legacy sub-tag reports no payment ID", std::string(), legacyParsed.paymentID);
+
+            check(
+                "the field after a legacy sub-tag still parses",
+                Common::toHex(arbitrary),
+                Common::toHex(legacyParsed.extraData));
+        }
 
         std::cout << "PASSED" << std::endl;
     }

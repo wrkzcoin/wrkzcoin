@@ -357,7 +357,9 @@ target_link_libraries(Utilities Common Errors Crypto)
 target_link_libraries(Wallet NodeRpcProxy Transfers CryptoNoteCore Common WalletBackend)
 target_link_libraries(WalletBackend Serialization Mnemonics Nigel __filesystem Utilities SubWallets Logger Config Wallet)
 if (WRKZ_BUILD_EXECUTABLES)
-    target_link_libraries(cryptotest Crypto Common Utilities)
+    # Serialization is needed by common/TransactionExtra.cpp, which the payment
+    # ID tests use to build a real tx_extra and read it back.
+    target_link_libraries(cryptotest Crypto Common Utilities Serialization)
     target_link_libraries(miner Crypto Errors Utilities System Serialization)
     target_link_libraries(WalletApi WalletBackend)
     target_link_libraries(WalletService JsonRpcServer Wallet Mnemonics Errors)
