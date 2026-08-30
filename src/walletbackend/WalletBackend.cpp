@@ -1126,55 +1126,49 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             continue;
         }
 
-        /* Compute destination amount and change */
-        const uint64_t available = batchSum - estimatedFee;
-        const uint64_t destinationAmount = (amountToSweep > 0) ? std::min(amountToSweep, available) : available;
-        const uint64_t changeRequired    = (amountToSweep > 0 && available > amountToSweep)
-                                               ? available - amountToSweep
-                                               : 0;
-
-        auto destinations = SendTransaction::setupDestinations(
-            {{resolvedDest, destinationAmount}},
-            changeRequired,
-            changeAddress
-        );
-
         uint64_t batchMixin = mixin;
 
-        auto txResult = SendTransaction::makeTransaction(
-            batchMixin,
-            m_daemon,
-            batch,
-            resolvedPaymentID,
-            recipientViewKey,
-            destinations,
-            m_subWallets,
-            unlockTime,
-            {} /* extraData */
-        );
+        uint64_t batchFee = estimatedFee;
 
-        /* The same fallback sendTransactionAdvanced() applies, because this path
-           builds its transactions itself rather than going through it. Sweep is
-           where a thin denomination is most likely to be hit at all: it
-           deliberately gathers every denomination the wallet holds, including
-           the ones with barely any outputs on chain, so without this one such
-           input fails a whole batch.
+        /* Needed after the loop to record what came back to us. */
+        uint64_t changeRequired = 0;
 
-           The fee and input count for this batch were sized at the requested
-           mixin, so a smaller ring only makes the transaction shorter than
-           planned. That overpays the fee slightly rather than underpaying it,
-           which is the safe direction to be wrong in. */
-        for (int attempt = 0; attempt < 2 && txResult.error == NOT_ENOUGH_FAKE_OUTPUTS; attempt++)
+        WalletTypes::TransactionResult txResult;
+
+        /* estimateTransactionSize() cannot know how many bytes the ring member
+           indexes will take - they are varint deltas between global indexes it
+           has not fetched yet - so it works from a flat allowance. At a mixin of
+           1 that allowance is generous, but it does not grow with the ring while
+           the real cost does, so past a couple of inputs at a mixin of 7 the
+           estimate comes out under the truth.
+
+           Every other path that builds a transaction re-weighs the fee against
+           the finished article and rebuilds if it fell short. This one did not:
+           it fixed the fee from the estimate and relayed, so an underestimate
+           became a transaction the daemon rejects for WRONG_FEE. Do the same
+           re-weighing here. The estimate only decides where to start. */
+        for (int feeAttempt = 0; feeAttempt < 3; feeAttempt++)
         {
-            const auto retryMixin = SendTransaction::nextFallbackMixin(
-                batchMixin, attempt == 0 ? txResult.achievableMixin : minMixin, minMixin);
-
-            if (!retryMixin)
+            if (batchFee >= batchSum)
             {
+                txResult.error = NOT_ENOUGH_BALANCE;
+
                 break;
             }
 
-            batchMixin = *retryMixin;
+            /* Compute destination amount and change */
+            const uint64_t available = batchSum - batchFee;
+            const uint64_t destinationAmount =
+                (amountToSweep > 0) ? std::min(amountToSweep, available) : available;
+            changeRequired = (amountToSweep > 0 && available > amountToSweep)
+                                 ? available - amountToSweep
+                                 : 0;
+
+            auto destinations = SendTransaction::setupDestinations(
+                {{resolvedDest, destinationAmount}},
+                changeRequired,
+                changeAddress
+            );
 
             txResult = SendTransaction::makeTransaction(
                 batchMixin,
@@ -1187,6 +1181,72 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
                 unlockTime,
                 {} /* extraData */
             );
+
+            /* The same fallback sendTransactionAdvanced() applies, because this
+               path builds its transactions itself rather than going through it.
+               Sweep is where a thin denomination is most likely to be hit at
+               all: it deliberately gathers every denomination the wallet holds,
+               including the ones with barely any outputs on chain, so without
+               this one such input fails a whole batch.
+
+               batchMixin is not reset between fee attempts - once the chain has
+               told us a ring of 8 is out of reach for these denominations, the
+               next attempt has no reason to ask again. */
+            for (int attempt = 0; attempt < 2 && txResult.error == NOT_ENOUGH_FAKE_OUTPUTS; attempt++)
+            {
+                const auto retryMixin = Utilities::nextFallbackMixin(
+                    batchMixin, attempt == 0 ? txResult.achievableMixin : minMixin, minMixin);
+
+                if (!retryMixin)
+                {
+                    break;
+                }
+
+                batchMixin = *retryMixin;
+
+                txResult = SendTransaction::makeTransaction(
+                    batchMixin,
+                    m_daemon,
+                    batch,
+                    resolvedPaymentID,
+                    recipientViewKey,
+                    destinations,
+                    m_subWallets,
+                    unlockTime,
+                    {} /* extraData */
+                );
+            }
+
+            if (txResult.error)
+            {
+                break;
+            }
+
+            uint64_t requiredFee = Utilities::getMinimumTransactionFee(
+                SendTransaction::transactionSize(txResult.transaction), height);
+
+#if defined(__EMSCRIPTEN__)
+            /* Keep clearing the bar that lets WASM skip the tx PoW, which is
+               punishingly slow single-threaded. */
+            if (requiredFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+            {
+                requiredFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
+            }
+#endif
+
+            if (batchFee >= requiredFee)
+            {
+                break;
+            }
+
+            Logger::logger.log(
+                "Sweep batch fee of " + std::to_string(batchFee) + " is below the " + std::to_string(requiredFee)
+                    + " this transaction actually costs, rebuilding",
+                Logger::DEBUG,
+                { Logger::TRANSACTIONS }
+            );
+
+            batchFee = requiredFee;
         }
 
         if (txResult.error)

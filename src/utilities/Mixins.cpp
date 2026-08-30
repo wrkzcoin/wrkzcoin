@@ -68,4 +68,34 @@ namespace Utilities
 
         return {minMixin, maxMixin, defaultMixin};
     }
+
+    std::optional<uint64_t> nextFallbackMixin(
+        const uint64_t triedMixin,
+        const uint64_t achievableMixin,
+        const uint64_t minMixin)
+    {
+        /* Already as low as the network allows, so there is nothing left to try
+           - the send fails, and says why. */
+        if (triedMixin <= minMixin)
+        {
+            return std::nullopt;
+        }
+
+        /* Never at or above what just failed, never below what the network
+           accepts. A zero measurement means we learned nothing about what the
+           chain holds, which lands us on the minimum. */
+        uint64_t next = achievableMixin;
+
+        if (next > triedMixin - 1)
+        {
+            next = triedMixin - 1;
+        }
+
+        if (next < minMixin)
+        {
+            next = minMixin;
+        }
+
+        return next;
+    }
 } // namespace Utilities

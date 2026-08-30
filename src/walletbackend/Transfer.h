@@ -17,15 +17,6 @@
 
 namespace SendTransaction
 {
-    /* Given the mixin we just tried and what the chain turned out to support,
-       the next mixin worth trying, or nothing when there is nothing lower left
-       to try. Shared so that every path that builds a transaction degrades the
-       same way. */
-    std::optional<uint64_t> nextFallbackMixin(
-        const uint64_t triedMixin,
-        const uint64_t achievableMixin,
-        const uint64_t minMixin);
-
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionBasic(
         std::string destination,
         const uint64_t amount,
@@ -138,6 +129,10 @@ namespace SendTransaction
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
         const bool sendAll);
+
+    /* What the transaction actually serialises to - the number the network
+       charges a fee against, as opposed to the estimate used to pick inputs. */
+    size_t transactionSize(const CryptoNote::Transaction tx);
 
     Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight);
 

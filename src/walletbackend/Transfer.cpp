@@ -88,36 +88,6 @@ namespace SendTransaction
         const bool sendAll,
         const bool sendTransaction);
 
-    std::optional<uint64_t> nextFallbackMixin(
-        const uint64_t triedMixin,
-        const uint64_t achievableMixin,
-        const uint64_t minMixin)
-    {
-        /* Already as low as the network allows, so there is nothing left to try
-           - the send fails, and says why. */
-        if (triedMixin <= minMixin)
-        {
-            return std::nullopt;
-        }
-
-        /* Never at or above what just failed, never below what the network
-           accepts. A zero measurement means we learned nothing about what the
-           chain holds, which lands us on the minimum. */
-        uint64_t next = achievableMixin;
-
-        if (next > triedMixin - 1)
-        {
-            next = triedMixin - 1;
-        }
-
-        if (next < minMixin)
-        {
-            next = minMixin;
-        }
-
-        return next;
-    }
-
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const uint64_t mixin,
@@ -172,7 +142,8 @@ namespace SendTransaction
             const auto [minMixin, maxMixin, defaultMixin] =
                 Utilities::getMixinAllowableRange(daemon->networkBlockCount());
 
-            const auto retryMixin = nextFallbackMixin(mixin, std::get<2>(result).tx.achievableMixin, minMixin);
+            const auto retryMixin =
+                Utilities::nextFallbackMixin(mixin, std::get<2>(result).tx.achievableMixin, minMixin);
 
             if (retryMixin)
             {
@@ -686,9 +657,14 @@ namespace SendTransaction
         throw std::runtime_error("Programmer error @ tryMakeFeePerByteTransaction");
     }
 
+    size_t transactionSize(const CryptoNote::Transaction tx)
+    {
+        return toBinaryArray(tx).size();
+    }
+
     Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight)
     {
-        const uint64_t txSize = toBinaryArray(tx).size();
+        const uint64_t txSize = transactionSize(tx);
 
         const uint64_t maxTxSize = Utilities::getMaxTxSize(currentHeight);
 
