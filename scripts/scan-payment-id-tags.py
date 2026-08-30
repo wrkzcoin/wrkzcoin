@@ -16,14 +16,21 @@ transactions are skipped - they never carry a payment ID.
 
 Usage:
     python scripts/scan-payment-id-tags.py --daemon http://127.0.0.1:17856
-    python scripts/scan-payment-id-tags.py --start-height 4000000 --batch 200
+    python scripts/scan-payment-id-tags.py --start-height 4000000 --verbose
 
-Exit status is 0 if no legacy short payment IDs were found, 1 if any were.
+Scanning from genesis works but downloads the whole chain, which takes hours.
+Sub-tag 0x01 could only ever have been written by a build that already had it,
+so --start-height set to the block where that release went live answers the
+same question in a fraction of the time.
+
+Exit status is 0 if no legacy short payment IDs were found, 1 if any were, and
+2 if the scan could not be completed.
 """
 
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -160,14 +167,37 @@ def scan_extra(extra, counts):
 
 
 def rpc(daemon, path, payload, timeout):
+    """POST when there is a payload, GET when there is not."""
+    data = None if payload is None else json.dumps(payload).encode()
+
     request = urllib.request.Request(
         daemon.rstrip("/") + path,
-        data=json.dumps(payload).encode(),
+        data=data,
         headers={"Content-Type": "application/json"},
     )
 
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode())
+        body = response.read()
+        return json.loads(body.decode()), len(body)
+
+
+def format_duration(seconds):
+    seconds = int(seconds)
+
+    if seconds < 60:
+        return "%ds" % seconds
+
+    if seconds < 3600:
+        return "%dm %02ds" % (seconds // 60, seconds % 60)
+
+    return "%dh %02dm" % (seconds // 3600, (seconds % 3600) // 60)
+
+
+def format_bytes(count):
+    for unit in ("B", "KB", "MB", "GB"):
+        if count < 1024 or unit == "GB":
+            return "%.1f %s" % (count, unit)
+        count /= 1024.0
 
 
 def main():
@@ -175,8 +205,10 @@ def main():
     parser.add_argument("--daemon", default="http://127.0.0.1:17856", help="daemon RPC address")
     parser.add_argument("--start-height", type=int, default=0, help="height to start scanning from")
     parser.add_argument("--end-height", type=int, default=0, help="height to stop at (0 = chain tip)")
-    parser.add_argument("--batch", type=int, default=100, help="blocks per request")
-    parser.add_argument("--timeout", type=int, default=60, help="request timeout in seconds")
+    parser.add_argument(
+        "--batch", type=int, default=1000, help="blocks per request (the daemon caps this at --rpc-max-block-count)")
+    parser.add_argument("--timeout", type=int, default=120, help="request timeout in seconds")
+    parser.add_argument("--verbose", action="store_true", help="print a line for every request")
     args = parser.parse_args()
 
     counts = {
@@ -185,34 +217,97 @@ def main():
         NONCE_ENCRYPTED_SHORT_PAYMENT_ID: 0,
     }
 
+    # Ask the node how tall the chain is, so progress has a denominator. The
+    # blocks response only carries a top block once the scan reaches the tip,
+    # which is far too late to be useful as a progress indicator.
+    try:
+        info, _ = rpc(args.daemon, "/height", None, args.timeout)
+        tip = int(info.get("height", 0)) - 1
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        print("Could not reach the daemon at %s: %s" % (args.daemon, error), file=sys.stderr)
+        return 2
+
+    if tip < 0:
+        print("Daemon reported no blocks.", file=sys.stderr)
+        return 2
+
+    end = min(args.end_height, tip) if args.end_height else tip
+
+    print("Scanning %s" % args.daemon)
+    print("  chain tip:    %d" % tip)
+    print("  scan range:   %d to %d  (%d blocks)" % (args.start_height, end, max(0, end - args.start_height + 1)))
+    print("  batch size:   %d blocks per request" % args.batch)
+
+    if args.start_height == 0:
+        print("\n  Note: scanning from genesis downloads the whole chain and will take a")
+        print("  while. Sub-tag 0x01 can only exist in blocks mined after the release")
+        print("  that introduced it, so --start-height will get you the same answer")
+        print("  much faster.")
+
+    print()
+
     height = args.start_height
     transactions = 0
     undecodable = 0
-    top = None
+    downloaded = 0
+    requests = 0
+    started = time.time()
+    last_print = 0.0
+    interactive = sys.stdout.isatty()
 
-    print("Scanning %s from height %d..." % (args.daemon, height))
+    def progress(final=False):
+        elapsed = max(0.001, time.time() - started)
+        done = height - args.start_height
+        total = max(1, end - args.start_height + 1)
+        rate = done / elapsed
+        remaining = max(0, total - done) / rate if rate > 0 else 0
 
-    while True:
-        if args.end_height and height >= args.end_height:
-            break
+        # height sits one past the last block we scanned, so clamp for display
+        # rather than reporting 2501/2500 at the end of a finished scan.
+        line = "  %d/%d  %5.1f%%  |  %d txs  |  %s  |  %.0f blk/s  |  eta %s" % (
+            min(height, end), end, min(100.0, 100.0 * done / total), transactions,
+            format_bytes(downloaded), rate, format_duration(remaining))
 
+        if interactive and not final:
+            print(line.ljust(78), end="\r", flush=True)
+        else:
+            print(line, flush=True)
+
+    while height <= end:
         count = args.batch
 
-        if args.end_height:
-            count = min(count, args.end_height - height)
+        if end - height + 1 < count:
+            count = end - height + 1
 
         try:
-            body = rpc(args.daemon, "/getrawblocks", {"startHeight": height, "blockCount": count}, args.timeout)
+            body, size = rpc(
+                args.daemon, "/getrawblocks", {"startHeight": height, "blockCount": count}, args.timeout)
         except (urllib.error.URLError, OSError) as error:
+            if interactive:
+                print()
             print("\nRequest failed at height %d: %s" % (height, error), file=sys.stderr)
+            print("Scanned %d..%d before failing." % (args.start_height, height), file=sys.stderr)
             return 2
+
+        requests += 1
+        downloaded += size
 
         items = body.get("items", [])
 
-        if body.get("topBlock"):
-            top = body["topBlock"].get("height")
-
+        # An empty response means the node has nothing further to give us. That
+        # is expected at the tip, and a problem anywhere else - say so rather
+        # than reporting a clean result for a scan that stopped early.
         if not items:
+            if height <= end:
+                if interactive:
+                    print()
+                print(
+                    "\nThe daemon returned no blocks at height %d, below the requested end %d.\n"
+                    "The scan is incomplete, so its result cannot be trusted. The node may\n"
+                    "still be syncing - check /height and re-run from this height."
+                    % (height, end),
+                    file=sys.stderr)
+                return 2
             break
 
         for item in items:
@@ -224,13 +319,23 @@ def main():
                 except (ValueError, IndexError):
                     undecodable += 1
 
+        # getrawblocks returns a contiguous run starting at the height we asked
+        # for, but it may be short of what we requested because the response is
+        # capped by a byte budget. Advance by what we actually received.
         height += len(items)
 
-        if top:
-            print("  height %d / %d  (%d transactions)" % (height, top, transactions), end="\r", flush=True)
+        if args.verbose:
+            print("  request %d: %d blocks from %d, %s, %d txs so far"
+                  % (requests, len(items), height - len(items), format_bytes(size), transactions), flush=True)
+        elif time.time() - last_print > 1.0:
+            last_print = time.time()
+            progress()
 
-    print(" " * 70, end="\r")
-    print("\nScanned to height %d, %d non-coinbase transactions.\n" % (height, transactions))
+    progress(final=True)
+
+    print("\nScanned %d blocks (%d..%d) in %s, %d non-coinbase transactions, %s downloaded.\n"
+          % (max(0, height - args.start_height), args.start_height, max(args.start_height, height - 1),
+             format_duration(time.time() - started), transactions, format_bytes(downloaded)))
 
     for tag in (NONCE_LONG_PAYMENT_ID, NONCE_SHORT_PAYMENT_ID, NONCE_ENCRYPTED_SHORT_PAYMENT_ID):
         print("  %-45s %d" % (TAG_NAMES[tag] + ":", counts[tag]))
