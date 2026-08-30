@@ -100,7 +100,12 @@ namespace CryptoNote
             const std::string keyPrefix,
             const std::unordered_map<Key, Value> &map)
         {
-            for (const std::pair<Key, Value> &kv : map)
+            /* auto, not std::pair<Key, Value>. An unordered_map's value_type
+               is std::pair<const Key, Value>, so spelling the type without the
+               const makes every iteration construct a temporary and deep copy
+               the whole pair - a RawBlock, an ExtendedTransactionInfo, a whole
+               vector of hashes - only to read the key back out of it. */
+            for (const auto &kv : map)
             {
                 rawKeys.emplace_back(DB::serializeKey(keyPrefix, kv.first));
             }
