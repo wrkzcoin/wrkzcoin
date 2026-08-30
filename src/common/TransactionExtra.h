@@ -19,8 +19,12 @@
 #define TX_EXTRA_NONCE 0x02
 #define TX_EXTRA_MERGE_MINING_TAG 0x03
 
+/* Long payment ID (32 bytes), plaintext. */
 #define TX_EXTRA_NONCE_PAYMENT_ID 0x00
-#define TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID 0x01
+/* Short payment ID (8 bytes), plaintext. Legacy - parsed, never created. */
+#define TX_EXTRA_NONCE_SHORT_PAYMENT_ID 0x01
+/* Short payment ID (8 bytes), encrypted to the sender/receiver shared secret. */
+#define TX_EXTRA_NONCE_ENCRYPTED_SHORT_PAYMENT_ID 0x02
 
 namespace CryptoNote
 {

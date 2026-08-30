@@ -185,10 +185,24 @@ namespace Constants
                                                 9000000000000000000,
                                                 10000000000000000000ull};
 
-    /* Indicates the following data is a payment ID */
+    /* Indicates the following data is a long payment ID (32 bytes). These are
+       stored in plaintext and are visible to anyone reading the chain. */
     const uint8_t TX_EXTRA_PAYMENT_ID_IDENTIFIER = 0x00;
-    /* Indicates the following data is a short encrypted payment ID (8 bytes) */
-    const uint8_t TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER = 0x01;
+
+    /* Indicates the following data is a short payment ID (8 bytes) stored in
+       plaintext.
+
+       Legacy. Despite once being named "encrypted", nothing ever encrypted it.
+       We still skip over the field so old transactions parse, but we no longer
+       create it and we deliberately do not surface it as a payment ID - a
+       missing payment ID is a safer failure than a wrong one. */
+    const uint8_t TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER = 0x01;
+
+    /* Indicates the following data is a short payment ID (8 bytes) encrypted
+       against the shared secret between the sender and the receiver, using the
+       same scheme as Monero. Only the two parties to the transaction can
+       recover the plaintext. */
+    const uint8_t TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER = 0x02;
 
     /* Indicates the following data is a transaction public key */
     const uint8_t TX_EXTRA_PUBKEY_IDENTIFIER = 0x01;

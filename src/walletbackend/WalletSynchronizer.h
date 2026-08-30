@@ -149,6 +149,14 @@ class WalletSynchronizer
     std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>>
         processTransactionOutputs(const WalletTypes::RawCoinbaseTransaction &rawTX, const uint64_t blockHeight) const;
 
+    /* Recovers the plaintext of a short (encrypted) payment ID. Long payment
+       IDs are plaintext already and are returned untouched.
+
+       weSpentInputs says whether this transaction spends inputs of ours, i.e.
+       whether we sent it. If we did, the payment ID was encrypted to somebody
+       else and we return nothing rather than noise - see the implementation. */
+    std::string decryptPaymentID(const WalletTypes::RawTransaction &tx, const bool weSpentInputs) const;
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>> getGlobalIndexes(const uint64_t blockHeight) const;
 
     void removeForkedTransactions(const uint64_t forkHeight);

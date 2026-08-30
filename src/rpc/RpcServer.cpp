@@ -2115,7 +2115,14 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
     txDetailsObj["amount_out"] = txDetails.totalOutputsAmount;
     txDetailsObj["fee"] = txDetails.fee;
     txDetailsObj["mixin"] = txDetails.mixin;
-    txDetailsObj["paymentId"] = Utilities::getPaymentIDFromExtra(transaction.extra);
+    const Utilities::ParsedExtra parsedTxExtra = Utilities::parseExtra(transaction.extra);
+
+    txDetailsObj["paymentId"] = parsedTxExtra.paymentID;
+
+    /* When set, paymentId is ciphertext - only the sender and the receiver hold
+       the shared secret needed to read it. Explorers should label it as
+       encrypted rather than presenting it as a readable payment ID. */
+    txDetailsObj["paymentIdEncrypted"] = parsedTxExtra.paymentIDEncrypted;
     txDetailsObj["size"] = txDetails.size;
 
     nlohmann::json result;

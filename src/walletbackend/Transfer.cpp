@@ -19,6 +19,7 @@
 #include <utilities/Addresses.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Mixins.h>
+#include <utilities/PaymentIdEncryption.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
 #include <cryptonotecore/TransactionPoW.h>
@@ -137,6 +138,28 @@ namespace SendTransaction
             paymentID = extractedPaymentID;
         }
 
+        /* A short payment ID is encrypted against the shared secret between us
+           and the receiver, so we need to know exactly who the receiver is.
+
+           Change is not added until setupDestinations(), so everything still
+           in addressesAndAmounts here is a real destination. If there is more
+           than one, there is no single party who could decrypt the payment ID,
+           and we must refuse rather than send something the receiver cannot
+           read. Long payment IDs are plaintext and have no such restriction. */
+        Crypto::PublicKey recipientViewKey = Constants::NULL_PUBLIC_KEY;
+
+        if (paymentID.length() == WalletConfig::shortPaymentIDLength)
+        {
+            if (addressesAndAmounts.size() != 1)
+            {
+                return {SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION,
+                        Crypto::Hash(),
+                        WalletTypes::PreparedTransactionInfo()};
+            }
+
+            std::tie(std::ignore, recipientViewKey) = Utilities::addressToKeys(addressesAndAmounts[0].first);
+        }
+
         /* If no address to take from is given, we will take from all available. */
         const bool takeFromAllSubWallets = addressesToTakeFrom.empty();
 
@@ -244,6 +267,7 @@ namespace SendTransaction
                             daemon,
                             ourInputs,
                             paymentID,
+                            recipientViewKey,
                             subWallets,
                             unlockTime,
                             extraData,
@@ -276,6 +300,7 @@ namespace SendTransaction
                         daemon,
                         ourInputs,
                         paymentID,
+                        recipientViewKey,
                         destinations,
                         subWallets,
                         unlockTime,
@@ -431,6 +456,7 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
@@ -448,6 +474,7 @@ namespace SendTransaction
                 daemon,
                 ourInputs,
                 paymentID,
+                recipientViewKey,
                 destinations,
                 subWallets,
                 unlockTime,
@@ -1163,6 +1190,7 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::vector<WalletTypes::TransactionDestination> destinations,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
@@ -1198,11 +1226,29 @@ namespace SendTransaction
         {
             if (paymentID.size() == WalletConfig::shortPaymentIDLength)
             {
+                /* Encrypt the payment ID against the shared secret between us
+                   and the receiver, so that only they can read it.
+
+                   We hold the transaction private key, they hold their private
+                   view key, and both sides arrive at the same derivation. The
+                   caller has already guaranteed there is exactly one receiver -
+                   a derivation is specific to one party, so a second receiver
+                   would have no way to decrypt. */
+                const std::string encryptedPaymentID = Utilities::encryptPaymentIdHex(
+                    paymentID, recipientViewKey, result.txKeyPair.secretKey);
+
+                if (encryptedPaymentID.empty())
+                {
+                    result.error = PAYMENT_ID_INVALID;
+
+                    return result;
+                }
+
                 std::vector<uint8_t> paymentIDBin;
-                Common::fromHex(paymentID, paymentIDBin);
+                Common::fromHex(encryptedPaymentID, paymentIDBin);
 
                 /* Indicate this is the short encrypted payment ID */
-                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER);
+                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER);
 
                 /* Write the 8-byte data to the extra nonce */
                 std::copy(paymentIDBin.begin(), paymentIDBin.end(), std::back_inserter(extraNonce));

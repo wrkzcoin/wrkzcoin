@@ -1053,9 +1053,20 @@ function renderTxDetail(result) {
   const { txDetails, block, tx } = result;
 
   const ZERO_PAYMENT_ID = '0000000000000000000000000000000000000000000000000000000000000000';
-  const paymentId = txDetails.paymentId && txDetails.paymentId !== ZERO_PAYMENT_ID
-    ? `<span class="hash-full">${escHtml(txDetails.paymentId)}</span>`
-    : '<span style="color:var(--text-muted)">None</span>';
+  let paymentId = '<span style="color:var(--text-muted)">None</span>';
+
+  if (txDetails.paymentId && txDetails.paymentId !== ZERO_PAYMENT_ID) {
+    // A short payment ID is encrypted against the shared secret between the
+    // sender and the receiver, so what the daemon hands us is ciphertext. Show
+    // it, but never present it as a readable payment ID - only the two parties
+    // to the transaction can recover the plaintext.
+    paymentId = `<span class="hash-full">${escHtml(txDetails.paymentId)}</span>`;
+
+    if (txDetails.paymentIdEncrypted) {
+      paymentId += ' <span class="badge badge-accent" title="Encrypted to the receiver.'
+        + ' Only the sender and receiver can read the real value.">Encrypted</span>';
+    }
+  }
   const txPublicKey = tx?.publicKey || txDetails?.extra?.publicKey || '';
   const txNonce = tx?.nonce || '';
 

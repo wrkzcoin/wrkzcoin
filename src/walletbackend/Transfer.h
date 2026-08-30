@@ -81,11 +81,16 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources);
 
+    /* recipientViewKey is the public view key of the single destination a
+       short payment ID is encrypted to. It is ignored for long payment IDs
+       and when no payment ID is given, and may be NULL_PUBLIC_KEY in those
+       cases. */
     WalletTypes::TransactionResult makeTransaction(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::vector<WalletTypes::TransactionDestination> destinations,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
@@ -114,6 +119,7 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData,

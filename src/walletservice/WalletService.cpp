@@ -198,6 +198,16 @@ namespace PaymentService
     {
         void addPaymentIdToExtra(const std::string &paymentId, std::string &extra)
         {
+            /* Short payment IDs are encrypted against the shared secret with
+               the receiver. This service builds tx_extra before it knows the
+               transaction keys, so it cannot encrypt, and emitting a plaintext
+               short payment ID would produce something no wallet will read.
+               Refuse instead - long payment IDs still work here. */
+            if (paymentId.size() == WalletConfig::shortPaymentIDLength)
+            {
+                throw std::system_error(make_error_code(CryptoNote::error::BAD_PAYMENT_ID));
+            }
+
             std::vector<uint8_t> extraVector;
             if (!CryptoNote::createTxExtraWithPaymentId(paymentId, extraVector))
             {
@@ -370,7 +380,21 @@ namespace PaymentService
                 throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
             }
 
-            const uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
+            /* Integrated addresses come in two lengths, carrying a short or a
+               long payment ID. This used to assume short, which meant a long
+               integrated address decoded into nonsense. Pick from the address
+               length, the same way validateAddresses() does.
+
+               This matters more now than it did: short payment IDs have to be
+               encrypted, which this service cannot do, so a long integrated
+               address is the only kind it can actually send to. */
+            uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
+
+            if (integratedAddr.length() == WalletConfig::integratedAddressLengthLong)
+            {
+                paymentIDLen = WalletConfig::longPaymentIDLength;
+            }
+
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);
 

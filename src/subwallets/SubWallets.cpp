@@ -361,9 +361,30 @@ void SubWallets::addUnconfirmedTransaction(const WalletTypes::Transaction tx)
     m_lockedTransactions.push_back(tx);
 }
 
-void SubWallets::addTransaction(const WalletTypes::Transaction tx)
+void SubWallets::addTransaction(WalletTypes::Transaction tx)
 {
     std::scoped_lock lock(m_mutex);
+
+    /* We may already hold the plaintext payment ID for this transaction, from
+       when we sent it.
+
+       A short payment ID is encrypted against the shared secret between the
+       sender and the receiver. If we were the sender and someone else was the
+       receiver, the copy that comes back to us from the chain is ciphertext we
+       have no way to read - our view key is not part of that shared secret.
+       So prefer what we recorded at send time.
+
+       For a long payment ID, and for a transaction we received rather than
+       sent, the two values agree and this is a no-op. */
+    const auto locked = std::find_if(
+        m_lockedTransactions.begin(), m_lockedTransactions.end(), [&tx](const auto &transaction) {
+            return tx.hash == transaction.hash;
+        });
+
+    if (locked != m_lockedTransactions.end() && !locked->paymentID.empty())
+    {
+        tx.paymentID = locked->paymentID;
+    }
 
     /* If we sent this transaction, we will input it into the transactions
        vector instantly. This lets us display the data to the user, and then

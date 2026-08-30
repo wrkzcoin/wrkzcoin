@@ -14,7 +14,9 @@
 #if defined(__EMSCRIPTEN__)
 #include <wasm_fs_bridge.h>
 #endif
+#include <config/Constants.h>
 #include <config/CryptoNoteConfig.h>
+#include <config/WalletConfig.h>
 #include <crypto/crypto.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Currency.h>
@@ -985,6 +987,16 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         }
     }
 
+    /* A short payment ID is encrypted to the receiver, so makeTransaction needs
+       their public view key. Every batch below sends to the single resolved
+       destination, so there is no ambiguity about who that is. */
+    Crypto::PublicKey recipientViewKey = Constants::NULL_PUBLIC_KEY;
+
+    if (resolvedPaymentID.length() == WalletConfig::shortPaymentIDLength)
+    {
+        std::tie(std::ignore, recipientViewKey) = Utilities::addressToKeys(resolvedDest);
+    }
+
     const uint64_t height = m_daemon->networkBlockCount();
     const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
     const uint64_t mixin = defaultMixin;
@@ -1132,6 +1144,7 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             m_daemon,
             batch,
             resolvedPaymentID,
+            recipientViewKey,
             destinations,
             m_subWallets,
             unlockTime,

@@ -326,6 +326,13 @@ std::string Error::getErrorMessage() const
         {
             return "Unlock time is too small";
         }
+        case SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION:
+        {
+            return "A short payment ID is encrypted so that only the receiver can "
+                   "read it, which means the transaction can only have one "
+                   "destination. Send to a single address, or use a long (64 "
+                   "character) payment ID instead.";
+        }
         /* No default case so the compiler warns us if we missed one */
     }
 

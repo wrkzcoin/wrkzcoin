@@ -242,6 +242,12 @@ enum ErrorCode
 
     /* Unlock time does not meet the required minimum locked blocks */
     UNLOCK_TIME_TOO_SMALL = 60,
+
+    /* A short payment ID is encrypted against the shared secret of a single
+     * receiver, so exactly one destination must be able to decrypt it. The
+     * transaction given has a short payment ID but more than one destination
+     * (excluding change), so there is no single receiver to encrypt to. */
+    SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION = 61,
 };
 
 class Error
