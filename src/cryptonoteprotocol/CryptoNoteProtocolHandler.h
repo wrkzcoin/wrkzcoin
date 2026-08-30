@@ -102,6 +102,12 @@ namespace CryptoNote
 
         void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
 
+        /* Zero for a normal node. Above zero this is the height from which full
+           block data is stored; see LITENODE.md. */
+        void setLiteNodeConfig(uint32_t liteHeight);
+
+        virtual uint32_t getLiteNodeHeight() const override;
+
         void setSyncTuning(
             uint32_t syncMaxPeers,
             uint32_t syncPeerFailureThreshold,
@@ -230,6 +236,13 @@ namespace CryptoNote
         bool m_isPrunedNode;
 
         uint32_t m_prunedNodeDepth;
+
+        /* 0 = full node. Above 0, the height this node stores full blocks from. */
+        uint32_t m_liteHeight = 0;
+
+        /* The lite height is only safe once we know how tall the network is, and
+           that is first knowable at the opening handshake. Checked once. */
+        bool m_liteDepthChecked = false;
 
         uint32_t m_syncMaxPeers;
 

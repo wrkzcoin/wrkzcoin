@@ -53,11 +53,16 @@ namespace CryptoNote
          * Constructs new DatabaseBlockchainCache object. Currnetly, only factories that produce
          * BlockchainCache objects as children are supported.
          */
+        /* liteHeight of 0 means full storage. Above zero, blocks below that height
+           are stored as indexes only - key output info, key images, per amount
+           output counts and block info - with the block body, transaction records,
+           payment ids and timestamp indexes left out. See LITENODE.md. */
         DatabaseBlockchainCache(
             const Currency &currency,
             IDataBase &dataBase,
             IBlockchainCacheFactory &blockchainCacheFactory,
-            std::shared_ptr<Logging::ILogger> logger);
+            std::shared_ptr<Logging::ILogger> logger,
+            uint32_t liteHeight = 0);
 
         static bool checkDBSchemeVersion(IDataBase &dataBase, std::shared_ptr<Logging::ILogger> logger);
 
@@ -215,6 +220,8 @@ namespace CryptoNote
 
         virtual RawBlock getBlockByIndex(uint32_t index) const override;
 
+        virtual bool tryGetBlockByIndex(uint32_t index, RawBlock &block) const override;
+
         virtual BinaryArray getRawTransaction(uint32_t blockIndex, uint32_t transactionIndex) const override;
 
         virtual std::vector<Crypto::Hash> getTransactionHashes() const override;
@@ -321,6 +328,23 @@ namespace CryptoNote
            the answer turns a read per block into a read per day. Cleared by
            deleteClosestTimestampBlockIndex(), which is what removes them. */
         std::optional<uint64_t> knownClosestTimestampMidnight;
+
+        /* Height at and above which full block data is stored. Zero for a normal
+           node, which stores everything. */
+        uint32_t liteHeight = 0;
+
+        /* Whether the block about to be written falls in the index only region.
+
+           Genesis is never index only. addGenesisBlock writes its raw block and
+           transaction hash list directly rather than through pushBlock, so
+           dropping just its transaction record would leave it half stored, and
+           anything reading block zero - the sparse chain the P2P layer builds,
+           getBlockHash(0), the UseGenesis paths - would find an inconsistent
+           block. It is one block; keeping it whole costs nothing. */
+        bool isLiteIndexOnlyHeight(uint32_t blockIndex) const
+        {
+            return liteHeight != 0 && blockIndex != 0 && blockIndex < liteHeight;
+        }
 
         /* The top block's cached info, served from unitsCache when it can be
            shown to be current. */

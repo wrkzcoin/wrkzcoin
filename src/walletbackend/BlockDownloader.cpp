@@ -303,6 +303,25 @@ bool BlockDownloader::downloadBlocks()
         return false;
     }
 
+    /* A lite daemon holds nothing below its lite start height, so asking it to
+       begin lower just wastes round trips - it answers from that height anyway.
+       Move our own start up to meet it, once, and say so plainly: any funds this
+       wallet received below that height are invisible through this daemon.
+       See LITENODE.md. */
+    if (const uint64_t liteStartHeight = m_daemon->liteStartHeight();
+        liteStartHeight != 0 && m_startHeight < liteStartHeight && m_synchronizationStatus.getHeight() == 0)
+    {
+        Logger::logger.log(
+            "Daemon is a lite node holding no data below height " + std::to_string(liteStartHeight)
+                + ". Starting the scan there instead of " + std::to_string(m_startHeight)
+                + ". Transactions below that height cannot be found through this daemon.",
+            Logger::WARNING,
+            {Logger::SYNC, Logger::DAEMON});
+
+        m_startHeight = liteStartHeight;
+        m_startTimestamp = 0;
+    }
+
     const auto blockCheckpoints = getBlockCheckpoints();
 
     if (blockCheckpoints.size() > 0 && Logger::logger.shouldLog(Logger::DEBUG))

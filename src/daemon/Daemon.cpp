@@ -60,14 +60,27 @@ namespace
 {
     const std::string DAEMON_MODE_PROFILE_KEY = "daemon_mode_profile";
 
+    /* Records how this database was built, so a later run cannot silently treat
+       an index-only chain as a complete one. Value is "full", or "lite:<height>".
+       See LITENODE.md. */
+    const std::string LITE_PROFILE_KEY = "lite_node_profile";
+
+    /* Written by DatabaseBlockchainCache the first time a database is opened.
+       Its absence is what tells us a database is brand new, which is the only
+       point at which lite mode may be chosen. Must match DB_VERSION_KEY in
+       DatabaseBlockchainCache.cpp. */
+    const std::string DB_SCHEME_VERSION_KEY = "db_scheme_version";
+
     class DaemonModeProfileReadBatch : public IReadBatch
     {
       public:
+        explicit DaemonModeProfileReadBatch(std::string key = DAEMON_MODE_PROFILE_KEY): key(std::move(key)) {}
+
         virtual ~DaemonModeProfileReadBatch() {}
 
         virtual std::vector<std::string> getRawKeys() const override
         {
-            return {DAEMON_MODE_PROFILE_KEY};
+            return {key};
         }
 
         virtual void submitRawResult(const std::vector<std::string> &values, const std::vector<bool> &resultStates) override
@@ -86,19 +99,25 @@ namespace
         }
 
       private:
+        std::string key;
+
         std::optional<std::string> storedMode;
     };
 
     class DaemonModeProfileWriteBatch : public IWriteBatch
     {
       public:
-        explicit DaemonModeProfileWriteBatch(std::string mode): daemonMode(std::move(mode)) {}
+        explicit DaemonModeProfileWriteBatch(std::string mode, std::string key = DAEMON_MODE_PROFILE_KEY):
+            key(std::move(key)),
+            daemonMode(std::move(mode))
+        {
+        }
 
         virtual ~DaemonModeProfileWriteBatch() {}
 
         virtual std::vector<std::pair<std::string, std::string>> extractRawDataToInsert() override
         {
-            return {std::make_pair(DAEMON_MODE_PROFILE_KEY, daemonMode)};
+            return {std::make_pair(key, daemonMode)};
         }
 
         virtual std::vector<std::string> extractRawKeysToRemove() override
@@ -107,12 +126,14 @@ namespace
         }
 
       private:
+        std::string key;
+
         std::string daemonMode;
     };
 
-    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    std::optional<std::string> readStringSetting(IDataBase &database, const std::string &key)
     {
-        DaemonModeProfileReadBatch readBatch;
+        DaemonModeProfileReadBatch readBatch(key);
         const auto error = database.read(readBatch);
         if (error)
         {
@@ -122,14 +143,127 @@ namespace
         return readBatch.getStoredMode();
     }
 
-    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    void writeStringSetting(IDataBase &database, const std::string &key, const std::string &value)
     {
-        DaemonModeProfileWriteBatch writeBatch(mode);
+        DaemonModeProfileWriteBatch writeBatch(value, key);
         const auto error = database.write(writeBatch);
         if (error)
         {
             throw std::system_error(error);
         }
+    }
+
+    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    {
+        return readStringSetting(database, DAEMON_MODE_PROFILE_KEY);
+    }
+
+    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    {
+        writeStringSetting(database, DAEMON_MODE_PROFILE_KEY, mode);
+    }
+
+    /* Settles what lite height this database runs at, and refuses to run at all
+       when the flags and the database disagree. Whether a chain is stored in full
+       or index-only is baked in the moment the first block is written, so it can
+       never be changed later - only rebuilt from scratch.
+
+       Every disagreement here exits rather than recreating the database. Dropping
+       a chain because an operator forgot a flag would be the worst possible
+       reading of their intent, so the removal is always left to them.
+
+       Returns the lite height to build the cache with; 0 means full storage. */
+    uint32_t resolveLiteProfile(
+        IDataBase &database,
+        const DaemonConfiguration &config,
+        Logging::LoggerRef &logger)
+    {
+        const auto storedProfile = readStringSetting(database, LITE_PROFILE_KEY);
+
+        /* No scheme version yet means DatabaseBlockchainCache has never opened
+           this database, so there is nothing in it to contradict. */
+        const bool databaseIsNew = !readStringSetting(database, DB_SCHEME_VERSION_KEY).has_value();
+
+        std::optional<uint32_t> storedLiteHeight;
+
+        if (storedProfile && storedProfile->rfind("lite:", 0) == 0)
+        {
+            try
+            {
+                storedLiteHeight = static_cast<uint32_t>(std::stoul(storedProfile->substr(5)));
+            }
+            catch (const std::exception &)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "The lite-node marker in this database is unreadable ('" << *storedProfile
+                    << "'). Refusing to start rather than guess how it was built. Remove the data directory to "
+                       "rebuild.";
+                exit(1);
+            }
+        }
+
+        if (!config.lite)
+        {
+            if (storedLiteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "This database was built as a lite node from height " << *storedLiteHeight
+                    << ", so it does not hold the block data a full node serves. Restart with --lite --lite-height "
+                    << *storedLiteHeight << ", or delete the data directory to sync a full node from scratch.";
+                exit(1);
+            }
+
+            return 0;
+        }
+
+        /* --lite from here down. */
+        if (config.liteHeight == 0)
+        {
+            logger(ERROR, BRIGHT_RED) << "--lite requires --lite-height, the height from which full block data is "
+                                         "kept. There is no sensible default: it decides what this node can never "
+                                         "serve or rescan again.";
+            exit(1);
+        }
+
+        if (config.prune)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite and --prune cannot be combined. Pruning below the lite height would remove nothing, and "
+                   "above it would break the promise a lite node makes to serve every block from its lite height up.";
+            exit(1);
+        }
+
+        if (storedLiteHeight)
+        {
+            if (*storedLiteHeight != config.liteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "This database was built as a lite node from height " << *storedLiteHeight << ", not "
+                    << config.liteHeight
+                    << ". The stored height cannot be changed - blocks below it were never written. Restart with "
+                       "--lite-height "
+                    << *storedLiteHeight << ", or delete the data directory to rebuild at a different height.";
+                exit(1);
+            }
+
+            return *storedLiteHeight;
+        }
+
+        if (!databaseIsNew)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite can only be chosen for a new database. This one already holds a chain that was synced in "
+                   "full, and nothing here will delete it for you. Point --data-dir at an empty directory, or remove "
+                   "this one yourself, to build a lite node.";
+            exit(1);
+        }
+
+        writeStringSetting(database, LITE_PROFILE_KEY, "lite:" + std::to_string(config.liteHeight));
+
+        logger(INFO, BRIGHT_GREEN) << "Lite node mode enabled from height " << config.liteHeight
+                                   << ". This is permanent for this database.";
+
+        return config.liteHeight;
     }
 } // namespace
 
@@ -456,6 +590,11 @@ int main(int argc, char *argv[])
             dbShutdownOnExit.resume();
         }
 
+        /* Settled before the cache exists, because the lite height decides what
+           the very first block written stores. Exits on any disagreement between
+           the flags and what this database was built as. */
+        const uint32_t liteHeight = resolveLiteProfile(*database, config, logger);
+
         System::Dispatcher dispatcher;
         logger(INFO) << "Initializing core...";
 
@@ -464,7 +603,8 @@ int main(int argc, char *argv[])
             logManager,
             std::move(checkpoints),
             dispatcher,
-            std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(*database, logger.getLogger())),
+            std::unique_ptr<IBlockchainCacheFactory>(
+                new DatabaseBlockchainCacheFactory(*database, logger.getLogger(), liteHeight)),
             config.transactionValidationThreads
         );
 
@@ -551,6 +691,17 @@ int main(int argc, char *argv[])
            we will remove blocks until we're back at the height specified */
         if (config.rewindToHeight > 0)
         {
+            /* Rewinding into the index-only region would need block bodies that
+               were never stored, and would leave the chain unable to move
+               forward again. */
+            if (liteHeight != 0 && config.rewindToHeight < liteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "Cannot rewind to " << config.rewindToHeight << " on a lite node whose full block data starts "
+                    << "at " << liteHeight << ". The blocks below that height were never stored.";
+                exit(1);
+            }
+
             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
 
             ccore->rewind(config.rewindToHeight);
@@ -572,6 +723,7 @@ int main(int argc, char *argv[])
         );
 
         cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
+        cprotocol->setLiteNodeConfig(liteHeight);
         cprotocol->setSyncTuning(
             config.syncMaxPeers,
             config.syncPeerFailureThreshold,
@@ -692,7 +844,8 @@ int main(int argc, char *argv[])
         }
         else if (!config.zmqPub.empty())
         {
-            zmqPublisher = std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub);
+            zmqPublisher =
+                std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub, liteHeight);
             if (!zmqPublisher->start())
             {
                 logger(WARNING) << "Failed to start ZMQ publisher on " << config.zmqPub << ". Continuing without ZMQ.";

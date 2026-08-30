@@ -888,6 +888,22 @@ namespace CryptoNote
         return index < startIndex ? parent->getBlockByIndex(index) : storage->getBlockByIndex(index - startIndex);
     }
 
+    bool BlockchainCache::tryGetBlockByIndex(uint32_t index, RawBlock &block) const
+    {
+        /* Heights below this segment belong to the parent, which is where a
+           pruned database - and so the only case that can answer no - lives. */
+        if (index < startIndex)
+        {
+            return parent->tryGetBlockByIndex(index, block);
+        }
+
+        /* An in memory segment holds every block it covers, so reaching here
+           means the block is present. */
+        block = storage->getBlockByIndex(index - startIndex);
+
+        return true;
+    }
+
     BinaryArray BlockchainCache::getRawTransaction(uint32_t index, uint32_t transactionIndex) const
     {
         if (index < startIndex)

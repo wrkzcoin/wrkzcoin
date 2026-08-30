@@ -102,6 +102,13 @@ namespace DaemonConfig
             "When prune mode is enabled, retain at least this many recent blocks locally",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.pruneDepth)),
             "#")(
+            "lite",
+            "Enable lite-node mode: store full blocks only from --lite-height upward. Permanent for this database",
+            cxxopts::value<bool>(config.lite)->default_value("false")->implicit_value("true"))(
+            "lite-height",
+            "Height at and above which a lite node stores full block data (required with --lite)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.liteHeight)),
+            "#")(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
             cxxopts::value<uint32_t>(),
@@ -469,6 +476,16 @@ namespace DaemonConfig
             if (cli.count("prune-depth") > 0)
             {
                 config.pruneDepth = clampPruneDepth(cli["prune-depth"].as<uint32_t>(), "CLI");
+            }
+
+            if (cli.count("lite") > 0)
+            {
+                config.lite = cli["lite"].as<bool>();
+            }
+
+            if (cli.count("lite-height") > 0)
+            {
+                config.liteHeight = cli["lite-height"].as<uint32_t>();
             }
 
             if (cli.count("print-genesis-tx") > 0)

@@ -107,44 +107,39 @@ namespace CryptoNote
             return true;
         }
 
-        bool requestTransactionHashesForGlobalOutputIndexes(
-            const std::vector<PackedOutIndex> &packedOuts,
+        // returns KeyOutputInfos in the same order as globalIndexes are
+        bool requestKeyOutputInfos(
+            IBlockchainCache::Amount amount,
+            Common::ArrayView<uint32_t> globalIndexes,
             IDataBase &database,
-            std::vector<Crypto::Hash> &transactionHashes)
+            std::vector<KeyOutputInfo> &result)
         {
-            BlockchainReadBatch readHashesBatch;
+            BlockchainReadBatch readBatch;
+            result.reserve(result.size() + globalIndexes.getSize());
 
-            std::set<uint32_t> blockIndexes;
-            std::for_each(packedOuts.begin(), packedOuts.end(), [&blockIndexes](PackedOutIndex out) {
-                blockIndexes.insert(out.blockIndex);
-            });
-            std::for_each(blockIndexes.begin(), blockIndexes.end(), [&readHashesBatch](uint32_t blockIndex) {
-                readHashesBatch.requestTransactionHashesByBlock(blockIndex);
-            });
+            for (auto globalIndex : globalIndexes)
+            {
+                readBatch.requestKeyOutputInfo(amount, globalIndex);
+            }
 
-            auto dbResult = database.read(readHashesBatch);
+            auto dbResult = database.read(readBatch);
             if (dbResult)
             {
                 return false;
             }
 
-            auto readResult = readHashesBatch.extractResult();
-            const auto &transactionHashesMap = readResult.getTransactionHashesByBlocks();
-
-            if (transactionHashesMap.size() != blockIndexes.size())
+            try
+            {
+                auto readResult = readBatch.extractResult();
+                const auto &keyOutputInfoMap = readResult.getKeyOutputInfo();
+                for (auto globalIndex : globalIndexes)
+                {
+                    result.push_back(keyOutputInfoMap.at(std::make_pair(amount, globalIndex)));
+                }
+            }
+            catch (std::exception &)
             {
                 return false;
-            }
-
-            transactionHashes.reserve(transactionHashes.size() + packedOuts.size());
-            for (const auto &output : packedOuts)
-            {
-                if (output.transactionIndex >= transactionHashesMap.at(output.blockIndex).size())
-                {
-                    return false;
-                }
-
-                transactionHashes.push_back(transactionHashesMap.at(output.blockIndex)[output.transactionIndex]);
             }
 
             return true;
@@ -183,17 +178,6 @@ namespace CryptoNote
             return true;
         }
 
-        // returns CachedTransactionInfos in the same or as packedOuts are
-        /*
-        bool requestCachedTransactionInfos(const std::vector<PackedOutIndex>& packedOuts, IDataBase& database,
-        std::vector<CachedTransactionInfo>& result) { std::vector<Crypto::Hash> transactionHashes; if
-        (!requestTransactionHashesForGlobalOutputIndexes(packedOuts, database, transactionHashes)) { return false;
-          }
-
-          return requestCachedTransactionInfos(transactionHashes, database, result);
-        }
-        */
-
         bool requestExtendedTransactionInfos(
             const std::vector<Crypto::Hash> &transactionHashes,
             IDataBase &database,
@@ -228,21 +212,6 @@ namespace CryptoNote
             }
 
             return true;
-        }
-
-        // returns ExtendedTransactionInfos in the same order as packedOuts are
-        bool requestExtendedTransactionInfos(
-            const std::vector<PackedOutIndex> &packedOuts,
-            IDataBase &database,
-            std::vector<ExtendedTransactionInfo> &result)
-        {
-            std::vector<Crypto::Hash> transactionHashes;
-            if (!requestTransactionHashesForGlobalOutputIndexes(packedOuts, database, transactionHashes))
-            {
-                return false;
-            }
-
-            return requestExtendedTransactionInfos(transactionHashes, database, result);
         }
 
         uint64_t roundToMidnight(uint64_t timestamp)
@@ -740,11 +709,13 @@ namespace CryptoNote
         const Currency &curr,
         IDataBase &dataBase,
         IBlockchainCacheFactory &blockchainCacheFactory,
-        std::shared_ptr<Logging::ILogger> _logger):
+        std::shared_ptr<Logging::ILogger> _logger,
+        uint32_t liteHeight):
         currency(curr),
         database(dataBase),
         blockchainCacheFactory(blockchainCacheFactory),
-        logger(_logger, "DatabaseBlockchainCache")
+        logger(_logger, "DatabaseBlockchainCache"),
+        liteHeight(liteHeight)
     {
         DatabaseVersionReadBatch readBatch;
         auto ec = database.read(readBatch);
@@ -864,6 +835,21 @@ namespace CryptoNote
     std::unique_ptr<IBlockchainCache> DatabaseBlockchainCache::split(uint32_t splitBlockIndex)
     {
         assert(splitBlockIndex <= getTopBlockIndex());
+
+        /* Splitting means undoing blocks, which needs the transaction records and
+           spent key image lists that index-only heights never stored. The lite
+           height is kept far enough below the top (MIN_LITE_FULL_BLOCK_DEPTH) that
+           no honest reorg reaches here, so this is a corrupt or hostile chain
+           rather than something to attempt and half finish. */
+        if (isLiteIndexOnlyHeight(splitBlockIndex))
+        {
+            logger(Logging::ERROR) << "Refusing to split at index " << splitBlockIndex
+                                   << ", below this lite node's full block height " << liteHeight
+                                   << ". The data needed to undo those blocks was never stored.";
+
+            throw std::runtime_error("Cannot split below the lite node height");
+        }
+
         logger(Logging::DEBUGGING) << "split at index " << splitBlockIndex
                                    << " started, top block index: " << getTopBlockIndex();
 
@@ -945,6 +931,19 @@ namespace CryptoNote
 
     void DatabaseBlockchainCache::rewind(const uint64_t height)
     {
+        /* Same reasoning as split(): the blocks below the lite height cannot be
+           undone because what undoing them needs was never written. Checked
+           before the height <= 1 shortcut, so a lite node cannot quietly wipe
+           itself back to genesis either. */
+        if (isLiteIndexOnlyHeight(static_cast<uint32_t>(height)))
+        {
+            logger(Logging::ERROR) << "Refusing to rewind to " << height
+                                   << ", below this lite node's full block height " << liteHeight
+                                   << ". The data needed to undo those blocks was never stored.";
+
+            throw std::runtime_error("Cannot rewind below the lite node height");
+        }
+
         /* 0 height, much much faster to just remove DB and recreate it than
          * remove everything. */
         if (height <= 1)
@@ -1355,6 +1354,24 @@ namespace CryptoNote
             batch.insertKeyOutputAmounts(newKeyAmounts, *keyOutputAmountsCount);
         }
 
+        /* Below a lite node's lite height the transaction record and the payment
+           id index are dropped. Everything consensus needs from this transaction
+           has already gone into the batch above - the key output info, the per
+           amount global indexes and the amount list - and those are what ring
+           member resolution and decoy selection read. What is lost is the ability
+           to rescan or explore those heights. See LITENODE.md. */
+        if (isLiteIndexOnlyHeight(blockIndex))
+        {
+            /* Still count it, or the chain wide transaction total would only
+               cover the blocks stored in full. */
+            batch.insertTransactionCount(getCachedTransactionsCount() + 1);
+            transactionsCount = *transactionsCount + 1;
+
+            logger(Logging::DEBUGGING) << "push transaction with hash "
+                                       << cachedTransaction.getTransactionHash() << " completed (index only)";
+            return;
+        }
+
         /* Persist payment ID text for wallet sync output (supports both short and long). */
         transactionCacheInfo.paymentId = Utilities::getPaymentIDFromExtra(cachedTransaction.getTransaction().extra);
 
@@ -1472,7 +1489,14 @@ namespace CryptoNote
         blockInfo.blockSize = static_cast<uint32_t>(blockSize);
         blockInfo.timestamp = cachedBlock.getBlock().timestamp;
 
-        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages);
+        /* Below a lite node's lite height only the indexes that later blocks
+           actually read are kept: the key image -> block index entries, the key
+           output info and per amount counts written by pushTransaction, and the
+           block info itself. The block body, its transaction hash list and the
+           rewind index all go. See LITENODE.md. */
+        const bool indexOnly = isLiteIndexOnlyHeight(getTopBlockIndex() + 1);
+
+        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages, !indexOnly);
 
         auto txHashes = cachedBlock.getBlock().transactionHashes;
         auto baseTransaction = cachedBlock.getBlock().baseTransaction;
@@ -1481,8 +1505,13 @@ namespace CryptoNote
         // base transaction's hash is always the first one in index for this block
         txHashes.insert(txHashes.begin(), cachedBaseTransaction.getTransactionHash());
 
-        batch.insertCachedBlock(blockInfo, getTopBlockIndex() + 1, txHashes);
-        batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
+        batch.insertCachedBlock(
+            blockInfo, getTopBlockIndex() + 1, indexOnly ? std::vector<Crypto::Hash> {} : txHashes);
+
+        if (!indexOnly)
+        {
+            batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
+        }
 
         auto transactionIndex = 0;
         pushTransaction(cachedBaseTransaction, getTopBlockIndex() + 1, transactionIndex++, batch);
@@ -1498,7 +1527,11 @@ namespace CryptoNote
            this day is present every further block of that day can skip the
            lookup. Blocks arrive in time order during a sync, which makes this
            roughly one read per day instead of one per block. */
-        if (knownClosestTimestampMidnight != blockMidnight)
+        /* The timestamp indexes exist to answer "which height was this date",
+           which is how a wallet starts a scan from a date. A lite node cannot
+           serve a scan that starts below its lite height at all, so these are
+           dead weight down there. */
+        if (!indexOnly && knownClosestTimestampMidnight != blockMidnight)
         {
             auto closestBlockIndexDb = requestClosestBlockIndexByTimestamp(blockMidnight, database);
             if (!closestBlockIndexDb.second)
@@ -1514,7 +1547,10 @@ namespace CryptoNote
             }
         }
 
-        insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
+        if (!indexOnly)
+        {
+            insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
+        }
 
         const bool durable = shouldSyncBlockWrite(getTopBlockIndex() + 1, cachedBlock.getBlock().timestamp);
 
@@ -1536,8 +1572,15 @@ namespace CryptoNote
         }
 
         /* Set only now the write has gone through, so a failed push cannot
-           leave us believing in an entry that was never committed. */
-        knownClosestTimestampMidnight = blockMidnight;
+           leave us believing in an entry that was never committed. Index only
+           heights never wrote one, so they must not claim the day is covered
+           either: the lite height can fall mid day, and the first full block
+           after it would otherwise skip the lookup and leave that day with no
+           closest timestamp entry at all. */
+        if (!indexOnly)
+        {
+            knownClosestTimestampMidnight = blockMidnight;
+        }
     }
 
     PushedBlockInfo DatabaseBlockchainCache::getPushedBlockInfo(uint32_t blockIndex) const
@@ -2278,6 +2321,27 @@ namespace CryptoNote
         return std::move(res.getRawBlocks().at(index));
     }
 
+    bool DatabaseBlockchainCache::tryGetBlockByIndex(uint32_t index, RawBlock &block) const
+    {
+        auto batch = BlockchainReadBatch().requestRawBlock(index);
+        auto res = readDatabase(batch);
+
+        const auto &rawBlocks = res.getRawBlocks();
+        const auto it = rawBlocks.find(index);
+
+        if (it == rawBlocks.end())
+        {
+            /* Pruned away. The block info and hash indexes still name this
+               height, so this is an expected answer on a pruned node, not a
+               database fault - readDatabase has already thrown for those. */
+            return false;
+        }
+
+        block = it->second;
+
+        return true;
+    }
+
     BinaryArray DatabaseBlockchainCache::getRawTransaction(uint32_t blockIndex, uint32_t transactionIndex) const
     {
         return getBlockByIndex(blockIndex).transactions.at(transactionIndex);
@@ -2328,14 +2392,26 @@ namespace CryptoNote
                 throw std::runtime_error("Invalid output index"); // TODO: make error code
             }
 
-            std::vector<ExtendedTransactionInfo> transactions;
-            if (!requestExtendedTransactionInfos(outputs, database, transactions))
+            /* Deciding whether a candidate decoy is mature needs two things: the
+               output's unlock time, and the height it was created at. Both are
+               already indexed - the unlock time in KeyOutputInfo, the height in
+               the PackedOutIndex just read above. Reaching them through the
+               transaction table cost two further reads per batch, the block's
+               transaction hash list and then the whole ExtendedTransactionInfo,
+               ring offsets and all, to look at two fields. */
+            std::vector<KeyOutputInfo> outputInfos;
+            if (!requestKeyOutputInfos(
+                    amount,
+                    Common::ArrayView<uint32_t>(globalIndexes.data(), globalIndexes.size()),
+                    database,
+                    outputInfos))
             {
-                logger(Logging::TRACE) << "getRandomOutsByAmount: requestExtendedTransactionInfos failed";
-                throw std::runtime_error("Error while requesting transactions"); // TODO: make error code
+                logger(Logging::TRACE) << "getRandomOutsByAmount: requestKeyOutputInfos failed";
+                throw std::runtime_error("Error while requesting key output info"); // TODO: make error code
             }
 
-            assert(globalIndexes.size() == transactions.size());
+            assert(globalIndexes.size() == outputs.size());
+            assert(globalIndexes.size() == outputInfos.size());
 
             uint32_t uppperBlockIndex = 0;
             if (blockIndex > currency.minedMoneyUnlockWindow())
@@ -2343,10 +2419,10 @@ namespace CryptoNote
                 uppperBlockIndex = blockIndex - currency.minedMoneyUnlockWindow();
             }
 
-            for (size_t i = 0; i < transactions.size(); ++i)
+            for (size_t i = 0; i < outputInfos.size(); ++i)
             {
-                if (!isTransactionSpendTimeUnlocked(transactions[i].unlockTime, blockIndex)
-                    || transactions[i].blockIndex > uppperBlockIndex)
+                if (!isTransactionSpendTimeUnlocked(outputInfos[i].unlockTime, blockIndex)
+                    || outputs[i].blockIndex > uppperBlockIndex)
                 {
                     continue;
                 }

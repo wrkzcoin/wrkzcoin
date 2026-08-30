@@ -900,6 +900,10 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["pruned"] = m_syncManager->isPrunedNode();
         j["prune_depth"] = m_syncManager->getPrunedNodeDepth();
         j["prune_capability_active"] = m_syncManager->isPruneCapabilityActive();
+        /* Wallets read these to floor their scan height: nothing below
+           lite_start_height can be found on this daemon. See LITENODE.md. */
+        j["lite"] = m_syncManager->getLiteNodeHeight() != 0;
+        j["lite_start_height"] = m_syncManager->getLiteNodeHeight();
         j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
         j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
         j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
@@ -1130,13 +1134,26 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         }
     }
 
-    const uint64_t startHeight = hasMember(body, "startHeight")
+    uint64_t startHeight = hasMember(body, "startHeight")
         ? getUint64FromJSON(body, "startHeight")
         : 0;
 
-    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+    uint64_t startTimestamp = hasMember(body, "startTimestamp")
         ? getUint64FromJSON(body, "startTimestamp")
         : 0;
+
+    /* On a lite node nothing below the lite height was ever stored, so a wallet
+       asking to start below it is served from the lite height rather than fed an
+       empty response forever. The wallet learns where that floor is from
+       lite_start_height in /info. A timestamp start is dropped at the same time:
+       the timestamp indexes do not reach down there either, so leaving it set
+       would only resolve the start back below the floor. See LITENODE.md. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        startHeight = liteStartHeight;
+        startTimestamp = 0;
+    }
 
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")
@@ -1385,6 +1402,21 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
     if (rangeSpan >= m_rpcMaxGlobalIndexesRange)
     {
         failRequest(400, "Requested range exceeds rpc-max-global-index-range", res);
+        return {SUCCESS, 400};
+    }
+
+    /* Unlike the sync endpoints there is nothing sensible to clamp to here - the
+       caller asked about specific heights and a silently narrowed range would
+       read as "these heights hold no transactions", which is a different and
+       wrong answer. Say plainly that this node cannot know. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        failRequest(
+            400,
+            "This node is a lite node and stores no transaction data below height "
+                + std::to_string(liteStartHeight),
+            res);
         return {SUCCESS, 400};
     }
 
@@ -2824,13 +2856,26 @@ std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
         }
     }
 
-    const uint64_t startHeight = hasMember(body, "startHeight")
+    uint64_t startHeight = hasMember(body, "startHeight")
         ? getUint64FromJSON(body, "startHeight")
         : 0;
 
-    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+    uint64_t startTimestamp = hasMember(body, "startTimestamp")
         ? getUint64FromJSON(body, "startTimestamp")
         : 0;
+
+    /* On a lite node nothing below the lite height was ever stored, so a wallet
+       asking to start below it is served from the lite height rather than fed an
+       empty response forever. The wallet learns where that floor is from
+       lite_start_height in /info. A timestamp start is dropped at the same time:
+       the timestamp indexes do not reach down there either, so leaving it set
+       would only resolve the start back below the floor. See LITENODE.md. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        startHeight = liteStartHeight;
+        startTimestamp = 0;
+    }
 
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")

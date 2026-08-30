@@ -379,6 +379,35 @@ namespace CryptoNote
     {
         context.m_remote_is_pruned_node = (hshd.capability_flags & NODE_CAPABILITY_FLAG_PRUNED) != 0;
         context.m_remote_pruned_node_height = hshd.pruned_node_height;
+        context.m_remote_is_lite_node = (hshd.capability_flags & NODE_CAPABILITY_FLAG_LITE) != 0;
+        context.m_remote_lite_start_height = hshd.lite_start_height;
+
+        /* A lite height is only meaningful against the height of the network, and
+           this is the first moment we learn that. It must sit far enough below the
+           top that no reorg can ever reach the region whose block bodies were never
+           stored. Checked once, on the first peer to tell us where the top is:
+           after that the margin only widens as the chain grows. */
+        if (m_liteHeight != 0 && !m_liteDepthChecked && hshd.current_height > 0)
+        {
+            m_liteDepthChecked = true;
+
+            const uint64_t networkHeight = hshd.current_height;
+            const uint64_t required = CryptoNote::parameters::MIN_LITE_FULL_BLOCK_DEPTH;
+
+            if (networkHeight < required || networkHeight - required < m_liteHeight)
+            {
+                const uint64_t maxAllowed = networkHeight > required ? networkHeight - required : 0;
+
+                logger(Logging::FATAL, Logging::BRIGHT_RED)
+                    << "--lite-height " << m_liteHeight << " is too close to the network top (" << networkHeight
+                    << "). A lite node must keep at least " << required << " blocks of full data above its lite "
+                    << "height so a reorg can never reach the part it did not store. The highest value this "
+                    << "network currently allows is " << maxAllowed
+                    << ". Delete the data directory and restart with a lower --lite-height.";
+
+                exit(1);
+            }
+        }
         context.m_sync_batch_size = m_syncBatchMin;
         context.m_sync_failures = 0;
         context.m_sync_orphan_retries = 0;
@@ -415,11 +444,29 @@ namespace CryptoNote
             const bool forkActive = isPruneCapabilityForkActive(currentHeight, remoteHeight);
             const bool fullNodeMustUseFullSyncPeer = forkActive && !m_isPrunedNode && context.m_remote_is_pruned_node;
 
-            if (fullNodeMustUseFullSyncPeer)
+            /* A lite peer holds nothing below its lite start height, so it cannot
+               carry us across heights we still need. Unlike the pruned case this
+               waits on no fork - it is a plain fact about what the peer has, and
+               asking anyway would only earn a response full of missed ids. */
+            const bool peerStartsAboveUs = context.m_remote_is_lite_node
+                                           && context.m_remote_lite_start_height != 0
+                                           && currentHeight < context.m_remote_lite_start_height;
+
+            if (fullNodeMustUseFullSyncPeer || peerStartsAboveUs)
             {
-                logger(Logging::DEBUGGING) << context
-                                           << "Peer is pruned after prune capability fork; limiting this connection "
-                                              "to relay/pool sync only.";
+                if (peerStartsAboveUs)
+                {
+                    logger(Logging::DEBUGGING)
+                        << context << "Peer is a lite node serving from height " << context.m_remote_lite_start_height
+                        << ", above our height " << currentHeight
+                        << "; limiting this connection to relay/pool sync only.";
+                }
+                else
+                {
+                    logger(Logging::DEBUGGING)
+                        << context << "Peer is pruned after prune capability fork; limiting this connection "
+                                      "to relay/pool sync only.";
+                }
 
                 context.m_state = is_initial ? CryptoNoteConnectionContext::state_pool_sync_required
                                              : CryptoNoteConnectionContext::state_normal;
@@ -524,6 +571,17 @@ namespace CryptoNote
         hshd.capability_flags = m_isPrunedNode ? NODE_CAPABILITY_FLAG_PRUNED : 0;
         hshd.pruned_node_height =
             (m_isPrunedNode && hshd.current_height > m_prunedNodeDepth) ? (hshd.current_height - m_prunedNodeDepth) : 0;
+
+        if (m_liteHeight != 0)
+        {
+            hshd.capability_flags |= NODE_CAPABILITY_FLAG_LITE;
+            hshd.lite_start_height = m_liteHeight;
+        }
+        else
+        {
+            hshd.lite_start_height = 0;
+        }
+
         return true;
     }
 
@@ -1653,6 +1711,16 @@ namespace CryptoNote
     bool CryptoNoteProtocolHandler::isPruneCapabilityActive() const
     {
         return get_current_blockchain_height() >= CryptoNote::parameters::PRUNE_CAPABILITY_FORK_HEIGHT;
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getLiteNodeHeight() const
+    {
+        return m_liteHeight;
+    }
+
+    void CryptoNoteProtocolHandler::setLiteNodeConfig(uint32_t liteHeight)
+    {
+        m_liteHeight = liteHeight;
     }
 
     void CryptoNoteProtocolHandler::setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth)

@@ -867,6 +867,19 @@ bool Nigel::getDaemonInfo()
             m_isBlockchainCache = j.at("isCacheApi").get<bool>();
         }
 
+        /* A lite daemon stores nothing below this height, so no wallet can find
+           funds down there through it however far back it is told to scan. A
+           daemon too old to advertise the field leaves this at zero, which reads
+           as "serves everything" - which is what it is. See LITENODE.md. */
+        if (j.find("lite_start_height") != j.end())
+        {
+            m_liteStartHeight = j.at("lite_start_height").get<uint64_t>();
+        }
+        else
+        {
+            m_liteStartHeight = 0;
+        }
+
         /* Optional sync behaviours only get switched on once the daemon has
            named them. A daemon too old to advertise anything simply never
            enables them, and keeps serving what it always has. */
@@ -952,6 +965,11 @@ uint64_t Nigel::localDaemonBlockCount() const
 uint64_t Nigel::networkBlockCount() const
 {
     return m_networkBlockCount;
+}
+
+uint64_t Nigel::liteStartHeight() const
+{
+    return m_liteStartHeight;
 }
 
 uint64_t Nigel::peerCount() const

@@ -18,7 +18,11 @@ namespace CryptoNote
     class DatabaseBlockchainCacheFactory : public IBlockchainCacheFactory
     {
       public:
-        explicit DatabaseBlockchainCacheFactory(IDataBase &database, std::shared_ptr<Logging::ILogger> logger);
+        /* liteHeight of 0 means full storage; see DatabaseBlockchainCache. */
+        explicit DatabaseBlockchainCacheFactory(
+            IDataBase &database,
+            std::shared_ptr<Logging::ILogger> logger,
+            uint32_t liteHeight = 0);
 
         virtual ~DatabaseBlockchainCacheFactory();
 
@@ -31,6 +35,8 @@ namespace CryptoNote
         IDataBase &database;
 
         std::shared_ptr<Logging::ILogger> logger;
+
+        uint32_t liteHeight;
     };
 
 } // namespace CryptoNote

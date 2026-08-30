@@ -66,6 +66,8 @@ namespace DaemonConfig
             exportNumBlocks = 0;
             prune = false;
             pruneDepth = DEFAULT_PRUNE_DEPTH;
+            lite = false;
+            liteHeight = 0;
             syncMaxPeers = 3;
             syncPeerFailureThreshold = 2;
             syncBatchMin = 120;
@@ -171,6 +173,13 @@ namespace DaemonConfig
         bool prune;
 
         uint32_t pruneDepth;
+
+        /* Lite mode: store full block data only from liteHeight upward, and keep
+           index-only data below it. Permanent for the life of the database - see
+           LITENODE.md. Mutually exclusive with prune. */
+        bool lite;
+
+        uint32_t liteHeight;
 
         uint32_t syncMaxPeers;
 

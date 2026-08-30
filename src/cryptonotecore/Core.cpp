@@ -529,7 +529,22 @@ namespace CryptoNote
                 uint32_t blockIndex = blockchainSegment->getBlockIndex(hash);
                 assert(blockIndex <= blockchainSegment->getTopBlockIndex());
 
-                blocks.push_back(blockchainSegment->getBlockByIndex(blockIndex));
+                /* A pruned node still indexes the hash and height of blocks
+                   whose body it has dropped, so findSegmentContainingBlock
+                   answers for heights we cannot actually serve. Report those
+                   as missed and let the peer ask elsewhere. Reading them
+                   unconditionally threw std::out_of_range, which unwound all
+                   the way to the connection handler and dropped the peer. */
+                RawBlock rawBlock;
+
+                if (blockchainSegment->tryGetBlockByIndex(blockIndex, rawBlock))
+                {
+                    blocks.push_back(std::move(rawBlock));
+                }
+                else
+                {
+                    missedHashes.push_back(hash);
+                }
             }
         }
     }

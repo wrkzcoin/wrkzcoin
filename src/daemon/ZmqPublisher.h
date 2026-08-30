@@ -21,11 +21,15 @@ namespace Daemon
     class ZmqPublisher
     {
       public:
+        /* liteHeight is 0 for a full node. Above it, blocks below that height have
+           no stored body, so the chain_main prefetch payload cannot be built for
+           them and is not attempted. See LITENODE.md. */
         ZmqPublisher(
             System::Dispatcher &dispatcher,
             CryptoNote::ICore &core,
             std::shared_ptr<Logging::ILogger> logger,
-            std::string endpoint);
+            std::string endpoint,
+            uint32_t liteHeight = 0);
 
         ~ZmqPublisher();
 
@@ -54,6 +58,8 @@ namespace Daemon
         CryptoNote::ICore &m_core;
         Logging::LoggerRef m_logger;
         std::string m_endpoint;
+        /* 0 = full node; otherwise the height full block data starts at. */
+        uint32_t m_liteHeight = 0;
 
         CryptoNote::MessageQueue<CryptoNote::BlockchainMessage> m_queue;
         std::unique_ptr<QueueGuard> m_queueGuard;

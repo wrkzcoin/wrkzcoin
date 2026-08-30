@@ -110,6 +110,11 @@ class Nigel
 
     uint64_t networkBlockCount() const;
 
+    /* The lowest height this daemon can be scanned from. Zero when it holds the
+       whole chain. A wallet asked to scan from lower than this cannot find its
+       funds here, so callers floor their scan height to it. */
+    uint64_t liteStartHeight() const;
+
     uint64_t peerCount() const;
 
     uint64_t hashrate() const;
@@ -271,6 +276,10 @@ class Nigel
     /* Whether the daemon is a blockchain cache API
        see: https://github.com/TurtlePay/blockchain-cache-api */
     std::atomic<bool> m_isBlockchainCache = false;
+
+    /* Lowest height this daemon holds anything for; 0 when it holds everything.
+       See LITENODE.md. */
+    std::atomic<uint64_t> m_liteStartHeight = 0;
 
     /* Optional sync behaviours, each switched on only once the daemon has
        named it in /info. Left off for a daemon that advertises nothing, which

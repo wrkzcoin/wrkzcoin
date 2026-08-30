@@ -430,6 +430,13 @@ namespace CryptoNote
 
         /* Feature fork where prune capability signaling and sync policy enforcement activate. */
         const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
+
+        /* A lite node keeps full block data only from its lite height upward, and
+           below it keeps just the indexes needed to resolve ring members and catch
+           double spends. It must stay at least this far below the network top, so a
+           reorg can never reach into the region whose block bodies are gone. Well
+           clear of MAX_BLOCK_ALLOWED_TO_REWIND, which is three days. */
+        const uint32_t MIN_LITE_FULL_BLOCK_DEPTH = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 14;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";

@@ -17,10 +17,14 @@ BlockchainWriteBatch::~BlockchainWriteBatch() {}
 
 BlockchainWriteBatch &BlockchainWriteBatch::insertSpentKeyImages(
     uint32_t blockIndex,
-    const std::unordered_set<Crypto::KeyImage> &spentKeyImages)
+    const std::unordered_set<Crypto::KeyImage> &spentKeyImages,
+    bool storeRewindIndex)
 {
     rawDataToInsert.reserve(rawDataToInsert.size() + spentKeyImages.size() + 1);
-    rawDataToInsert.emplace_back(DB::serialize(DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX, blockIndex, spentKeyImages));
+    if (storeRewindIndex)
+    {
+        rawDataToInsert.emplace_back(DB::serialize(DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX, blockIndex, spentKeyImages));
+    }
     for (const Crypto::KeyImage &keyImage : spentKeyImages)
     {
         rawDataToInsert.emplace_back(DB::serialize(DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX, keyImage, blockIndex));
@@ -33,6 +37,13 @@ BlockchainWriteBatch &
 {
     rawDataToInsert.emplace_back(
         DB::serialize(DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX, transaction.transactionHash, transaction));
+    rawDataToInsert.emplace_back(
+        DB::serialize(DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX, DB::TRANSACTIONS_COUNT_KEY, totalTxsCount));
+    return *this;
+}
+
+BlockchainWriteBatch &BlockchainWriteBatch::insertTransactionCount(uint64_t totalTxsCount)
+{
     rawDataToInsert.emplace_back(
         DB::serialize(DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX, DB::TRANSACTIONS_COUNT_KEY, totalTxsCount));
     return *this;

@@ -237,6 +237,8 @@ namespace CryptoNote
 
         virtual RawBlock getBlockByIndex(uint32_t index) const override;
 
+        virtual bool tryGetBlockByIndex(uint32_t index, RawBlock &block) const override;
+
         virtual BinaryArray getRawTransaction(uint32_t blockIndex, uint32_t transactionIndex) const override;
 
         virtual std::vector<Crypto::Hash> getTransactionHashes() const override;
