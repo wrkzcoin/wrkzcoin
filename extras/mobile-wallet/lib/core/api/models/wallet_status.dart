@@ -10,6 +10,13 @@ class WalletStatus {
   final bool isViewWallet;
   final int subWalletCount;
 
+  /// The ring sizes the network expects at the current height. Zero against a
+  /// wallet_capi too old to report them, which every reader must treat as
+  /// "unknown" rather than as a real limit.
+  final int minMixin;
+  final int maxMixin;
+  final int defaultMixin;
+
   const WalletStatus({
     required this.walletBlockCount,
     required this.localDaemonBlockCount,
@@ -21,6 +28,9 @@ class WalletStatus {
     required this.hashrate,
     required this.isViewWallet,
     required this.subWalletCount,
+    this.minMixin = 0,
+    this.maxMixin = 0,
+    this.defaultMixin = 0,
   });
 
   double get syncProgress {
@@ -43,5 +53,8 @@ class WalletStatus {
         isViewWallet: json['isViewWallet'] as bool? ?? false,
         subWalletCount:
             (json['subWalletCount'] as num?)?.toInt() ?? 1,
+        minMixin: (json['minMixin'] as num?)?.toInt() ?? 0,
+        maxMixin: (json['maxMixin'] as num?)?.toInt() ?? 0,
+        defaultMixin: (json['defaultMixin'] as num?)?.toInt() ?? 0,
       );
 }

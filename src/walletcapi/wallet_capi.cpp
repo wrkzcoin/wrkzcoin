@@ -596,6 +596,14 @@ wallet_status_t wallet_get_status_json(
                                 s.localDaemonBlockCount >= s.networkBlockCount;
     const bool isWalletSynced = s.networkBlockCount > 0 &&
                                 s.walletBlockCount >= s.networkBlockCount;
+
+    /* The ring sizes the network expects at this height. Without them a caller
+       can read back what a transaction was built with but has nothing to
+       compare it against, and cannot tell that a build older than the current
+       fork is about to send at a ring the network no longer accepts. */
+    const auto [minMixin, maxMixin, defaultMixin] =
+        Utilities::getMixinAllowableRange(s.networkBlockCount);
+
     nlohmann::json j{
         {"walletBlockCount", s.walletBlockCount},
         {"localDaemonBlockCount", s.localDaemonBlockCount},
@@ -607,6 +615,9 @@ wallet_status_t wallet_get_status_json(
         {"isOutOfSync", !isDaemonSynced && !isWalletSynced},
         {"isViewWallet", instance->isViewWallet()},
         {"subWalletCount", static_cast<int>(instance->getAddresses().size())},
+        {"minMixin", minMixin},
+        {"maxMixin", maxMixin},
+        {"defaultMixin", defaultMixin},
     };
 
     return alloc_out_string(j.dump(), out_json, out_len);
