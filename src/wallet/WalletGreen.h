@@ -27,6 +27,11 @@ namespace CryptoNote
         std::vector<WalletTransfer> destinations;
         uint64_t neededMoney;
         uint64_t changeAmount;
+
+        /* The mixin this transaction was actually built with. May be lower than
+           the mixin requested, if the denominations being spent did not have
+           enough outputs on chain to form a larger ring. */
+        uint16_t mixin = 0;
     };
 
     class WalletGreen :
@@ -121,7 +126,10 @@ namespace CryptoNote
 
         virtual std::vector<size_t> getDelayedTransactionIds() const;
 
-        virtual size_t transfer(TransactionParameters &transactionParameters);
+        /* actualMixin, when given, receives the ring size the transaction was
+           really built with - which can be below the one requested if a
+           denomination being spent lacks decoys. */
+        virtual size_t transfer(TransactionParameters &transactionParameters, uint16_t *actualMixin = nullptr);
 
         virtual size_t makeTransaction(TransactionParameters &sendingTransaction);
 
@@ -382,9 +390,9 @@ namespace CryptoNote
             const CryptoNote::AccountPublicAddress &changeDestinationAddress,
             PreparedTransaction &preparedTransaction);
 
-        size_t doTransfer(const TransactionParameters &transactionParameters);
+        size_t doTransfer(const TransactionParameters &transactionParameters, uint16_t *actualMixin = nullptr);
 
-        void checkIfEnoughMixins(std::vector<CryptoNote::RandomOuts> &mixinResult, uint16_t mixIn) const;
+        uint16_t achievableMixin(const std::vector<CryptoNote::RandomOuts> &mixinResult) const;
 
         std::vector<WalletTransfer> convertOrdersToTransfers(const std::vector<WalletOrder> &orders) const;
 
@@ -411,7 +419,10 @@ namespace CryptoNote
 
         void validateTransactionParameters(const TransactionParameters &transactionParameters) const;
 
-        void requestMixinOuts(
+        /* Returns the mixin actually satisfied, which may be below the one asked
+           for when a denomination lacks decoys. Throws MIXIN_COUNT_TOO_BIG only
+           when even the network minimum cannot be met. */
+        uint16_t requestMixinOuts(
             const std::vector<OutputToTransfer> &selectedTransfers,
             uint16_t mixIn,
             std::vector<CryptoNote::RandomOuts> &mixinResult);

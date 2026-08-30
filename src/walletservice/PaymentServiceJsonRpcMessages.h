@@ -438,6 +438,11 @@ namespace PaymentService
             std::string transactionHash;
             uint64_t fee;
 
+            /* May be lower than the anonymity requested, if the denominations
+               spent did not have enough outputs on chain to form a larger
+               ring. */
+            uint64_t anonymity = 0;
+
             void serialize(CryptoNote::ISerializer &serializer);
         };
     };

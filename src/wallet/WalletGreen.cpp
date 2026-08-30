@@ -46,6 +46,8 @@
 #include <utilities/Addresses.h>
 #include <utilities/ParseExtra.h>
 #include <utilities/PaymentIdEncryption.h>
+#include <limits>
+#include <utilities/Mixins.h>
 #include <utilities/Utilities.h>
 #include <utility>
 #include <wallet/WalletErrors.h>
@@ -1638,7 +1640,7 @@ namespace CryptoNote
         return id;
     }
 
-    size_t WalletGreen::transfer(TransactionParameters &transactionParameters)
+    size_t WalletGreen::transfer(TransactionParameters &transactionParameters, uint16_t *actualMixin)
     {
         if (transactionParameters.unlockTimestamp == 0)
         {
@@ -1683,7 +1685,7 @@ namespace CryptoNote
                                      << ", mixin " << transactionParameters.mixIn << ", unlockTimestamp "
                                      << transactionParameters.unlockTimestamp;
 
-        id = doTransfer(transactionParameters);
+        id = doTransfer(transactionParameters, actualMixin);
         return id;
     }
 
@@ -1758,8 +1760,12 @@ namespace CryptoNote
 
             if (mixIn != 0)
             {
-                requestMixinOuts(selectedTransfers, mixIn, mixinResult);
+                mixIn = requestMixinOuts(selectedTransfers, mixIn, mixinResult);
             }
+
+            /* Recorded where the ring is settled, so it cannot drift from the
+               transaction the caller is about to be handed. */
+            preparedTransaction.mixin = mixIn;
 
             std::vector<InputInfo> keysInfo;
             prepareInputs(selectedTransfers, mixinResult, mixIn, keysInfo);
@@ -1962,18 +1968,26 @@ namespace CryptoNote
         }
     }
 
-    void WalletGreen::checkIfEnoughMixins(std::vector<RandomOuts> &mixinResult, uint16_t mixIn) const
+    /* The largest mixin these denominations can actually support, given what the
+       daemon handed back. requestMixinOuts asks for mixIn + 1 per amount so it
+       can drop one that turns out to be ours, so the ring we can rely on is one
+       smaller than the thinnest set we were given. Reports rather than throws:
+       the caller decides whether a smaller ring is worth taking. */
+    uint16_t WalletGreen::achievableMixin(const std::vector<RandomOuts> &mixinResult) const
     {
-        assert(mixIn != 0);
-
-        auto notEnoughIt = std::find_if(
-            mixinResult.begin(), mixinResult.end(), [mixIn](const auto ofa) { return ofa.outs.size() < mixIn; });
-
-        if (notEnoughIt != mixinResult.end())
+        if (mixinResult.empty())
         {
-            m_logger(ERROR, BRIGHT_RED) << "Mixin is too big: " << mixIn;
-            throw std::system_error(make_error_code(CryptoNote::error::MIXIN_COUNT_TOO_BIG));
+            return 0;
         }
+
+        size_t smallest = std::numeric_limits<size_t>::max();
+
+        for (const auto &ofa : mixinResult)
+        {
+            smallest = std::min(smallest, ofa.outs.size());
+        }
+
+        return smallest == 0 ? 0 : static_cast<uint16_t>(smallest - 1);
     }
 
     std::vector<WalletTransfer> WalletGreen::convertOrdersToTransfers(const std::vector<WalletOrder> &orders) const
@@ -2204,7 +2218,7 @@ namespace CryptoNote
         validateOrders(transactionParameters.destinations);
     }
 
-    size_t WalletGreen::doTransfer(const TransactionParameters &transactionParameters)
+    size_t WalletGreen::doTransfer(const TransactionParameters &transactionParameters, uint16_t *actualMixin)
     {
         validateTransactionParameters(transactionParameters);
         CryptoNote::AccountPublicAddress changeDestination =
@@ -2234,6 +2248,11 @@ namespace CryptoNote
             transactionParameters.donation,
             changeDestination,
             preparedTransaction);
+
+        if (actualMixin != nullptr)
+        {
+            *actualMixin = preparedTransaction.mixin;
+        }
 
         return validateSaveAndSendTransaction(
             *preparedTransaction.transaction, preparedTransaction.destinations, false, true);
@@ -3137,7 +3156,7 @@ namespace CryptoNote
         return keys;
     }
 
-    void WalletGreen::requestMixinOuts(
+    uint16_t WalletGreen::requestMixinOuts(
         const std::vector<OutputToTransfer> &selectedTransfers,
         uint16_t mixIn,
         std::vector<CryptoNote::RandomOuts> &mixinResult)
@@ -3148,38 +3167,76 @@ namespace CryptoNote
             amounts.push_back(out.out.amount);
         }
 
-        System::Event requestFinished(m_dispatcher);
-        std::error_code mixinError;
+        const auto [minMixin, maxMixin, defaultMixin] =
+            Utilities::getMixinAllowableRange(m_node.getLastKnownBlockHeight());
 
-        throwIfStopped();
+        uint16_t attemptMixin = mixIn;
 
-        uint16_t requestMixinCount = mixIn + 1; //+1 to allow to skip real output
-
-        m_logger(DEBUGGING) << "Requesting random outputs";
-        System::RemoteContext<void> getOutputsContext(
-            m_dispatcher, [this, amounts, requestMixinCount, &mixinResult, &requestFinished, &mixinError]() mutable {
-                m_node.getRandomOutsByAmounts(
-                    std::move(amounts),
-                    requestMixinCount,
-                    mixinResult,
-                    [&requestFinished, &mixinError, this](std::error_code ec) mutable {
-                        mixinError = ec;
-                        m_dispatcher.remoteSpawn(std::bind(asyncRequestCompletion, std::ref(requestFinished)));
-                    });
-            });
-        getOutputsContext.get();
-        requestFinished.wait();
-
-        checkIfEnoughMixins(mixinResult, requestMixinCount);
-
-        if (mixinError)
+        /* Same ladder as the walletbackend stack: ask at the requested ring,
+           then at the largest one the chain measured as reachable, then at the
+           network minimum, which nothing can beat. Without it a denomination
+           without enough outputs on chain simply cannot be spent, and with the
+           mixin V6 default of 7 that stops being a rare corner. */
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            m_logger(ERROR, BRIGHT_RED) << "Failed to get random outputs: " << mixinError << ", "
-                                        << mixinError.message();
-            throw std::system_error(mixinError);
+            mixinResult.clear();
+
+            System::Event requestFinished(m_dispatcher);
+            std::error_code mixinError;
+
+            throwIfStopped();
+
+            uint16_t requestMixinCount = attemptMixin + 1; //+1 to allow to skip real output
+
+            m_logger(DEBUGGING) << "Requesting random outputs";
+            System::RemoteContext<void> getOutputsContext(
+                m_dispatcher, [this, amounts, requestMixinCount, &mixinResult, &requestFinished, &mixinError]() mutable {
+                    m_node.getRandomOutsByAmounts(
+                        std::move(amounts),
+                        requestMixinCount,
+                        mixinResult,
+                        [&requestFinished, &mixinError, this](std::error_code ec) mutable {
+                            mixinError = ec;
+                            m_dispatcher.remoteSpawn(std::bind(asyncRequestCompletion, std::ref(requestFinished)));
+                        });
+                });
+            getOutputsContext.get();
+            requestFinished.wait();
+
+            /* Check the transport before the contents. Reversed, an unreachable
+               daemon looked like a mixin that was too big, because an empty
+               result trivially satisfies a search for one that is too small. */
+            if (mixinError)
+            {
+                m_logger(ERROR, BRIGHT_RED) << "Failed to get random outputs: " << mixinError << ", "
+                                            << mixinError.message();
+                throw std::system_error(mixinError);
+            }
+
+            const uint16_t achievable = achievableMixin(mixinResult);
+
+            if (mixinResult.size() == amounts.size() && achievable >= attemptMixin)
+            {
+                m_logger(DEBUGGING) << "Random outputs received";
+
+                return attemptMixin;
+            }
+
+            const auto next = Utilities::nextFallbackMixin(
+                attemptMixin, attempt == 0 ? achievable : minMixin, minMixin);
+
+            if (!next)
+            {
+                break;
+            }
+
+            m_logger(DEBUGGING) << "Not enough outputs for a mixin of " << attemptMixin << ", retrying at " << *next;
+
+            attemptMixin = static_cast<uint16_t>(*next);
         }
 
-        m_logger(DEBUGGING) << "Random outputs received";
+        m_logger(ERROR, BRIGHT_RED) << "Mixin is too big: " << mixIn;
+        throw std::system_error(make_error_code(CryptoNote::error::MIXIN_COUNT_TOO_BIG));
     }
 
     uint64_t WalletGreen::selectTransfers(
@@ -4142,7 +4199,7 @@ namespace CryptoNote
         std::vector<RandomOuts> mixinResult;
         if (mixin != 0)
         {
-            requestMixinOuts(fusionInputs, mixin, mixinResult);
+            mixin = requestMixinOuts(fusionInputs, mixin, mixinResult);
         }
 
         std::vector<InputInfo> keysInfo;

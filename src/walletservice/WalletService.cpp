@@ -1582,7 +1582,11 @@ namespace PaymentService
         return std::error_code();
     }
 
-    std::error_code WalletService::sendTransaction(SendTransaction::Request &request, std::string &transactionHash, uint64_t &fee)
+    std::error_code WalletService::sendTransaction(
+        SendTransaction::Request &request,
+        std::string &transactionHash,
+        uint64_t &fee,
+        uint64_t &anonymity)
     {
         try
         {
@@ -1683,12 +1687,23 @@ namespace PaymentService
             sendParams.unlockTimestamp = request.unlockTime;
             sendParams.changeDestination = request.changeAddress;
 
-            size_t transactionId = wallet.transfer(sendParams);
+            uint16_t actualMixin = 0;
+
+            size_t transactionId = wallet.transfer(sendParams, &actualMixin);
             const auto tx = wallet.getTransaction(transactionId);
 
             /* Set output parameters */
             transactionHash = Common::podToHex(tx.hash);
             fee = tx.fee;
+            anonymity = actualMixin;
+
+            if (actualMixin < request.anonymity)
+            {
+                logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                    << "Transaction " << transactionHash << " was built with a ring size of " << (actualMixin + 1)
+                    << " instead of " << (request.anonymity + 1)
+                    << ": the denominations spent do not have enough outputs on chain";
+            }
 
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
         }
