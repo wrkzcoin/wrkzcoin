@@ -164,10 +164,20 @@ it instead. The cost is that a payment you sent to yourself also loses its
 payment ID after a seed restore. Received payments are unaffected; those are
 exactly the ones your view key can read.
 
-**The wallet service (`wrkz-service`) cannot send short payment IDs.** It builds
-`tx_extra` before transaction keys exist, so it has nothing to encrypt against.
-It rejects short payment IDs with `BAD_PAYMENT_ID`. Long payment IDs work as
-before. Use `wrkz-wallet-api` if you need short payment IDs.
+**The wallet service (`wrkz-service`) supports both.** A short payment ID given
+to `sendTransaction` or `createDelayedTransaction` is carried down to the wallet
+in the clear and encrypted once the transaction — and so its private key —
+exists. Because it is encrypted to one receiver's view key, such a request must
+have exactly one entry in `transfers`; more than one is rejected with
+`BAD_PAYMENT_ID`. A configured node fee does not count against that, and neither
+does change.
+
+On the receiving side `getTransaction`, `getTransactions` and the
+`--tx-notify` / `--tx-confirmed-notify` hooks decrypt a short payment ID and
+report the plaintext, and `getTransactionsByPaymentId` accepts one as a filter —
+it compares decrypted values, since the same payment ID is different bytes in
+every transaction on chain. A transaction the service *sent* reports no short
+payment ID: it was encrypted to the receiver, not to us.
 
 **Block explorers show ciphertext.** The daemon reports
 `txDetails.paymentIdEncrypted` alongside `txDetails.paymentId` so explorers can
@@ -201,7 +211,9 @@ customers' deposit identifiers stay publicly linkable.
 *Move to short encrypted payment IDs.* Same operational model you have now — one
 deposit address plus a per-customer identifier, the pattern you already run for
 XRP, XLM and BNB. Requires a wallet upgrade and reissuing deposit addresses. You
-lose the ability to look a deposit up by payment ID on an explorer.
+lose the ability to look a deposit up by payment ID on an explorer, though your
+own `wrkz-service` can still find one with `getTransactionsByPaymentId`. Note
+that a send carrying a short payment ID can only have one destination.
 
 *Move to one address per customer.* `POST /addresses/create` on `wrkz-wallet-api`
 generates deterministic sub-wallet addresses that share a single view key, are

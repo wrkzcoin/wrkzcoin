@@ -365,12 +365,18 @@ namespace CryptoNote
 
         bool isFusionTransaction(const WalletTransaction &walletTx) const;
 
+        /* shortPaymentId is a plaintext 16 character payment ID, or empty. It
+           is passed separately from extra because it can only be encrypted
+           once the transaction - and so its private key - exists. See
+           TransactionParameters. */
         void prepareTransaction(
             std::vector<WalletOuts> &&wallets,
             const std::vector<WalletOrder> &orders,
             WalletTypes::FeeType fee,
             uint16_t mixIn,
             const std::string &extra,
+            const std::string &shortPaymentId,
+            const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
             uint64_t unlockTimestamp,
             const DonationSettings &donation,
             const CryptoNote::AccountPublicAddress &changeDestinationAddress,
@@ -430,10 +436,17 @@ namespace CryptoNote
 
         ReceiverAmounts splitAmount(uint64_t amount, const AccountPublicAddress &destination, uint64_t dustThreshold);
 
+        /* The payment ID to carry into an upgraded (new format) wallet file.
+           Decrypts a short payment ID where we can, and reports nothing where
+           we cannot - see the implementation. */
+        std::string getPaymentIDForNewFormat(const WalletTransaction &transaction) const;
+
         std::unique_ptr<CryptoNote::ITransaction> makeTransaction(
             const std::vector<ReceiverAmounts> &decomposedOutputs,
             std::vector<InputInfo> &keysInfo,
             const std::string &extra,
+            const std::string &shortPaymentId,
+            const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
             uint64_t unlockTimestamp);
 
         void sendTransaction(const CryptoNote::Transaction &cryptoNoteTransaction);

@@ -122,6 +122,24 @@ namespace CryptoNote
 
         virtual void appendExtra(const BinaryArray &extraData) = 0;
 
+        /* Writes a short (8 byte) payment ID into the extra nonce, encrypted
+           against the shared secret between us and the receiver, so that only
+           the two parties to the transaction can read it.
+
+           The keystream is derived from the transaction private key, which
+           lives in the transaction and nowhere else, so the encryption has to
+           happen here rather than in the caller that owns the payment ID.
+
+           Overwrites any extra nonce already set, and must be called before
+           appendExtra() - setting the nonce re-serialises the extra field,
+           which discards anything appended raw.
+
+           Returns false if the payment ID is not exactly 8 bytes, the
+           receiver's view key is not a valid curve point, or this transaction
+           has no private key (one parsed from the wire never does). */
+        virtual bool
+            setEncryptedShortPaymentId(const BinaryArray &paymentId, const Crypto::PublicKey &receiverViewKey) = 0;
+
         // Inputs/Outputs
         virtual size_t addInput(const KeyInput &input) = 0;
 

@@ -329,6 +329,18 @@ bool confirmTransaction(
     if (paymentID != "")
     {
         std::cout << ",\nand a Payment ID of " << SuccessMsg(paymentID);
+
+        /* Worth saying which kind this is: a short payment ID is encrypted to
+           the receiver and nobody else can read it, a long one is written to
+           the chain in the clear for anyone to read. */
+        if (paymentID.length() == WalletConfig::shortPaymentIDLength)
+        {
+            std::cout << InformationMsg("\n(short - encrypted, only the receiver can read it)");
+        }
+        else
+        {
+            std::cout << WarningMsg("\n(long - stored in plaintext, readable by anyone)");
+        }
     }
     else
     {

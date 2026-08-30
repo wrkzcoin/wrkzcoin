@@ -25,6 +25,7 @@
 #include <common/StreamTools.h>
 #include <common/StringOutputStream.h>
 #include <common/StringTools.h>
+#include <config/Constants.h>
 #include <crypto/crypto.h>
 #include <crypto/random.h>
 #include <cryptonotecore/Core.h>
@@ -44,6 +45,7 @@
 #include <tuple>
 #include <utilities/Addresses.h>
 #include <utilities/ParseExtra.h>
+#include <utilities/PaymentIdEncryption.h>
 #include <utilities/Utilities.h>
 #include <utility>
 #include <wallet/WalletErrors.h>
@@ -1709,6 +1711,8 @@ namespace CryptoNote
         WalletTypes::FeeType fee,
         uint16_t mixIn,
         const std::string &extra,
+        const std::string &shortPaymentId,
+        const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
         uint64_t unlockTimestamp,
         const DonationSettings &donation,
         const CryptoNote::AccountPublicAddress &changeDestination,
@@ -1810,12 +1814,26 @@ namespace CryptoNote
                         paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(extra));
                     }
 
+                    /* A short payment ID is not in extra yet - it is encrypted
+                       into the transaction further down, once there is a key
+                       to encrypt with - but it still costs bytes. Charge for
+                       them here, or we would select inputs against too small
+                       a fee and go round this loop again, and each extra pass
+                       costs a daemon round trip for fresh mixin outputs.
+
+                       The nonce field is 11 bytes: the extra tag, its length,
+                       the sub-tag, and eight bytes of ciphertext.
+                       estimateTransactionSize() adds 4 of its own to any
+                       non-zero extra data size, hence 7 here. Nothing ever
+                       sets both this and extra, so the two cannot overlap. */
+                    const size_t shortPaymentIdSize = shortPaymentId.empty() ? 0 : 7;
+
                     const size_t transactionSize = Utilities::estimateTransactionSize(
                         mixIn,
                         keysInfo.size(),
                         numOutputs,
                         paymentID != "",
-                        extra.size() - paymentID.size()
+                        extra.size() - paymentID.size() + shortPaymentIdSize
                     );
 
                     estimatedFee = Utilities::getTransactionFee(
@@ -1861,7 +1879,13 @@ namespace CryptoNote
                         }
                     }
 
-                    preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp);
+                    preparedTransaction.transaction = makeTransaction(
+                        decomposedOutputs,
+                        keysInfo,
+                        extra,
+                        shortPaymentId,
+                        shortPaymentIdReceiverViewKey,
+                        unlockTimestamp);
 
                     const uint64_t actualFee = Utilities::getTransactionFee(
                         preparedTransaction.transaction->getTransactionData().size(),
@@ -1894,7 +1918,13 @@ namespace CryptoNote
             }
             else
             {
-                preparedTransaction.transaction = makeTransaction(decomposedOutputs, keysInfo, extra, unlockTimestamp);
+                preparedTransaction.transaction = makeTransaction(
+                    decomposedOutputs,
+                    keysInfo,
+                    extra,
+                    shortPaymentId,
+                    shortPaymentIdReceiverViewKey,
+                    unlockTimestamp);
 
                 const uint64_t minFee = Utilities::getMinimumTransactionFee(
                     preparedTransaction.transaction->getTransactionData().size(),
@@ -2156,6 +2186,18 @@ namespace CryptoNote
             throw std::system_error(make_error_code(error::WRONG_PARAMETERS), message);
         }
 
+        /* A short payment ID is encrypted to one receiver's view key, so the
+           caller has to name that receiver. We cannot pick one ourselves: the
+           destination list also carries the node fee address, and change is
+           added later still. */
+        if (!transactionParameters.shortPaymentId.empty()
+            && transactionParameters.shortPaymentIdReceiverViewKey == Constants::NULL_PUBLIC_KEY)
+        {
+            const std::string message = "A short payment ID was given with no receiver to encrypt it to";
+            m_logger(ERROR, BRIGHT_RED) << message;
+            throw std::system_error(make_error_code(error::BAD_PAYMENT_ID), message);
+        }
+
         validateSourceAddresses(transactionParameters.sourceAddresses);
         validateChangeDestination(
             transactionParameters.sourceAddresses, transactionParameters.changeDestination, false);
@@ -2186,6 +2228,8 @@ namespace CryptoNote
             transactionParameters.fee,
             transactionParameters.mixIn,
             transactionParameters.extra,
+            transactionParameters.shortPaymentId,
+            transactionParameters.shortPaymentIdReceiverViewKey,
             transactionParameters.unlockTimestamp,
             transactionParameters.donation,
             changeDestination,
@@ -2233,6 +2277,8 @@ namespace CryptoNote
             sendingTransaction.fee,
             sendingTransaction.mixIn,
             sendingTransaction.extra,
+            sendingTransaction.shortPaymentId,
+            sendingTransaction.shortPaymentIdReceiverViewKey,
             sendingTransaction.unlockTimestamp,
             sendingTransaction.donation,
             changeDestination,
@@ -2307,6 +2353,8 @@ namespace CryptoNote
             sendingTransaction.fee,
             sendingTransaction.mixIn,
             sendingTransaction.extra,
+            sendingTransaction.shortPaymentId,
+            sendingTransaction.shortPaymentIdReceiverViewKey,
             sendingTransaction.unlockTimestamp,
             sendingTransaction.donation,
             changeDestination,
@@ -2870,6 +2918,8 @@ namespace CryptoNote
         const std::vector<ReceiverAmounts> &decomposedOutputs,
         std::vector<InputInfo> &keysInfo,
         const std::string &extra,
+        const std::string &shortPaymentId,
+        const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
         uint64_t unlockTimestamp)
     {
         std::unique_ptr<ITransaction> tx = createTransaction();
@@ -2896,6 +2946,34 @@ namespace CryptoNote
         }
 
         tx->setUnlockTime(unlockTimestamp);
+
+        /* A short payment ID has to be encrypted against the shared secret
+           between us and the receiver, and the transaction private key that
+           the keystream comes from only exists now that the transaction does.
+           So it is encrypted here rather than folded into extra by the caller.
+
+           This has to happen before appendExtra(): writing the nonce
+           re-serialises the extra field, which would throw away anything
+           appended raw beforehand. */
+        if (!shortPaymentId.empty())
+        {
+            std::vector<uint8_t> paymentIdBin;
+
+            if (!Common::fromHex(shortPaymentId, paymentIdBin)
+                || paymentIdBin.size() != Utilities::SHORT_PAYMENT_ID_SIZE)
+            {
+                m_logger(ERROR, BRIGHT_RED) << "Failed to create transaction: malformed short payment ID";
+                throw std::system_error(make_error_code(error::BAD_PAYMENT_ID));
+            }
+
+            if (!tx->setEncryptedShortPaymentId(paymentIdBin, shortPaymentIdReceiverViewKey))
+            {
+                m_logger(ERROR, BRIGHT_RED)
+                    << "Failed to create transaction: could not encrypt the short payment ID to the receiver";
+                throw std::system_error(make_error_code(error::BAD_PAYMENT_ID));
+            }
+        }
+
         tx->appendExtra(Common::asBinaryArray(extra));
 
         for (auto &input : keysInfo)
@@ -4099,7 +4177,13 @@ namespace CryptoNote
             ReceiverAmounts decomposedOutputs = decomposeFusionOutputs(destination, inputsAmount);
             assert(decomposedOutputs.amounts.size() <= MAX_FUSION_OUTPUT_COUNT);
 
-            fusionTransaction = makeTransaction(std::vector<ReceiverAmounts> {decomposedOutputs}, keysInfo, "", 0);
+            fusionTransaction = makeTransaction(
+                std::vector<ReceiverAmounts> {decomposedOutputs},
+                keysInfo,
+                "",
+                "",
+                Crypto::PublicKey(),
+                0);
 
             transactionSize = getTransactionSize(*fusionTransaction);
 
@@ -4807,6 +4891,28 @@ namespace CryptoNote
         return result;
     }
 
+    std::string WalletGreen::getPaymentIDForNewFormat(const WalletTransaction &transaction) const
+    {
+        const Utilities::ParsedExtra parsed = Utilities::parseExtra(Common::asBinaryArray(transaction.extra));
+
+        /* A long payment ID is plaintext and carries over as it stands. */
+        if (!parsed.paymentIDEncrypted)
+        {
+            return parsed.paymentID;
+        }
+
+        /* A short one is ciphertext. On a transaction we sent it was encrypted
+           to the receiver, and our view key would turn it into eight bytes of
+           noise rather than failing - so carry nothing over rather than
+           writing a wrong payment ID into the upgraded wallet. */
+        if (transaction.totalAmount < 0)
+        {
+            return std::string();
+        }
+
+        return Utilities::encryptPaymentIdHex(parsed.paymentID, parsed.transactionPublicKey, m_viewSecretKey);
+    }
+
     std::string WalletGreen::toNewFormatJSON() const
     {
         const bool isViewWallet = getTrackingMode() == WalletTrackingMode::TRACKING;
@@ -4892,7 +4998,7 @@ namespace CryptoNote
                 newTX.fee = tx.fee;
                 newTX.blockHeight = tx.blockHeight;
                 newTX.timestamp = tx.timestamp;
-                newTX.paymentID = Utilities::getPaymentIDFromExtra(Common::asBinaryArray(tx.extra));
+                newTX.paymentID = getPaymentIDForNewFormat(tx);
                 newTX.unlockTime = tx.unlockTime;
                 newTX.isCoinbaseTransaction = tx.isBase;
 

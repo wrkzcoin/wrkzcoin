@@ -203,7 +203,9 @@ std::string getPaymentID(const std::string msg, const bool cancelAllowed)
             switch (error.getErrorCode())
             {
                 case PAYMENT_ID_WRONG_LENGTH:
-                    std::cout << InformationMsg("Tip: Payment ID must be 16 or 64 hex characters.") << std::endl;
+                    std::cout << InformationMsg("Tip: Payment ID must be 16 or 64 hex characters.") << std::endl
+                              << InformationMsg("     16 is encrypted to the receiver; 64 is stored in plaintext.")
+                              << std::endl;
                     break;
                 case PAYMENT_ID_INVALID:
                     std::cout << InformationMsg("Tip: Use only hexadecimal characters: 0-9 and a-f.") << std::endl;
