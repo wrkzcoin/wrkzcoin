@@ -24,9 +24,15 @@
 
 namespace Common
 {
+    /* std::is_pod is deprecated in C++20 and gone in C++26. It was always
+       defined as exactly this conjunction, so spelling it out changes nothing
+       but the warning. */
+    template<class T>
+    inline constexpr bool is_pod_v = std::is_standard_layout<T>::value && std::is_trivial<T>::value;
+
     template<class T> struct EnableIfPod
     {
-        typedef typename std::enable_if<std::is_pod<T>::value, EnableIfPod>::type type;
+        typedef typename std::enable_if<is_pod_v<T>, EnableIfPod>::type type;
     };
 
     enum class FileMappedVectorOpenMode
