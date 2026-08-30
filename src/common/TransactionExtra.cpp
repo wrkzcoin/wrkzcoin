@@ -279,36 +279,29 @@ namespace CryptoNote
 
     bool createTxExtraWithPaymentId(const std::string &paymentIdString, std::vector<uint8_t> &extra)
     {
-        if (paymentIdString.size() != 16 && paymentIdString.size() != 64)
+        /* Only long payment IDs can be built here.
+
+           A short payment ID must be encrypted against the shared secret
+           between sender and receiver, and this function has no access to the
+           transaction keys needed to do that. Callers that can encrypt build
+           the nonce themselves (see SendTransaction::makeTransaction); callers
+           that cannot - the legacy walletservice path - get a clean failure
+           rather than a plaintext short payment ID that no wallet will read. */
+        if (paymentIdString.size() != 64)
         {
             return false;
         }
 
         std::vector<uint8_t> extraNonce;
 
-        if (paymentIdString.size() == 16)
+        Hash paymentIdBin;
+
+        if (!parsePaymentId(paymentIdString, paymentIdBin))
         {
-            std::vector<uint8_t> shortPaymentIdBin;
-
-            if (!Common::fromHex(paymentIdString, shortPaymentIdBin) || shortPaymentIdBin.size() != 8)
-            {
-                return false;
-            }
-
-            extraNonce.push_back(TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID);
-            std::copy(shortPaymentIdBin.begin(), shortPaymentIdBin.end(), std::back_inserter(extraNonce));
+            return false;
         }
-        else
-        {
-            Hash paymentIdBin;
 
-            if (!parsePaymentId(paymentIdString, paymentIdBin))
-            {
-                return false;
-            }
-
-            CryptoNote::setPaymentIdToTransactionExtraNonce(extraNonce, paymentIdBin);
-        }
+        CryptoNote::setPaymentIdToTransactionExtraNonce(extraNonce, paymentIdBin);
 
         if (!CryptoNote::addExtraNonceToTransactionExtra(extra, extraNonce))
         {

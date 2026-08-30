@@ -764,4 +764,12 @@ class SEn extends S {
   String youReceivedAmount(String amount) {
     return 'You received $amount';
   }
+
+  @override
+  String get ringSize => 'Ring size';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Ring size reduced to $actual (normally $normal). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.';
+  }
 }

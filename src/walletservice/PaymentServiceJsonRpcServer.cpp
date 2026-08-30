@@ -378,7 +378,7 @@ namespace PaymentService
         SendTransaction::Request &request,
         SendTransaction::Response &response)
     {
-        return service.sendTransaction(request, response.transactionHash, response.fee);
+        return service.sendTransaction(request, response.transactionHash, response.fee, response.anonymity);
     }
 
     std::error_code PaymentServiceJsonRpcServer::handleCreateDelayedTransaction(

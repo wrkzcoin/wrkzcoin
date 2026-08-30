@@ -24,4 +24,5 @@ bool confirmTransaction(
     const uint64_t amount,
     const std::string paymentID,
     const uint64_t nodeFee,
-    const uint64_t fee);
+    const uint64_t fee,
+    const uint64_t mixin);

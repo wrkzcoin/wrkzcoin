@@ -775,4 +775,12 @@ class SFr extends S {
   String youReceivedAmount(String amount) {
     return 'Vous avez reçu $amount';
   }
+
+  @override
+  String get ringSize => 'Taille de l\'anneau';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
+  }
 }

@@ -16,6 +16,7 @@
 #include "version.h"
 
 #include <config/Constants.h>
+#include <config/WalletConfig.h>
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
 #include <errors/ValidateParameters.h>
@@ -249,6 +250,16 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
         else if (method == "f_on_transactions_pool_json")
         {
             router(&RpcServer::getTransactionsInPool, RpcMode::Explorer, bodyNotRequired, syncNotRequired)(req, res);
+        }
+        else if (method == "f_transactions_by_payment_id_json")
+        {
+            /* Explorer mode: this walks a database index, so it is not
+               something a plain node should answer for anyone who asks. */
+            router(
+                &RpcServer::getTransactionHashesByPaymentId,
+                RpcMode::Explorer,
+                bodyRequired,
+                syncNotRequired)(req, res);
         }
         else
         {
@@ -1316,21 +1327,14 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
             return {Error(CANT_GET_FAKE_OUTPUTS, error), 400};
         }
 
-        if (globalIndexes.size() != numOutputs)
-        {
-            std::stringstream stream;
-
-            stream << "Failed to get enough matching outputs for amount " << amount << " ("
-                   << Utilities::formatAmount(amount) << "). Requested outputs: " << numOutputs
-                   << ", found outputs: " << globalIndexes.size()
-                   << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
-                   << std::endl
-                   << "Note: If you are a public node operator, you can safely ignore this message. "
-                   << "It is only relevant to the user sending the transaction.";
-
-            return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 400};
-        }
-
+        /* Deliberately not an error when we found fewer than were asked for.
+           Failing the whole batch told the caller nothing it could act on - and
+           because a non-200 is indistinguishable from an unreachable node, it
+           surfaced in wallets as "daemon offline". Return what this denomination
+           actually has and let the wallet decide: it can drop to a ring size the
+           chain supports, or report a shortage it can name. Wallets predating
+           this already check the per-amount count themselves, so a short list
+           gives them the right error too. */
         nlohmann::json amountOuts = nlohmann::json::array();
         for (size_t i = 0; i < globalIndexes.size(); i++)
         {
@@ -2390,7 +2394,14 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionDetailsByHash(
     txDetailsObj["amount_out"] = txDetails.totalOutputsAmount;
     txDetailsObj["fee"] = txDetails.fee;
     txDetailsObj["mixin"] = txDetails.mixin;
-    txDetailsObj["paymentId"] = Utilities::getPaymentIDFromExtra(transaction.extra);
+    const Utilities::ParsedExtra parsedTxExtra = Utilities::parseExtra(transaction.extra);
+
+    txDetailsObj["paymentId"] = parsedTxExtra.paymentID;
+
+    /* When set, paymentId is ciphertext - only the sender and the receiver hold
+       the shared secret needed to read it. Explorers should label it as
+       encrypted rather than presenting it as a readable payment ID. */
+    txDetailsObj["paymentIdEncrypted"] = parsedTxExtra.paymentIDEncrypted;
     txDetailsObj["size"] = txDetails.size;
 
     nlohmann::json result;
@@ -2445,6 +2456,79 @@ std::tuple<Error, uint16_t> RpcServer::getTransactionsInPool(
     nlohmann::json result;
     result["status"] = "OK";
     result["transactions"] = txArr;
+
+    nlohmann::json j;
+    j["jsonrpc"] = "2.0";
+    j["result"] = result;
+    res.body = j.dump();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::getTransactionHashesByPaymentId(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const nlohmann::json &body)
+{
+    const auto params = getObjectFromJSON(body, "params");
+    const auto paymentIdStr = getStringFromJSON(params, "paymentId");
+
+    /* Only long payment IDs are indexed. A short one is encrypted against the
+       shared secret with its receiver, so the same payment ID produces
+       different bytes in every transaction and there is nothing stable to look
+       up. Say that, rather than returning an empty result that reads as "this
+       payment ID was never used". */
+    if (paymentIdStr.length() == WalletConfig::shortPaymentIDLength)
+    {
+        failJsonRpcRequest(
+            -1,
+            "Short payment IDs are encrypted to their receiver and cannot be looked up. "
+            "Only the sender and the receiver can read one.",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    Crypto::Hash paymentId;
+
+    if (!Common::podFromHex(paymentIdStr, paymentId))
+    {
+        failJsonRpcRequest(
+            -1,
+            "Payment ID specified is not 64 valid hex characters!",
+            res
+        );
+
+        return {SUCCESS, 200};
+    }
+
+    std::vector<Crypto::Hash> hashes = m_core->getTransactionHashesByPaymentId(paymentId);
+
+    /* A payment ID that has been reused - a shared exchange deposit ID, say -
+       can name a very large number of transactions. Bound the answer so one
+       lookup cannot pull an unbounded amount out of the database, and tell the
+       caller when the list was cut short rather than silently truncating. */
+    const size_t total = hashes.size();
+    const bool truncated = total > m_rpcMaxBlockCount;
+
+    if (truncated)
+    {
+        hashes.resize(m_rpcMaxBlockCount);
+    }
+
+    nlohmann::json hashArr = nlohmann::json::array();
+
+    for (const auto &hash : hashes)
+    {
+        hashArr.push_back(Common::podToHex(hash));
+    }
+
+    nlohmann::json result;
+    result["status"] = "OK";
+    result["transactionHashes"] = hashArr;
+    result["totalCount"] = total;
+    result["truncated"] = truncated;
 
     nlohmann::json j;
     j["jsonrpc"] = "2.0";

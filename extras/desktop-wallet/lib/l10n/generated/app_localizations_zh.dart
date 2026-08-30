@@ -780,4 +780,12 @@ class SZh extends S {
   String passwordTooShort(int count) {
     return '密码至少需要$count个字符';
   }
+
+  @override
+  String get ringSize => '环签名大小';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return '环签名大小已降至 $actual（通常为 $normal）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。';
+  }
 }

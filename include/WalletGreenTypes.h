@@ -123,6 +123,23 @@ namespace CryptoNote
         uint64_t unlockTimestamp = 0;
         DonationSettings donation;
         std::string changeDestination;
+
+        /* A short payment ID, plaintext, 16 hex characters. Empty when unused.
+
+           Unlike a long payment ID this cannot be folded into extra by the
+           caller: a short one is encrypted against the shared secret between
+           us and the receiver, and that needs the transaction private key,
+           which does not exist until the transaction is built. So it travels
+           down here in the clear and is encrypted in
+           WalletGreen::makeTransaction, once there is a key to encrypt with.
+
+           shortPaymentIdReceiverViewKey is the public view key of the single
+           destination it is encrypted to. A key derivation is specific to one
+           party, so there is no such thing as a short payment ID two
+           receivers can both read. */
+        std::string shortPaymentId;
+
+        Crypto::PublicKey shortPaymentIdReceiverViewKey {};
     };
 
     struct WalletTransactionWithTransfers

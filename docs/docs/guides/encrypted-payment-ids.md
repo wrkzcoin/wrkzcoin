@@ -1,0 +1,278 @@
+# Encrypted Payment IDs
+
+Short payment IDs are encrypted so that only the sender and the receiver can
+read them. Long payment IDs remain plaintext and are readable by anyone with a
+copy of the chain.
+
+This page covers what changed, what it means if you run an exchange, a pool or
+a tip bot, and how to migrate.
+
+## The two kinds of payment ID
+
+| | Length | On chain | Who can read it | Can be looked up |
+|---|---|---|---|---|
+| Long | 64 hex chars (32 bytes) | plaintext | anyone | yes, by anything that indexes the chain |
+| Short | 16 hex chars (8 bytes) | encrypted | sender and receiver only | no |
+
+A daemon in explorer mode can look up a long payment ID directly — see
+[Looking up a payment ID](#looking-up-a-payment-id) below. A short one cannot be
+looked up by anything, including the wallets that can read it.
+
+Nothing about long payment IDs has changed. If you use them today, you can keep
+using them and no action is required.
+
+## Why short payment IDs are encrypted
+
+A payment ID is normally an account number. Publishing it in the clear on a
+public ledger means anyone can see which deposits belong to the same customer,
+tie separate payments together, and correlate that with anything else they know.
+Encrypting it removes that: the value on chain is meaningless to an observer,
+and the receiver recovers the real one using a key only they hold.
+
+This is the same construction Monero uses, and it is byte for byte compatible
+with theirs.
+
+## How it works
+
+Both parties independently arrive at the same shared secret.
+
+```
+Sender   D = 8 * r * A     r = transaction private key
+                           A = receiver's public view key
+
+Receiver D = 8 * a * R     a = receiver's private view key
+                           R = transaction public key
+
+         k  = keccak256(D || 0x8d)
+         ct = payment_id XOR k[0..8]
+```
+
+Because `8*r*A` and `8*a*R` are the same curve point, both sides derive the same
+keystream. Nobody else can: computing `D` requires one of the two private keys.
+
+The operation is a XOR, so encrypting and decrypting are the same call.
+
+The ciphertext is written into `tx_extra` under extra nonce sub-tag `0x03`.
+
+### Wire format
+
+Inside the `tx_extra` nonce field (top level tag `0x02`):
+
+| Sub-tag | Meaning | Payload |
+|---|---|---|
+| `0x00` | Long payment ID, plaintext | 32 bytes |
+| `0x01` | Short payment ID, plaintext | 8 bytes — **legacy, see below** |
+| `0x02` | Short payment ID, plaintext | 8 bytes — **legacy, see below** |
+| `0x03` | Short payment ID, encrypted | 8 bytes |
+| `0x7f` | Arbitrary data | varint length, then bytes |
+
+### About sub-tags `0x01` and `0x02`
+
+An earlier release shipped sub-tag `0x01` under the name "encrypted payment ID".
+It was never encrypted — the bytes were written in the clear. A pre-release
+build wrote the same thing under `0x02`.
+
+Both exist on mainnet. A scan of 700,000 blocks found eleven transactions using
+`0x01` and four using `0x02`, all in first position and all from testing. That
+is why encrypted payment IDs use `0x03`: it was the lowest sub-tag the same
+scan found no occurrences of.
+
+Do not pick a sub-tag without re-running that scan. `0x02` was chosen once on
+the assumption it was free, and it was not.
+
+Rather than change the meaning of `0x01` or `0x02` (which would make old
+software read a wrong payment ID and credit the wrong account), encrypted
+payment IDs use a new sub-tag `0x03`.
+
+An **old daemon** does not recognise `0x03` and reports no payment ID at all,
+which is the safe failure — an operator investigates a missing payment ID, but
+silently accepts a wrong one.
+
+An **old wallet talking to an upgraded daemon** is the one case that is not
+self-announcing: wallets do not parse `tx_extra` themselves, they take whatever
+the daemon reports, so such a wallet will display the ciphertext as though it
+were a payment ID. This cannot be prevented for software already deployed. In
+practice the window is harmless, because nothing can create a `0x03` field until
+upgraded wallets exist — but it is the reason to finish the wallet rollout
+rather than leaving it half done.
+
+Both `0x01` and `0x02` are still consumed correctly during parsing so
+surrounding fields decode, but neither is reported as a payment ID and neither
+is created any more.
+
+Before deploying, confirm you know who created every one of them, and check
+which sub-tags are free:
+
+```
+python scripts/scan-payment-id-tags.py --daemon http://127.0.0.1:17856
+```
+
+Exit status is 0 if no legacy short payment IDs exist. If it finds some, they
+are only acceptable if you know they are your own; somebody else's mean a third
+party is relying on a payment ID that will stop being reported.
+
+The output also lists every nonce sub-tag seen on chain and the lowest values
+with no occurrences, which is where a new sub-tag must come from.
+
+## Consequences you need to know about
+
+**A short payment ID means one destination.** The ciphertext is encrypted to one
+receiver's view key, so only that receiver can decrypt it. A transaction with a
+short payment ID and more than one destination is refused with
+`SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION`. Change outputs do not count. Use a
+long payment ID if you need to pay several addresses at once.
+
+**Short payment IDs cannot be looked up.** Nothing that reads the chain can
+answer "show me the transaction with payment ID X" — the value on chain is
+ciphertext, and the same payment ID encrypts differently in every transaction.
+Attribution has to happen in the wallet that holds the view key. Long payment
+IDs are unaffected; see below.
+
+### Looking up a payment ID
+
+A daemon in explorer mode (`--daemon-mode explorer`) answers
+`f_transactions_by_payment_id_json`:
+
+```json
+{"jsonrpc":"2.0","id":"0","method":"f_transactions_by_payment_id_json",
+ "params":{"paymentId":"<64 hex characters>"}}
+```
+
+It returns `transactionHashes`, `totalCount` and `truncated`. Results come from
+both the chain and the mempool, so a pending deposit shows up.
+
+Only long payment IDs are indexed — the index is built from tag `0x00` alone, so
+encrypted ones never enter it. Passing a short payment ID is refused with an
+explanation rather than an empty result, because an empty result would wrongly
+read as "this payment ID was never used".
+
+A payment ID reused enough to exceed the node's `--rpc-max-block-count` gets a
+capped list with `truncated` set, rather than an unbounded response.
+
+It is gated behind explorer mode because it reads a database index, which is not
+something a plain node should do for anyone who asks.
+
+**A wallet restored from seed loses payment IDs on transactions it sent.** The
+payment ID was encrypted to the *receiver*, so the sender cannot recover it from
+chain data alone. Wallets keep a local copy at send time, so this only shows up
+after restoring from seed into a fresh wallet file.
+
+Note the wallet reports *nothing* in that case rather than guessing. Decrypting
+a payment ID meant for someone else does not fail — it quietly yields eight
+bytes of noise that look just like a real payment ID — so the wallet suppresses
+it instead. The cost is that a payment you sent to yourself also loses its
+payment ID after a seed restore. Received payments are unaffected; those are
+exactly the ones your view key can read.
+
+### Where that guarantee does not hold
+
+Suppressing depends on the wallet recognising that it spent the inputs, which it
+does by matching key images. Two setups cannot produce key images at all, and
+will show eight bytes of noise where a transaction they sent carried a short
+payment ID:
+
+- **A view-only wallet**, including `wrkz-service` opened in tracking mode. It
+  has no spend keys, so it can never derive a key image. It still sees its own
+  outgoing transactions, because the change output comes back to an address it
+  watches, and it reads them as ordinary incoming payments.
+- **A wallet restored with a scan height** later than the block its inputs
+  arrived in. It never learns those key images, so its own sends look the same
+  way.
+
+The fabricated value lands on a transaction that looks *incoming*, so this
+surfaces as a deposit carrying an unrecognised payment ID rather than a credit
+to the wrong account — the odds of eight random bytes matching a payment ID you
+actually issued are one in 2⁶⁴. Automation that matches on payment IDs should
+still check the direction of the transaction rather than relying on that.
+
+Closing this properly needs the key images exported from the wallet that holds
+the spend keys and imported into the view wallet, the way Monero does it. That
+does not exist here yet. Until it does: attribute short payment IDs in a wallet
+that holds the spend keys, and treat a view wallet's *outgoing* history as
+unreliable for them. Incoming payments — the reason to run a view wallet — are
+correct in every case, because your view key is genuinely the right one.
+
+**The wallet service (`wrkz-service`) supports both.** A short payment ID given
+to `sendTransaction` or `createDelayedTransaction` is carried down to the wallet
+in the clear and encrypted once the transaction — and so its private key —
+exists. Because it is encrypted to one receiver's view key, such a request must
+have exactly one entry in `transfers`; more than one is rejected with
+`BAD_PAYMENT_ID`. A configured node fee does not count against that, and neither
+does change.
+
+On the receiving side `getTransaction`, `getTransactions` and the
+`--tx-notify` / `--tx-confirmed-notify` hooks decrypt a short payment ID and
+report the plaintext, and `getTransactionsByPaymentId` accepts one as a filter —
+it compares decrypted values, since the same payment ID is different bytes in
+every transaction on chain. A transaction the service *sent* reports no short
+payment ID: it was encrypted to the receiver, not to us.
+
+**Block explorers show ciphertext.** The daemon reports
+`txDetails.paymentIdEncrypted` alongside `txDetails.paymentId` so explorers can
+label the value instead of presenting it as readable.
+
+## Rolling it out
+
+The order matters. The daemon parses `tx_extra`, not the wallet, so a wallet
+talking to an old daemon receives no payment ID at all.
+
+1. **Upgrade daemons first**, including every public node your users connect to.
+   Wait for coverage before step 2.
+2. **Then upgrade wallets.** A wallet on an old daemon will not see encrypted
+   payment IDs.
+3. **Then hand out new integrated addresses**, if you want to use short payment
+   IDs.
+
+There is no consensus change and no fork. `tx_extra` content is not validated by
+consensus — only its total size — so old nodes relay, validate and mine these
+transactions exactly as before. No `FORK_HEIGHTS` entry, no block version bump,
+no risk of a chain split. What is required is a coordinated software rollout in
+the order above.
+
+## Which should you use?
+
+**If you are an exchange or a pool**, you have three options.
+
+*Keep long payment IDs.* Nothing changes, everything keeps working. Your
+customers' deposit identifiers stay publicly linkable.
+
+*Move to short encrypted payment IDs.* Same operational model you have now — one
+deposit address plus a per-customer identifier, the pattern you already run for
+XRP, XLM and BNB. Requires a wallet upgrade and reissuing deposit addresses. You
+lose the ability to look a deposit up by payment ID on an explorer, though your
+own `wrkz-service` can still find one with `getTransactionsByPaymentId`. Note
+that a send carrying a short payment ID can only have one destination.
+
+*Move to one address per customer.* `POST /addresses/create` on `wrkz-wallet-api`
+generates deterministic sub-wallet addresses that share a single view key, are
+recoverable from the seed, and scan in constant time no matter how many you
+have. Each customer gets an ordinary address, so nothing links your depositors
+to each other — a stronger property than any payment ID scheme gives you,
+because it removes the shared deposit address as a correlation point.
+
+This last one needs no payment ID at all and works with every wallet on the
+network today. It is the option we recommend if you can manage a set of
+addresses rather than a single one.
+
+## For wallet implementers
+
+The scheme is small enough to reimplement. Test vectors, verified against an
+independent from-scratch implementation:
+
+```
+receiver private view key  8d31b6a2b0e2d1c6f4e0b4d6b0b7d0a0e6b1b6e2e0b6d1a0c6b4e0d1b6a2b00d
+receiver public view key   86f65b62d4e7443f150d4955100e159eca8b18a59fc8aa9667d6b905236e684a
+transaction private key    0c1b6a2b0e2d1c6f4e0b4d6b0b7d0a0e6b1b6e2e0b6d1a0c6b4e0d1b6a2b0d0f
+transaction public key     ec2dcf9ba1572f2d211ad676b5820ac09b35029ca8d51ccd704b8398d86e8a33
+
+payment ID (plaintext)     1122334455667788
+payment ID (encrypted)     5a3c5490ba23c021
+```
+
+Encrypting from either side must produce the same ciphertext, and encrypting
+twice must return the plaintext. Note the hash is **original** Keccak-256, with
+`0x01` padding — not the NIST SHA3-256 variant, which pads with `0x06` and will
+give you a different answer.
+
+`src/cryptotest` checks all of this; run `cryptotest` to verify an
+implementation against the same vectors.

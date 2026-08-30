@@ -809,4 +809,12 @@ class SRu extends S {
   String passwordTooShort(int count) {
     return 'Пароль должен содержать не менее $count символов';
   }
+
+  @override
+  String get ringSize => 'Размер кольца';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
+  }
 }

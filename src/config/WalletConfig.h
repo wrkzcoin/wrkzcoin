@@ -47,10 +47,13 @@ namespace WalletConfig
     /* The length of a standard address for your coin */
     const uint16_t standardAddressLength = 98;
 
-    /* Monero-style short encrypted payment IDs are 16 hex chars (8 bytes). */
+    /* Short payment IDs are 16 hex chars (8 bytes). These are encrypted
+       against the shared secret between sender and receiver, so only the two
+       parties to the transaction can read them. */
     const uint16_t shortPaymentIDLength = 16;
 
-    /* Legacy payment IDs are 64 hex chars (32 bytes). */
+    /* Long payment IDs are 64 hex chars (32 bytes). These are stored in
+       plaintext and are readable by anyone. */
     const uint16_t longPaymentIDLength = 64;
 
     /* The length of an integrated address for your coin - It's the same as

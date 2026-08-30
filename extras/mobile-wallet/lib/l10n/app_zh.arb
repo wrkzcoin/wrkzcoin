@@ -363,5 +363,7 @@
   "seedNotBackedUpWarning": "您尚未确认备份该钱包的助记词。现在删除将无法找回资金。",
   "wrkzReceived": "已收到 WRKZ",
   "retry": "重试",
-  "youReceivedAmount": "您收到了 {amount}"
+  "youReceivedAmount": "您收到了 {amount}",
+  "ringSize": "环签名大小",
+  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。"
 }

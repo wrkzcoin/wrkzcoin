@@ -16,6 +16,7 @@
 #include <memory>
 #include <numeric>
 #include <unordered_set>
+#include <utilities/PaymentIdEncryption.h>
 #include <variant>
 
 using namespace Crypto;
@@ -105,6 +106,9 @@ namespace CryptoNote
         virtual void setExtraNonce(const BinaryArray &nonce) override;
 
         virtual void appendExtra(const BinaryArray &extraData) override;
+
+        virtual bool setEncryptedShortPaymentId(const BinaryArray &paymentId, const PublicKey &receiverViewKey)
+            override;
 
         // Inputs/Outputs
         virtual size_t addInput(const KeyInput &input) override;
@@ -373,6 +377,35 @@ namespace CryptoNote
     {
         checkIfSigning();
         transaction.extra.insert(transaction.extra.end(), extraData.begin(), extraData.end());
+    }
+
+    bool TransactionImpl::setEncryptedShortPaymentId(const BinaryArray &paymentId, const PublicKey &receiverViewKey)
+    {
+        checkIfSigning();
+
+        /* A transaction parsed from the wire carries no private key, so there
+           is nothing to encrypt against. Report that rather than throwing -
+           the caller is asking whether we can do this, not asserting we can. */
+        if (!secretKey)
+        {
+            return false;
+        }
+
+        BinaryArray encrypted = paymentId;
+
+        if (!Utilities::encryptPaymentId(encrypted, receiverViewKey, *secretKey))
+        {
+            return false;
+        }
+
+        BinaryArray nonce;
+        nonce.reserve(1 + encrypted.size());
+        nonce.push_back(TX_EXTRA_NONCE_ENCRYPTED_SHORT_PAYMENT_ID);
+        nonce.insert(nonce.end(), encrypted.begin(), encrypted.end());
+
+        setExtraNonce(nonce);
+
+        return true;
     }
 
     void TransactionImpl::generateTxProofOfWork(const uint64_t height)

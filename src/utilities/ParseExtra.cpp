@@ -138,14 +138,40 @@ namespace Utilities
                             continue;
                         }
 
+                        /* A legacy plaintext short payment ID, under either of
+                           the two sub-tags that carry one. We consume the field
+                           so anything following it still parses, but we
+                           deliberately do not report it as a payment ID.
+
+                           These were only ever created by builds that
+                           mislabelled them as encrypted. A chain scan found
+                           fifteen of them in total, all from testing.
+                           Reporting nothing is the safe failure - a caller that
+                           sees no payment ID will investigate, whereas a caller
+                           handed a wrong one will credit the wrong account. */
+                        if ((s == Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER
+                             || s == Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER_PRERELEASE)
+                            && nElementsRemaining > 8)
+                        {
+                            advanceIterator += 1 + 8;
+                            is += 8;
+
+                            continue;
+                        }
+
+                        /* An encrypted short payment ID. We can only pull the
+                           ciphertext out here - the daemon has no view key and
+                           so cannot decrypt. The wallet does that during sync,
+                           where the key derivation is available. */
                         if (
-                            s == Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER
+                            s == Constants::TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER
                             && nElementsRemaining > 8
                             && !seenPaymentID)
                         {
                             std::vector<uint8_t> shortPaymentID;
                             std::copy(is + 1, is + 1 + 8, std::back_inserter(shortPaymentID));
                             parsed.paymentID = Common::toHex(shortPaymentID);
+                            parsed.paymentIDEncrypted = true;
 
                             seenPaymentID = true;
                             advanceIterator += 1 + 8;

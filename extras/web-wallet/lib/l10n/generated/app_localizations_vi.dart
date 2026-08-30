@@ -639,12 +639,12 @@ class SVi extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Phiên bản $version — Ví máy tính WRKZ';
+    return 'Phiên bản $version — Ví web WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 là ví máy tính chính thức cho WrkzCoin (WRKZ), một loại tiền mã hóa nhanh và nhẹ dựa trên CryptoNote.\n\nĐược xây dựng bằng Flutter, vận hành bởi wallet-api.';
+      'PLUTON v2 là ví web chính thức cho WrkzCoin (WRKZ), một loại tiền mã hóa nhanh và nhẹ dựa trên CryptoNote.\n\nĐược xây dựng bằng Flutter, vận hành bởi wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -777,4 +777,12 @@ class SVi extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Kích thước vòng';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Kích thước vòng giảm xuống $actual (thông thường là $normal). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.';
+  }
 }

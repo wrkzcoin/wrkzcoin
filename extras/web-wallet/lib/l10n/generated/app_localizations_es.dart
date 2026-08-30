@@ -646,12 +646,12 @@ class SEs extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Versión $version — Billetera de escritorio WRKZ';
+    return 'Versión $version — Billetera web WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 es la billetera de escritorio oficial para WrkzCoin (WRKZ), una criptomoneda rápida y ligera basada en CryptoNote.\n\nDesarrollada con Flutter, impulsada por wallet-api.';
+      'PLUTON v2 es la billetera web oficial para WrkzCoin (WRKZ), una criptomoneda rápida y ligera basada en CryptoNote.\n\nDesarrollada con Flutter, impulsada por wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -786,4 +786,12 @@ class SEs extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Tamaño del anillo';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
+  }
 }

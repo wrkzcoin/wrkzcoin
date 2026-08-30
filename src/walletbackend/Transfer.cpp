@@ -19,6 +19,7 @@
 #include <utilities/Addresses.h>
 #include <utilities/FormatTools.h>
 #include <utilities/Mixins.h>
+#include <utilities/PaymentIdEncryption.h>
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
 #include <cryptonotecore/TransactionPoW.h>
@@ -71,7 +72,120 @@ namespace SendTransaction
         );
     }
 
+    /* Defined below - sendTransactionAdvanced() wraps this so it can retry at a
+       lower mixin. */
+    static std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvancedWithMixin(
+        std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
+        const uint64_t mixin,
+        const WalletTypes::FeeType fee,
+        std::string paymentID,
+        const std::vector<std::string> addressesToTakeFrom,
+        std::string changeAddress,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets,
+        uint64_t unlockTime,
+        const std::vector<uint8_t> extraData,
+        const bool sendAll,
+        const bool sendTransaction);
+
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
+        std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
+        const uint64_t mixin,
+        const WalletTypes::FeeType fee,
+        std::string paymentID,
+        const std::vector<std::string> addressesToTakeFrom,
+        std::string changeAddress,
+        const std::shared_ptr<Nigel> daemon,
+        const std::shared_ptr<SubWallets> subWallets,
+        uint64_t unlockTime,
+        const std::vector<uint8_t> extraData,
+        const bool sendAll,
+        const bool sendTransaction)
+    {
+        auto result = sendTransactionAdvancedWithMixin(
+            addressesAndAmounts,
+            mixin,
+            fee,
+            paymentID,
+            addressesToTakeFrom,
+            changeAddress,
+            daemon,
+            subWallets,
+            unlockTime,
+            extraData,
+            sendAll,
+            sendTransaction
+        );
+
+        /* Some denominations do not have enough outputs on the chain to build a
+           ring at the requested mixin, and there is no partial success - the
+           send just fails. Rather than leaving those funds unspendable, retry at
+           the largest ring the chain can actually support for these
+           denominations.
+
+           Retrying at the best achievable value rather than at the network
+           minimum matters: if a denomination can support a ring of 5 there is no
+           reason to hand the user a ring of 2.
+
+           That measurement is not always the whole story, though. It comes from
+           the first input to fall short, and a later one can be thinner still,
+           so a second failure gets one more attempt at the network minimum -
+           which nothing can beat. Three round trips is the worst case, and only
+           on a path that would otherwise be a hard failure.
+
+           This still trades anonymity for the transaction being possible at all,
+           so it only ever happens as a fallback, never as the first attempt.
+           Before a fork raises the default above the minimum this is a no-op,
+           since the requested mixin already is the minimum. */
+        if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS)
+        {
+            const auto [minMixin, maxMixin, defaultMixin] =
+                Utilities::getMixinAllowableRange(daemon->networkBlockCount());
+
+            const auto retryMixin =
+                Utilities::nextFallbackMixin(mixin, std::get<2>(result).tx.achievableMixin, minMixin);
+
+            if (retryMixin)
+            {
+                result = sendTransactionAdvancedWithMixin(
+                    addressesAndAmounts,
+                    *retryMixin,
+                    fee,
+                    paymentID,
+                    addressesToTakeFrom,
+                    changeAddress,
+                    daemon,
+                    subWallets,
+                    unlockTime,
+                    extraData,
+                    sendAll,
+                    sendTransaction
+                );
+
+                if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS && *retryMixin > minMixin)
+                {
+                    result = sendTransactionAdvancedWithMixin(
+                        addressesAndAmounts,
+                        minMixin,
+                        fee,
+                        paymentID,
+                        addressesToTakeFrom,
+                        changeAddress,
+                        daemon,
+                        subWallets,
+                        unlockTime,
+                        extraData,
+                        sendAll,
+                        sendTransaction
+                    );
+                }
+            }
+        }
+
+        return result;
+    }
+
+    static std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvancedWithMixin(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const uint64_t mixin,
         const WalletTypes::FeeType fee,
@@ -141,6 +255,28 @@ namespace SendTransaction
 
             address = extractedAddress;
             paymentID = extractedPaymentID;
+        }
+
+        /* A short payment ID is encrypted against the shared secret between us
+           and the receiver, so we need to know exactly who the receiver is.
+
+           Change is not added until setupDestinations(), so everything still
+           in addressesAndAmounts here is a real destination. If there is more
+           than one, there is no single party who could decrypt the payment ID,
+           and we must refuse rather than send something the receiver cannot
+           read. Long payment IDs are plaintext and have no such restriction. */
+        Crypto::PublicKey recipientViewKey = Constants::NULL_PUBLIC_KEY;
+
+        if (paymentID.length() == WalletConfig::shortPaymentIDLength)
+        {
+            if (addressesAndAmounts.size() != 1)
+            {
+                return {SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION,
+                        Crypto::Hash(),
+                        WalletTypes::PreparedTransactionInfo()};
+            }
+
+            std::tie(std::ignore, recipientViewKey) = Utilities::addressToKeys(addressesAndAmounts[0].first);
         }
 
         /* If no address to take from is given, we will take from all available. */
@@ -250,6 +386,7 @@ namespace SendTransaction
                             daemon,
                             ourInputs,
                             paymentID,
+                            recipientViewKey,
                             subWallets,
                             unlockTime,
                             extraData,
@@ -282,6 +419,7 @@ namespace SendTransaction
                         daemon,
                         ourInputs,
                         paymentID,
+                        recipientViewKey,
                         destinations,
                         subWallets,
                         unlockTime,
@@ -313,6 +451,10 @@ namespace SendTransaction
 
         if (txResult.error)
         {
+            /* Carry the result through so the caller can see achievableMixin and
+               decide whether retrying at a smaller ring size is worthwhile. */
+            txInfo.tx = txResult;
+
             return {txResult.error, Crypto::Hash(), txInfo};
         }
 
@@ -341,6 +483,7 @@ namespace SendTransaction
         txInfo.changeAddress = changeAddress;
         txInfo.changeRequired = changeRequired;
         txInfo.tx = txResult;
+        txInfo.mixin = mixin;
 
         if (sendTransaction)
         {
@@ -437,6 +580,7 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
@@ -454,11 +598,24 @@ namespace SendTransaction
                 daemon,
                 ourInputs,
                 paymentID,
+                recipientViewKey,
                 destinations,
                 subWallets,
                 unlockTime,
                 extraData
             );
+
+            /* Nothing was built, so there is no size to weigh a fee against.
+               Hand the failure back for the caller to read - it carries the
+               achievable mixin, which decides whether a smaller ring is worth
+               trying. Measuring the empty transaction instead happens to fall
+               out of the loop today, because the fee for a few bytes is below
+               anything we would have estimated, but that is arithmetic luck and
+               not something to leave a fee schedule change free to break. */
+            if (txResult.error)
+            {
+                return { true, txResult, changeRequired, 0 };
+            }
 
             const size_t actualTxSize = toBinaryArray(txResult.transaction).size();
 
@@ -506,9 +663,14 @@ namespace SendTransaction
         throw std::runtime_error("Programmer error @ tryMakeFeePerByteTransaction");
     }
 
+    size_t transactionSize(const CryptoNote::Transaction tx)
+    {
+        return toBinaryArray(tx).size();
+    }
+
     Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight)
     {
-        const uint64_t txSize = toBinaryArray(tx).size();
+        const uint64_t txSize = transactionSize(tx);
 
         const uint64_t maxTxSize = Utilities::getMaxTxSize(currentHeight);
 
@@ -657,7 +819,7 @@ namespace SendTransaction
         return destinations;
     }
 
-    std::tuple<Error, std::vector<CryptoNote::RandomOuts>> getRingParticipants(
+    std::tuple<Error, std::vector<CryptoNote::RandomOuts>, uint64_t> getRingParticipants(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources)
@@ -668,7 +830,7 @@ namespace SendTransaction
 
         if (mixin == 0)
         {
-            return {SUCCESS, {}};
+            return {SUCCESS, {}, 0};
         }
 
         std::vector<uint64_t> amounts;
@@ -678,11 +840,66 @@ namespace SendTransaction
             return destination.input.amount;
         });
 
-        const auto [success, fakeOuts] = daemon->getRandomOutsByAmounts(amounts, requestedOuts);
+        const auto response = daemon->getRandomOutsByAmounts(amounts, requestedOuts);
 
-        if (!success)
+        const auto fakeOuts = response.outs;
+
+        if (!response.success)
         {
-            return {DAEMON_OFFLINE, fakeOuts};
+            /* A daemon that rejects the whole request rather than returning what
+               it has tells us the ring is too big, not that it is unreachable.
+               We have no counts to work from, so the caller falls back to the
+               network minimum rather than to a measured value. */
+            if (response.notEnoughOutputs)
+            {
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, response.error), fakeOuts, 0};
+            }
+
+            return {DAEMON_OFFLINE, fakeOuts, 0};
+        }
+
+        /* The largest mixin the chain can actually support for these
+           denominations. The daemon returns at most requestedOuts per amount,
+           and one of those may turn out to be our own output which we have to
+           skip, so the ring we can reliably build is one smaller than the
+           smallest set we were handed.
+
+           Take the minimum across every entry we were given rather than looking
+           each amount up once: spending the same denomination twice puts two
+           independently drawn sets in the response, and a lookup by amount only
+           ever finds the first. Sizing the retry off that would ignore whichever
+           set is actually the thin one. Amounts missing altogether still have to
+           come from the requested list, and force the result to zero. */
+        uint64_t achievableMixin = 0;
+        {
+            bool haveSmallest = false;
+            uint64_t smallest = 0;
+
+            for (const auto &fakeOut : fakeOuts)
+            {
+                const uint64_t found = fakeOut.outs.size();
+
+                if (!haveSmallest || found < smallest)
+                {
+                    smallest = found;
+                    haveSmallest = true;
+                }
+            }
+
+            for (const uint64_t amount : amounts)
+            {
+                const auto it = std::find_if(
+                    fakeOuts.begin(), fakeOuts.end(), [amount](const auto output) { return output.amount == amount; });
+
+                if (it == fakeOuts.end())
+                {
+                    smallest = 0;
+                    haveSmallest = true;
+                    break;
+                }
+            }
+
+            achievableMixin = (!haveSmallest || smallest == 0) ? 0 : smallest - 1;
         }
 
         /* Verify outputs are sufficient */
@@ -700,7 +917,7 @@ namespace SendTransaction
                       << Utilities::formatAmount(amount) << "). Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
 
             /* Check we have at least mixin outputs for each fake out. We *may* need
@@ -715,13 +932,13 @@ namespace SendTransaction
                       << ", found outputs: " << it->outs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
         }
 
         if (fakeOuts.size() != amounts.size())
         {
-            return {NOT_ENOUGH_FAKE_OUTPUTS, fakeOuts};
+            return {NOT_ENOUGH_FAKE_OUTPUTS, fakeOuts, achievableMixin};
         }
 
         for (auto fakeOut : fakeOuts)
@@ -743,7 +960,7 @@ namespace SendTransaction
                       << ", found outputs: " << fakeOut.outs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
 
             /* Sort the fake outputs by their indexes (don't want there to be an
@@ -753,11 +970,11 @@ namespace SendTransaction
             });
         }
 
-        return {SUCCESS, fakeOuts};
+        return {SUCCESS, fakeOuts, achievableMixin};
     }
 
     /* Take our inputs and pad them with fake inputs, based on our mixin value */
-    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>> prepareRingParticipants(
+    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>, uint64_t> prepareRingParticipants(
         std::vector<WalletTypes::TxInputAndOwner> sources,
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon)
@@ -770,11 +987,11 @@ namespace SendTransaction
 
         std::vector<WalletTypes::ObscuredInput> result;
 
-        const auto [error, fakeOuts] = getRingParticipants(mixin, daemon, sources);
+        const auto [error, fakeOuts, achievableMixin] = getRingParticipants(mixin, daemon, sources);
 
         if (error)
         {
-            return {error, result};
+            return {error, result, achievableMixin};
         }
 
         size_t i = 0;
@@ -788,7 +1005,8 @@ namespace SendTransaction
                         DAEMON_ERROR,
                         "Missing global output index for one or more wallet outputs. "
                         "Let sync continue on a full node and retry."),
-                    result};
+                    result,
+                    0};
             }
 
             WalletTypes::GlobalIndexKey realOutput {*walletAmount.input.globalOutputIndex, walletAmount.input.key};
@@ -844,7 +1062,9 @@ namespace SendTransaction
                       << ", found outputs: " << obscuredInput.outputs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), result};
+                /* These are already stripped of our own output, so what we
+                   managed to gather here is directly the ring we could build. */
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), result, obscuredInput.outputs.size()};
             }
 
             /* Find the position where our real input belongs, e.g. if the fake
@@ -867,7 +1087,7 @@ namespace SendTransaction
             i++;
         }
 
-        return {SUCCESS, result};
+        return {SUCCESS, result, mixin};
     }
 
     std::tuple<Error, std::vector<CryptoNote::KeyInput>, std::vector<Crypto::SecretKey>> setupInputs(
@@ -1169,19 +1389,21 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::vector<WalletTypes::TransactionDestination> destinations,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData)
     {
         /* Mix our inputs with fake ones from the network to hide who we are */
-        const auto [mixinError, inputsAndFakes] = prepareRingParticipants(ourInputs, mixin, daemon);
+        const auto [mixinError, inputsAndFakes, achievableMixin] = prepareRingParticipants(ourInputs, mixin, daemon);
 
         WalletTypes::TransactionResult result;
 
         if (mixinError)
         {
             result.error = mixinError;
+            result.achievableMixin = achievableMixin;
             return result;
         }
 
@@ -1204,11 +1426,29 @@ namespace SendTransaction
         {
             if (paymentID.size() == WalletConfig::shortPaymentIDLength)
             {
+                /* Encrypt the payment ID against the shared secret between us
+                   and the receiver, so that only they can read it.
+
+                   We hold the transaction private key, they hold their private
+                   view key, and both sides arrive at the same derivation. The
+                   caller has already guaranteed there is exactly one receiver -
+                   a derivation is specific to one party, so a second receiver
+                   would have no way to decrypt. */
+                const std::string encryptedPaymentID = Utilities::encryptPaymentIdHex(
+                    paymentID, recipientViewKey, result.txKeyPair.secretKey);
+
+                if (encryptedPaymentID.empty())
+                {
+                    result.error = PAYMENT_ID_INVALID;
+
+                    return result;
+                }
+
                 std::vector<uint8_t> paymentIDBin;
-                Common::fromHex(paymentID, paymentIDBin);
+                Common::fromHex(encryptedPaymentID, paymentIDBin);
 
                 /* Indicate this is the short encrypted payment ID */
-                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_PAYMENT_ID_IDENTIFIER);
+                extraNonce.push_back(Constants::TX_EXTRA_ENCRYPTED_SHORT_PAYMENT_ID_IDENTIFIER);
 
                 /* Write the 8-byte data to the extra nonce */
                 std::copy(paymentIDBin.begin(), paymentIDBin.end(), std::back_inserter(extraNonce));

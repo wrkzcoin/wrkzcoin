@@ -66,7 +66,9 @@ class SubWallets
     void fromJSON(const nlohmann::json &j);
 
     /* Store a transaction */
-    void addTransaction(const WalletTypes::Transaction tx);
+    /* Takes tx by value because it may adopt the payment ID we recorded when
+       we sent this transaction - see the implementation. */
+    void addTransaction(WalletTypes::Transaction tx);
 
     /* Store an outgoing tx, not yet in a block */
     void addUnconfirmedTransaction(const WalletTypes::Transaction tx);

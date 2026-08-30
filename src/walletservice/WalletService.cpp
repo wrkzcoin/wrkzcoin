@@ -33,6 +33,8 @@
 #include <tuple>
 #include <unordered_set>
 #include <utilities/Addresses.h>
+#include <utilities/ParseExtra.h>
+#include <utilities/PaymentIdEncryption.h>
 #include <wallet/WalletErrors.h>
 #include <wallet/WalletGreen.h>
 #include <wallet/WalletUtils.h>
@@ -72,24 +74,6 @@ namespace PaymentService
             });
         }
 
-        Crypto::Hash parsePaymentId(const std::string &paymentIdStr)
-        {
-            if (!checkPaymentId(paymentIdStr, false))
-            {
-                throw std::system_error(
-                    make_error_code(CryptoNote::error::WalletServiceErrorCode::WRONG_PAYMENT_ID_FORMAT));
-            }
-
-            Crypto::Hash paymentId;
-            bool r = Common::podFromHex(paymentIdStr, paymentId);
-            if (r)
-            {
-            }
-            assert(r);
-
-            return paymentId;
-        }
-
         bool getPaymentIdFromExtra(const std::string &binaryString, Crypto::Hash &paymentId)
         {
             return CryptoNote::getPaymentIdFromTxExtra(Common::asBinaryArray(binaryString), paymentId);
@@ -112,6 +96,107 @@ namespace PaymentService
             }
 
             return Common::podToHex(paymentId);
+        }
+
+        /* The payment ID a transaction carries, in the form this service
+           should report it.
+
+           A long payment ID is plaintext and is read exactly the way this
+           service always read it, so nothing changes for anyone using them.
+
+           A short payment ID is ciphertext: it was encrypted against the
+           shared secret between the sender and the receiver, so reading it
+           takes a view key, and only ours will do - and only when we were the
+           receiver.
+
+           On a transaction we sent, the shared secret is between us and them.
+           Decrypting that with our own view key does not fail; it hands back
+           eight bytes of noise that look exactly like a payment ID. So we
+           report nothing. A missing payment ID gets investigated, a wrong one
+           credits the wrong account. */
+        std::string getPaymentIdString(
+            const CryptoNote::WalletTransaction &transaction,
+            const Crypto::SecretKey &viewSecretKey)
+        {
+            const std::string longPaymentId = getPaymentIdStringFromExtra(transaction.extra);
+
+            if (!longPaymentId.empty())
+            {
+                return longPaymentId;
+            }
+
+            try
+            {
+                const Utilities::ParsedExtra parsed =
+                    Utilities::parseExtra(Common::asBinaryArray(transaction.extra));
+
+                if (!parsed.paymentIDEncrypted)
+                {
+                    return std::string();
+                }
+
+                /* Outgoing. totalAmount is what the transaction did to our
+                   balance, so it is negative on anything we sent. */
+                if (transaction.totalAmount < 0)
+                {
+                    return std::string();
+                }
+
+                /* Returns an empty string if the transaction public key is not
+                   a valid curve point - again, nothing rather than noise. */
+                return Utilities::encryptPaymentIdHex(
+                    parsed.paymentID, parsed.transactionPublicKey, viewSecretKey);
+            }
+            catch (std::exception &)
+            {
+                return std::string();
+            }
+        }
+
+        /* A short payment ID is encrypted against the shared secret between
+           us and one receiver, so there has to be exactly one receiver to
+           encrypt it to. Returns the payment ID in the lowercase hex the
+           wallet wants, along with that receiver's public view key.
+
+           Only the caller's own transfers are counted. The node fee
+           destination is appended after this point and change later still;
+           neither is a party the payment ID was meant for. */
+        std::tuple<std::string, Crypto::PublicKey> resolveShortPaymentIdReceiver(
+            const std::string &paymentId,
+            const std::vector<PaymentService::WalletRpcOrder> &transfers,
+            Logging::LoggerRef logger)
+        {
+            if (!checkPaymentId(paymentId))
+            {
+                logger(Logging::WARNING, Logging::BRIGHT_YELLOW) << "Can't validate payment id: " << paymentId;
+                throw std::system_error(make_error_code(CryptoNote::error::BAD_PAYMENT_ID));
+            }
+
+            if (transfers.size() != 1)
+            {
+                logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                    << "A short payment ID is encrypted so that only the receiver can read it, which means the "
+                    << "transaction can only have one destination. " << transfers.size()
+                    << " were given. Send to a single address, or use a long (64 character) payment ID instead.";
+
+                throw std::system_error(make_error_code(CryptoNote::error::BAD_PAYMENT_ID));
+            }
+
+            Crypto::PublicKey receiverViewKey;
+
+            /* The destination has already been validated, and any integrated
+               address replaced with the address it decodes to, by the time we
+               get here. */
+            std::tie(std::ignore, receiverViewKey) = Utilities::addressToKeys(transfers[0].address);
+
+            /* Payment IDs travel through this service uppercased, so that one
+               given directly can be compared with one out of an integrated
+               address. The wallet wants lowercase hex. */
+            std::string lowercased = paymentId;
+
+            std::transform(lowercased.begin(), lowercased.end(), lowercased.begin(), ::tolower);
+
+            return {lowercased, receiverViewKey};
         }
 
         std::tuple<bool, std::string, std::error_code> validateMixin(const uint64_t mixin, const uint64_t height)
@@ -138,13 +223,25 @@ namespace PaymentService
 
     struct TransactionsInBlockInfoFilter
     {
-        TransactionsInBlockInfoFilter(const std::vector<std::string> &addressesVec, const std::string &paymentIdStr)
+        TransactionsInBlockInfoFilter(
+            const std::vector<std::string> &addressesVec,
+            const std::string &paymentIdStr,
+            const Crypto::SecretKey &viewSecretKey):
+            viewSecretKey(viewSecretKey)
         {
             addresses.insert(addressesVec.begin(), addressesVec.end());
 
             if (!paymentIdStr.empty())
             {
-                paymentId = parsePaymentId(paymentIdStr);
+                if (!checkPaymentId(paymentIdStr))
+                {
+                    throw std::system_error(make_error_code(CryptoNote::error::BAD_PAYMENT_ID));
+                }
+
+                paymentId = paymentIdStr;
+
+                std::transform(paymentId.begin(), paymentId.end(), paymentId.begin(), ::tolower);
+
                 havePaymentId = true;
             }
             else
@@ -157,11 +254,20 @@ namespace PaymentService
         {
             if (havePaymentId)
             {
-                Crypto::Hash transactionPaymentId;
-                if (!getPaymentIdFromExtra(transaction.transaction.extra, transactionPaymentId))
-                {
-                    return false;
-                }
+                /* Match against the payment ID we would report for this
+                   transaction rather than against the raw bytes in tx_extra.
+                   A short payment ID has to be compared after decryption: the
+                   same one is different ciphertext in every transaction it
+                   appears in, so the bytes on chain never match.
+
+                   Looking for a long payment ID stays a plain read of
+                   tx_extra. A short payment ID could never match one, so
+                   there is no reason to pay for a key derivation per
+                   transaction to find that out. */
+                const std::string transactionPaymentId =
+                    paymentId.size() == WalletConfig::longPaymentIDLength
+                        ? getPaymentIdStringFromExtra(transaction.transaction.extra)
+                        : getPaymentIdString(transaction.transaction, viewSecretKey);
 
                 if (paymentId != transactionPaymentId)
                 {
@@ -191,13 +297,30 @@ namespace PaymentService
 
         bool havePaymentId = false;
 
-        Crypto::Hash paymentId;
+        /* Lowercase hex, 16 or 64 characters. Held as text rather than a hash
+           because a short payment ID is only ever eight bytes and is compared
+           after decryption. */
+        std::string paymentId;
+
+        /* Needed to read a short payment ID off an incoming transaction. */
+        Crypto::SecretKey viewSecretKey;
     };
 
     namespace
     {
         void addPaymentIdToExtra(const std::string &paymentId, std::string &extra)
         {
+            /* Long payment IDs only. A short one cannot be written into
+               tx_extra here: it has to be encrypted against the shared secret
+               with the receiver, and the transaction key that needs does not
+               exist yet. Those travel down to the wallet as plaintext instead
+               - see resolveShortPaymentIdReceiver() and
+               TransactionParameters::shortPaymentId. */
+            if (paymentId.size() == WalletConfig::shortPaymentIDLength)
+            {
+                throw std::system_error(make_error_code(CryptoNote::error::BAD_PAYMENT_ID));
+            }
+
             std::vector<uint8_t> extraVector;
             if (!CryptoNote::createTxExtraWithPaymentId(paymentId, extraVector))
             {
@@ -259,8 +382,11 @@ namespace PaymentService
             return result;
         }
 
+        /* viewSecretKey is ours, and is needed to read a short payment ID -
+           it is encrypted to the receiver and nobody else can decrypt it. */
         PaymentService::TransactionRpcInfo convertTransactionWithTransfersToTransactionRpcInfo(
-            const CryptoNote::WalletTransactionWithTransfers &transactionWithTransfers)
+            const CryptoNote::WalletTransactionWithTransfers &transactionWithTransfers,
+            const Crypto::SecretKey &viewSecretKey)
         {
             PaymentService::TransactionRpcInfo transactionInfo;
 
@@ -274,7 +400,7 @@ namespace PaymentService
             transactionInfo.fee = transactionWithTransfers.transaction.fee;
             transactionInfo.extra = Common::toHex(
                 transactionWithTransfers.transaction.extra.data(), transactionWithTransfers.transaction.extra.size());
-            transactionInfo.paymentId = getPaymentIdStringFromExtra(transactionWithTransfers.transaction.extra);
+            transactionInfo.paymentId = getPaymentIdString(transactionWithTransfers.transaction, viewSecretKey);
 
             for (const CryptoNote::WalletTransfer &transfer : transactionWithTransfers.transfers)
             {
@@ -291,7 +417,8 @@ namespace PaymentService
 
         std::vector<PaymentService::TransactionsInBlockRpcInfo>
             convertTransactionsInBlockInfoToTransactionsInBlockRpcInfo(
-                const std::vector<CryptoNote::TransactionsInBlockInfo> &blocks)
+                const std::vector<CryptoNote::TransactionsInBlockInfo> &blocks,
+                const Crypto::SecretKey &viewSecretKey)
         {
             std::vector<PaymentService::TransactionsInBlockRpcInfo> rpcBlocks;
             rpcBlocks.reserve(blocks.size());
@@ -303,7 +430,8 @@ namespace PaymentService
                 for (const CryptoNote::WalletTransactionWithTransfers &transactionWithTransfers : block.transactions)
                 {
                     PaymentService::TransactionRpcInfo transactionInfo =
-                        convertTransactionWithTransfersToTransactionRpcInfo(transactionWithTransfers);
+                        convertTransactionWithTransfersToTransactionRpcInfo(
+                            transactionWithTransfers, viewSecretKey);
                     rpcBlock.transactions.push_back(std::move(transactionInfo));
                 }
 
@@ -370,7 +498,21 @@ namespace PaymentService
                 throw std::system_error(make_error_code(CryptoNote::error::BAD_ADDRESS));
             }
 
-            const uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
+            /* Integrated addresses come in two lengths, carrying a short or a
+               long payment ID. This used to assume short, which meant a long
+               integrated address decoded into nonsense. Pick from the address
+               length, the same way validateAddresses() does.
+
+               This matters more now than it did: short payment IDs have to be
+               encrypted, which this service cannot do, so a long integrated
+               address is the only kind it can actually send to. */
+            uint64_t paymentIDLen = WalletConfig::shortPaymentIDLength;
+
+            if (integratedAddr.length() == WalletConfig::integratedAddressLengthLong)
+            {
+                paymentIDLen = WalletConfig::longPaymentIDLength;
+            }
+
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);
 
@@ -650,7 +792,21 @@ namespace PaymentService
         const std::string height = std::to_string(confirmed ? transaction.blockHeight : 0);
         const std::string amount = std::to_string(transaction.totalAmount);
         const std::string fee = std::to_string(transaction.fee);
-        const std::string paymentId = getPaymentIdStringFromExtra(transaction.extra);
+        /* getViewKey() throws if the wallet is stopping, and this runs from an
+           event handler that has nowhere to put an exception. Without the key
+           we simply cannot read a short payment ID, so fall back to reading a
+           long one, which needs no key at all. */
+        std::string paymentId;
+
+        try
+        {
+            paymentId = getPaymentIdString(transaction, wallet.getViewKey().secretKey);
+        }
+        catch (const std::exception &)
+        {
+            paymentId = getPaymentIdStringFromExtra(transaction.extra);
+        }
+
         const std::string confirmedFlag = confirmed ? "1" : "0";
 
         Tools::Notifier::Notification n;
@@ -1245,7 +1401,7 @@ namespace PaymentService
                 validatePaymentId(paymentId, logger);
             }
 
-            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId, wallet.getViewKey().secretKey);
             Crypto::Hash blockHash = parseHash(blockHashString, logger);
 
             transactionHashes = getRpcTransactionHashes(blockHash, blockCount, transactionFilter);
@@ -1281,7 +1437,7 @@ namespace PaymentService
                 validatePaymentId(paymentId, logger);
             }
 
-            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId, wallet.getViewKey().secretKey);
             transactionHashes = getRpcTransactionHashes(firstBlockIndex, blockCount, transactionFilter);
         }
         catch (std::system_error &x)
@@ -1315,7 +1471,7 @@ namespace PaymentService
                 validatePaymentId(paymentId, logger);
             }
 
-            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId, wallet.getViewKey().secretKey);
 
             Crypto::Hash blockHash = parseHash(blockHashString, logger);
 
@@ -1352,7 +1508,7 @@ namespace PaymentService
                 validatePaymentId(paymentId, logger);
             }
 
-            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId);
+            TransactionsInBlockInfoFilter transactionFilter(addresses, paymentId, wallet.getViewKey().secretKey);
 
             transactions = getRpcTransactions(firstBlockIndex, blockCount, transactionFilter);
         }
@@ -1385,7 +1541,9 @@ namespace PaymentService
                 return make_error_code(CryptoNote::error::OBJECT_NOT_FOUND);
             }
 
-            transaction = convertTransactionWithTransfersToTransactionRpcInfo(transactionWithTransfers);
+            transaction =
+                convertTransactionWithTransfersToTransactionRpcInfo(
+                    transactionWithTransfers, wallet.getViewKey().secretKey);
         }
         catch (std::system_error &x)
         {
@@ -1424,7 +1582,11 @@ namespace PaymentService
         return std::error_code();
     }
 
-    std::error_code WalletService::sendTransaction(SendTransaction::Request &request, std::string &transactionHash, uint64_t &fee)
+    std::error_code WalletService::sendTransaction(
+        SendTransaction::Request &request,
+        std::string &transactionHash,
+        uint64_t &fee,
+        uint64_t &anonymity)
     {
         try
         {
@@ -1496,7 +1658,19 @@ namespace PaymentService
             }
 
             CryptoNote::TransactionParameters sendParams;
-            if (!request.paymentId.empty())
+
+            /* A short payment ID is encrypted to a single receiver, and the
+               key that takes only exists once the transaction is built. So it
+               goes down to the wallet in the clear, alongside the view key it
+               will be encrypted to, rather than being written into extra
+               here. Long payment IDs are plaintext and go into extra as
+               before. */
+            if (request.paymentId.size() == WalletConfig::shortPaymentIDLength)
+            {
+                std::tie(sendParams.shortPaymentId, sendParams.shortPaymentIdReceiverViewKey) =
+                    resolveShortPaymentIdReceiver(request.paymentId, request.transfers, logger);
+            }
+            else if (!request.paymentId.empty())
             {
                 addPaymentIdToExtra(request.paymentId, sendParams.extra);
             }
@@ -1513,12 +1687,23 @@ namespace PaymentService
             sendParams.unlockTimestamp = request.unlockTime;
             sendParams.changeDestination = request.changeAddress;
 
-            size_t transactionId = wallet.transfer(sendParams);
+            uint16_t actualMixin = 0;
+
+            size_t transactionId = wallet.transfer(sendParams, &actualMixin);
             const auto tx = wallet.getTransaction(transactionId);
 
             /* Set output parameters */
             transactionHash = Common::podToHex(tx.hash);
             fee = tx.fee;
+            anonymity = actualMixin;
+
+            if (actualMixin < request.anonymity)
+            {
+                logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
+                    << "Transaction " << transactionHash << " was built with a ring size of " << (actualMixin + 1)
+                    << " instead of " << (request.anonymity + 1)
+                    << ": the denominations spent do not have enough outputs on chain";
+            }
 
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash << " has been sent";
         }
@@ -1603,7 +1788,19 @@ namespace PaymentService
             }
 
             CryptoNote::TransactionParameters sendParams;
-            if (!request.paymentId.empty())
+
+            /* A short payment ID is encrypted to a single receiver, and the
+               key that takes only exists once the transaction is built. So it
+               goes down to the wallet in the clear, alongside the view key it
+               will be encrypted to, rather than being written into extra
+               here. Long payment IDs are plaintext and go into extra as
+               before. */
+            if (request.paymentId.size() == WalletConfig::shortPaymentIDLength)
+            {
+                std::tie(sendParams.shortPaymentId, sendParams.shortPaymentIdReceiverViewKey) =
+                    resolveShortPaymentIdReceiver(request.paymentId, request.transfers, logger);
+            }
+            else if (!request.paymentId.empty())
             {
                 addPaymentIdToExtra(request.paymentId, sendParams.extra);
             }
@@ -1758,7 +1955,7 @@ namespace PaymentService
 
             std::vector<CryptoNote::WalletTransactionWithTransfers> transactions = wallet.getUnconfirmedTransactions();
 
-            TransactionsInBlockInfoFilter transactionFilter(addresses, "");
+            TransactionsInBlockInfoFilter transactionFilter(addresses, "", wallet.getViewKey().secretKey);
 
             for (const auto &transaction : transactions)
             {
@@ -1964,7 +2161,8 @@ namespace PaymentService
         std::vector<CryptoNote::TransactionsInBlockInfo> allTransactions = getTransactions(blockHash, blockCount);
         std::vector<CryptoNote::TransactionsInBlockInfo> filteredTransactions =
             filterTransactions(allTransactions, filter);
-        return convertTransactionsInBlockInfoToTransactionsInBlockRpcInfo(filteredTransactions);
+        return convertTransactionsInBlockInfoToTransactionsInBlockRpcInfo(
+            filteredTransactions, wallet.getViewKey().secretKey);
     }
 
     std::vector<TransactionsInBlockRpcInfo> WalletService::getRpcTransactions(
@@ -1975,7 +2173,8 @@ namespace PaymentService
         std::vector<CryptoNote::TransactionsInBlockInfo> allTransactions = getTransactions(firstBlockIndex, blockCount);
         std::vector<CryptoNote::TransactionsInBlockInfo> filteredTransactions =
             filterTransactions(allTransactions, filter);
-        return convertTransactionsInBlockInfoToTransactionsInBlockRpcInfo(filteredTransactions);
+        return convertTransactionsInBlockInfoToTransactionsInBlockRpcInfo(
+            filteredTransactions, wallet.getViewKey().secretKey);
     }
 
 } // namespace PaymentService

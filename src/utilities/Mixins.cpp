@@ -29,7 +29,13 @@ namespace Utilities
            was correct when the block was formed - i.e. if 0 mixin was allowed at
            block 100, but is no longer allowed - we should still validate block 100 */
 
-        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V5_HEIGHT)
+        if (height >= CryptoNote::parameters::MIXIN_LIMITS_V6_HEIGHT)
+        {
+            minMixin = CryptoNote::parameters::MINIMUM_MIXIN_V6;
+            maxMixin = CryptoNote::parameters::MAXIMUM_MIXIN_V6;
+            defaultMixin = CryptoNote::parameters::DEFAULT_MIXIN_V6;
+        }
+        else if (height >= CryptoNote::parameters::MIXIN_LIMITS_V5_HEIGHT)
         {
             minMixin = CryptoNote::parameters::MINIMUM_MIXIN_V5;
             maxMixin = CryptoNote::parameters::MAXIMUM_MIXIN_V5;
@@ -61,5 +67,35 @@ namespace Utilities
         }
 
         return {minMixin, maxMixin, defaultMixin};
+    }
+
+    std::optional<uint64_t> nextFallbackMixin(
+        const uint64_t triedMixin,
+        const uint64_t achievableMixin,
+        const uint64_t minMixin)
+    {
+        /* Already as low as the network allows, so there is nothing left to try
+           - the send fails, and says why. */
+        if (triedMixin <= minMixin)
+        {
+            return std::nullopt;
+        }
+
+        /* Never at or above what just failed, never below what the network
+           accepts. A zero measurement means we learned nothing about what the
+           chain holds, which lands us on the minimum. */
+        uint64_t next = achievableMixin;
+
+        if (next > triedMixin - 1)
+        {
+            next = triedMixin - 1;
+        }
+
+        if (next < minMixin)
+        {
+            next = minMixin;
+        }
+
+        return next;
     }
 } // namespace Utilities

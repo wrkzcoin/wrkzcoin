@@ -754,4 +754,12 @@ class SJa extends S {
   String youReceivedAmount(String amount) {
     return '$amount を受け取りました';
   }
+
+  @override
+  String get ringSize => 'リングサイズ';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'リングサイズが $actual に縮小されました（通常は $normal）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。';
+  }
 }

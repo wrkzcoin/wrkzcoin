@@ -42,6 +42,28 @@ struct WalletSyncResponse
     uint64_t scannedToHeight = 0;
 };
 
+/* What one random-outputs request came back with. */
+struct RandomOutsResponse
+{
+    /* The daemon answered and `outs` is usable. It may still hold fewer outputs
+       per amount than were asked for - the caller decides whether that is
+       enough for the ring it wants to build. */
+    bool success = false;
+
+    /* The daemon answered, but told us it cannot supply decoys at these
+       denominations. Kept apart from a transport failure on purpose: the funds
+       are fine and the node is fine, only the requested ring size is out of
+       reach, and a caller that conflates the two reports the wrong cause and
+       cannot retry smaller. Only set by daemons old enough to reject the whole
+       request rather than return what they have. */
+    bool notEnoughOutputs = false;
+
+    /* The daemon's own explanation, when notEnoughOutputs is set. */
+    std::string error;
+
+    std::vector<CryptoNote::RandomOuts> outs;
+};
+
 class Nigel
 {
   public:
@@ -138,7 +160,7 @@ class Nigel
         std::unordered_set<Crypto::Hash> &transactionsInBlock,
         std::unordered_set<Crypto::Hash> &transactionsUnknown) const;
 
-    std::tuple<bool, std::vector<CryptoNote::RandomOuts>>
+    RandomOutsResponse
         getRandomOutsByAmounts(const std::vector<uint64_t> amounts, const uint64_t requestedOuts) const;
 
     /* {success, connectionError, errorMessage} */

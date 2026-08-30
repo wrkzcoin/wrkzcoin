@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../core/api/models/transaction.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
@@ -33,8 +34,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   String? _error;
 
   // prepared tx
-  Map<String, dynamic>? _prepared;
-  int _preparedFee = 0;
+  SendResult? _prepared;
 
   // success
   String _sentTxHash = '';
@@ -168,8 +168,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
       };
       final result =
           await ffi.sendAdvanced(jsonEncode(request), broadcast: false);
-      _prepared = result;
-      _preparedFee = (result['fee'] as num?)?.toInt() ?? 0;
+      _prepared = SendResult.fromJson(result);
 
       if (!mounted) return;
       setState(() {
@@ -207,7 +206,7 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      final preparedHash = _prepared!['transactionHash'] as String;
+      final preparedHash = _prepared!.transactionHash;
       // Report the hash the network actually accepted, not the prepared one.
       final txHash = await ffi.sendPrepared(preparedHash);
       ref.read(balanceProvider.notifier).refresh();
@@ -247,8 +246,8 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
   void _cancelPrepared() {
     final prepared = _prepared;
     if (prepared != null) {
-      final hash = prepared['transactionHash'] as String?;
-      if (hash != null && hash.isNotEmpty) {
+      final hash = prepared.transactionHash;
+      if (hash.isNotEmpty) {
         try {
           ref.read(walletCApiProvider).deletePrepared(hash);
         } catch (_) {
@@ -406,8 +405,9 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
 
   Widget _buildReview() {
     final tr = S.of(context)!;
+    final p = _prepared!;
     final amount = parseAmount(_amountCtrl.text) ?? 0;
-    final total = amount + _preparedFee;
+    final total = amount + p.fee;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -426,13 +426,19 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 _reviewRow(tr.amount,
                     formatAmount(amount, showTicker: true)),
                 _reviewRow(tr.fee,
-                    formatAmount(_preparedFee, showTicker: true)),
+                    formatAmount(p.fee, showTicker: true)),
                 const Divider(height: 24),
                 _reviewRow(tr.totalDeducted,
                     formatAmount(total, showTicker: true)),
                 if (_pidCtrl.text.trim().isNotEmpty) ...[
                   const Divider(height: 24),
                   _reviewRow(tr.paymentId, _pidCtrl.text.trim()),
+                ],
+                // Zero means the native library predates reporting it, and a
+                // made-up ring size would be worse than none.
+                if (p.defaultMixin > 0) ...[
+                  const Divider(height: 24),
+                  _reviewRow(tr.ringSize, '${p.mixin + 1}'),
                 ],
               ],
             ),
@@ -462,6 +468,36 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             ],
           ),
         ),
+
+        // Say this before the send is approved, not after: the transaction is
+        // less private than usual, and that is not something to find out once
+        // it is on the chain.
+        if (p.isMixinDegraded) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: kWarning.withAlpha(25),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.privacy_tip_outlined,
+                    color: kWarning, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    tr.ringSizeReduced(p.mixin + 1, p.defaultMixin + 1),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: kWarning),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         if (_error != null) ...[
           const SizedBox(height: 12),

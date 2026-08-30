@@ -27,6 +27,11 @@ namespace CryptoNote
         std::vector<WalletTransfer> destinations;
         uint64_t neededMoney;
         uint64_t changeAmount;
+
+        /* The mixin this transaction was actually built with. May be lower than
+           the mixin requested, if the denominations being spent did not have
+           enough outputs on chain to form a larger ring. */
+        uint16_t mixin = 0;
     };
 
     class WalletGreen :
@@ -121,7 +126,10 @@ namespace CryptoNote
 
         virtual std::vector<size_t> getDelayedTransactionIds() const;
 
-        virtual size_t transfer(TransactionParameters &transactionParameters);
+        /* actualMixin, when given, receives the ring size the transaction was
+           really built with - which can be below the one requested if a
+           denomination being spent lacks decoys. */
+        virtual size_t transfer(TransactionParameters &transactionParameters, uint16_t *actualMixin = nullptr);
 
         virtual size_t makeTransaction(TransactionParameters &sendingTransaction);
 
@@ -365,20 +373,26 @@ namespace CryptoNote
 
         bool isFusionTransaction(const WalletTransaction &walletTx) const;
 
+        /* shortPaymentId is a plaintext 16 character payment ID, or empty. It
+           is passed separately from extra because it can only be encrypted
+           once the transaction - and so its private key - exists. See
+           TransactionParameters. */
         void prepareTransaction(
             std::vector<WalletOuts> &&wallets,
             const std::vector<WalletOrder> &orders,
             WalletTypes::FeeType fee,
             uint16_t mixIn,
             const std::string &extra,
+            const std::string &shortPaymentId,
+            const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
             uint64_t unlockTimestamp,
             const DonationSettings &donation,
             const CryptoNote::AccountPublicAddress &changeDestinationAddress,
             PreparedTransaction &preparedTransaction);
 
-        size_t doTransfer(const TransactionParameters &transactionParameters);
+        size_t doTransfer(const TransactionParameters &transactionParameters, uint16_t *actualMixin = nullptr);
 
-        void checkIfEnoughMixins(std::vector<CryptoNote::RandomOuts> &mixinResult, uint16_t mixIn) const;
+        uint16_t achievableMixin(const std::vector<CryptoNote::RandomOuts> &mixinResult) const;
 
         std::vector<WalletTransfer> convertOrdersToTransfers(const std::vector<WalletOrder> &orders) const;
 
@@ -405,7 +419,10 @@ namespace CryptoNote
 
         void validateTransactionParameters(const TransactionParameters &transactionParameters) const;
 
-        void requestMixinOuts(
+        /* Returns the mixin actually satisfied, which may be below the one asked
+           for when a denomination lacks decoys. Throws MIXIN_COUNT_TOO_BIG only
+           when even the network minimum cannot be met. */
+        uint16_t requestMixinOuts(
             const std::vector<OutputToTransfer> &selectedTransfers,
             uint16_t mixIn,
             std::vector<CryptoNote::RandomOuts> &mixinResult);
@@ -430,10 +447,17 @@ namespace CryptoNote
 
         ReceiverAmounts splitAmount(uint64_t amount, const AccountPublicAddress &destination, uint64_t dustThreshold);
 
+        /* The payment ID to carry into an upgraded (new format) wallet file.
+           Decrypts a short payment ID where we can, and reports nothing where
+           we cannot - see the implementation. */
+        std::string getPaymentIDForNewFormat(const WalletTransaction &transaction) const;
+
         std::unique_ptr<CryptoNote::ITransaction> makeTransaction(
             const std::vector<ReceiverAmounts> &decomposedOutputs,
             std::vector<InputInfo> &keysInfo,
             const std::string &extra,
+            const std::string &shortPaymentId,
+            const Crypto::PublicKey &shortPaymentIdReceiverViewKey,
             uint64_t unlockTimestamp);
 
         void sendTransaction(const CryptoNote::Transaction &cryptoNoteTransaction);

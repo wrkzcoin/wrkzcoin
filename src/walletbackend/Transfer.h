@@ -9,6 +9,7 @@
 #include <WalletTypes.h>
 #include <errors/Errors.h>
 #include <nigel/Nigel.h>
+#include <optional>
 #include <serialization/SerializationTools.h>
 #include <subwallets/SubWallets.h>
 #include <tuple>
@@ -49,7 +50,9 @@ namespace SendTransaction
         const uint64_t changeRequired,
         const std::string changeAddress);
 
-    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>> prepareRingParticipants(
+    /* Third element is the achievable mixin, only meaningful when the error is
+       NOT_ENOUGH_FAKE_OUTPUTS. See WalletTypes::TransactionResult. */
+    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>, uint64_t> prepareRingParticipants(
         std::vector<WalletTypes::TxInputAndOwner> sources,
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon);
@@ -76,16 +79,23 @@ namespace SendTransaction
     std::vector<CryptoNote::TransactionOutput>
         keyOutputToTransactionOutput(const std::vector<WalletTypes::KeyOutput> keyOutputs);
 
-    std::tuple<Error, std::vector<CryptoNote::RandomOuts>> getRingParticipants(
+    /* Third element is the achievable mixin, only meaningful when the error is
+       NOT_ENOUGH_FAKE_OUTPUTS. See WalletTypes::TransactionResult. */
+    std::tuple<Error, std::vector<CryptoNote::RandomOuts>, uint64_t> getRingParticipants(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources);
 
+    /* recipientViewKey is the public view key of the single destination a
+       short payment ID is encrypted to. It is ignored for long payment IDs
+       and when no payment ID is given, and may be NULL_PUBLIC_KEY in those
+       cases. */
     WalletTypes::TransactionResult makeTransaction(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::vector<WalletTypes::TransactionDestination> destinations,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
@@ -114,10 +124,15 @@ namespace SendTransaction
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> ourInputs,
         const std::string paymentID,
+        const Crypto::PublicKey recipientViewKey,
         const std::shared_ptr<SubWallets> subWallets,
         const uint64_t unlockTime,
         const std::vector<uint8_t> extraData,
         const bool sendAll);
+
+    /* What the transaction actually serialises to - the number the network
+       charges a fee against, as opposed to the estimate used to pick inputs. */
+    size_t transactionSize(const CryptoNote::Transaction tx);
 
     Error isTransactionPayloadTooBig(const CryptoNote::Transaction tx, const uint64_t currentHeight);
 

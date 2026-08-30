@@ -389,10 +389,12 @@ Error validateAddresses(std::vector<std::string> addresses, const bool integrate
             /* Grab the payment ID from the decoded address */
             std::string paymentID = decoded.substr(0, paymentIDLen);
 
-            std::vector<uint8_t> extra;
-
-            /* Verify the extracted payment ID is valid */
-            if (!CryptoNote::createTxExtraWithPaymentId(paymentID, extra))
+            /* Verify the extracted payment ID is valid. Note we check the
+               payment ID itself rather than trying to build a tx_extra out of
+               it - a short payment ID cannot be turned into extra without the
+               transaction keys to encrypt it against, and that happens later,
+               at send time. */
+            if (validatePaymentID(paymentID) != SUCCESS)
             {
                 return INTEGRATED_ADDRESS_PAYMENT_ID_INVALID;
             }

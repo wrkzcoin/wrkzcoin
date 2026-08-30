@@ -2453,8 +2453,23 @@ namespace CryptoNote
         DatabaseBlockchainCache::getTransactionHashesByPaymentId(const Crypto::Hash &paymentId) const
     {
         auto countBatch = BlockchainReadBatch().requestTransactionCountByPaymentId(paymentId);
-        uint32_t transactionsCountByPaymentId =
-            readDatabase(countBatch).getTransactionCountByPaymentIds().at(paymentId);
+
+        /* Keep the result alive - getTransactionCountByPaymentIds() hands back
+           a reference into it, and BlockchainReadResult is move only. */
+        const auto countResult = readDatabase(countBatch);
+        const auto &counts = countResult.getTransactionCountByPaymentIds();
+        const auto countIt = counts.find(paymentId);
+
+        /* A payment ID that appears in no transaction has no entry at all.
+           That is the ordinary answer to a lookup, not an error: this used to
+           be .at(), which threw std::out_of_range for every payment ID that
+           was not on chain. Nothing called this function, so nothing noticed. */
+        if (countIt == counts.end())
+        {
+            return {};
+        }
+
+        const uint32_t transactionsCountByPaymentId = countIt->second;
 
         BlockchainReadBatch transactionBatch;
         for (uint32_t i = 0; i < transactionsCountByPaymentId; ++i)

@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "Não é possível verificar a palavra-passe neste dispositivo. Use «Fechar carteira» e abra a carteira novamente.",
   "exportJsonWarningTitle": "Exportar a carteira não encriptada?",
   "exportJsonWarningBody": "O ficheiro exportado contém a sua chave de visualização privada e as chaves de gasto privadas em texto simples. Quem o ler pode gastar os seus fundos.\n\nGuarde-o apenas em armazenamento que controla e elimine-o assim que terminar.",
-  "passwordTooShort": "A senha deve ter pelo menos {count} caracteres"
+  "passwordTooShort": "A senha deve ter pelo menos {count} caracteres",
+  "ringSize": "Tamanho do anel",
+  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual."
 }

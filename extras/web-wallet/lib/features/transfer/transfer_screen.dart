@@ -406,6 +406,10 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
             ),
             if (_paymentIdCtrl.text.trim().isNotEmpty)
               _ReviewRow(label: tr?.paymentId ?? 'Payment ID', value: _paymentIdCtrl.text.trim(), monospace: true),
+            // Zero means the native library predates reporting it, and a made-up
+            // ring size would be worse than none.
+            if (p.defaultMixin > 0)
+              _ReviewRow(label: tr?.ringSize ?? 'Ring size', value: '${p.mixin + 1}'),
             const SizedBox(height: 8),
             const Divider(),
             const SizedBox(height: 12),
@@ -429,6 +433,35 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
                 ],
               ),
             ),
+            // Say this before the send is approved, not after: the transaction
+            // is less private than usual, and that is not something to find out
+            // once it is on the chain.
+            if (p.isMixinDegraded) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: kWarning.withAlpha(20),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: kWarning.withAlpha(80)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.privacy_tip_outlined, color: kWarning, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        tr?.ringSizeReduced(p.mixin + 1, p.defaultMixin + 1) ??
+                            'Ring size reduced to ${p.mixin + 1} (normally ${p.defaultMixin + 1}). '
+                                'The amounts being sent do not have enough outputs on the chain to '
+                                'form a full ring, so this transaction is less private than usual.',
+                        style: const TextStyle(color: kWarning, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             Row(
               children: [

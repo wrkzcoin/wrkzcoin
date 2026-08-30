@@ -148,7 +148,8 @@ namespace PaymentService
         std::error_code sendTransaction(
             SendTransaction::Request &request,
             std::string &transactionHash,
-            uint64_t &fee);
+            uint64_t &fee,
+            uint64_t &anonymity);
 
         std::error_code createDelayedTransaction(
             CreateDelayedTransaction::Request &request,

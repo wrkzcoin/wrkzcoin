@@ -810,4 +810,12 @@ class SEs extends S {
   String passwordTooShort(int count) {
     return 'La contraseña debe tener al menos $count caracteres';
   }
+
+  @override
+  String get ringSize => 'Tamaño del anillo';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
+  }
 }

@@ -342,6 +342,16 @@ namespace Utilities
         const bool havePaymentID,
         const size_t extraDataSize)
     {
+        return estimateTransactionSize(
+            std::vector<uint64_t>(numInputs, mixin), numOutputs, havePaymentID, extraDataSize);
+    }
+
+    size_t estimateTransactionSize(
+        const std::vector<uint64_t> &mixins,
+        const size_t numOutputs,
+        const bool havePaymentID,
+        const size_t extraDataSize)
+    {
         const size_t KEY_IMAGE_SIZE = sizeof(Crypto::KeyImage);
         const size_t OUTPUT_KEY_SIZE = sizeof(decltype(CryptoNote::KeyOutput::key));
         const size_t AMOUNT_SIZE = sizeof(uint64_t) + 2; // varint
@@ -366,16 +376,34 @@ namespace Utilities
                                 + PUBLIC_KEY_SIZE
                                 + PAYMENT_ID_SIZE;
         
-        /* The size of each transaction input */
+        /* The size of each transaction input.
+
+           GLOBAL_INDEXES_DIFFERENCE_SIZE is charged per ring member because the
+           output indexes go on the wire as varint deltas, one per member beyond
+           the first. Leaving them out was survivable while the mixin was 1 - the
+           flat allowances above it covered the shortfall - but the shortfall
+           grows with the ring and the allowances do not, so at a mixin of 7 the
+           estimate fell under the real size from a handful of inputs onward.
+           Callers that go on to weigh the fee against the finished transaction
+           then paid for an extra rebuild, and the one that did not weigh it
+           built transactions the network rejects as underpaying.
+
+           This is still an upper-bound guess, not a measurement: the real deltas
+           depend on global indexes nobody has fetched yet. It is meant to sit
+           above the truth, which is the safe side to be wrong on. */
         const size_t inputSize = INPUT_TAG_SIZE
                                + AMOUNT_SIZE
                                + KEY_IMAGE_SIZE
                                + SIGNATURE_SIZE
                                + GLOBAL_INDEXES_VECTOR_SIZE_SIZE
-                               + GLOBAL_INDEXES_INITIAL_VALUE_SIZE
-                               + mixin * SIGNATURE_SIZE;
+                               + GLOBAL_INDEXES_INITIAL_VALUE_SIZE;
 
-        const size_t inputsSize = inputSize * numInputs;
+        size_t inputsSize = 0;
+
+        for (const uint64_t mixin : mixins)
+        {
+            inputsSize += inputSize + mixin * (GLOBAL_INDEXES_DIFFERENCE_SIZE + SIGNATURE_SIZE);
+        }
 
         /* The size of each transaction output. */
         const size_t outputSize = OUTPUT_TAG_SIZE

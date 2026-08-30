@@ -772,4 +772,12 @@ class SPt extends S {
   String youReceivedAmount(String amount) {
     return 'Recebeu $amount';
   }
+
+  @override
+  String get ringSize => 'Tamanho do anel';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
+  }
 }

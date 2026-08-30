@@ -1550,6 +1550,18 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Русский'**
   String get languageRu;
+
+  /// Label for the ring size a transaction was built with
+  ///
+  /// In en, this message translates to:
+  /// **'Ring size'**
+  String get ringSize;
+
+  /// Warning shown before confirming a send whose ring came out below the network default
+  ///
+  /// In en, this message translates to:
+  /// **'Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.'**
+  String ringSizeReduced(int actual, int normal);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

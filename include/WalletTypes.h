@@ -506,6 +506,12 @@ namespace WalletTypes
 
         /* The random key pair we generated */
         CryptoNote::KeyPair txKeyPair;
+
+        /* Only meaningful when error is NOT_ENOUGH_FAKE_OUTPUTS - the largest
+           mixin the chain actually has enough outputs for, given the
+           denominations we are spending. Lets the caller retry at the best
+           ring size available instead of dropping straight to the minimum. */
+        uint64_t achievableMixin = 0;
     };
 
     struct PreparedTransactionInfo
@@ -517,6 +523,11 @@ namespace WalletTypes
         uint64_t changeRequired;
         TransactionResult tx;
         Crypto::Hash transactionHash;
+
+        /* The mixin this transaction was actually built with. May be lower than
+           the mixin requested, if the denominations being spent did not have
+           enough outputs on chain to form a larger ring. */
+        uint64_t mixin = 0;
     };
 
     /* Forward declare nlohmann converters used by nested/vector serializers. */
