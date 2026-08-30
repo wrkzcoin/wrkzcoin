@@ -80,15 +80,33 @@ class SendResult {
   final int fee;
   final bool relayedToNetwork;
 
+  /// Ring size this transaction was built with, minus one. Can come out lower
+  /// than [defaultMixin] when a denomination being spent does not have enough
+  /// outputs on chain to mix with.
+  final int mixin;
+
+  /// What the network expects at the current height, so the UI can tell a
+  /// normal send from a degraded one without knowing the fork schedule.
+  final int defaultMixin;
+
   const SendResult({
     required this.transactionHash,
     required this.fee,
     required this.relayedToNetwork,
+    this.mixin = 0,
+    this.defaultMixin = 0,
   });
+
+  /// Whether the ring came out smaller than the network's usual size. Both
+  /// values are zero against a wallet_capi too old to report them, which reads
+  /// as "not degraded" rather than warning on every send.
+  bool get isMixinDegraded => defaultMixin > 0 && mixin < defaultMixin;
 
   factory SendResult.fromJson(Map<String, dynamic> json) => SendResult(
         transactionHash: json['transactionHash'] as String? ?? '',
         fee: (json['fee'] as num?)?.toInt() ?? 0,
         relayedToNetwork: json['relayedToNetwork'] as bool? ?? false,
+        mixin: (json['mixin'] as num?)?.toInt() ?? 0,
+        defaultMixin: (json['defaultMixin'] as num?)?.toInt() ?? 0,
       );
 }

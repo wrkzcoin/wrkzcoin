@@ -276,5 +276,7 @@
   "languageJa": "\u65e5\u672c\u8a9e",
   "languageEs": "Espa\u00f1ol",
   "languagePt": "Portugu\u00eas",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+  "ringSize": "环签名大小",
+  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。"
 }

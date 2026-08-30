@@ -772,4 +772,12 @@ class SDe extends S {
   String youReceivedAmount(String amount) {
     return 'Sie haben $amount erhalten';
   }
+
+  @override
+  String get ringSize => 'Ringgröße';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
+  }
 }

@@ -646,12 +646,12 @@ class SRu extends S {
 
   @override
   String versionInfo(String version) {
-    return 'Версия $version — Десктопный кошелёк WRKZ';
+    return 'Версия $version — Веб-кошелёк WRKZ';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 — официальный десктопный кошелёк для WrkzCoin (WRKZ), быстрой и лёгкой криптовалюты на основе CryptoNote.\n\nСоздан на Flutter, работает на wallet-api.';
+      'PLUTON v2 — официальный веб-кошелёк для WrkzCoin (WRKZ), быстрой и лёгкой криптовалюты на основе CryptoNote.\n\nСоздан на Flutter, работает на wallet-api.';
 
   @override
   String get github => 'GitHub';
@@ -785,4 +785,12 @@ class SRu extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => 'Размер кольца';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
+  }
 }

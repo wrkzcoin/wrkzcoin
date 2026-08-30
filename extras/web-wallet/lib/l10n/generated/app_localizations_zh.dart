@@ -622,12 +622,12 @@ class SZh extends S {
 
   @override
   String versionInfo(String version) {
-    return '版本 $version — WRKZ 桌面钱包';
+    return '版本 $version — WRKZ 网页钱包';
   }
 
   @override
   String get aboutDescription =>
-      'PLUTON v2 是 WrkzCoin (WRKZ) 的官方桌面钱包，WrkzCoin 是一种基于 CryptoNote 的快速轻量加密货币。\n\n使用 Flutter 构建，由 wallet-api 驱动。';
+      'PLUTON v2 是 WrkzCoin (WRKZ) 的官方网页钱包，WrkzCoin 是一种基于 CryptoNote 的快速轻量加密货币。\n\n使用 Flutter 构建，由 wallet-api 驱动。';
 
   @override
   String get github => 'GitHub';
@@ -759,4 +759,12 @@ class SZh extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get ringSize => '环签名大小';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return '环签名大小已降至 $actual（通常为 $normal）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。';
+  }
 }

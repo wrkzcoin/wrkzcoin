@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "无法在此设备上验证密码。请使用“改为关闭钱包”，然后重新打开钱包。",
   "exportJsonWarningTitle": "导出未加密的钱包？",
   "exportJsonWarningBody": "导出的文件以明文包含您的私有查看密钥和私有花费密钥。任何读取该文件的人都能动用您的资金。\n\n请仅保存到您掌控的存储中，并在使用完毕后立即删除。",
-  "passwordTooShort": "密码至少需要{count}个字符"
+  "passwordTooShort": "密码至少需要{count}个字符",
+  "ringSize": "环签名大小",
+  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。"
 }

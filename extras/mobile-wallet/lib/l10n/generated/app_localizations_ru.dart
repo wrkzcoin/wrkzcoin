@@ -770,4 +770,12 @@ class SRu extends S {
   String youReceivedAmount(String amount) {
     return 'Вы получили $amount';
   }
+
+  @override
+  String get ringSize => 'Размер кольца';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
+  }
 }

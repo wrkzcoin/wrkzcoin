@@ -812,4 +812,12 @@ class SFr extends S {
   String passwordTooShort(int count) {
     return 'Le mot de passe doit comporter au moins $count caractères';
   }
+
+  @override
+  String get ringSize => 'Taille de l\'anneau';
+
+  @override
+  String ringSizeReduced(int actual, int normal) {
+    return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
+  }
 }

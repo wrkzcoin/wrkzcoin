@@ -276,5 +276,7 @@
   "languageJa": "\u65e5\u672c\u8a9e",
   "languageEs": "Español",
   "languagePt": "Português",
-  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439"
+  "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
+  "ringSize": "Taille de l'anneau",
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
 }

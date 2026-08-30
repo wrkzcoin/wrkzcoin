@@ -1022,10 +1022,22 @@ wallet_status_t wallet_send_advanced_json(
         return static_cast<wallet_status_t>(error.getErrorCode());
     }
 
+    /* The ring size the transaction was actually built with, alongside the one
+       the network expects at this height. A caller needs both: the first can
+       come out lower than asked for when a denomination lacks decoys, and
+       without the second there is nothing to recognise that as unusual. Sending
+       them together keeps it to the one call the UI already makes. */
+    uint64_t defaultMixin = 0;
+
+    std::tie(std::ignore, std::ignore, defaultMixin) =
+        Utilities::getMixinAllowableRange(instance->getStatus().networkBlockCount);
+
     nlohmann::json result{
         {"transactionHash", hash},
         {"fee", prepared.fee},
-        {"relayedToNetwork", send_transaction}};
+        {"relayedToNetwork", send_transaction},
+        {"mixin", prepared.mixin},
+        {"defaultMixin", defaultMixin}};
     return alloc_out_string(result.dump(), out_result_json, out_len);
 }
 

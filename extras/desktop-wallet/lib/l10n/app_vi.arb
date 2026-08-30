@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "Không thể xác minh mật khẩu trên thiết bị này. Hãy dùng “Đóng ví” rồi mở lại ví.",
   "exportJsonWarningTitle": "Xuất ví chưa mã hóa?",
   "exportJsonWarningBody": "Tệp xuất ra chứa khóa xem riêng tư và khóa chi tiêu riêng tư của bạn ở dạng văn bản thuần. Bất kỳ ai đọc được đều có thể tiêu tiền của bạn.\n\nChỉ lưu vào bộ nhớ bạn kiểm soát và xóa ngay khi xong.",
-  "passwordTooShort": "Mật khẩu phải có ít nhất {count} ký tự"
+  "passwordTooShort": "Mật khẩu phải có ít nhất {count} ký tự",
+  "ringSize": "Kích thước vòng",
+  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường."
 }

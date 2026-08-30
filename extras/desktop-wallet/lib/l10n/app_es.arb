@@ -364,5 +364,7 @@
   "unlockNeedsReopen": "No se puede verificar la contraseña en este dispositivo. Use «Cerrar cartera» y vuelva a abrirla.",
   "exportJsonWarningTitle": "¿Exportar la cartera sin cifrar?",
   "exportJsonWarningBody": "El archivo exportado contiene su clave de visualización privada y sus claves de gasto privadas en texto plano. Cualquiera que lo lea puede gastar sus fondos.\n\nGuárdelo solo en un almacenamiento que usted controle y elimínelo en cuanto termine.",
-  "passwordTooShort": "La contraseña debe tener al menos {count} caracteres"
+  "passwordTooShort": "La contraseña debe tener al menos {count} caracteres",
+  "ringSize": "Tamaño del anillo",
+  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual."
 }
