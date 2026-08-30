@@ -109,6 +109,9 @@ namespace DaemonConfig
             "Height at and above which a lite node stores full block data (required with --lite)",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.liteHeight)),
             "#")(
+            "snapshot-stats",
+            "Report per-table record counts and byte totals, then exit. Takes minutes on a synced chain",
+            cxxopts::value<bool>(config.snapshotStats)->default_value("false")->implicit_value("true"))(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
             cxxopts::value<uint32_t>(),
@@ -486,6 +489,11 @@ namespace DaemonConfig
             if (cli.count("lite-height") > 0)
             {
                 config.liteHeight = cli["lite-height"].as<uint32_t>();
+            }
+
+            if (cli.count("snapshot-stats") > 0)
+            {
+                config.snapshotStats = cli["snapshot-stats"].as<bool>();
             }
 
             if (cli.count("print-genesis-tx") > 0)

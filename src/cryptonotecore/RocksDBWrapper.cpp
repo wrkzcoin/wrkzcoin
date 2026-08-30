@@ -12,6 +12,7 @@
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/table.h"
 #include <algorithm>
+#include <cstring>
 #include <stdexcept>
 
 using namespace CryptoNote;
@@ -310,6 +311,60 @@ std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
 
     logger(INFO) << "RocksDB full compaction completed.";
     return {std::error_code(), std::string()};
+}
+
+std::error_code RocksDBWrapper::iterate(
+    const std::string &keyPrefix,
+    const std::function<bool(const std::string &key, const std::string &value)> &callback)
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    rocksdb::ReadOptions options;
+
+    /* Pin a consistent view for the whole walk, so a scan running beside block
+       processing cannot see half of a block's writes. Released below. */
+    const rocksdb::Snapshot *snapshot = db->GetSnapshot();
+    options.snapshot = snapshot;
+
+    /* A long scan should not hold every block it touches in the block cache and
+       evict the working set that block processing depends on. */
+    options.fill_cache = false;
+
+    std::error_code result;
+
+    {
+        std::unique_ptr<rocksdb::Iterator> it(db->NewIterator(options));
+
+        for (it->Seek(keyPrefix); it->Valid(); it->Next())
+        {
+            const rocksdb::Slice key = it->key();
+
+            /* Seek only positions us at the first key at or after the prefix, so
+               the end of the range still has to be recognised. */
+            if (key.size() < keyPrefix.size() || std::memcmp(key.data(), keyPrefix.data(), keyPrefix.size()) != 0)
+            {
+                break;
+            }
+
+            if (!callback(key.ToString(), it->value().ToString()))
+            {
+                break;
+            }
+        }
+
+        if (!it->status().ok())
+        {
+            logger(ERROR) << "RocksDBWrapper::iterate failed: " << it->status().ToString();
+            result = make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+    }
+
+    db->ReleaseSnapshot(snapshot);
+
+    return result;
 }
 
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)

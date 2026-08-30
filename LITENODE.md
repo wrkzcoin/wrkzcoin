@@ -112,6 +112,39 @@ The genesis block is always stored in full, whatever the lite height. It is writ
 different path than every other block, and too much code reads block zero directly for a
 half-stored genesis to be safe. It is one block.
 
+## Measuring storage
+
+`--snapshot-stats` walks every key and reports record counts and byte totals per
+table, then exits. It takes minutes on a synced chain. Run it before making any
+decision about snapshot size or format:
+
+```
+Wrkzd --snapshot-stats --data-dir <dir>
+```
+
+Rows tagged `(snapshot)` are what a lite-node snapshot must carry.
+
+A measurement at 27,956 blocks (lite height 3,000) gives the shape of it:
+
+| Table | Records | Stored |
+|---|---|---|
+| key output info `"j"` | 1,825,692 | 358.7 MB |
+| key output indexes `"b"` | 1,825,770 | 139.3 MB |
+| spent key images `"7"` | 347,577 | 26.8 MB |
+| block info `"6"` | 27,957 | 6.3 MB |
+| **snapshot payload** | | **531.2 MB** |
+
+Two things to take from it. **Key outputs are ~94% of a snapshot** — block info is
+about 1%, so shrinking the block section is not worth doing. And the stored form
+carries heavy per-record framing: `KeyOutputInfo` is 74 bytes of payload in 196
+bytes on disk, because the KV binary format writes field names into every record.
+A packed canonical dump is roughly 3.2x smaller than these totals, and merging
+`"j"` with `"b"` (they are 1:1 by `(amount, globalIndex)`) drops a duplicated key
+encoding on top of that.
+
+Do not extrapolate the table above to a full chain: early blocks are dense in
+denominated outputs and are not representative. Measure on a synced node.
+
 ## RPC behaviour
 
 - `/info` gains `lite` (bool) and `lite_start_height`.

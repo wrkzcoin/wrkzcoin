@@ -68,6 +68,7 @@ namespace DaemonConfig
             pruneDepth = DEFAULT_PRUNE_DEPTH;
             lite = false;
             liteHeight = 0;
+            snapshotStats = false;
             syncMaxPeers = 3;
             syncPeerFailureThreshold = 2;
             syncBatchMin = 120;
@@ -180,6 +181,10 @@ namespace DaemonConfig
         bool lite;
 
         uint32_t liteHeight;
+
+        /* Report per-table record counts and byte totals, then exit. Used to size
+           a snapshot before settling its format. */
+        bool snapshotStats;
 
         uint32_t syncMaxPeers;
 

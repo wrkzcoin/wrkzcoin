@@ -293,6 +293,14 @@ namespace CryptoNote
 
         size_t pruneStoredRawBlocks(uint32_t pruneDepth);
 
+        /* Per table record counts and on disk byte totals, measured by walking the
+           database. Used to size a lite node snapshot before committing to a
+           format: the block info section is the one component whose size is known
+           up front, and whether it needs shrinking depends on how the other two
+           compare to it. Walking the whole database takes minutes on a synced
+           chain. See LITENODE.md. */
+        std::map<std::string, StorageStats> measureStorage() const;
+
         std::error_code compactDatabase();
 
         std::pair<std::error_code, std::string> compactDatabaseDetailed();

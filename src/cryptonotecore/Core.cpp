@@ -3262,6 +3262,19 @@ namespace CryptoNote
         return dbCache->pruneStoredRawBlocks(pruneDepth);
     }
 
+    std::map<std::string, StorageStats> Core::measureStorage() const
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return {};
+        }
+
+        return dbCache->measureStorage();
+    }
+
     std::error_code Core::compactDatabase()
     {
         return compactDatabaseDetailed().first;

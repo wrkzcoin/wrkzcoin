@@ -6,7 +6,9 @@
 // Please see the included LICENSE file for more information.
 
 #include "BlockchainUtils.h"
+#include "DBUtils.h"
 #include "crypto/hash.h"
+#include "serialization/KVBinaryCommon.h"
 
 #include <common/CryptoNoteTools.h>
 #include <common/ShuffleGenerator.h>
@@ -3006,6 +3008,89 @@ namespace CryptoNote
         }
 
         return removed;
+    }
+
+    namespace
+    {
+        /* Keys are not stored as raw strings. DB::serializeKey wraps the
+           (prefix, key) pair in the KV binary format, so a stored key never
+           literally begins with its table prefix - it begins with the format
+           header. What every key of one table does share is the serialized
+           preamble: the 9 byte header, the field count, the field name length
+           and the field name, which is the prefix itself. RocksDB sorts
+           bytewise, so keys of one table are contiguous under that preamble and
+           a prefix scan works once you scan for the right bytes.
+
+           Derived from the serializer rather than hardcoded, and the layout is
+           checked rather than assumed: getting this wrong reports every table as
+           empty, which reads exactly like a database that legitimately has
+           nothing in it. */
+        std::string tableKeyPrefix(const std::string &tablePrefix)
+        {
+            /* The key's own type does not matter here - the preamble ends before
+               the value begins - so any probe key gives the same bytes. */
+            const std::string probe = DB::serializeKey(tablePrefix, uint32_t {0});
+
+            const size_t nameOffset = sizeof(KVBinaryStorageBlockHeader) + 1 /* field count */ + 1 /* name length */;
+            const size_t end = nameOffset + tablePrefix.size();
+
+            if (probe.size() < end || probe.compare(nameOffset, tablePrefix.size(), tablePrefix) != 0)
+            {
+                throw std::runtime_error(
+                    "Database key layout is not what measureStorage expects; the prefix scan would silently report "
+                    "every table as empty");
+            }
+
+            return probe.substr(0, end);
+        }
+    } // namespace
+
+    std::map<std::string, StorageStats> DatabaseBlockchainCache::measureStorage() const
+    {
+        /* Named for what they hold rather than by prefix letter, so the report
+           reads as something you can act on. Kept in the order a snapshot would
+           carry them: the three that a snapshot must serialise first, then the
+           tables a lite node drops or an importer rebuilds. */
+        const std::vector<std::pair<std::string, std::string>> tables = {
+            {"key output info (snapshot)", DB::KEY_OUTPUT_KEY_PREFIX},
+            {"key output indexes (snapshot)", DB::KEY_OUTPUT_AMOUNT_PREFIX},
+            {"spent key images (snapshot)", DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX},
+            {"block info (snapshot)", DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX},
+            {"block hash to index (derived)", DB::BLOCK_HASH_TO_BLOCK_INDEX_PREFIX},
+            {"key output amounts (derived)", DB::KEY_OUTPUT_AMOUNTS_COUNT_PREFIX},
+            {"raw blocks (lite drops)", DB::BLOCK_INDEX_TO_RAW_BLOCK_PREFIX},
+            {"transaction info (lite drops)", DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX},
+            {"block tx hashes (lite drops)", DB::BLOCK_INDEX_TO_TX_HASHES_PREFIX},
+            {"block key images (lite drops)", DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX},
+            {"payment ids (lite drops)", DB::PAYMENT_ID_TO_TX_HASH_PREFIX},
+            {"timestamp to hashes (lite drops)", DB::TIMESTAMP_TO_BLOCKHASHES_PREFIX},
+            {"closest timestamp (lite drops)", DB::CLOSEST_TIMESTAMP_BLOCK_INDEX_PREFIX},
+        };
+
+        std::map<std::string, StorageStats> result;
+
+        for (const auto &[name, prefix] : tables)
+        {
+            StorageStats stats;
+
+            const auto error =
+                database.iterate(tableKeyPrefix(prefix), [&stats](const std::string &key, const std::string &value) {
+                stats.records++;
+                stats.keyBytes += key.size();
+                stats.valueBytes += value.size();
+                return true;
+            });
+
+            if (error)
+            {
+                logger(Logging::ERROR) << "measureStorage: failed walking " << name << ": " << error.message();
+                throw std::system_error(error);
+            }
+
+            result.emplace(name, stats);
+        }
+
+        return result;
     }
 
     std::error_code DatabaseBlockchainCache::compactDatabase()

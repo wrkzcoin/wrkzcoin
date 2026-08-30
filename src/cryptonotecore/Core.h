@@ -24,6 +24,7 @@
 
 #include <WalletTypes.h>
 #include <ctime>
+#include <map>
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
@@ -257,6 +258,11 @@ namespace CryptoNote
         virtual void addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash) override;
 
         size_t pruneRawBlocks(uint32_t pruneDepth);
+
+        /* Per table record counts and byte totals, for sizing a lite node
+           snapshot. Walks the whole database, so it takes minutes on a synced
+           chain and is only run from the --snapshot-stats flag. */
+        std::map<std::string, StorageStats> measureStorage() const;
 
         std::error_code compactDatabase();
 

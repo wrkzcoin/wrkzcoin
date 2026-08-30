@@ -53,6 +53,10 @@ namespace CryptoNote
 
         void recreate() override;
 
+        std::error_code iterate(
+            const std::string &keyPrefix,
+            const std::function<bool(const std::string &key, const std::string &value)> &callback) override;
+
       private:
         rocksdb::Options getDBOptions(const DataBaseConfig &config);
 

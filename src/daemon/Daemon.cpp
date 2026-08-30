@@ -38,8 +38,10 @@
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
 #include <atomic>
+#include <iomanip>
 #include <memory>
 #include <optional>
+#include <sstream>
 
 #if defined(WIN32)
 
@@ -705,6 +707,54 @@ int main(int argc, char *argv[])
             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
 
             ccore->rewind(config.rewindToHeight);
+        }
+
+        if (config.snapshotStats)
+        {
+            logger(INFO) << "Measuring database storage. This walks every key and takes minutes on a synced chain...";
+
+            const auto stats = ccore->measureStorage();
+
+            uint64_t snapshotBytes = 0;
+            uint64_t snapshotRecords = 0;
+            uint64_t totalBytes = 0;
+
+            const auto mb = [](const uint64_t bytes) {
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(1) << (static_cast<double>(bytes) / (1024.0 * 1024.0)) << " MB";
+                return out.str();
+            };
+
+            std::cout << std::endl
+                      << "Storage by table (top block " << ccore->getTopBlockIndex() << ")" << std::endl
+                      << std::string(78, '-') << std::endl;
+
+            for (const auto &entry : stats)
+            {
+                totalBytes += entry.second.totalBytes();
+
+                if (entry.first.find("(snapshot)") != std::string::npos)
+                {
+                    snapshotBytes += entry.second.totalBytes();
+                    snapshotRecords += entry.second.records;
+                }
+
+                std::cout << std::left << std::setw(36) << entry.first << std::right << std::setw(14)
+                          << entry.second.records << std::setw(16) << mb(entry.second.totalBytes()) << std::endl;
+            }
+
+            std::cout << std::string(78, '-') << std::endl
+                      << std::left << std::setw(36) << "TOTAL measured" << std::right << std::setw(14) << ""
+                      << std::setw(16) << mb(totalBytes) << std::endl
+                      << std::left << std::setw(36) << "Snapshot payload (as stored)" << std::right << std::setw(14)
+                      << snapshotRecords << std::setw(16) << mb(snapshotBytes) << std::endl
+                      << std::endl
+                      << "The (snapshot) rows are what a lite node snapshot must carry. A canonical" << std::endl
+                      << "dump is smaller than these totals: they include per-key framing a packed" << std::endl
+                      << "format does not repeat. See LITENODE.md." << std::endl
+                      << std::endl;
+
+            exit(0);
         }
 
         if (config.prune)

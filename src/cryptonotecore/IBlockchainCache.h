@@ -44,6 +44,24 @@ namespace CryptoNote
 
     const uint32_t INVALID_BLOCK_INDEX = std::numeric_limits<uint32_t>::max();
 
+    /* Record count and on disk byte total for one database table, measured by
+       walking it. Used to size a lite node snapshot before settling its format.
+       Lives here rather than on the database cache so Core can hand it back
+       without the caller needing the cache's definition. See LITENODE.md. */
+    struct StorageStats
+    {
+        uint64_t records = 0;
+
+        uint64_t keyBytes = 0;
+
+        uint64_t valueBytes = 0;
+
+        uint64_t totalBytes() const
+        {
+            return keyBytes + valueBytes;
+        }
+    };
+
     struct CachedBlockInfo
     {
         Crypto::Hash blockHash;
