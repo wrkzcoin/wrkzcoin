@@ -48,7 +48,7 @@ keystream. Nobody else can: computing `D` requires one of the two private keys.
 
 The operation is a XOR, so encrypting and decrypting are the same call.
 
-The ciphertext is written into `tx_extra` under extra nonce sub-tag `0x02`.
+The ciphertext is written into `tx_extra` under extra nonce sub-tag `0x03`.
 
 ### Wire format
 
@@ -58,20 +58,29 @@ Inside the `tx_extra` nonce field (top level tag `0x02`):
 |---|---|---|
 | `0x00` | Long payment ID, plaintext | 32 bytes |
 | `0x01` | Short payment ID, plaintext | 8 bytes — **legacy, see below** |
-| `0x02` | Short payment ID, encrypted | 8 bytes |
+| `0x02` | Short payment ID, plaintext | 8 bytes — **legacy, see below** |
+| `0x03` | Short payment ID, encrypted | 8 bytes |
 | `0x7f` | Arbitrary data | varint length, then bytes |
 
-### About sub-tag `0x01`
+### About sub-tags `0x01` and `0x02`
 
 An earlier release shipped sub-tag `0x01` under the name "encrypted payment ID".
-It was never encrypted — the bytes were written in the clear. Nothing on chain
-is known to have used it.
+It was never encrypted — the bytes were written in the clear. A pre-release
+build wrote the same thing under `0x02`.
 
-Rather than change the meaning of `0x01` (which would make old software read a
-wrong payment ID and credit the wrong account), encrypted payment IDs use a new
-sub-tag `0x02`.
+Both exist on mainnet. A scan of 700,000 blocks found eleven transactions using
+`0x01` and four using `0x02`, all in first position and all from testing. That
+is why encrypted payment IDs use `0x03`: it was the lowest sub-tag the same
+scan found no occurrences of.
 
-An **old daemon** does not recognise `0x02` and reports no payment ID at all,
+Do not pick a sub-tag without re-running that scan. `0x02` was chosen once on
+the assumption it was free, and it was not.
+
+Rather than change the meaning of `0x01` or `0x02` (which would make old
+software read a wrong payment ID and credit the wrong account), encrypted
+payment IDs use a new sub-tag `0x03`.
+
+An **old daemon** does not recognise `0x03` and reports no payment ID at all,
 which is the safe failure — an operator investigates a missing payment ID, but
 silently accepts a wrong one.
 
@@ -79,20 +88,27 @@ An **old wallet talking to an upgraded daemon** is the one case that is not
 self-announcing: wallets do not parse `tx_extra` themselves, they take whatever
 the daemon reports, so such a wallet will display the ciphertext as though it
 were a payment ID. This cannot be prevented for software already deployed. In
-practice the window is harmless, because nothing can create a `0x02` field until
+practice the window is harmless, because nothing can create a `0x03` field until
 upgraded wallets exist — but it is the reason to finish the wallet rollout
 rather than leaving it half done.
 
-`0x01` is still skipped correctly during parsing so surrounding fields decode,
-but it is no longer reported as a payment ID and is no longer created.
+Both `0x01` and `0x02` are still consumed correctly during parsing so
+surrounding fields decode, but neither is reported as a payment ID and neither
+is created any more.
 
-Before deploying, confirm nothing on your chain used it:
+Before deploying, confirm you know who created every one of them, and check
+which sub-tags are free:
 
 ```
 python scripts/scan-payment-id-tags.py --daemon http://127.0.0.1:17856
 ```
 
-Exit status is 0 if no legacy short payment IDs exist.
+Exit status is 0 if no legacy short payment IDs exist. If it finds some, they
+are only acceptable if you know they are your own; somebody else's mean a third
+party is relying on a payment ID that will stop being reported.
+
+The output also lists every nonce sub-tag seen on chain and the lowest values
+with no occurrences, which is where a new sub-tag must come from.
 
 ## Consequences you need to know about
 

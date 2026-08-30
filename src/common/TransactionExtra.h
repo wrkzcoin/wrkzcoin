@@ -21,10 +21,14 @@
 
 /* Long payment ID (32 bytes), plaintext. */
 #define TX_EXTRA_NONCE_PAYMENT_ID 0x00
-/* Short payment ID (8 bytes), plaintext. Legacy - parsed, never created. */
+/* Short payment ID (8 bytes), plaintext. Legacy - parsed, never created.
+   0x01 came from the released build, 0x02 from a pre-release one; both exist
+   on mainnet. See Constants.h for the chain scan that established this. */
 #define TX_EXTRA_NONCE_SHORT_PAYMENT_ID 0x01
-/* Short payment ID (8 bytes), encrypted to the sender/receiver shared secret. */
-#define TX_EXTRA_NONCE_ENCRYPTED_SHORT_PAYMENT_ID 0x02
+#define TX_EXTRA_NONCE_SHORT_PAYMENT_ID_PRERELEASE 0x02
+/* Short payment ID (8 bytes), encrypted to the sender/receiver shared secret.
+   0x03 because 0x01 and 0x02 are both burned. */
+#define TX_EXTRA_NONCE_ENCRYPTED_SHORT_PAYMENT_ID 0x03
 
 namespace CryptoNote
 {

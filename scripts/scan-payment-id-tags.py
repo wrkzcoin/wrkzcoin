@@ -5,10 +5,14 @@
 
 """Count which payment ID tags actually appear in tx_extra on chain.
 
-Encrypted short payment IDs reuse the extra nonce sub-tag space. Before we
-retire the legacy plaintext short payment ID (0x01) we need to know whether
-anything ever used it, because a wallet handed a payment ID it cannot read
-would credit the wrong account.
+Encrypted short payment IDs live in the extra nonce sub-tag space, so picking
+a sub-tag for them is only safe if nothing else on chain already uses it. This
+answers both halves of that: which sub-tags carry a legacy plaintext short
+payment ID, and which sub-tags are free.
+
+A wallet handed a payment ID it cannot read credits the wrong account, so
+neither half is a question to answer by assumption. Sub-tag 0x02 was assumed
+free and turned out not to be.
 
 This walks the chain through a daemon's /getrawblocks endpoint, pulls tx_extra
 out of every non-coinbase transaction, and reports what it found. Coinbase
@@ -44,13 +48,26 @@ TX_EXTRA_TRANSACTION_POW_NONCE = 0x04
 # extra nonce sub-tags
 NONCE_LONG_PAYMENT_ID = 0x00
 NONCE_SHORT_PAYMENT_ID = 0x01
-NONCE_ENCRYPTED_SHORT_PAYMENT_ID = 0x02
+NONCE_SHORT_PAYMENT_ID_PRERELEASE = 0x02
+NONCE_ENCRYPTED_SHORT_PAYMENT_ID = 0x03
 NONCE_ARBITRARY_DATA = 0x7F
+
+SHORT_PAYMENT_ID_TAGS = (
+    NONCE_SHORT_PAYMENT_ID,
+    NONCE_SHORT_PAYMENT_ID_PRERELEASE,
+    NONCE_ENCRYPTED_SHORT_PAYMENT_ID,
+)
+
+# Both 0x01 and 0x02 carry a plaintext short payment ID. Neither is reported
+# by current software, so either one appearing in a new block means something
+# is still running a build from before the encrypted scheme.
+LEGACY_TAGS = (NONCE_SHORT_PAYMENT_ID, NONCE_SHORT_PAYMENT_ID_PRERELEASE)
 
 TAG_NAMES = {
     NONCE_LONG_PAYMENT_ID: "long plaintext (0x00, 32 bytes)",
     NONCE_SHORT_PAYMENT_ID: "short plaintext (0x01, 8 bytes) [LEGACY]",
-    NONCE_ENCRYPTED_SHORT_PAYMENT_ID: "short encrypted (0x02, 8 bytes)",
+    NONCE_SHORT_PAYMENT_ID_PRERELEASE: "short plaintext (0x02, 8 bytes) [LEGACY, pre-release]",
+    NONCE_ENCRYPTED_SHORT_PAYMENT_ID: "short encrypted (0x03, 8 bytes)",
 }
 
 
@@ -150,7 +167,7 @@ def scan_nonce(nonce, counts, findings=None, height=None, extra=None, census=Non
         if tag == NONCE_LONG_PAYMENT_ID and r.remaining() >= 32:
             r.take(32)
             counts[NONCE_LONG_PAYMENT_ID] += 1
-        elif tag in (NONCE_SHORT_PAYMENT_ID, NONCE_ENCRYPTED_SHORT_PAYMENT_ID) and r.remaining() >= 8:
+        elif tag in SHORT_PAYMENT_ID_TAGS and r.remaining() >= 8:
             value = r.take(8)
             counts[tag] += 1
 
@@ -240,11 +257,7 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="print a line for every request")
     args = parser.parse_args()
 
-    counts = {
-        NONCE_LONG_PAYMENT_ID: 0,
-        NONCE_SHORT_PAYMENT_ID: 0,
-        NONCE_ENCRYPTED_SHORT_PAYMENT_ID: 0,
-    }
+    counts = {tag: 0 for tag in (NONCE_LONG_PAYMENT_ID,) + SHORT_PAYMENT_ID_TAGS}
 
     # Ask the node how tall the chain is, so progress has a denominator. The
     # blocks response only carries a top block once the scan reaches the tip,
@@ -374,8 +387,8 @@ def main():
           % (max(0, height - args.start_height), args.start_height, max(args.start_height, height - 1),
              format_duration(time.time() - started), transactions, format_bytes(downloaded)))
 
-    for tag in (NONCE_LONG_PAYMENT_ID, NONCE_SHORT_PAYMENT_ID, NONCE_ENCRYPTED_SHORT_PAYMENT_ID):
-        print("  %-45s %d" % (TAG_NAMES[tag] + ":", counts[tag]))
+    for tag in (NONCE_LONG_PAYMENT_ID,) + SHORT_PAYMENT_ID_TAGS:
+        print("  %-55s %d" % (TAG_NAMES[tag] + ":", counts[tag]))
 
     if undecodable:
         print("\n  %d transactions could not be decoded (counted as unknown)." % undecodable)
@@ -387,7 +400,8 @@ def main():
             known = {
                 0x00: "long plaintext payment ID",
                 0x01: "short plaintext payment ID (legacy)",
-                0x02: "short payment ID",
+                0x02: "short plaintext payment ID (pre-release)",
+                0x03: "short encrypted payment ID",
                 0x7F: "arbitrary data",
             }.get(tag, "unknown - not written by this codebase")
 
@@ -422,7 +436,7 @@ def main():
             print("  tags. Treat those as probable false positives, not real payment IDs.")
             print()
 
-    legacy = counts[NONCE_SHORT_PAYMENT_ID]
+    legacy = sum(counts[tag] for tag in LEGACY_TAGS)
 
     if legacy:
         print(

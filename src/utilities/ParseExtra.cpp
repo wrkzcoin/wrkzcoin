@@ -138,17 +138,20 @@ namespace Utilities
                             continue;
                         }
 
-                        /* A legacy plaintext short payment ID. We consume the
-                           field so anything following it still parses, but we
+                        /* A legacy plaintext short payment ID, under either of
+                           the two sub-tags that carry one. We consume the field
+                           so anything following it still parses, but we
                            deliberately do not report it as a payment ID.
 
-                           These were only ever created by a build that
-                           mislabelled them as encrypted, and nothing on chain
-                           is known to use them. Reporting nothing is the safe
-                           failure - a caller that sees no payment ID will
-                           investigate, whereas a caller handed a wrong one
-                           will credit the wrong account. */
-                        if (s == Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER && nElementsRemaining > 8)
+                           These were only ever created by builds that
+                           mislabelled them as encrypted. A chain scan found
+                           fifteen of them in total, all from testing.
+                           Reporting nothing is the safe failure - a caller that
+                           sees no payment ID will investigate, whereas a caller
+                           handed a wrong one will credit the wrong account. */
+                        if ((s == Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER
+                             || s == Constants::TX_EXTRA_SHORT_PAYMENT_ID_IDENTIFIER_PRERELEASE)
+                            && nElementsRemaining > 8)
                         {
                             advanceIterator += 1 + 8;
                             is += 8;
