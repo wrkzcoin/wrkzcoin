@@ -1075,21 +1075,14 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
             return {Error(CANT_GET_FAKE_OUTPUTS, error), 400};
         }
 
-        if (globalIndexes.size() != numOutputs)
-        {
-            std::stringstream stream;
-
-            stream << "Failed to get enough matching outputs for amount " << amount << " ("
-                   << Utilities::formatAmount(amount) << "). Requested outputs: " << numOutputs
-                   << ", found outputs: " << globalIndexes.size()
-                   << ". Further explanation here: https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c"
-                   << std::endl
-                   << "Note: If you are a public node operator, you can safely ignore this message. "
-                   << "It is only relevant to the user sending the transaction.";
-
-            return {Error(CANT_GET_FAKE_OUTPUTS, stream.str()), 400};
-        }
-
+        /* Deliberately not an error when we found fewer than were asked for.
+           Failing the whole batch told the caller nothing it could act on - and
+           because a non-200 is indistinguishable from an unreachable node, it
+           surfaced in wallets as "daemon offline". Return what this denomination
+           actually has and let the wallet decide: it can drop to a ring size the
+           chain supports, or report a shortage it can name. Wallets predating
+           this already check the per-amount count themselves, so a short list
+           gives them the right error too. */
         nlohmann::json amountOuts = nlohmann::json::array();
         for (size_t i = 0; i < globalIndexes.size(); i++)
         {

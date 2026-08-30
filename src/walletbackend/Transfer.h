@@ -9,6 +9,7 @@
 #include <WalletTypes.h>
 #include <errors/Errors.h>
 #include <nigel/Nigel.h>
+#include <optional>
 #include <serialization/SerializationTools.h>
 #include <subwallets/SubWallets.h>
 #include <tuple>
@@ -16,6 +17,15 @@
 
 namespace SendTransaction
 {
+    /* Given the mixin we just tried and what the chain turned out to support,
+       the next mixin worth trying, or nothing when there is nothing lower left
+       to try. Shared so that every path that builds a transaction degrades the
+       same way. */
+    std::optional<uint64_t> nextFallbackMixin(
+        const uint64_t triedMixin,
+        const uint64_t achievableMixin,
+        const uint64_t minMixin);
+
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionBasic(
         std::string destination,
         const uint64_t amount,

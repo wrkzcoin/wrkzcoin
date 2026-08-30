@@ -1139,8 +1139,10 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             changeAddress
         );
 
+        uint64_t batchMixin = mixin;
+
         auto txResult = SendTransaction::makeTransaction(
-            mixin,
+            batchMixin,
             m_daemon,
             batch,
             resolvedPaymentID,
@@ -1151,10 +1153,56 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             {} /* extraData */
         );
 
+        /* The same fallback sendTransactionAdvanced() applies, because this path
+           builds its transactions itself rather than going through it. Sweep is
+           where a thin denomination is most likely to be hit at all: it
+           deliberately gathers every denomination the wallet holds, including
+           the ones with barely any outputs on chain, so without this one such
+           input fails a whole batch.
+
+           The fee and input count for this batch were sized at the requested
+           mixin, so a smaller ring only makes the transaction shorter than
+           planned. That overpays the fee slightly rather than underpaying it,
+           which is the safe direction to be wrong in. */
+        for (int attempt = 0; attempt < 2 && txResult.error == NOT_ENOUGH_FAKE_OUTPUTS; attempt++)
+        {
+            const auto retryMixin = SendTransaction::nextFallbackMixin(
+                batchMixin, attempt == 0 ? txResult.achievableMixin : minMixin, minMixin);
+
+            if (!retryMixin)
+            {
+                break;
+            }
+
+            batchMixin = *retryMixin;
+
+            txResult = SendTransaction::makeTransaction(
+                batchMixin,
+                m_daemon,
+                batch,
+                resolvedPaymentID,
+                recipientViewKey,
+                destinations,
+                m_subWallets,
+                unlockTime,
+                {} /* extraData */
+            );
+        }
+
         if (txResult.error)
         {
             results.push_back({txResult.error, Crypto::Hash()});
             continue;
+        }
+
+        if (batchMixin < mixin)
+        {
+            Logger::logger.log(
+                "Sweep batch built with a ring size of " + std::to_string(batchMixin + 1) + " instead of "
+                    + std::to_string(mixin + 1) + ": the denominations in it do not have enough outputs on chain",
+                Logger::WARNING,
+                { Logger::TRANSACTIONS }
+            );
         }
 
         Error sizeError = SendTransaction::isTransactionPayloadTooBig(txResult.transaction, height);

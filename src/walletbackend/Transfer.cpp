@@ -88,6 +88,36 @@ namespace SendTransaction
         const bool sendAll,
         const bool sendTransaction);
 
+    std::optional<uint64_t> nextFallbackMixin(
+        const uint64_t triedMixin,
+        const uint64_t achievableMixin,
+        const uint64_t minMixin)
+    {
+        /* Already as low as the network allows, so there is nothing left to try
+           - the send fails, and says why. */
+        if (triedMixin <= minMixin)
+        {
+            return std::nullopt;
+        }
+
+        /* Never at or above what just failed, never below what the network
+           accepts. A zero measurement means we learned nothing about what the
+           chain holds, which lands us on the minimum. */
+        uint64_t next = achievableMixin;
+
+        if (next > triedMixin - 1)
+        {
+            next = triedMixin - 1;
+        }
+
+        if (next < minMixin)
+        {
+            next = minMixin;
+        }
+
+        return next;
+    }
+
     std::tuple<Error, Crypto::Hash, WalletTypes::PreparedTransactionInfo> sendTransactionAdvanced(
         std::vector<std::pair<std::string, uint64_t>> addressesAndAmounts,
         const uint64_t mixin,
@@ -119,14 +149,19 @@ namespace SendTransaction
 
         /* Some denominations do not have enough outputs on the chain to build a
            ring at the requested mixin, and there is no partial success - the
-           send just fails. Rather than leaving those funds unspendable, retry
-           once at the largest ring the chain can actually support for these
+           send just fails. Rather than leaving those funds unspendable, retry at
+           the largest ring the chain can actually support for these
            denominations.
 
            Retrying at the best achievable value rather than at the network
            minimum matters: if a denomination can support a ring of 5 there is no
-           reason to hand the user a ring of 2. It costs no extra round trip
-           either way, since we retry exactly once regardless.
+           reason to hand the user a ring of 2.
+
+           That measurement is not always the whole story, though. It comes from
+           the first input to fall short, and a later one can be thinner still,
+           so a second failure gets one more attempt at the network minimum -
+           which nothing can beat. Three round trips is the worst case, and only
+           on a path that would otherwise be a hard failure.
 
            This still trades anonymity for the transaction being possible at all,
            so it only ever happens as a fallback, never as the first attempt.
@@ -137,25 +172,13 @@ namespace SendTransaction
             const auto [minMixin, maxMixin, defaultMixin] =
                 Utilities::getMixinAllowableRange(daemon->networkBlockCount());
 
-            if (mixin > minMixin)
+            const auto retryMixin = nextFallbackMixin(mixin, std::get<2>(result).tx.achievableMixin, minMixin);
+
+            if (retryMixin)
             {
-                /* Never above what we already tried, never below what the
-                   network accepts. */
-                uint64_t retryMixin = std::get<2>(result).tx.achievableMixin;
-
-                if (retryMixin > mixin - 1)
-                {
-                    retryMixin = mixin - 1;
-                }
-
-                if (retryMixin < minMixin)
-                {
-                    retryMixin = minMixin;
-                }
-
                 result = sendTransactionAdvancedWithMixin(
                     addressesAndAmounts,
-                    retryMixin,
+                    *retryMixin,
                     fee,
                     paymentID,
                     addressesToTakeFrom,
@@ -167,6 +190,24 @@ namespace SendTransaction
                     sendAll,
                     sendTransaction
                 );
+
+                if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS && *retryMixin > minMixin)
+                {
+                    result = sendTransactionAdvancedWithMixin(
+                        addressesAndAmounts,
+                        minMixin,
+                        fee,
+                        paymentID,
+                        addressesToTakeFrom,
+                        changeAddress,
+                        daemon,
+                        subWallets,
+                        unlockTime,
+                        extraData,
+                        sendAll,
+                        sendTransaction
+                    );
+                }
             }
         }
 
@@ -587,6 +628,18 @@ namespace SendTransaction
                 extraData
             );
 
+            /* Nothing was built, so there is no size to weigh a fee against.
+               Hand the failure back for the caller to read - it carries the
+               achievable mixin, which decides whether a smaller ring is worth
+               trying. Measuring the empty transaction instead happens to fall
+               out of the loop today, because the fee for a few bytes is below
+               anything we would have estimated, but that is arithmetic luck and
+               not something to leave a fee schedule change free to break. */
+            if (txResult.error)
+            {
+                return { true, txResult, changeRequired, 0 };
+            }
+
             const size_t actualTxSize = toBinaryArray(txResult.transaction).size();
 
             const uint64_t actualFee = Utilities::getTransactionFee(
@@ -805,10 +858,21 @@ namespace SendTransaction
             return destination.input.amount;
         });
 
-        const auto [success, fakeOuts] = daemon->getRandomOutsByAmounts(amounts, requestedOuts);
+        const auto response = daemon->getRandomOutsByAmounts(amounts, requestedOuts);
 
-        if (!success)
+        const auto fakeOuts = response.outs;
+
+        if (!response.success)
         {
+            /* A daemon that rejects the whole request rather than returning what
+               it has tells us the ring is too big, not that it is unreachable.
+               We have no counts to work from, so the caller falls back to the
+               network minimum rather than to a measured value. */
+            if (response.notEnoughOutputs)
+            {
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, response.error), fakeOuts, 0};
+            }
+
             return {DAEMON_OFFLINE, fakeOuts, 0};
         }
 
@@ -816,18 +880,22 @@ namespace SendTransaction
            denominations. The daemon returns at most requestedOuts per amount,
            and one of those may turn out to be our own output which we have to
            skip, so the ring we can reliably build is one smaller than the
-           smallest set we were handed. */
+           smallest set we were handed.
+
+           Take the minimum across every entry we were given rather than looking
+           each amount up once: spending the same denomination twice puts two
+           independently drawn sets in the response, and a lookup by amount only
+           ever finds the first. Sizing the retry off that would ignore whichever
+           set is actually the thin one. Amounts missing altogether still have to
+           come from the requested list, and force the result to zero. */
         uint64_t achievableMixin = 0;
         {
             bool haveSmallest = false;
             uint64_t smallest = 0;
 
-            for (const uint64_t amount : amounts)
+            for (const auto &fakeOut : fakeOuts)
             {
-                const auto it = std::find_if(
-                    fakeOuts.begin(), fakeOuts.end(), [amount](const auto output) { return output.amount == amount; });
-
-                const uint64_t found = it == fakeOuts.end() ? 0 : it->outs.size();
+                const uint64_t found = fakeOut.outs.size();
 
                 if (!haveSmallest || found < smallest)
                 {
@@ -836,7 +904,20 @@ namespace SendTransaction
                 }
             }
 
-            achievableMixin = smallest == 0 ? 0 : smallest - 1;
+            for (const uint64_t amount : amounts)
+            {
+                const auto it = std::find_if(
+                    fakeOuts.begin(), fakeOuts.end(), [amount](const auto output) { return output.amount == amount; });
+
+                if (it == fakeOuts.end())
+                {
+                    smallest = 0;
+                    haveSmallest = true;
+                    break;
+                }
+            }
+
+            achievableMixin = (!haveSmallest || smallest == 0) ? 0 : smallest - 1;
         }
 
         /* Verify outputs are sufficient */

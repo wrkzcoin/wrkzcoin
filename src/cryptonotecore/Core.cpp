@@ -1985,21 +1985,19 @@ namespace CryptoNote
 
         globalIndexes = chainsLeaves[0]->getRandomOutsByAmount(amount, count, getTopBlockIndex());
 
+        /* Finding nothing here is not a failure on our side - this denomination
+           simply does not have enough mature outputs on chain yet. Report the
+           empty set instead of failing the request, so the wallet can tell a
+           thin denomination apart from an unreachable node and pick a ring size
+           it can actually build. */
         if (globalIndexes.empty())
         {
-            std::stringstream stream;
+            logger(Logging::DEBUGGING) << "No matching outputs on chain for amount " << amount << " ("
+                                       << Utilities::formatAmount(amount) << ")";
 
-            stream << "Failed to get any matching outputs for amount " << amount << " ("
-                   << Utilities::formatAmount(amount) << "). Further explanation here: "
-                   << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c\n"
-                   << "Note: If you are a public node operator, you can safely ignore this message. "
-                   << "It is only relevant to the user sending the transaction.";
+            publicKeys.clear();
 
-            std::string error = stream.str();
-
-            logger(Logging::ERROR) << error;
-
-            return {false, error};
+            return {true, ""};
         }
 
         std::sort(globalIndexes.begin(), globalIndexes.end());
