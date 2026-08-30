@@ -30,6 +30,71 @@ Wrkzd --lite --lite-height 4000000
 That node syncs, mines, relays and validates exactly like a full node, and the wallet
 syncs against it normally.
 
+## Who should run a lite node
+
+| | |
+|---|---|
+| **A user**, own node for own wallet | **Yes.** This is what lite mode is for. |
+| **An operator**, public node others connect to | **No — run a full node**, with `--prune` if disk is tight. |
+| **An operator**, private or service node, wallets you control | **Yes**, good fit. |
+
+### If you are a user: choosing H is the whole decision
+
+**Set `H` at or below your wallet's creation height.**
+
+If `H` is above it, the wallet's scan is clamped up to `H` and it will never see
+transactions between its creation height and `H`. The balance simply comes out too
+low. The wallet logs a warning and `/info` reports `lite_start_height`, but neither
+gets read when the number looks plausible.
+
+```
+H = min(earliest wallet scan height, current network top - 20160)
+```
+
+then round **down** by another 10-20k for margin. Err low: too low costs some disk,
+too high costs transactions you cannot see.
+
+Two things to accept before you start:
+
+- **`H` cannot be changed without deleting the data directory.** The daemon refuses
+  to start on a mismatch rather than wiping anything, but the choice is one way.
+- **A lite node cannot serve a wallet older than its `H`.** Restoring an older seed
+  later needs a full node, or a fresh lite node at a lower `H`.
+
+### If you are an operator: usually do not
+
+A public lite node is a worse network citizen and a support liability:
+
+- It cannot serve blocks below `H`, so it cannot help new nodes bootstrap. Peers
+  below `H` skip it as a sync source automatically. If everyone ran lite, nothing
+  could sync.
+- You do not know how old your users' wallets are. Someone restoring a two year old
+  seed against your node is clamped to `H` and sees a wrong balance. That reads as
+  lost funds, and it reaches you as a support ticket rather than a bug report.
+
+For a public node run a full node and use `--prune` if disk is the problem: pruning
+drops old block bodies but keeps everything a wallet rescan needs.
+
+Lite mode suits an operator when **you control which wallets connect**:
+
+- A service node behind a recently created hot wallet - exchange, faucet, payouts
+- A **mining node**: mining reads only `alreadyGeneratedCoins` and the last 100 block
+  sizes, so history is irrelevant to it
+- A validation and relay node adding network security on cheap disk
+
+Never make a lite node a seed node.
+
+### Do not combine lite mode with explorer mode
+
+`--daemon-mode explorer --lite` is currently accepted but does not work. Every
+explorer endpoint below `H` - `getBlocksByHeight`, `getBlockDetailsByHash`,
+`getTransactionDetailsByHash`, `queryblocksdetailed` - reads the transaction records
+lite mode drops, so they fail or return nothing for those heights.
+
+Related, for anything you have built on the RPC: `/get_global_indexes_for_range`
+**refuses** below `H` rather than narrowing the range, so historical range queries
+break rather than quietly returning a wrong answer.
+
 ## What it does and does not save
 
 **It saves disk, not bandwidth.** The node still downloads every block from 0 to `H` over
@@ -144,6 +209,39 @@ encoding on top of that.
 
 Do not extrapolate the table above to a full chain: early blocks are dense in
 denominated outputs and are not representative. Measure on a synced node.
+
+## Running one
+
+**Expect a full download.** Lite mode saves disk, not bandwidth: every block from 0
+is still fetched, the indexes are built from it, and only the bulky parts are left
+unwritten. Plan for hours, not minutes. Roughly 4,000 blocks/min on a modest box at
+low heights, slower through denser later blocks.
+
+**Startup refuses rather than repairs.** Every mismatch between the flags and what
+the database was built as exits without touching it. Deleting the data directory is
+always left to you - a chain dropped because of a forgotten flag would be the worst
+possible reading of an operator's intent. So a daemon that will not start is telling
+you something, and the fix is never to add a force flag.
+
+**The 14 day rule is checked at the first handshake**, not at startup, because the
+network's height is not knowable before then. If `H` is too close to the tip the
+daemon exits and names the highest value the network currently allows.
+
+**Monitoring**
+
+- `/info` reports `lite` and `lite_start_height`
+- `print_cn` shows which peers are pruned
+
+**Things that will refuse to run**
+
+| Combination | Result |
+|---|---|
+| `--lite` without `--lite-height` | refused - there is no safe default |
+| `--lite --prune` | refused - mutually exclusive |
+| `--lite` on a database synced in full | refused - delete the data directory yourself |
+| no `--lite` on a lite database | refused - it has no block bodies to serve |
+| `--lite-height H'` on a database built at `H` | refused - `H` cannot be changed |
+| `--rewind-to-height` below `H` | refused - those blocks cannot be undone |
 
 ## RPC behaviour
 
