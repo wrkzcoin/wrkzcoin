@@ -295,7 +295,7 @@ class _NetworkStatusCard extends StatelessWidget {
           ),
           error: (e, _) => Text(
             tr.couldNotFetchStatus,
-            style: TextStyle(color: kError, fontSize: 13),
+            style: const TextStyle(color: kError, fontSize: 13),
           ),
         ),
       ),

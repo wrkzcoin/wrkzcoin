@@ -1,24 +1,32 @@
 {
   "@@locale": "de",
-
   "appTitle": "PLUTON Mobile",
-
   "tabOverview": "Übersicht",
   "tabReceive": "Empfangen",
   "tabSend": "Senden",
   "tabHistory": "Verlauf",
   "tabSettings": "Einstellungen",
-
   "send": "Senden",
   "receive": "Empfangen",
   "available": "Verfügbar",
   "locked": "Gesperrt",
   "total": "Gesamt",
   "lockedAmount": "Gesperrt: {amount}",
-  "@lockedAmount": { "placeholders": { "amount": { "type": "String" } } },
+  "@lockedAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "totalAmount": "Gesamt: {amount}",
-  "@totalAmount": { "placeholders": { "amount": { "type": "String" } } },
-
+  "@totalAmount": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "recentTransactions": "Letzte Transaktionen",
   "viewAll": "Alle anzeigen",
   "noTransactionsYet": "Noch keine Transaktionen",
@@ -26,14 +34,31 @@
   "pending": "Ausstehend...",
   "justNow": "Gerade eben",
   "minutesAgo": "Vor {count}m",
-  "@minutesAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@minutesAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "hoursAgo": "Vor {count}h",
-  "@hoursAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@hoursAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "daysAgo": "Vor {count}T",
-  "@daysAgo": { "placeholders": { "count": { "type": "int" } } },
+  "@daysAgo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "received": "Empfangen",
   "sent": "Gesendet",
-
   "networkStatus": "Netzwerkstatus",
   "node": "Node",
   "status": "Status",
@@ -46,13 +71,23 @@
   "viewOnly": "Nur anzeigen",
   "couldNotFetchStatus": "Status konnte nicht abgerufen werden. Überprüfen Sie Ihren Node in den Einstellungen.",
   "errorPrefix": "Fehler: {message}",
-  "@errorPrefix": { "placeholders": { "message": { "type": "String" } } },
-
+  "@errorPrefix": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
   "seedBackupWarning": "Sichern Sie Ihre Seed-Phrase in den Einstellungen, um Ihr Guthaben zu schützen.",
   "noConnectionToDaemon": "Keine Verbindung zum Daemon",
   "syncingPercent": "Synchronisierung {percent}%",
-  "@syncingPercent": { "placeholders": { "percent": { "type": "String" } } },
-
+  "@syncingPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
   "yourAddress": "Ihre Adresse",
   "errorLoadingAddress": "Fehler beim Laden der Adresse",
   "integratedAddress": "Integrierte Adresse",
@@ -66,7 +101,6 @@
   "longPid": "Lange PID",
   "share": "Teilen",
   "copy": "Kopieren",
-
   "sweepAllFunds": "Alle Guthaben zusammenführen",
   "normalSend": "Normales Senden",
   "sweep": "Zusammenführen",
@@ -74,9 +108,21 @@
   "scanQr": "QR scannen",
   "amount": "Betrag",
   "availableBalance": "Verfügbar: {amount}",
-  "@availableBalance": { "placeholders": { "amount": { "type": "String" } } },
+  "@availableBalance": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "sweepInfo": "Zusammenführen konsolidiert alle UTXOs und sendet Ihr gesamtes freigegebenes Guthaben ({amount}) abzüglich Gebühren.",
-  "@sweepInfo": { "placeholders": { "amount": { "type": "String" } } },
+  "@sweepInfo": {
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
   "paymentIdOptional": "Zahlungs-ID (optional)",
   "hexCharacters": "16 oder 64 Hex-Zeichen",
   "mustBeHex": "Muss 16 oder 64 Hex-Zeichen sein",
@@ -99,7 +145,6 @@
   "cancel": "Abbrechen",
   "useThisAddress": "Diese Adresse verwenden",
   "sweepFailed": "Zusammenführen fehlgeschlagen",
-
   "searchPlaceholder": "Nach Hash, Adresse, Zahlungs-ID suchen...",
   "all": "Alle",
   "filterReceived": "Empfangen",
@@ -108,14 +153,12 @@
   "address": "Adresse",
   "block": "Block",
   "confirmed": "Bestätigt",
-
   "password": "Passwort",
   "unlock": "Entsperren",
   "switchWallet": "Wallet wechseln",
   "enterPasswordToUnlock": "Geben Sie Ihr Passwort zum Entsperren ein",
   "incorrectPassword": "Falsches Passwort",
   "enterYourPassword": "Geben Sie Ihr Passwort ein",
-
   "plutonMobile": "PLUTON Mobile",
   "createFirstWalletSubtitle": "Erstellen Sie Ihre erste Wallet, um zu beginnen",
   "selectWalletSubtitle": "Wählen Sie eine Wallet zum Öffnen",
@@ -123,14 +166,25 @@
   "noWalletsYet": "Noch keine Wallets",
   "lastOpened": "Zuletzt geöffnet",
   "createdDate": "Erstellt {date}",
-  "@createdDate": { "placeholders": { "date": { "type": "String" } } },
+  "@createdDate": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
   "createFirstWallet": "Erste Wallet erstellen",
   "addWallet": "Wallet hinzufügen",
   "deleteWallet": "Wallet löschen",
   "deleteWalletConfirm": "\"{name}\" löschen?\n\nDies entfernt die Wallet-Datei und die Schlüssel dauerhaft. Stellen Sie sicher, dass Sie Ihre Seed-Phrase gesichert haben.",
-  "@deleteWalletConfirm": { "placeholders": { "name": { "type": "String" } } },
+  "@deleteWalletConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "delete": "Löschen",
-
   "createNewWallet": "Neue Wallet erstellen",
   "createNewWalletSubtitle": "Eine neue Wallet mit einer frischen Seed-Phrase generieren",
   "importFromSeed": "Aus Seed-Phrase importieren",
@@ -163,14 +217,13 @@
   "ssl": "SSL",
   "walletNameRequired": "Wallet-Name ist erforderlich",
   "passwordRequired": "Passwort ist erforderlich",
-  "passwordTooShort": "Das Passwort muss mindestens 6 Zeichen lang sein",
+  "passwordTooShort": "Das Passwort muss mindestens {count} Zeichen lang sein",
   "passwordsDoNotMatch": "Passwörter stimmen nicht überein",
   "seedRequired": "Seed-Phrase ist erforderlich",
   "spendKeyRequired": "Spend-Key ist erforderlich",
   "viewKeyRequired": "View-Key ist erforderlich",
   "addressRequired": "Adresse ist erforderlich",
   "daemonHostRequired": "Daemon-Host ist erforderlich",
-
   "backupSeedTitle": "Seed sichern",
   "backupWarning": "Schreiben Sie Ihre Seed-Phrase auf und bewahren Sie sie sicher auf. Wenn Sie sie verlieren, ist Ihr Guthaben für immer verloren.",
   "seedPhraseLabel": "Seed-Phrase",
@@ -178,35 +231,72 @@
   "privateSpendKeyLabel": "Privater Spend-Key",
   "backupConfirmCheck": "Ich habe meine Seed-Phrase sicher gesichert",
   "continueToWallet": "Zur Wallet fortfahren",
-
   "sectionDaemonNode": "Daemon-Node",
   "apply": "Anwenden",
   "nodeUpdated": "Node aktualisiert auf {host}:{port}",
-  "@nodeUpdated": { "placeholders": { "host": { "type": "String" }, "port": { "type": "int" } } },
+  "@nodeUpdated": {
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "port": {
+        "type": "int"
+      }
+    }
+  },
   "hostRequired": "Host ist erforderlich",
   "currentWallet": "Aktuelle Wallet — {name}",
-  "@currentWallet": { "placeholders": { "name": { "type": "String" } } },
+  "@currentWallet": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "saveWallet": "Wallet speichern",
   "walletSaved": "Wallet gespeichert",
   "saveFailed": "Speichern fehlgeschlagen: {error}",
-  "@saveFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@saveFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "backupSeed": "Seed sichern",
   "changePassword": "Passwort ändern",
   "resetScanHeight": "Scan-Höhe zurücksetzen",
   "reset": "Zurücksetzen",
   "resetScanConfirm": "Dies scannt die Blockchain ab Block {height} neu. Dies kann eine Weile dauern. Fortfahren?",
-  "@resetScanConfirm": { "placeholders": { "height": { "type": "int" } } },
+  "@resetScanConfirm": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "scanResetTo": "Scan auf Block {height} zurückgesetzt",
-  "@scanResetTo": { "placeholders": { "height": { "type": "int" } } },
+  "@scanResetTo": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
   "resetFailed": "Zurücksetzen fehlgeschlagen: {error}",
-  "@resetFailed": { "placeholders": { "error": { "type": "String" } } },
+  "@resetFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
   "enterPasswordTitle": "Passwort eingeben",
   "confirm": "Bestätigen",
   "seedBackup": "Seed-Sicherung",
   "seedPhraseColon": "Seed-Phrase:",
   "privateViewKeyColon": "Privater View-Key:",
   "iveBackedUp": "Ich habe gesichert",
-
   "currentPasswordLabel": "Aktuelles Passwort",
   "newPasswordLabel": "Neues Passwort",
   "confirmNewPasswordLabel": "Neues Passwort bestätigen",
@@ -214,7 +304,6 @@
   "currentPasswordIncorrect": "Aktuelles Passwort ist falsch",
   "newPasswordsDoNotMatch": "Neue Passwörter stimmen nicht überein",
   "passwordChanged": "Passwort geändert",
-
   "walletManagement": "Wallet-Verwaltung",
   "switchWalletSubtitle": "Speichern & schließen, andere auswählen",
   "manageWallets": "Wallets verwalten",
@@ -225,20 +314,23 @@
   "newName": "Neuer Name",
   "rename": "Umbenennen",
   "deleteWalletConfirmShort": "\"{name}\" löschen? Dies kann nicht rückgängig gemacht werden.",
-  "@deleteWalletConfirmShort": { "placeholders": { "name": { "type": "String" } } },
-
+  "@deleteWalletConfirmShort": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "security": "Sicherheit",
   "biometricUnlock": "Biometrisches Entsperren",
   "biometricSubtitle": "Fingerabdruck / Gesichtserkennung",
   "biometricNotAvailable": "Biometrie nicht verfügbar",
   "autoLock": "Automatische Sperre",
-
   "appearance": "Erscheinungsbild",
   "theme": "Design",
   "themeAuto": "Automatisch",
   "themeLight": "Hell",
   "themeDark": "Dunkel",
-
   "preferences": "Einstellungen",
   "transactionNotifications": "Transaktionsbenachrichtigungen",
   "notificationsSubtitle": "Bei eingehenden Transaktionen benachrichtigen",
@@ -246,13 +338,11 @@
   "autosaveSubtitle": "Nach Synchronisierung speichern, dann alle 5 Minuten",
   "scanCoinbaseTx": "Coinbase-Transaktionen scannen",
   "scanCoinbaseSubtitle": "Miner-Belohnungen einschließen (standardmäßig deaktiviert)",
-
   "dangerZone": "Gefahrenzone",
   "deleteCurrentWallet": "Aktuelle Wallet löschen",
   "deleteCurrentWalletSubtitle": "Wallet-Daten dauerhaft entfernen",
   "deleteWalletTypeCaps": "Dies löscht die Wallet-Datei und die Schlüssel dauerhaft. Stellen Sie sicher, dass Sie Ihre Seed-Phrase gesichert haben.\n\nGeben Sie DELETE zur Bestätigung ein:",
   "deleteHint": "DELETE",
-
   "language": "Sprache",
   "selectLanguage": "Sprache auswählen",
   "languageEn": "English",
@@ -264,9 +354,14 @@
   "languageEs": "Español",
   "languagePt": "Português",
   "languageRu": "Русский",
-
   "autoLockImmediately": "Sofort",
   "autoLock1Min": "1 Minute",
   "autoLock5Min": "5 Minuten",
-  "autoLockNever": "Nie"
+  "autoLockNever": "Nie",
+  "preparedTransactionExpired": "Diese Transaktion ist nicht mehr gültig. Gehen Sie zurück und erstellen Sie sie erneut.",
+  "deleteConfirmMismatch": "Geben Sie genau DELETE ein, um zu bestätigen.",
+  "seedNotBackedUpWarning": "Sie haben keine Sicherung der Seed-Phrase dieser Wallet bestätigt. Wenn Sie sie jetzt löschen, sind die Mittel unwiederbringlich.",
+  "wrkzReceived": "WRKZ erhalten",
+  "retry": "Erneut versuchen",
+  "youReceivedAmount": "Sie haben {amount} erhalten"
 }

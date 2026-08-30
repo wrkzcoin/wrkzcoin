@@ -763,4 +763,26 @@ class SJa extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired => 'この取引は無効になりました。戻って作成し直してください。';
+
+  @override
+  String get deleteConfirmMismatch => '確認するにはDELETEと正確に入力してください。';
+
+  @override
+  String get unlockNeedsReopen =>
+      'このデバイスではパスワードを検証できません。「ウォレットを閉じる」を使ってから、ウォレットを開き直してください。';
+
+  @override
+  String get exportJsonWarningTitle => '暗号化されていないウォレットをエクスポートしますか？';
+
+  @override
+  String get exportJsonWarningBody =>
+      'エクスポートされたファイルには、プライベートビューキーとプライベートスペンドキーが平文で含まれます。読んだ人は誰でもあなたの資金を使えます。\n\n自分が管理する保存先にのみ保存し、用が済んだらすぐに削除してください。';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'パスワードは$count文字以上でなければなりません';
+  }
 }

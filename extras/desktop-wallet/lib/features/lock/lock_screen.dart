@@ -29,10 +29,26 @@ class _LockScreenState extends ConsumerState<LockScreen> {
 
   Future<void> _unlock() async {
     final tr = S.of(context);
+    if (_passCtrl.text.isEmpty) {
+      setState(() => _error = tr?.password ?? 'Password');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ok = await verifyWalletPassword(_passCtrl.text);
+      // null means "cannot tell" — no verifier is recorded, or the keychain
+      // entry was lost. Rejecting here would lock the user out of a wallet
+      // whose password they still know, so route them to close-and-reopen,
+      // where the wallet file itself arbitrates.
+      if (ok == null) {
+        if (!mounted) return;
+        setState(() => _error = tr?.unlockNeedsReopen ??
+            'Cannot verify the password on this device. '
+            'Use "Close wallet instead" and open the wallet again.');
+        return;
+      }
       if (!ok) {
+        if (!mounted) return;
         setState(() => _error = tr?.incorrectPassword ?? 'Incorrect password');
         return;
       }
@@ -70,8 +86,13 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     if (confirmed != true) return;
 
     final ffi = ref.read(walletCApiProvider);
-    try { await ffi.save(); } catch (_) {}
-    ffi.close();
+    try {
+      await ffi.save();
+    } catch (_) {
+      // Close regardless — leaving the handle open would leak the wallet and
+      // its synchronizer thread.
+    }
+    await ffi.close();
 
     await clearWalletPassword();
     ref.read(walletLockedProvider.notifier).state = false;

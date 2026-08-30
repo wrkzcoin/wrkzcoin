@@ -72,6 +72,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _saveNode() async {
     final tr = S.of(context);
+    if (_nodeHostCtrl.text.trim().isEmpty) {
+      setState(() => _nodeError = tr?.hostIpAddress ?? 'Host / IP address');
+      return;
+    }
     setState(() { _savingNode = true; _nodeError = null; _nodeSuccess = null; });
     try {
       await ref.read(walletCApiProvider).swapNode(
@@ -80,10 +84,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ssl: _nodeSSL,
       );
       ref.read(statusProvider.notifier).refresh();
+      if (!mounted) return;
       setState(() => _nodeSuccess = tr?.nodeUpdatedSuccess ?? 'Node updated successfully');
     } on WalletCApiException catch (e) {
+      if (!mounted) return;
       setState(() => _nodeError = e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _nodeError = e.toString());
     } finally {
       if (mounted) setState(() => _savingNode = false);
@@ -108,8 +115,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Writes the full wallet as unencrypted JSON.
+  ///
+  /// The payload carries the private view key and every subwallet's private
+  /// spend key in the clear — it is seed-equivalent — so this is gated behind
+  /// an explicit warning and a password re-authentication.
   Future<void> _exportJson() async {
     final tr = S.of(context);
+
+    final acknowledged = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.exportJsonWarningTitle ??
+              'Export unencrypted wallet?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: kError, size: 40),
+              const SizedBox(height: 12),
+              Text(
+                dlgTr?.exportJsonWarningBody ??
+                    'The exported file contains your private view key and '
+                        'private spend keys in plain text. Anyone who reads it '
+                        'can spend your funds.\n\n'
+                        'Save it only to storage you control, and delete it as '
+                        'soon as you are done.',
+                style: const TextStyle(height: 1.5),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(dlgTr?.cancel ?? 'Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: kError),
+              child: Text(
+                  dlgTr?.iUnderstandContinue ?? 'I understand, continue'),
+            ),
+          ],
+        );
+      },
+    );
+    if (acknowledged != true || !mounted) return;
+    if (!await _confirmPassword()) return;
+    if (!mounted) return;
+
     final path = await FilePicker.platform.saveFile(
       dialogTitle: tr?.exportJsonTitle ?? 'Export wallet JSON',
       fileName: 'wallet_export.json',
@@ -135,6 +190,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SnackBar(content: Text(tr?.exportFailed(e.toString()) ?? 'Export failed: $e'), backgroundColor: kError),
         );
       }
+    }
+  }
+
+  /// Re-authenticates the user against the stored verifier.
+  ///
+  /// A null verdict means "cannot tell" — no verifier recorded on this
+  /// install. The wallet is already open and unlocked at this point, so treat
+  /// that as a pass rather than blocking the user out of their own data.
+  Future<bool> _confirmPassword() async {
+    final passCtrl = TextEditingController();
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          final dlgTr = S.of(ctx);
+          return AlertDialog(
+            title: Text(dlgTr?.walletPassword ?? 'Wallet password'),
+            content: TextField(
+              controller: passCtrl,
+              obscureText: true,
+              autofocus: true,
+              decoration:
+                  InputDecoration(labelText: dlgTr?.password ?? 'Password'),
+              onSubmitted: (_) => Navigator.pop(ctx, true),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(dlgTr?.cancel ?? 'Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(dlgTr?.unlock ?? 'Unlock')),
+            ],
+          );
+        },
+      );
+      if (ok != true) return false;
+      final verified = await verifyWalletPassword(passCtrl.text);
+      if (verified == false) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(
+                    S.of(context)?.incorrectPassword ?? 'Incorrect password'),
+                backgroundColor: kError),
+          );
+        }
+        return false;
+      }
+      return true;
+    } finally {
+      passCtrl.dispose();
     }
   }
 
@@ -166,11 +273,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       },
     );
+    final height = int.tryParse(heightCtrl.text) ?? 0;
+    heightCtrl.dispose();
     if (confirmed != true) return;
     try {
-      await ref.read(walletCApiProvider).reset(
-        scanHeight: int.tryParse(heightCtrl.text) ?? 0,
-      );
+      await ref.read(walletCApiProvider).reset(scanHeight: height);
       ref.read(statusProvider.notifier).refresh();
     } on WalletCApiException catch (e) {
       if (mounted) {
@@ -243,20 +350,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: kError),
-              onPressed: () => Navigator.pop(ctx, typeCtrl.text == (dlgTr?.deleteHint ?? 'DELETE')),
+              onPressed: () => Navigator.pop(ctx, true),
               child: Text(dlgTr?.deletePermanently ?? 'Delete permanently'),
             ),
           ],
         );
       },
     );
+    final typed = typeCtrl.text.trim();
+    typeCtrl.dispose();
     if (step2 != true) return;
+    // Tell the user why nothing happened instead of returning silently.
+    if (typed != 'DELETE') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(S.of(context)?.deleteConfirmMismatch ??
+                  'Type DELETE exactly to confirm.'),
+              backgroundColor: kError),
+        );
+      }
+      return;
+    }
 
     try {
       final ffi = ref.read(walletCApiProvider);
       // Save before closing so the file is in a clean state before we delete it
       try { await ffi.save(); } catch (_) {}
-      ffi.close();
+      await ffi.close();
 
       // Delete the wallet file from disk
       final walletPath = await _storage.read(key: _kLastWalletKey);
@@ -774,6 +895,8 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
     super.dispose();
   }
 
+  static const _kMaxLogEntries = 2000;
+
   void _poll() {
     try {
       final data = widget.ffi.takeLogs();
@@ -781,7 +904,14 @@ class _LogViewerDialogState extends State<_LogViewerDialog> {
           .map((e) => _LogEntry.fromJson(e as Map<String, dynamic>))
           .toList();
       if (list.isEmpty) return;
-      setState(() => _entries.addAll(list));
+      setState(() {
+        _entries.addAll(list);
+        // The native side keeps 2000 entries; match it so a trace-level
+        // session cannot grow this list without bound.
+        if (_entries.length > _kMaxLogEntries) {
+          _entries.removeRange(0, _entries.length - _kMaxLogEntries);
+        }
+      });
       if (_autoScroll) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scroll.hasClients) {

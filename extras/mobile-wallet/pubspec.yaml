@@ -21,9 +21,10 @@ dependencies:
   local_auth: ^2.3.0
   flutter_local_notifications: ^18.0.0
   share_plus: ^10.1.4
-  url_launcher: ^6.3.1
   intl: ^0.20.2
   ffi: ^2.1.3
+  # PBKDF2 for the lock-screen password verifier (see core/auth/wallet_auth.dart)
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

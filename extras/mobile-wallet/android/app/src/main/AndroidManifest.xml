@@ -9,20 +9,23 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
-    <!-- Biometric auth (local_auth) -->
+    <!-- Biometric auth (local_auth). USE_FINGERPRINT is deprecated since
+         API 28 and USE_BIOMETRIC covers it. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
-    <!-- Notifications (flutter_local_notifications) -->
+    <!-- Notifications (flutter_local_notifications). Only immediate
+         notifications are used, so no boot receiver / RECEIVE_BOOT_COMPLETED. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:label="PLUTON Mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
 
         <activity
             android:name=".MainActivity"
@@ -43,21 +46,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- flutter_local_notifications -->
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
-        <receiver
-            android:exported="false"
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
 
         <meta-data
             android:name="flutterEmbedding"

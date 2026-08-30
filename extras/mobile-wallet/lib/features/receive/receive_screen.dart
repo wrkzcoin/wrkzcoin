@@ -40,17 +40,26 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
     super.dispose();
   }
 
+  bool _addressFailed = false;
+
   Future<void> _loadAddress() async {
     try {
       final ffi = ref.read(walletCApiProvider);
       final addr = await ffi.getPrimaryAddress();
+      if (!mounted) return;
       setState(() {
         _address = addr;
+        _addressFailed = false;
         _loading = false;
       });
-    } catch (e) {
+    } catch (_) {
+      if (!mounted) return;
+      // Flag the failure rather than storing the message in `_address` —
+      // that string used to end up encoded in the QR code and copied by the
+      // copy/share buttons.
       setState(() {
-        _address = S.of(context)!.errorLoadingAddress;
+        _address = '';
+        _addressFailed = true;
         _loading = false;
       });
     }
@@ -100,6 +109,30 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
 
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_addressFailed || _address.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: kError, size: 40),
+              const SizedBox(height: 12),
+              Text(tr.errorLoadingAddress, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () {
+                  setState(() => _loading = true);
+                  _loadAddress();
+                },
+                child: Text(tr.retry),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return ListView(

@@ -789,4 +789,27 @@ class SFr extends S {
 
   @override
   String get languageRu => 'Русский';
+
+  @override
+  String get preparedTransactionExpired =>
+      'Cette transaction n\'est plus valide. Revenez en arrière et recréez-la.';
+
+  @override
+  String get deleteConfirmMismatch => 'Tapez exactement DELETE pour confirmer.';
+
+  @override
+  String get unlockNeedsReopen =>
+      'Impossible de vérifier le mot de passe sur cet appareil. Utilisez « Fermer le portefeuille » puis rouvrez-le.';
+
+  @override
+  String get exportJsonWarningTitle => 'Exporter le portefeuille non chiffré ?';
+
+  @override
+  String get exportJsonWarningBody =>
+      'Le fichier exporté contient votre clé de vue privée et vos clés de dépense privées en clair. Quiconque le lit peut dépenser vos fonds.\n\nEnregistrez-le uniquement sur un support que vous contrôlez et supprimez-le dès que vous avez terminé.';
+
+  @override
+  String passwordTooShort(int count) {
+    return 'Le mot de passe doit comporter au moins $count caractères';
+  }
 }

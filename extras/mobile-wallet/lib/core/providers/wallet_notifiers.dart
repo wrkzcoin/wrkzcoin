@@ -25,12 +25,15 @@ class StatusNotifier extends AsyncNotifier<WalletStatus> {
 
   Future<WalletStatus> _fetch() async {
     final ffi = ref.read(walletCApiProvider);
+    if (!ffi.isOpen) throw StateError('Wallet not open');
     final json = await ffi.getStatusJson();
     return WalletStatus.fromJson(json);
   }
 
+  /// Re-reads the wallet without dropping the current value — setting
+  /// [AsyncValue.loading] here would make every consumer flash its spinner on
+  /// each poll tick.
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(_fetch);
   }
 }
@@ -55,12 +58,12 @@ class BalanceNotifier extends AsyncNotifier<Balance> {
 
   Future<Balance> _fetch() async {
     final ffi = ref.read(walletCApiProvider);
+    if (!ffi.isOpen) throw StateError('Wallet not open');
     final bal = await ffi.getTotalBalance();
     return Balance(unlocked: bal.unlocked, locked: bal.locked);
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(_fetch);
   }
 }
@@ -85,6 +88,7 @@ class TransactionsNotifier extends AsyncNotifier<List<Transaction>> {
 
   Future<List<Transaction>> _fetch() async {
     final ffi = ref.read(walletCApiProvider);
+    if (!ffi.isOpen) return [];
     final json = await ffi.getTransactionsJson();
     final confirmed = (json['transactions'] as List<dynamic>?)
             ?.map((t) => Transaction.fromJson(t as Map<String, dynamic>))
@@ -100,7 +104,6 @@ class TransactionsNotifier extends AsyncNotifier<List<Transaction>> {
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(_fetch);
   }
 }
@@ -126,11 +129,11 @@ class NodeInfoNotifier extends AsyncNotifier<Map<String, dynamic>> {
 
   Future<Map<String, dynamic>> _fetch() async {
     final ffi = ref.read(walletCApiProvider);
+    if (!ffi.isOpen) return {};
     return ffi.getNodeInfoJson();
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     state = await AsyncValue.guard(_fetch);
   }
 }

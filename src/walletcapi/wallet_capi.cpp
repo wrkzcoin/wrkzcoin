@@ -1403,6 +1403,37 @@ wallet_status_t wallet_send_prepared(
     return alloc_out_string(Common::podToHex(txHash), out_tx_hash, out_len);
 }
 
+wallet_status_t wallet_delete_prepared(
+    wallet_handle_t *wallet,
+    const char *prepared_tx_hash_hex)
+{
+    if (prepared_tx_hash_hex == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    std::shared_ptr<WalletBackend> instance;
+    const auto status = get_wallet(wallet, instance);
+    if (status != static_cast<wallet_status_t>(SUCCESS))
+    {
+        return status;
+    }
+
+    Crypto::Hash hash;
+    try
+    {
+        hash.fromString(std::string(prepared_tx_hash_hex));
+    }
+    catch (...)
+    {
+        return static_cast<wallet_status_t>(HASH_INVALID);
+    }
+
+    /* Absence is not an error — the caller only wants it gone. */
+    instance->deletePreparedTransaction(hash);
+    return static_cast<wallet_status_t>(SUCCESS);
+}
+
 wallet_status_t wallet_sweep_to_address(
     wallet_handle_t *wallet,
     const char *destination,

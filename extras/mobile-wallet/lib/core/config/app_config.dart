@@ -8,7 +8,13 @@ class AppConfig {
   static const int decimalPlaces = 2;
   static const int atomicDivisor = 100; // 10^decimalPlaces
   static const String addressPrefix = 'Wrkz';
+
+  /// 98 = standard, 120 = integrated (short payment ID),
+  /// 186 = integrated (full payment ID).
   static const Set<int> validAddressLengths = {98, 120, 186};
+
+  /// Minimum wallet password length enforced on create / change.
+  static const int minPasswordLength = 8;
 
   // ── node presets ───────────────────────────────────────────────────────────
   static const List<NodePreset> nodePresets = [
