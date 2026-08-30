@@ -9,10 +9,14 @@ a tip bot, and how to migrate.
 
 ## The two kinds of payment ID
 
-| | Length | On chain | Who can read it | Searchable |
+| | Length | On chain | Who can read it | Can be looked up |
 |---|---|---|---|---|
-| Long | 64 hex chars (32 bytes) | plaintext | anyone | yes |
+| Long | 64 hex chars (32 bytes) | plaintext | anyone | yes, by anything that indexes the chain |
 | Short | 16 hex chars (8 bytes) | encrypted | sender and receiver only | no |
+
+Note "looked up" means by a block explorer or any service that reads blocks and
+builds its own index. The daemon itself exposes no lookup-by-payment-ID
+endpoint, for either kind.
 
 Nothing about long payment IDs has changed. If you use them today, you can keep
 using them and no action is required.
