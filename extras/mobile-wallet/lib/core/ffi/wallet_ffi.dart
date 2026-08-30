@@ -20,6 +20,22 @@ import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 
+// ─── sync thread count ───────────────────────────────────────────────────────
+
+/// Background block-processing threads to ask wallet_capi for.
+///
+/// A count of `0` is NOT "pick a default" — the C API reads it as "start no
+/// background threads at all, the caller will drive wallet_sync_step()", which
+/// is what the single-threaded WASM build does. Native builds have no such
+/// pump, so passing 0 leaves the wallet parked at its start height forever.
+///
+/// Capped low: phones throttle hard and the sync threads are CPU bound.
+int defaultSyncThreads() {
+  final cores = Platform.numberOfProcessors;
+  if (cores < 1) return 1;
+  return cores > 4 ? 4 : cores;
+}
+
 // ─── opaque handle ────────────────────────────────────────────────────────────
 
 final class _WalletHandleOpaque extends Opaque {}
@@ -564,8 +580,9 @@ class WalletCApi {
 
   Future<void> open(
       String filename, String password, String daemonHost, int daemonPort,
-      {bool ssl = false, int syncThreads = 0}) async {
+      {bool ssl = false, int? syncThreads}) async {
     _requireClosed();
+    final threads = syncThreads ?? defaultSyncThreads();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnOpenNative, _FnOpenDart>('wallet_open');
@@ -577,7 +594,7 @@ class WalletCApi {
           filename.toNativeUtf8(allocator: arena),
           password.toNativeUtf8(allocator: arena),
           daemonHost.toNativeUtf8(allocator: arena),
-          daemonPort, ssl, syncThreads, out,
+          daemonPort, ssl, threads, out,
         );
         return (
           status: s,
@@ -592,8 +609,9 @@ class WalletCApi {
 
   Future<void> create(
       String filename, String password, String daemonHost, int daemonPort,
-      {bool ssl = false, int syncThreads = 0}) async {
+      {bool ssl = false, int? syncThreads}) async {
     _requireClosed();
+    final threads = syncThreads ?? defaultSyncThreads();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnOpenNative, _FnOpenDart>('wallet_create');
@@ -605,7 +623,7 @@ class WalletCApi {
           filename.toNativeUtf8(allocator: arena),
           password.toNativeUtf8(allocator: arena),
           daemonHost.toNativeUtf8(allocator: arena),
-          daemonPort, ssl, syncThreads, out,
+          daemonPort, ssl, threads, out,
         );
         return (
           status: s,
@@ -621,8 +639,9 @@ class WalletCApi {
   Future<void> restoreFromSeed(
       String mnemonicSeed, String filename, String password,
       String daemonHost, int daemonPort,
-      {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+      {int scanHeight = 0, bool ssl = false, int? syncThreads}) async {
     _requireClosed();
+    final threads = syncThreads ?? defaultSyncThreads();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreSeedNative, _FnRestoreSeedDart>(
@@ -637,7 +656,7 @@ class WalletCApi {
           password.toNativeUtf8(allocator: arena),
           scanHeight,
           daemonHost.toNativeUtf8(allocator: arena),
-          daemonPort, ssl, syncThreads, out,
+          daemonPort, ssl, threads, out,
         );
         return (
           status: s,
@@ -654,8 +673,9 @@ class WalletCApi {
       String privateSpendKey, String privateViewKey,
       String filename, String password,
       String daemonHost, int daemonPort,
-      {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+      {int scanHeight = 0, bool ssl = false, int? syncThreads}) async {
     _requireClosed();
+    final threads = syncThreads ?? defaultSyncThreads();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreKeysNative, _FnRestoreKeysDart>(
@@ -671,7 +691,7 @@ class WalletCApi {
           password.toNativeUtf8(allocator: arena),
           scanHeight,
           daemonHost.toNativeUtf8(allocator: arena),
-          daemonPort, ssl, syncThreads, out,
+          daemonPort, ssl, threads, out,
         );
         return (
           status: s,
@@ -688,8 +708,9 @@ class WalletCApi {
       String privateViewKey, String address,
       String filename, String password,
       String daemonHost, int daemonPort,
-      {int scanHeight = 0, bool ssl = false, int syncThreads = 0}) async {
+      {int scanHeight = 0, bool ssl = false, int? syncThreads}) async {
     _requireClosed();
+    final threads = syncThreads ?? defaultSyncThreads();
     final r = await Isolate.run(() {
       final lib = _openLibrary();
       final fn = lib.lookupFunction<_FnRestoreViewNative, _FnRestoreViewDart>(
@@ -705,7 +726,7 @@ class WalletCApi {
           password.toNativeUtf8(allocator: arena),
           scanHeight,
           daemonHost.toNativeUtf8(allocator: arena),
-          daemonPort, ssl, syncThreads, out,
+          daemonPort, ssl, threads, out,
         );
         return (
           status: s,

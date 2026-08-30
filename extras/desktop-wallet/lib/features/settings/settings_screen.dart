@@ -676,7 +676,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             onChanged: (l) {
                               if (l != null) {
                                 ref.read(logLevelProvider.notifier).set(l);
-                                ref.read(walletCApiProvider).setLogLevel(l.name);
                               }
                             },
                           ),

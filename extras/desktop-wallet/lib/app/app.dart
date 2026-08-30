@@ -14,6 +14,10 @@ class PlutonApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final themeMode = ref.watch(themeModeProvider);
     final locale = ref.watch(localeProvider);
+    // Watched, not read, purely to build the provider at startup: its
+    // notifier is what pushes the stored level into wallet_capi, whose
+    // logger starts every process DISABLED.
+    ref.watch(logLevelProvider);
 
     return MaterialApp.router(
       title: 'PLUTON v2',

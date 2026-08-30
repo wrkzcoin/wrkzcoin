@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'providers.dart';
+
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
 const _kLogLevelKey = 'pluton_log_level';
@@ -71,11 +73,24 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
       (l) => l.value == n,
       orElse: () => WalletLogLevel.info,
     );
+    _applyToNative(state);
   }
 
   Future<void> set(WalletLogLevel level) async {
     state = level;
+    _applyToNative(level);
     await _storage.write(key: _kLogLevelKey, value: level.value.toString());
+  }
+
+  /// The native logger defaults to DISABLED on every process start, so the
+  /// stored preference has to be pushed across on load as well as on change —
+  /// otherwise the log viewer stays empty until the dropdown is touched.
+  void _applyToNative(WalletLogLevel level) {
+    try {
+      ref.read(walletCApiProvider).setLogLevel(level.name);
+    } catch (_) {
+      // Library not loadable yet/at all — logging is best effort.
+    }
   }
 }
 
