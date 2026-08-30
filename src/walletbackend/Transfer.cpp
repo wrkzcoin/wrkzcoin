@@ -119,13 +119,19 @@ namespace SendTransaction
 
         /* Some denominations do not have enough outputs on the chain to build a
            ring at the requested mixin, and there is no partial success - the
-           send just fails. Rather than leaving those funds unspendable, drop to
-           the lowest mixin the network currently accepts and try once more.
+           send just fails. Rather than leaving those funds unspendable, retry
+           once at the largest ring the chain can actually support for these
+           denominations.
 
-           This trades anonymity for the transaction being possible at all, so it
-           only ever happens as a fallback, never as the first attempt. Before a
-           fork that raises the default above the minimum this is a no-op, since
-           the requested mixin already is the minimum. */
+           Retrying at the best achievable value rather than at the network
+           minimum matters: if a denomination can support a ring of 5 there is no
+           reason to hand the user a ring of 2. It costs no extra round trip
+           either way, since we retry exactly once regardless.
+
+           This still trades anonymity for the transaction being possible at all,
+           so it only ever happens as a fallback, never as the first attempt.
+           Before a fork raises the default above the minimum this is a no-op,
+           since the requested mixin already is the minimum. */
         if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS)
         {
             const auto [minMixin, maxMixin, defaultMixin] =
@@ -133,9 +139,23 @@ namespace SendTransaction
 
             if (mixin > minMixin)
             {
+                /* Never above what we already tried, never below what the
+                   network accepts. */
+                uint64_t retryMixin = std::get<2>(result).tx.achievableMixin;
+
+                if (retryMixin > mixin - 1)
+                {
+                    retryMixin = mixin - 1;
+                }
+
+                if (retryMixin < minMixin)
+                {
+                    retryMixin = minMixin;
+                }
+
                 result = sendTransactionAdvancedWithMixin(
                     addressesAndAmounts,
-                    minMixin,
+                    retryMixin,
                     fee,
                     paymentID,
                     addressesToTakeFrom,
@@ -413,6 +433,10 @@ namespace SendTransaction
 
         if (txResult.error)
         {
+            /* Carry the result through so the caller can see achievableMixin and
+               decide whether retrying at a smaller ring size is worthwhile. */
+            txInfo.tx = txResult;
+
             return {txResult.error, Crypto::Hash(), txInfo};
         }
 
@@ -441,6 +465,7 @@ namespace SendTransaction
         txInfo.changeAddress = changeAddress;
         txInfo.changeRequired = changeRequired;
         txInfo.tx = txResult;
+        txInfo.mixin = mixin;
 
         if (sendTransaction)
         {
@@ -759,7 +784,7 @@ namespace SendTransaction
         return destinations;
     }
 
-    std::tuple<Error, std::vector<CryptoNote::RandomOuts>> getRingParticipants(
+    std::tuple<Error, std::vector<CryptoNote::RandomOuts>, uint64_t> getRingParticipants(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources)
@@ -770,7 +795,7 @@ namespace SendTransaction
 
         if (mixin == 0)
         {
-            return {SUCCESS, {}};
+            return {SUCCESS, {}, 0};
         }
 
         std::vector<uint64_t> amounts;
@@ -784,7 +809,34 @@ namespace SendTransaction
 
         if (!success)
         {
-            return {DAEMON_OFFLINE, fakeOuts};
+            return {DAEMON_OFFLINE, fakeOuts, 0};
+        }
+
+        /* The largest mixin the chain can actually support for these
+           denominations. The daemon returns at most requestedOuts per amount,
+           and one of those may turn out to be our own output which we have to
+           skip, so the ring we can reliably build is one smaller than the
+           smallest set we were handed. */
+        uint64_t achievableMixin = 0;
+        {
+            bool haveSmallest = false;
+            uint64_t smallest = 0;
+
+            for (const uint64_t amount : amounts)
+            {
+                const auto it = std::find_if(
+                    fakeOuts.begin(), fakeOuts.end(), [amount](const auto output) { return output.amount == amount; });
+
+                const uint64_t found = it == fakeOuts.end() ? 0 : it->outs.size();
+
+                if (!haveSmallest || found < smallest)
+                {
+                    smallest = found;
+                    haveSmallest = true;
+                }
+            }
+
+            achievableMixin = smallest == 0 ? 0 : smallest - 1;
         }
 
         /* Verify outputs are sufficient */
@@ -802,7 +854,7 @@ namespace SendTransaction
                       << Utilities::formatAmount(amount) << "). Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
 
             /* Check we have at least mixin outputs for each fake out. We *may* need
@@ -817,13 +869,13 @@ namespace SendTransaction
                       << ", found outputs: " << it->outs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
         }
 
         if (fakeOuts.size() != amounts.size())
         {
-            return {NOT_ENOUGH_FAKE_OUTPUTS, fakeOuts};
+            return {NOT_ENOUGH_FAKE_OUTPUTS, fakeOuts, achievableMixin};
         }
 
         for (auto fakeOut : fakeOuts)
@@ -845,7 +897,7 @@ namespace SendTransaction
                       << ", found outputs: " << fakeOut.outs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts};
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), fakeOuts, achievableMixin};
             }
 
             /* Sort the fake outputs by their indexes (don't want there to be an
@@ -855,11 +907,11 @@ namespace SendTransaction
             });
         }
 
-        return {SUCCESS, fakeOuts};
+        return {SUCCESS, fakeOuts, achievableMixin};
     }
 
     /* Take our inputs and pad them with fake inputs, based on our mixin value */
-    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>> prepareRingParticipants(
+    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>, uint64_t> prepareRingParticipants(
         std::vector<WalletTypes::TxInputAndOwner> sources,
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon)
@@ -872,11 +924,11 @@ namespace SendTransaction
 
         std::vector<WalletTypes::ObscuredInput> result;
 
-        const auto [error, fakeOuts] = getRingParticipants(mixin, daemon, sources);
+        const auto [error, fakeOuts, achievableMixin] = getRingParticipants(mixin, daemon, sources);
 
         if (error)
         {
-            return {error, result};
+            return {error, result, achievableMixin};
         }
 
         size_t i = 0;
@@ -890,7 +942,8 @@ namespace SendTransaction
                         DAEMON_ERROR,
                         "Missing global output index for one or more wallet outputs. "
                         "Let sync continue on a full node and retry."),
-                    result};
+                    result,
+                    0};
             }
 
             WalletTypes::GlobalIndexKey realOutput {*walletAmount.input.globalOutputIndex, walletAmount.input.key};
@@ -946,7 +999,9 @@ namespace SendTransaction
                       << ", found outputs: " << obscuredInput.outputs.size() << ". Further explanation here: "
                       << "https://gist.github.com/zpalmtree/80b3e80463225bcfb8f8432043cb594c";
 
-                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), result};
+                /* These are already stripped of our own output, so what we
+                   managed to gather here is directly the ring we could build. */
+                return {Error(NOT_ENOUGH_FAKE_OUTPUTS, error.str()), result, obscuredInput.outputs.size()};
             }
 
             /* Find the position where our real input belongs, e.g. if the fake
@@ -969,7 +1024,7 @@ namespace SendTransaction
             i++;
         }
 
-        return {SUCCESS, result};
+        return {SUCCESS, result, mixin};
     }
 
     std::tuple<Error, std::vector<CryptoNote::KeyInput>, std::vector<Crypto::SecretKey>> setupInputs(
@@ -1278,13 +1333,14 @@ namespace SendTransaction
         const std::vector<uint8_t> extraData)
     {
         /* Mix our inputs with fake ones from the network to hide who we are */
-        const auto [mixinError, inputsAndFakes] = prepareRingParticipants(ourInputs, mixin, daemon);
+        const auto [mixinError, inputsAndFakes, achievableMixin] = prepareRingParticipants(ourInputs, mixin, daemon);
 
         WalletTypes::TransactionResult result;
 
         if (mixinError)
         {
             result.error = mixinError;
+            result.achievableMixin = achievableMixin;
             return result;
         }
 

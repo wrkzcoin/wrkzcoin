@@ -49,7 +49,9 @@ namespace SendTransaction
         const uint64_t changeRequired,
         const std::string changeAddress);
 
-    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>> prepareRingParticipants(
+    /* Third element is the achievable mixin, only meaningful when the error is
+       NOT_ENOUGH_FAKE_OUTPUTS. See WalletTypes::TransactionResult. */
+    std::tuple<Error, std::vector<WalletTypes::ObscuredInput>, uint64_t> prepareRingParticipants(
         std::vector<WalletTypes::TxInputAndOwner> sources,
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon);
@@ -76,7 +78,9 @@ namespace SendTransaction
     std::vector<CryptoNote::TransactionOutput>
         keyOutputToTransactionOutput(const std::vector<WalletTypes::KeyOutput> keyOutputs);
 
-    std::tuple<Error, std::vector<CryptoNote::RandomOuts>> getRingParticipants(
+    /* Third element is the achievable mixin, only meaningful when the error is
+       NOT_ENOUGH_FAKE_OUTPUTS. See WalletTypes::TransactionResult. */
+    std::tuple<Error, std::vector<CryptoNote::RandomOuts>, uint64_t> getRingParticipants(
         const uint64_t mixin,
         const std::shared_ptr<Nigel> daemon,
         const std::vector<WalletTypes::TxInputAndOwner> sources);
