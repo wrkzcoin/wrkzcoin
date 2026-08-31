@@ -241,8 +241,17 @@ namespace CryptoNote
         uint32_t m_liteHeight = 0;
 
         /* The lite height is only safe once we know how tall the network is, and
-           that is first knowable at the opening handshake. Checked once. */
+           that is first knowable at the opening handshake. Set once the question
+           is settled, either way, and never revisited. */
         bool m_liteDepthChecked = false;
+
+        /* Tallest chain any peer has claimed so far. A max, so a peer reporting a
+           short chain - honestly or otherwise - cannot drag the answer down. */
+        uint64_t m_liteMaxPeerHeight = 0;
+
+        /* How many peers have contributed to the above. The verdict that kills the
+           daemon waits for several, so one peer cannot deliver it alone. */
+        uint32_t m_liteDepthSamples = 0;
 
         uint32_t m_syncMaxPeers;
 

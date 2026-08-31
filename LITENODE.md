@@ -278,9 +278,17 @@ always left to you - a chain dropped because of a forgotten flag would be the wo
 possible reading of an operator's intent. So a daemon that will not start is telling
 you something, and the fix is never to add a force flag.
 
-**The 14 day rule is checked at the first handshake**, not at startup, because the
+**The 14 day rule is checked at handshake time**, not at startup, because the
 network's height is not knowable before then. If `H` is too close to the tip the
 daemon exits and names the highest value the network currently allows.
+
+The check is deliberately hard to trigger, because the height it reads is a number
+a peer chose and the failing branch kills the daemon. Two things guard it. Once
+this node's own chain has reached `H + MIN_LITE_FULL_BLOCK_DEPTH` the question is
+settled from local data and no peer is consulted at all — which is every restart
+of a synced node. Before that, what is weighed is the *tallest* chain claimed
+across several peers, so a peer reporting a short chain cannot drag the verdict
+down and no single peer can produce it.
 
 **Monitoring**
 
