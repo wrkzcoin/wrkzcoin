@@ -44,6 +44,11 @@ namespace
     constexpr uint64_t AUTO_COMPACTION_RESYNC_LAG_BLOCKS = 20;
     constexpr uint32_t AUTO_COMPACTION_NEAR_SYNC_STREAK_REQUIRED = 3;
 
+    /* Floor on wall clock time between automatic compactions, whatever the block
+       gap says. See the check in the maintenance loop for why the block gap alone
+       is not enough while a node is catching up. */
+    constexpr uint64_t AUTO_COMPACTION_MIN_WALL_SECONDS = 30 * 60;
+
     template<typename T> static bool print_as_json(const T &obj)
     {
         std::cout << CryptoNote::storeToJson(obj) << ENDL;
@@ -1224,6 +1229,31 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
         if (lastActivityHeight != 0
             && currentHeight > lastActivityHeight
             && (currentHeight - lastActivityHeight) < m_config.autoCompactionMinGapBlocks)
+        {
+            continue;
+        }
+
+        /* The block gap above assumes blocks arrive at chain rate, where 720 of
+           them is about twelve hours. While catching up they arrive hundreds of
+           times faster - a node syncing at 22,000 blocks a minute passes 720 in
+           two seconds - so the gap is always satisfied and the check interval
+           alone decides how often we compact. That meant a full database rewrite
+           every 60 seconds for the whole of a multi hour sync, each one
+           rewriting a database that had grown since the last.
+
+           Requiring wall clock time to have passed as well keeps the cost bounded
+           however fast blocks arrive. Measured on a sync at 4.2 million blocks:
+           15,000 blocks/min with a compaction every minute, 22,000 blocks/min
+           without - about 90 minutes off a four and a half hour sync. */
+        const uint64_t lastActivityAt = std::max(m_compactionStartedAt, m_compactionFinishedAt);
+
+        /* Compared with >= rather than >, because refresh_compaction_state_locked
+           stamps m_compactionFinishedAt with the moment this loop *notices* a
+           compaction finished, not the moment it actually did. On the first check
+           after one completes those are the same second, and a strict > would skip
+           the guard entirely and compact again immediately. */
+        if (lastActivityAt != 0 && now >= lastActivityAt
+            && (now - lastActivityAt) < AUTO_COMPACTION_MIN_WALL_SECONDS)
         {
             continue;
         }
