@@ -1300,6 +1300,23 @@ namespace CryptoNote
 
         std::set<Amount> newKeyAmounts;
 
+        /* KeyOutputInfo::transactionHash has exactly one consumer in the tree:
+           extractKeyOtputReferences, reached only from Core::getTransactionDetails
+           to answer which transaction a ring member came from. That is an explorer
+           answer, and explorer mode is refused on a lite node. Ring verification
+           (extractKeyOutputKeys) and decoy serving (getRandomOutsByAmount) read
+           publicKey and unlockTime and nothing else.
+
+           So below the lite height this is 32 bytes of high entropy per key output
+           that the node can never read - on a mainnet sized chain about a quarter
+           of the entire database, and the one part of it a compressor cannot help
+           with. Zeroed rather than removed: the record layout and the schema
+           version stay exactly as they are, no reader needs to know, and seventy
+           eight million identical zero hashes cost almost nothing once RocksDB has
+           compressed them. Above the lite height the real hash is kept, so the
+           region a lite node calls full really is. */
+        const bool dropOutputTransactionHash = isLiteIndexOnlyHeight(blockIndex);
+
         for (auto &output : tx.outputs)
         {
             transactionCacheInfo.outputs.push_back(output.target);
@@ -1327,7 +1344,8 @@ namespace CryptoNote
 
                 KeyOutputInfo outputInfo;
                 outputInfo.publicKey = std::get<KeyOutput>(output.target).key;
-                outputInfo.transactionHash = transactionCacheInfo.transactionHash;
+                outputInfo.transactionHash =
+                    dropOutputTransactionHash ? Crypto::Hash {} : transactionCacheInfo.transactionHash;
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
 

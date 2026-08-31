@@ -177,6 +177,30 @@ one-per-amount output count — so a `--snapshot-stats` measurement of `"b"` cou
 one extra record per distinct amount. On mainnet that is the 140,079 by which the
 `"b"` row exceeds the `"j"` row, which are otherwise 1:1.
 
+### `KeyOutputInfo.transactionHash` is zeroed below `H`
+
+`"j"` is by far the largest table, and a third of each record is a
+`transactionHash` that a lite node can never read. Its only consumer is
+`extractKeyOtputReferences`, reached only from `Core::getTransactionDetails` to
+say which transaction a ring member came from — an explorer answer, and explorer
+mode is refused on a lite node. Ring verification and decoy serving read
+`publicKey` and `unlockTime` and nothing else.
+
+Below `H` the field is therefore written as zeroes. That is 32 high-entropy bytes
+per key output — on a 4.2M-block chain, ~2.3 GiB of a 9.4 GiB database, and the
+part compression cannot touch. Zeroing rather than removing keeps the record
+layout and the schema version unchanged, so nothing else in the tree needs to
+know, and 78 million identical zero hashes compress to almost nothing.
+
+Above `H` the real hash is written as normal: the region a lite node calls full
+really is full.
+
+**Consequence:** if a lite node ever did serve `getTransactionDetails` for a
+transaction whose ring members predate `H`, it would report a null hash for those
+members rather than fail. It cannot today — explorer mode and lite mode are
+mutually exclusive — but any future work that relaxes that has to deal with this
+first.
+
 The running transaction counter is still updated for skipped transactions, so
 `getBlockchainTransactionCount()` and `tx_count` in `/info` stay chain-wide totals.
 
