@@ -640,15 +640,31 @@ int main(int argc, char *argv[])
         database->init();
         Tools::ScopeExit dbShutdownOnExit([&database]() { database->shutdown(); });
 
+        /* An older scheme cannot be read, and there is no in-place migration, so
+           the chain does have to be downloaded again. This used to destroy the
+           database and start over without asking - which meant that pointing a
+           newer build at a data directory, once, by accident, silently threw away
+           a chain that took hours to build and could not be got back.
+
+           So it refuses instead, and names the flag that does the deletion. That
+           is the same rule the lite profile and daemon mode checks follow: the
+           daemon never removes a synced chain on its own reading of the operator's
+           intent, only on an explicit instruction to do so. */
         if (!DatabaseBlockchainCache::checkDBSchemeVersion(*database, logManager))
         {
-            dbShutdownOnExit.cancel();
+            logger(ERROR, BRIGHT_RED)
+                << "This database was built by an older version of the daemon and its storage format has since "
+                   "changed. There is no way to convert it in place - the chain has to be downloaded again.";
+            logger(ERROR, BRIGHT_RED)
+                << "Nothing has been deleted. To rebuild, restart with --resync and the flags this node normally "
+                   "uses; --resync removes the chain and the peer state, then syncs from the network.";
+            logger(ERROR, BRIGHT_RED)
+                << "If you want a fallback first, stop the daemon and take a copy of the data directory.";
 
             database->shutdown();
-            database->destroy();
-            database->init();
+            dbShutdownOnExit.cancel();
 
-            dbShutdownOnExit.resume();
+            exit(1);
         }
 
         /* Settled before the cache exists, because the lite height decides what

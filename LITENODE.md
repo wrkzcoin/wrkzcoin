@@ -339,6 +339,7 @@ down and no single peer can produce it.
 | no `--lite` on a lite database | refused - it has no block bodies to serve |
 | `--lite-height H'` on a database built at `H` | refused - `H` cannot be changed |
 | `--rewind-to-height` below `H` | refused - those blocks cannot be undone |
+| a database built by an older daemon, after a storage format change | refused - restart with `--resync`, which is the only thing that deletes a chain |
 
 ## Changing the lite height
 

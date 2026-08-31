@@ -736,10 +736,10 @@ namespace CryptoNote
         }
         else if (*version < CURRENT_DB_SCHEME_VERSION)
         {
+            /* Reports only. What to do about it is the caller's decision, and the
+               answer is not to delete anything on its own initiative. */
             logger(Logging::WARNING) << "DB scheme version is less than expected. Expected version "
-                                     << CURRENT_DB_SCHEME_VERSION << ". Actual version " << *version
-                                     << ". The database will be destroyed and the chain synced again from the "
-                                        "network.";
+                                     << CURRENT_DB_SCHEME_VERSION << ". Actual version " << *version << ".";
             return false;
         }
         else if (*version > CURRENT_DB_SCHEME_VERSION)

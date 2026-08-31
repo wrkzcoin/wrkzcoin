@@ -29,3 +29,6 @@ extras/mobile-wallet/android/local.properties
 extras/mobile-wallet/build/**
 extras/mobile-wallet/android/.gradle/**
 extras/web-wallet/.dart_tool/**
+
+# Daemon log written into whatever directory it is started from
+Wrkzd.log
