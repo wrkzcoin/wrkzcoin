@@ -866,7 +866,29 @@ std::tuple<Error, uint16_t> RpcServer::info(
     {
         const uint64_t height = m_core->getTopBlockIndex() + 1;
         const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
-        const auto blockDetails = m_core->getBlockDetails(m_core->getTopBlockIndex());
+
+        /* Only the block version is wanted from this, but getBlockDetails builds
+           the whole block including details for every transaction in it, which
+           needs the transaction records a lite node does not keep below its lite
+           height. While such a node is still catching up its own top block sits
+           down there, so this threw and took the entire endpoint down with it -
+           /info answered BUSY, and the status console command with it, for the
+           whole of a very long sync. The version is worth losing; everything
+           else here is not. */
+        uint8_t topMajorVersion = 0;
+        uint8_t topMinorVersion = 0;
+
+        try
+        {
+            const auto blockDetails = m_core->getBlockDetails(m_core->getTopBlockIndex());
+            topMajorVersion = blockDetails.majorVersion;
+            topMinorVersion = blockDetails.minorVersion;
+        }
+        catch (const std::exception &)
+        {
+            /* Left at zero, which reads as "not known from here". */
+        }
+
         const uint64_t difficulty = m_core->getDifficultyForNextBlock();
 
         uint64_t total_conn = m_p2p->get_connections_count();
@@ -907,8 +929,8 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
         j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
         j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
-        j["major_version"] = blockDetails.majorVersion;
-        j["minor_version"] = blockDetails.minorVersion;
+        j["major_version"] = topMajorVersion;
+        j["minor_version"] = topMinorVersion;
         j["version"] = PROJECT_VERSION;
         j["status"] = "OK";
         j["start_time"] = m_core->getStartTime();

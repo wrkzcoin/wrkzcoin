@@ -274,6 +274,10 @@ rather than a download - is not implemented.
 ## RPC behaviour
 
 - `/info` gains `lite` (bool) and `lite_start_height`.
+- `/info` reports `major_version` and `minor_version` as `0` while the node's own
+  top block is still below `H`, which is most of a first sync. Reading them needs
+  the block body, and there is none down there. Everything else in the response,
+  and the `status` console command that reads it, work normally.
 - `/getwalletsyncdata` and `/getrawblocks` **clamp** a start height below `lite_start_height`
   up to it, and drop any start timestamp. A wallet that asks from 0 is served from the lite
   height rather than fed an empty response forever.
