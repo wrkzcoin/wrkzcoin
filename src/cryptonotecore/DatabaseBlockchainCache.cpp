@@ -73,43 +73,6 @@ namespace CryptoNote
             return (now - blockTimestamp) <= BLOCK_WRITE_TIP_WINDOW_SECONDS;
         }
 
-        bool requestPackedOutputs(
-            IBlockchainCache::Amount amount,
-            Common::ArrayView<uint32_t> globalIndexes,
-            IDataBase &database,
-            std::vector<PackedOutIndex> &result)
-        {
-            BlockchainReadBatch readBatch;
-            result.reserve(result.size() + globalIndexes.getSize());
-
-            for (auto globalIndex : globalIndexes)
-            {
-                readBatch.requestKeyOutputGlobalIndexForAmount(amount, globalIndex);
-            }
-
-            auto dbResult = database.read(readBatch);
-            if (dbResult)
-            {
-                return false;
-            }
-
-            try
-            {
-                auto readResult = readBatch.extractResult();
-                const auto &packedOutsMap = readResult.getKeyOutputGlobalIndexesForAmounts();
-                for (auto globalIndex : globalIndexes)
-                {
-                    result.push_back(packedOutsMap.at(std::make_pair(amount, globalIndex)));
-                }
-            }
-            catch (std::exception &)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
         // returns KeyOutputInfos in the same order as globalIndexes are
         bool requestKeyOutputInfos(
             IBlockchainCache::Amount amount,
@@ -436,16 +399,16 @@ namespace CryptoNote
           public:
             using iterator_category = std::random_access_iterator_tag;
 
-            using value_type = PackedOutIndex;
+            using value_type = uint32_t;
 
             using difference_type = std::ptrdiff_t;
 
-            using pointer = const PackedOutIndex *;
+            using pointer = const uint32_t *;
 
-            using reference = const PackedOutIndex &;
+            using reference = const uint32_t &;
 
             DbOutputConstIterator(
-                std::function<PackedOutIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever_,
+                std::function<uint32_t(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever_,
                 IBlockchainCache::Amount amount_,
                 uint32_t globalOutputIndex_):
                 retriever(retriever_),
@@ -560,20 +523,23 @@ namespace CryptoNote
             }
 
           private:
-            std::function<PackedOutIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever;
+            std::function<uint32_t(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever;
 
             IBlockchainCache::Amount amount;
 
             uint32_t globalOutputIndex;
 
-            mutable PackedOutIndex cachedValue;
+            mutable uint32_t cachedValue;
         };
 
-        PackedOutIndex
-            retrieveKeyOutput(IBlockchainCache::Amount amount, uint32_t globalOutputIndex, IDataBase &database)
+        /* The block a key output was created in, by its global index. Used to
+           binary search the outputs of one amount by height; see
+           getKeyOutputsCountForAmount. */
+        uint32_t
+            retrieveKeyOutputBlockIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex, IDataBase &database)
         {
             BlockchainReadBatch batch;
-            auto dbError = database.read(batch.requestKeyOutputGlobalIndexForAmount(amount, globalOutputIndex));
+            auto dbError = database.read(batch.requestKeyOutputInfo(amount, globalOutputIndex));
             if (dbError)
             {
                 throw std::system_error(dbError, "Error during retrieving key output by global output index");
@@ -583,7 +549,7 @@ namespace CryptoNote
 
             try
             {
-                return result.getKeyOutputGlobalIndexesForAmounts().at(std::make_pair(amount, globalOutputIndex));
+                return result.getKeyOutputInfo().at(std::make_pair(amount, globalOutputIndex)).blockIndex;
             }
             catch (std::exception &)
             {
@@ -698,7 +664,7 @@ namespace CryptoNote
             uint32_t schemeVersion;
         };
 
-        const uint32_t CURRENT_DB_SCHEME_VERSION = 3;
+        const uint32_t CURRENT_DB_SCHEME_VERSION = 4;
 
     } // namespace
 
@@ -772,7 +738,8 @@ namespace CryptoNote
         {
             logger(Logging::WARNING) << "DB scheme version is less than expected. Expected version "
                                      << CURRENT_DB_SCHEME_VERSION << ". Actual version " << *version
-                                     << ". DB will be destroyed and recreated from blocks.bin file.";
+                                     << ". The database will be destroyed and the chain synced again from the "
+                                        "network.";
             return false;
         }
         else if (*version > CURRENT_DB_SCHEME_VERSION)
@@ -1235,7 +1202,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "Requesting delete for key output amount " << amount
                                    << " starting from global index " << boundary << " to " << (outputsCount - 1);
 
-        writeBatch.removeKeyOutputGlobalIndexes(amount, outputsCount - boundary, boundary);
+        writeBatch.insertKeyOutputCountForAmount(amount, boundary);
         for (GlobalOutputIndex index = boundary; index < outputsCount; ++index)
         {
             writeBatch.removeKeyOutputInfo(amount, index);
@@ -1296,7 +1263,11 @@ namespace CryptoNote
         transactionCacheInfo.outputAmounts.reserve(tx.outputs.size());
         transactionCacheInfo.keyInputs.reserve(tx.inputs.size());
         auto outputCount = 0;
-        std::unordered_map<Amount, std::vector<PackedOutIndex>> keyIndexes;
+
+        /* Which amounts this transaction added outputs to. Their running counts
+           have to be rewritten; the outputs themselves went into the key output
+           info records above. */
+        std::set<Amount> touchedAmounts;
 
         std::set<Amount> newKeyAmounts;
 
@@ -1329,7 +1300,7 @@ namespace CryptoNote
 
             if (std::holds_alternative<KeyOutput>(output.target))
             {
-                keyIndexes[output.amount].push_back(poi);
+                touchedAmounts.insert(output.amount);
                 auto outputCountForAmount = updateKeyOutputCount(output.amount, 1);
                 if (outputCountForAmount == 1)
                 {
@@ -1348,6 +1319,7 @@ namespace CryptoNote
                     dropOutputTransactionHash ? Crypto::Hash {} : transactionCacheInfo.transactionHash;
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
+                outputInfo.blockIndex = blockIndex;
 
                 batch.insertKeyOutputInfo(output.amount, globalIndex, outputInfo);
             }
@@ -1361,12 +1333,9 @@ namespace CryptoNote
             }
         }
 
-        for (auto &amountToOutputs : keyIndexes)
+        for (const auto amount : touchedAmounts)
         {
-            batch.insertKeyOutputGlobalIndexes(
-                amountToOutputs.first,
-                amountToOutputs.second,
-                updateKeyOutputCount(amountToOutputs.first, 0)); // Size already updated.
+            batch.insertKeyOutputCountForAmount(amount, updateKeyOutputCount(amount, 0)); // Size already updated.
         }
 
         if (!newKeyAmounts.empty())
@@ -1692,20 +1661,6 @@ namespace CryptoNote
 
                 return ExtractOutputKeysResult::SUCCESS;
             });
-    }
-
-    ExtractOutputKeysResult DatabaseBlockchainCache::extractKeyOtputIndexes(
-        uint64_t amount,
-        Common::ArrayView<uint32_t> globalIndexes,
-        std::vector<PackedOutIndex> &outIndexes) const
-    {
-        if (!requestPackedOutputs(amount, globalIndexes, database, outIndexes))
-        {
-            logger(Logging::ERROR) << "extractKeyOtputIndexes failed: failed to read database";
-            return ExtractOutputKeysResult::INVALID_GLOBAL_INDEX;
-        }
-
-        return ExtractOutputKeysResult::SUCCESS;
     }
 
     ExtractOutputKeysResult DatabaseBlockchainCache::extractKeyOtputReferences(
@@ -2153,12 +2108,13 @@ namespace CryptoNote
     {
         uint32_t outputsCount = requestKeyOutputGlobalIndexesCountForAmount(amount, database);
 
-        auto getOutput = std::bind(retrieveKeyOutput, std::placeholders::_1, std::placeholders::_2, std::ref(database));
+        auto getOutput =
+            std::bind(retrieveKeyOutputBlockIndex, std::placeholders::_1, std::placeholders::_2, std::ref(database));
         auto begin = DbOutputConstIterator(getOutput, amount, 0);
         auto end = DbOutputConstIterator(getOutput, amount, outputsCount);
 
-        auto it = std::lower_bound(begin, end, blockIndex, [](const PackedOutIndex &output, uint32_t blockIndex) {
-            return output.blockIndex < blockIndex;
+        auto it = std::lower_bound(begin, end, blockIndex, [](uint32_t outputBlockIndex, uint32_t blockIndex) {
+            return outputBlockIndex < blockIndex;
         });
 
         size_t result = static_cast<size_t>(std::distance(begin, it));
@@ -2404,22 +2360,12 @@ namespace CryptoNote
                 return resultOuts;
             }
 
-            std::vector<PackedOutIndex> outputs;
-            if (extractKeyOtputIndexes(
-                    amount, Common::ArrayView<uint32_t>(globalIndexes.data(), globalIndexes.size()), outputs)
-                != ExtractOutputKeysResult::SUCCESS)
-            {
-                logger(Logging::DEBUGGING) << "getRandomOutsByAmount: failed to extract key output indexes";
-                throw std::runtime_error("Invalid output index"); // TODO: make error code
-            }
-
             /* Deciding whether a candidate decoy is mature needs two things: the
-               output's unlock time, and the height it was created at. Both are
-               already indexed - the unlock time in KeyOutputInfo, the height in
-               the PackedOutIndex just read above. Reaching them through the
-               transaction table cost two further reads per batch, the block's
-               transaction hash list and then the whole ExtendedTransactionInfo,
-               ring offsets and all, to look at two fields. */
+               output's unlock time and the height it was created at. Both are in
+               KeyOutputInfo, so this is one read of one table. It used to be two:
+               the unlock time here and the height from a parallel table keyed the
+               same way, which is what folding that table into this one removed.
+               Before that it was four, walking the transaction records. */
             std::vector<KeyOutputInfo> outputInfos;
             if (!requestKeyOutputInfos(
                     amount,
@@ -2431,7 +2377,6 @@ namespace CryptoNote
                 throw std::runtime_error("Error while requesting key output info"); // TODO: make error code
             }
 
-            assert(globalIndexes.size() == outputs.size());
             assert(globalIndexes.size() == outputInfos.size());
 
             uint32_t uppperBlockIndex = 0;
@@ -2443,7 +2388,7 @@ namespace CryptoNote
             for (size_t i = 0; i < outputInfos.size(); ++i)
             {
                 if (!isTransactionSpendTimeUnlocked(outputInfos[i].unlockTime, blockIndex)
-                    || outputs[i].blockIndex > uppperBlockIndex)
+                    || outputInfos[i].blockIndex > uppperBlockIndex)
                 {
                     continue;
                 }

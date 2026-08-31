@@ -162,11 +162,6 @@ namespace CryptoNote
             Common::ArrayView<uint32_t> globalIndexes,
             std::vector<Crypto::PublicKey> &publicKeys) const = 0;
 
-        virtual ExtractOutputKeysResult extractKeyOtputIndexes(
-            uint64_t amount,
-            Common::ArrayView<uint32_t> globalIndexes,
-            std::vector<PackedOutIndex> &outIndexes) const = 0;
-
         virtual ExtractOutputKeysResult extractKeyOtputReferences(
             uint64_t amount,
             Common::ArrayView<uint32_t> globalIndexes,

@@ -105,11 +105,6 @@ namespace CryptoNote
             Common::ArrayView<uint32_t> globalIndexes,
             std::vector<Crypto::PublicKey> &publicKeys) const override;
 
-        ExtractOutputKeysResult extractKeyOtputIndexes(
-            uint64_t amount,
-            Common::ArrayView<uint32_t> globalIndexes,
-            std::vector<PackedOutIndex> &outIndexes) const override;
-
         ExtractOutputKeysResult extractKeyOtputReferences(
             uint64_t amount,
             Common::ArrayView<uint32_t> globalIndexes,

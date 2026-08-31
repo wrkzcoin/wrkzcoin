@@ -1345,22 +1345,6 @@ namespace CryptoNote
         return blockHashes;
     }
 
-    ExtractOutputKeysResult BlockchainCache::extractKeyOtputIndexes(
-        uint64_t amount,
-        Common::ArrayView<uint32_t> globalIndexes,
-        std::vector<PackedOutIndex> &outIndexes) const
-    {
-        assert(!globalIndexes.isEmpty());
-        return extractKeyOutputs(
-            amount,
-            getTopBlockIndex(),
-            globalIndexes,
-            [&](const CachedTransactionInfo &info, PackedOutIndex index, uint32_t globalIndex) {
-                outIndexes.push_back(index);
-                return ExtractOutputKeysResult::SUCCESS;
-            });
-    }
-
     uint32_t BlockchainCache::getTopBlockIndex() const
     {
         assert(!blockInfos.empty());

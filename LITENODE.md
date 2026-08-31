@@ -161,7 +161,7 @@ chain over a forgotten flag would be the worst possible reading of an operator's
 |---|---|---|---|
 | `"j"` | `(amount, globalIndex)` → `KeyOutputInfo` | **yes** | Ring member resolution, decoy serving |
 | `"7"` | key image → block index | **yes** | Double-spend detection |
-| `"b"` | `(amount, idx)` → `PackedOutIndex`, **and** `amount` → output count | **yes** | Decoy maturity check, ring index bounds |
+| `"b"` | `amount` → output count | **yes** | Ring index bounds, global index assignment |
 | `"h"` | the list of distinct amounts | **yes** | Enumerating amounts |
 | `"6"` | `CachedBlockInfo` | **yes** | Difficulty, emission, timestamps, block sizes |
 | `"5"` | block hash → index | **yes** | Chain queries |
@@ -172,10 +172,19 @@ chain over a forgotten flag would be the worst possible reading of an operator's
 | `"f"` | payment ID → tx hash | no | Explorer only |
 | `"e"`, `"g"` | timestamp indexes | no | Answer "which height was this date" for scans that cannot start below `H` anyway |
 
-Two record kinds share the `"b"` prefix — the per-output `PackedOutIndex` and the
-one-per-amount output count — so a `--snapshot-stats` measurement of `"b"` counts
-one extra record per distinct amount. On mainnet that is the 140,079 by which the
-`"b"` row exceeds the `"j"` row, which are otherwise 1:1.
+`"b"` used to hold a second kind of record beside the count: a `PackedOutIndex`
+per output, keyed by `(amount, globalIndex)` exactly as `"j"` is. The two were 1:1
+— 78.7M records against 78.5M, the difference being one count record per distinct
+amount — and only two callers ever read the `PackedOutIndex`, both wanting a
+single field from it. That field, the block an output was created in, now lives in
+`KeyOutputInfo`, and the per-output half of `"b"` is gone.
+
+**This does not affect global indexes.** An output's global index is the *key* of
+these records, not their value, and `"j"` keeps it. The numbering still comes from
+the per-amount counter that remains under `"b"`. What a wallet receives as
+`globalIndex` — inline in `/getwalletsyncdata`, or from
+`/get_global_indexes_for_range` — is read from `ExtendedTransactionInfo` in the
+`"a"` table, and never came from `"b"` at all.
 
 ### `KeyOutputInfo.transactionHash` is zeroed below `H`
 

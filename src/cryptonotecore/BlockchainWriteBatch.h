@@ -48,10 +48,12 @@ namespace CryptoNote
             uint32_t blockIndex,
             const std::vector<Crypto::Hash> &blockTxs);
 
-        BlockchainWriteBatch &insertKeyOutputGlobalIndexes(
-            IBlockchainCache::Amount amount,
-            const std::vector<PackedOutIndex> &outputs,
-            uint32_t totalOutputsCountForAmount);
+        /* The running total of key outputs seen for this amount, which is what
+           assigns global indexes. The per-output records that used to sit beside
+           it under the same prefix are gone - what they held now lives in
+           KeyOutputInfo. */
+        BlockchainWriteBatch &
+            insertKeyOutputCountForAmount(IBlockchainCache::Amount amount, uint32_t totalOutputsCountForAmount);
 
         BlockchainWriteBatch &insertRawBlock(uint32_t blockIndex, const RawBlock &block);
 
@@ -76,11 +78,6 @@ namespace CryptoNote
         BlockchainWriteBatch &removePaymentId(const Crypto::Hash paymentId, uint32_t totalTxsCountForPaytmentId);
 
         BlockchainWriteBatch &removeCachedBlock(const Crypto::Hash &blockHash, uint32_t blockIndex);
-
-        BlockchainWriteBatch &removeKeyOutputGlobalIndexes(
-            IBlockchainCache::Amount amount,
-            uint32_t outputsToRemoveCount,
-            uint32_t totalOutputsCountForAmount);
 
         BlockchainWriteBatch &removeRawBlock(uint32_t blockIndex);
 

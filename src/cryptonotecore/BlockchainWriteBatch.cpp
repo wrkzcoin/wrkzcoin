@@ -73,22 +73,11 @@ BlockchainWriteBatch &BlockchainWriteBatch::insertCachedBlock(
     return *this;
 }
 
-BlockchainWriteBatch &BlockchainWriteBatch::insertKeyOutputGlobalIndexes(
+BlockchainWriteBatch &BlockchainWriteBatch::insertKeyOutputCountForAmount(
     IBlockchainCache::Amount amount,
-    const std::vector<PackedOutIndex> &outputs,
     uint32_t totalOutputsCountForAmount)
 {
-    assert(totalOutputsCountForAmount >= outputs.size());
-    rawDataToInsert.reserve(rawDataToInsert.size() + outputs.size() + 1);
     rawDataToInsert.emplace_back(DB::serialize(DB::KEY_OUTPUT_AMOUNT_PREFIX, amount, totalOutputsCountForAmount));
-    uint32_t currentOutputId = totalOutputsCountForAmount - static_cast<uint32_t>(outputs.size());
-
-    for (const PackedOutIndex &outIndex : outputs)
-    {
-        rawDataToInsert.emplace_back(
-            DB::serialize(DB::KEY_OUTPUT_AMOUNT_PREFIX, std::make_pair(amount, currentOutputId++), outIndex));
-    }
-
     return *this;
 }
 
@@ -178,21 +167,6 @@ BlockchainWriteBatch &BlockchainWriteBatch::removeCachedBlock(const Crypto::Hash
     rawKeysToRemove.emplace_back(DB::serializeKey(DB::BLOCK_HASH_TO_BLOCK_INDEX_PREFIX, blockHash));
     rawDataToInsert.emplace_back(
         DB::serialize(DB::BLOCK_INDEX_TO_BLOCK_HASH_PREFIX, DB::LAST_BLOCK_INDEX_KEY, blockIndex - 1));
-    return *this;
-}
-
-BlockchainWriteBatch &BlockchainWriteBatch::removeKeyOutputGlobalIndexes(
-    IBlockchainCache::Amount amount,
-    uint32_t outputsToRemoveCount,
-    uint32_t totalOutputsCountForAmount)
-{
-    rawKeysToRemove.reserve(rawKeysToRemove.size() + outputsToRemoveCount);
-    rawDataToInsert.emplace_back(DB::serialize(DB::KEY_OUTPUT_AMOUNT_PREFIX, amount, totalOutputsCountForAmount));
-    for (uint32_t i = 0; i < outputsToRemoveCount; ++i)
-    {
-        rawKeysToRemove.emplace_back(
-            DB::serializeKey(DB::KEY_OUTPUT_AMOUNT_PREFIX, std::make_pair(amount, totalOutputsCountForAmount + i)));
-    }
     return *this;
 }
 
