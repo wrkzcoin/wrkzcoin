@@ -1706,7 +1706,38 @@ WalletTypes::WalletStatus WalletBackend::getStatus() const
     status.peerCount = m_daemon->peerCount();
     status.lastKnownHashrate = m_daemon->hashrate();
 
+    status.daemonLiteStartHeight = m_daemon->liteStartHeight();
+
+    /* Only whether we are stalled belongs here; the two heights that go with
+       it are already derivable from walletBlockCount and this field. */
+    status.syncStalledByLiteNode = std::get<0>(m_walletSynchronizer->getSyncGap());
+
     return status;
+}
+
+std::tuple<uint64_t, uint64_t> WalletBackend::liteRescanImpact(const uint64_t scanHeight) const
+{
+    const uint64_t liteStartHeight = m_daemon->liteStartHeight();
+
+    if (liteStartHeight == 0 || scanHeight >= liteStartHeight)
+    {
+        return {0, 0};
+    }
+
+    /* Only the transactions below the floor are actually at stake. A wallet
+       that holds nothing down there loses nothing by rescanning from lower
+       than the daemon can serve, so there is no reason to stand in its way. */
+    uint64_t transactionsLost = 0;
+
+    for (const auto &transaction : getTransactions())
+    {
+        if (transaction.blockHeight != 0 && transaction.blockHeight < liteStartHeight)
+        {
+            transactionsLost++;
+        }
+    }
+
+    return {liteStartHeight, transactionsLost};
 }
 
 /* Returns transactions in the range [startHeight, endHeight - 1] - so if

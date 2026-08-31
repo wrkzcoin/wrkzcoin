@@ -381,3 +381,46 @@ rather than a download - is not implemented.
   transactions", which is a different and wrong answer.
 - Peers asking for a block below the lite height get it reported in `missed_ids`, so they
   ask elsewhere instead of losing the connection.
+
+## Wallet behaviour
+
+Every wallet built on `walletbackend` — zedwallet++, wallet-api, the C API the desktop
+and mobile wallets use, and the wasm web wallet — reads `lite_start_height` from `/info`
+and acts on it. Three cases, and only the first is silent:
+
+| The wallet | What happens |
+|---|---|
+| has scanned nothing yet | Its scan height is floored to `lite_start_height`. A warning is logged; `status` names the floor. |
+| has scanned to a height at or above `lite_start_height` | Nothing changes. It carries on. |
+| has scanned to a height **below** `lite_start_height` | **Sync stops.** |
+
+That third case is the one worth understanding. The daemon would answer from its lite
+height whatever the wallet asked for, so continuing would move the wallet's recorded
+position over blocks nobody ever looked at: the wallet would report itself synced while
+every transaction in the skipped stretch was missing, and the balance would simply be too
+low. There is no error a user would see, which is why it stops instead.
+
+It reports that through `status` in zedwallet++, `isSyncStalledByLiteNode` in wallet-api's
+`GET /status`, and the same field in `wallet_get_status_json`. Both `/status` responses
+also carry `daemonLiteStartHeight`, zero when the daemon holds the whole chain. Recovery
+is to connect a daemon that holds the range, or to reset the wallet to the lite height and
+accept that transactions below it cannot be found here.
+
+The same check catches a hole from any source, not just a lite node: if the first block of
+a sync response sits above where the wallet expects to continue, it is refused rather than
+stored. A pruned daemon, a blockchain cache API or a faulty node produces the same silent
+gap, and none of them announce it.
+
+### Rescanning against a lite node
+
+A rescan below `lite_start_height` starts at the lite height instead, which drops every
+transaction the wallet already holds from underneath it — permanently, as far as that
+daemon is concerned. So a wallet that holds any is refused rather than quietly reset:
+
+- **zedwallet++** names the floor and the number of transactions at stake before the
+  confirmation prompt.
+- **wallet-api** answers `PUT /reset` with `400` and error `62`.
+- **`wallet_reset`** returns `62` (`LITE_NODE_CANNOT_RESCAN_THAT_LOW`) without touching
+  the wallet.
+
+A wallet holding nothing below the floor loses nothing, so it is not stopped.

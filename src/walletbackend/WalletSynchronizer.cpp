@@ -961,6 +961,11 @@ uint64_t WalletSynchronizer::getCurrentScanHeight() const
     return m_blockDownloader.getHeight();
 }
 
+std::tuple<bool, uint64_t, uint64_t> WalletSynchronizer::getSyncGap() const
+{
+    return m_blockDownloader.getSyncGap();
+}
+
 void WalletSynchronizer::swapNode(const std::shared_ptr<Nigel> daemon)
 {
     m_daemon = daemon;

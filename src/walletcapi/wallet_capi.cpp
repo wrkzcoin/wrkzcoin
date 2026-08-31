@@ -618,6 +618,15 @@ wallet_status_t wallet_get_status_json(
         {"minMixin", minMixin},
         {"maxMixin", maxMixin},
         {"defaultMixin", defaultMixin},
+        /* Zero when the daemon holds the whole chain. Non zero means nothing
+           below it can be found through this daemon however far back a scan is
+           started, so a wallet older than this shows an incomplete balance.
+           See LITENODE.md. */
+        {"daemonLiteStartHeight", s.daemonLiteStartHeight},
+        /* Sync has deliberately stopped because this wallet has scanned past a
+           height the daemon cannot serve from. The balance is incomplete and
+           stays that way until a daemon holding the range is connected. */
+        {"isSyncStalledByLiteNode", s.syncStalledByLiteNode},
     };
 
     return alloc_out_string(j.dump(), out_json, out_len);
@@ -702,6 +711,17 @@ wallet_status_t wallet_reset(
     if (status != static_cast<wallet_status_t>(SUCCESS))
     {
         return status;
+    }
+
+    /* A lite daemon serves a rescan from its lite height whatever it is asked
+       for, so this would quietly drop every transaction the wallet holds from
+       below there and never find them again through this daemon. Refuse, so
+       the host application can put the choice to the person whose funds they
+       are. A wallet holding nothing below the floor loses nothing and is not
+       stopped. See LITENODE.md. */
+    if (std::get<1>(instance->liteRescanImpact(scan_height)) != 0)
+    {
+        return static_cast<wallet_status_t>(LITE_NODE_CANNOT_RESCAN_THAT_LOW);
     }
 
     instance->reset(scan_height, timestamp);

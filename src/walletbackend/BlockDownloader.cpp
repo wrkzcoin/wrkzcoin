@@ -52,6 +52,12 @@ BlockDownloader &BlockDownloader::operator=(BlockDownloader &&old)
 
     m_nextDownloadHeight = old.m_nextDownloadHeight.load();
 
+    m_syncGapDetected = old.m_syncGapDetected.load();
+
+    m_syncGapCoveredTo = old.m_syncGapCoveredTo.load();
+
+    m_syncGapDaemonServesFrom = old.m_syncGapDaemonServesFrom.load();
+
     m_daemon = std::move(old.m_daemon);
 
     m_startTimestamp = std::move(old.m_startTimestamp);
@@ -111,6 +117,70 @@ void BlockDownloader::stop()
 uint64_t BlockDownloader::getHeight() const
 {
     return m_synchronizationStatus.getHeight();
+}
+
+std::tuple<bool, uint64_t, uint64_t> BlockDownloader::getSyncGap() const
+{
+    if (!m_syncGapDetected)
+    {
+        return {false, 0, 0};
+    }
+
+    return {true, m_syncGapCoveredTo.load(), m_syncGapDaemonServesFrom.load()};
+}
+
+uint64_t BlockDownloader::highestKnownHeight() const
+{
+    const auto storedHeights = m_storedBlocks.back_n_transform(
+        1, [](const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block) {
+            return std::get<0>(block).blockHeight;
+        });
+
+    const uint64_t processed = m_synchronizationStatus.getHeight();
+
+    return storedHeights.empty() ? processed : std::max(processed, storedHeights.front());
+}
+
+void BlockDownloader::recordSyncGap(const uint64_t haveCoveredTo, const uint64_t daemonServesFrom)
+{
+    const bool alreadyReported = m_syncGapDetected.exchange(true);
+
+    m_syncGapCoveredTo = haveCoveredTo;
+    m_syncGapDaemonServesFrom = daemonServesFrom;
+
+    /* Where we are on the chain is no longer something we can vouch for, so
+       the parallel path must not carry on from a cursor set before this. */
+    m_nextDownloadHeight = 0;
+
+    /* Nothing about the situation changes until the daemon does, so say it
+       once rather than every five seconds for as long as the wallet is open. */
+    if (!alreadyReported)
+    {
+        Logger::logger.log(
+            "Sync stopped. This wallet has scanned to height " + std::to_string(haveCoveredTo)
+                + ", but this daemon holds nothing below height " + std::to_string(daemonServesFrom)
+                + ". Continuing would record those blocks as scanned without ever looking at them, so any "
+                  "transaction between the two heights would be silently missing and the balance would be "
+                  "too low. Connect a daemon that holds the whole chain, or reset this wallet to "
+                + std::to_string(daemonServesFrom)
+                + " and accept that transactions below that height cannot be found here.",
+            Logger::FATAL,
+            {Logger::SYNC, Logger::DAEMON});
+    }
+}
+
+void BlockDownloader::clearSyncGap()
+{
+    if (m_syncGapDetected.exchange(false))
+    {
+        Logger::logger.log(
+            "The daemon now holds the range this wallet still needs. Resuming sync.",
+            Logger::INFO,
+            {Logger::SYNC, Logger::DAEMON});
+    }
+
+    m_syncGapCoveredTo = 0;
+    m_syncGapDaemonServesFrom = 0;
 }
 
 void BlockDownloader::downloader()
@@ -303,14 +373,29 @@ bool BlockDownloader::downloadBlocks()
         return false;
     }
 
-    /* A lite daemon holds nothing below its lite start height, so asking it to
-       begin lower just wastes round trips - it answers from that height anyway.
-       Move our own start up to meet it, once, and say so plainly: any funds this
-       wallet received below that height are invisible through this daemon.
-       See LITENODE.md. */
-    if (const uint64_t liteStartHeight = m_daemon->liteStartHeight();
-        liteStartHeight != 0 && m_startHeight < liteStartHeight && m_synchronizationStatus.getHeight() == 0)
+    /* The highest block we hold, processed or merely downloaded. The block
+       hashes we are about to send as checkpoints are the hashes of these
+       blocks, so this is also the height the daemon will resolve our request
+       to. Read once: the processing thread can only move blocks from the
+       store into the processed count, which leaves this unchanged. */
+    const uint64_t coveredTo = highestKnownHeight();
+
+    /* Whether the response is allowed to have holes in it. Read here rather
+       than after the response, so it is the same answer the request itself
+       was built from - the daemon can be swapped underneath us, and reading
+       it twice could say the holes we asked for were never asked for. */
+    const bool holesExpected =
+        Config::config.wallet.skipCoinbaseTransactions && m_daemon->daemonSkipsEmptyBlocks();
+
+    const uint64_t liteStartHeight = m_daemon->liteStartHeight();
+
+    if (liteStartHeight != 0 && coveredTo == 0 && m_startHeight < liteStartHeight)
     {
+        /* Nothing scanned yet, so there is nothing to lose by starting higher.
+           A lite daemon holds nothing below its lite start height and would
+           answer from there whatever we asked for, so meet it and say plainly
+           what that costs: funds received below that height are invisible
+           through this daemon. See LITENODE.md. */
         Logger::logger.log(
             "Daemon is a lite node holding no data below height " + std::to_string(liteStartHeight)
                 + ". Starting the scan there instead of " + std::to_string(m_startHeight)
@@ -318,8 +403,28 @@ bool BlockDownloader::downloadBlocks()
             Logger::WARNING,
             {Logger::SYNC, Logger::DAEMON});
 
+        /* A wallet created from a timestamp carries it until the first
+           response resolves it to a height. That resolution happens further
+           down and only while a timestamp is still set, so it has to happen
+           here instead - we are about to clear it. */
+        if (m_startTimestamp != 0)
+        {
+            m_subWallets->convertSyncTimestampToHeight(m_startTimestamp, liteStartHeight);
+        }
+
         m_startHeight = liteStartHeight;
         m_startTimestamp = 0;
+    }
+    else if (liteStartHeight != 0 && coveredTo != 0 && coveredTo + 1 < liteStartHeight)
+    {
+        /* We have already scanned part of the chain, and this daemon cannot
+           serve the part we still need. It would answer from its lite height
+           regardless, and storing that would move our recorded position over
+           blocks we never looked at - a silently wrong balance rather than an
+           error. Stop instead, and let getSyncGap() say why. */
+        recordSyncGap(coveredTo, liteStartHeight);
+
+        return false;
     }
 
     const auto blockCheckpoints = getBlockCheckpoints();
@@ -376,6 +481,32 @@ bool BlockDownloader::downloadBlocks()
        bit before */
     m_daemon->resetRequestedBlockCount();
 
+    /* What we get back has to carry on from where we are. The one hole we can
+       expect is a hole we asked for: a daemon told to leave coinbase only
+       blocks out returns heights that are deliberately not contiguous.
+       Anything else means the daemon could not serve the range we asked for
+       and answered from higher up - a lite or pruned node, a blockchain cache
+       API, or a fault - and storing it would move our recorded position over
+       blocks nobody ever looked at.
+
+       A timestamp start is exempt, because there the daemon decides which
+       height the timestamp resolves to and we have nothing to compare against. */
+    if (!holesExpected && m_startTimestamp == 0)
+    {
+        /* Mirrors what the daemon does with the same request: the higher of
+           the block after our last one and the height we were told to start
+           at. */
+        const uint64_t expectedStart =
+            coveredTo == 0 ? m_startHeight : std::max(coveredTo + 1, m_startHeight);
+
+        if (blocks.front().blockHeight > expectedStart)
+        {
+            recordSyncGap(expectedStart == 0 ? 0 : expectedStart - 1, blocks.front().blockHeight);
+
+            return false;
+        }
+    }
+
     /* Timestamp is transient and can change - block height is constant. */
     if (m_startTimestamp != 0)
     {
@@ -404,6 +535,12 @@ bool BlockDownloader::downloadBlocks()
     m_nextDownloadHeight = scannedToHeight != 0
         ? scannedToHeight + 1
         : blocks.back().blockHeight + 1;
+
+    /* Only here, where a response has actually been accepted and stored. A
+       gap that is still there re-records itself silently on the next attempt;
+       clearing it earlier would make a permanent gap log itself as recovered
+       and re-broken once every retry. */
+    clearSyncGap();
 
     return true;
 }
@@ -443,7 +580,7 @@ bool BlockDownloader::downloadBlocksInParallel()
     const uint64_t firstHeight = m_nextDownloadHeight.load();
 
     if (WalletConfig::syncRequestConcurrency < 2 || firstHeight == 0 || m_shouldStop
-        || !m_daemon->daemonSupportsHeightRange())
+        || m_syncGapDetected || !m_daemon->daemonSupportsHeightRange())
     {
         return false;
     }

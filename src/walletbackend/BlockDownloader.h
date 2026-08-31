@@ -55,6 +55,13 @@ class BlockDownloader
     /* Returns height of processed blocks */
     uint64_t getHeight() const;
 
+    /* {stalled, the height we have covered to, the lowest height the daemon
+       can serve}. Set when the two do not meet, which means a stretch of
+       chain that neither side can account for. Downloading stops rather than
+       stepping over it - see downloadBlocks(). Both heights are zero when
+       nothing is wrong. */
+    std::tuple<bool, uint64_t, uint64_t> getSyncGap() const;
+
     void fromJSON(const JSONObject &j, const uint64_t startHeight, const uint64_t startTimestamp);
 
     nlohmann::json toJSON() const;
@@ -104,6 +111,20 @@ class BlockDownloader
     /* Puts the assembled blocks into the store and updates the running byte
        total. Returns the number added. */
     size_t storeDownloadedBlocks(const std::vector<WalletTypes::WalletBlockInfo> &blocks);
+
+    /* The highest height we hold a block for, processed or merely downloaded.
+       This is what the daemon resolves our request to, because the block
+       hashes we send it as checkpoints are the hashes of these blocks. Zero
+       means we hold nothing and the scan has not begun. */
+    uint64_t highestKnownHeight() const;
+
+    /* Records that the chain between the two heights can be covered by
+       neither side, and stands the download down until that changes. */
+    void recordSyncGap(const uint64_t haveCoveredTo, const uint64_t daemonServesFrom);
+
+    /* Clears a gap previously recorded, for when the daemon that could not
+       serve us has been swapped for one that can. */
+    void clearSyncGap();
 
     /* Approximate heap footprint of one stored block */
     static size_t storedBlockMemoryUsage(const std::tuple<WalletTypes::WalletBlockInfo, uint32_t> &block);
@@ -160,4 +181,17 @@ class BlockDownloader
        Atomic because stop() clears it from the stopping thread while the
        download thread may still be setting it. */
     std::atomic<uint64_t> m_nextDownloadHeight = 0;
+
+    /* Set when the daemon cannot serve the range we still need, so continuing
+       would mean recording heights we never scanned. Kept as three atomics
+       rather than a struct behind a lock because the status endpoints read
+       them from other threads while the downloader writes them.
+
+       Not sticky: every sequential attempt re-derives it, so pointing the
+       wallet at a daemon that does hold the range clears it by itself. */
+    std::atomic<bool> m_syncGapDetected = false;
+
+    std::atomic<uint64_t> m_syncGapCoveredTo = 0;
+
+    std::atomic<uint64_t> m_syncGapDaemonServesFrom = 0;
 };

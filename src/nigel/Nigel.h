@@ -139,6 +139,12 @@ class Nigel
        windows at once safe rather than a guess about where each ends. */
     bool daemonSupportsHeightRange() const;
 
+    /* Whether the daemon leaves coinbase only blocks out of a sync response
+       when we ask it to. When it does, the heights we receive are not
+       contiguous by design, and a caller checking for holes has to know that
+       the holes are ones it asked for. */
+    bool daemonSkipsEmptyBlocks() const;
+
     WalletSyncResponse getWalletSyncData(
         const std::vector<Crypto::Hash> blockHashCheckpoints,
         const uint64_t startHeight,

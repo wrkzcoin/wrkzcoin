@@ -122,6 +122,13 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_swap_node(
     uint16_t daemon_port,
     bool daemon_ssl);
 
+/* Rescans the wallet from scan_height. Returns
+   LITE_NODE_CANNOT_RESCAN_THAT_LOW (62) without touching the wallet when the
+   connected daemon holds no data that far back and the wallet already holds
+   transactions from below there - those would be lost with no way to find
+   them again through that daemon. Connect a daemon holding the whole chain,
+   or pass the daemon's lite start height (see daemonLiteStartHeight in
+   wallet_get_status_json). */
 WALLET_CAPI_EXPORT wallet_status_t wallet_reset(
     wallet_handle_t *wallet,
     uint64_t scan_height,

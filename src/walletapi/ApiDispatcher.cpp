@@ -1313,6 +1313,27 @@ std::tuple<Error, uint16_t> ApiDispatcher::resetWallet(const httplib::Request &r
         scanHeight = getJsonValue<uint64_t>(body, "scanHeight");
     }
 
+    /* A lite daemon serves a rescan from its lite height whatever it is asked
+       for, so this would quietly drop every transaction the wallet holds from
+       below there and never find them again through this daemon. There is no
+       way to ask an API caller whether it meant that, so refuse and name both
+       heights. A wallet holding nothing below the floor loses nothing and is
+       not stopped. See LITENODE.md. */
+    if (const auto [liteStartHeight, transactionsLost] = m_walletBackend->liteRescanImpact(scanHeight);
+        transactionsLost != 0)
+    {
+        return {Error(
+                    LITE_NODE_CANNOT_RESCAN_THAT_LOW,
+                    "The daemon this wallet is connected to holds no block data below height "
+                        + std::to_string(liteStartHeight) + ". Rescanning from " + std::to_string(scanHeight)
+                        + " would start at " + std::to_string(liteStartHeight) + " instead, losing "
+                        + std::to_string(transactionsLost)
+                        + " transaction(s) this wallet already holds from below that height. Connect a daemon "
+                          "holding the whole chain, or pass a scanHeight of at least "
+                        + std::to_string(liteStartHeight) + "."),
+                400};
+    }
+
     m_walletBackend->reset(scanHeight, timestamp);
 
     return {SUCCESS, 200};
@@ -1467,7 +1488,17 @@ std::tuple<Error, uint16_t>
                       {"peerCount", status.peerCount},
                       {"hashrate", status.lastKnownHashrate},
                       {"isViewWallet", m_walletBackend->isViewWallet()},
-                      {"subWalletCount", m_walletBackend->getWalletCount()}};
+                      {"subWalletCount", m_walletBackend->getWalletCount()},
+                      /* Zero when the daemon holds the whole chain. Non zero
+                         means nothing below it can be found through this
+                         daemon however far back a scan is started - see
+                         LITENODE.md. */
+                      {"daemonLiteStartHeight", status.daemonLiteStartHeight},
+                      /* Sync has deliberately stopped because this wallet has
+                         scanned past a height the daemon cannot serve from.
+                         The balance is incomplete and will stay that way
+                         until a daemon holding the range is connected. */
+                      {"isSyncStalledByLiteNode", status.syncStalledByLiteNode}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 

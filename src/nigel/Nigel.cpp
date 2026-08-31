@@ -710,6 +710,11 @@ bool Nigel::daemonSupportsHeightRange() const
     return m_daemonSupportsHeightRange;
 }
 
+bool Nigel::daemonSkipsEmptyBlocks() const
+{
+    return m_daemonSkipsEmptyBlocks;
+}
+
 WalletSyncResponse Nigel::getWalletSyncDataRange(
     const size_t slot,
     const uint64_t startHeight,

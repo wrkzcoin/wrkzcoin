@@ -407,6 +407,17 @@ namespace WalletTypes
         uint32_t peerCount;
         /* The hashrate (based on the last block the daemon has synced) */
         uint64_t lastKnownHashrate;
+        /* The lowest height the daemon holds anything for. Zero when it holds
+           the whole chain. A wallet cannot find funds received below this
+           height through this daemon, however far back it is told to scan.
+           See LITENODE.md. */
+        uint64_t daemonLiteStartHeight;
+        /* Set when this wallet has already scanned past a height the daemon
+           cannot serve from, leaving a stretch of chain neither side can
+           cover. Sync is deliberately stopped rather than jumping the gap,
+           because a jump would look exactly like being synced while hiding
+           every transaction in between. */
+        bool syncStalledByLiteNode;
     };
 
     /* A structure just used to display locked balance, due to change from
