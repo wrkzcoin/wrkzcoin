@@ -235,6 +235,19 @@ namespace
             exit(1);
         }
 
+        /* Every explorer endpoint reads the transaction records a lite node drops,
+           so below the lite height they answer with nothing or fail outright. That
+           is a node that looks like it works and quietly reports an incomplete
+           chain, which is worse than one that refuses to start. */
+        if (config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite and --daemon-mode explorer cannot be combined. Block and transaction lookups below the "
+                   "lite height need the transaction records a lite node never stores, so the explorer endpoints "
+                   "would return nothing for those heights rather than report an error.";
+            exit(1);
+        }
+
         if (storedLiteHeight)
         {
             if (*storedLiteHeight != config.liteHeight)

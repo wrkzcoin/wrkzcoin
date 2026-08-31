@@ -84,12 +84,14 @@ Lite mode suits an operator when **you control which wallets connect**:
 
 Never make a lite node a seed node.
 
-### Do not combine lite mode with explorer mode
+### Lite mode and explorer mode are mutually exclusive
 
-`--daemon-mode explorer --lite` is currently accepted but does not work. Every
-explorer endpoint below `H` - `getBlocksByHeight`, `getBlockDetailsByHash`,
-`getTransactionDetailsByHash`, `queryblocksdetailed` - reads the transaction records
-lite mode drops, so they fail or return nothing for those heights.
+`--daemon-mode explorer --lite` is refused at startup. Every explorer endpoint below
+`H` - `getBlocksByHeight`, `getBlockDetailsByHash`, `getTransactionDetailsByHash`,
+`queryblocksdetailed` - reads the transaction records lite mode drops, so it would
+return nothing for those heights rather than report an error. A node that looks like
+it works while quietly serving an incomplete chain is worse than one that refuses to
+start.
 
 Related, for anything you have built on the RPC: `/get_global_indexes_for_range`
 **refuses** below `H` rather than narrowing the range, so historical range queries
@@ -238,10 +240,36 @@ daemon exits and names the highest value the network currently allows.
 |---|---|
 | `--lite` without `--lite-height` | refused - there is no safe default |
 | `--lite --prune` | refused - mutually exclusive |
+| `--lite --daemon-mode explorer` | refused - explorer needs records lite drops |
 | `--lite` on a database synced in full | refused - delete the data directory yourself |
 | no `--lite` on a lite database | refused - it has no block bodies to serve |
 | `--lite-height H'` on a database built at `H` | refused - `H` cannot be changed |
 | `--rewind-to-height` below `H` | refused - those blocks cannot be undone |
+
+## Changing the lite height
+
+`H` cannot be changed in place, but a database can be rebuilt at a different one:
+
+```
+Wrkzd --resync --lite --lite-height <new H>
+```
+
+`--resync` deletes the chain and the peer state, and the rebuild then starts at the
+new height. This is the supported way to move `H`, and the reason changing
+`--lite-height` on its own is refused: the destructive step has to be asked for
+rather than inferred.
+
+For an **embedded daemon**, prefer restarting the process with these flags over
+adding a reset call to the RPC. Rewind and resync are deliberately startup-only:
+an operation that needs a restart cannot be triggered by a stray request, and the
+daemon's RPC has no authentication. A host application already controls the daemon
+process, so it does not need the extra surface. Restarting also makes any connected
+wallet reconnect and re-read `lite_start_height`, which it only reads when it starts
+a scan.
+
+Note this is a full resync. Raising `H` on an existing database - turning blocks
+between the old and new height from full into index-only, which is a deletion pass
+rather than a download - is not implemented.
 
 ## RPC behaviour
 
