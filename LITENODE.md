@@ -238,6 +238,27 @@ A real mainnet measurement, lite node at `H` = 4,000,000, top block 4,201,153:
 | *whole database, logical* | | *28,492.9 MB* |
 | **whole database, on disk** | | **9.4 GiB — 2.96x** |
 
+### Squeezing the database further
+
+Two RocksDB knobs are exposed, both defaulting to RocksDB's own behaviour so
+nothing changes unless you ask:
+
+```
+--db-compression-dict-bytes <n>   per-SST ZSTD dictionary, 0 = off (default)
+--db-block-size <kb>              SST data block size, default 4
+```
+
+A dictionary is worth trying on this data — hundreds of millions of small records
+that agree on everything but a few high-entropy bytes, where plain block
+compression relearns the framing every 4 KiB. Larger blocks give the compressor
+more context and cost more decompression per point-lookup miss.
+
+Both apply only to **newly written** SST files, so after changing either, run
+`compact_db force` in the console. A plain `compact_db` will not do it: RocksDB
+skips the bottommost level unless forced, and on a compacted database that level
+is nearly all of it. `force` rewrites everything, so it wants free space of about
+the database's size and takes a while.
+
 ### What that means for a snapshot format
 
 The compressor has already taken the framing. `KeyOutputInfo` is 74 bytes of

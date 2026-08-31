@@ -346,6 +346,15 @@ namespace DaemonConfig
             ("db-enable-compression",
              "Enable database compression",
              cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
+            ("db-compression-dict-bytes",
+             "Size of the per-SST ZSTD dictionary in bytes, 0 to disable. Trades compaction time for a "
+             "smaller database; only applies to newly written files, so run `compact_db force` after changing it",
+             cxxopts::value<uint64_t>()->default_value("0"),
+             "#")
+            ("db-block-size",
+             "Size of an uncompressed SST data block in kilobytes. Larger compresses better and reads slower",
+             cxxopts::value<uint64_t>()->default_value("4"),
+             "#")
             ("db-max-open-files",
              "Number of files that can be used by the database at one time " + maxOpenFiles,
              cxxopts::value<int>(),
@@ -524,6 +533,16 @@ namespace DaemonConfig
             if (cli.count("log-level") > 0)
             {
                 config.logLevel = cli["log-level"].as<int>();
+            }
+
+            if (cli.count("db-compression-dict-bytes") > 0)
+            {
+                config.dbCompressionDictBytes = cli["db-compression-dict-bytes"].as<uint64_t>();
+            }
+
+            if (cli.count("db-block-size") > 0)
+            {
+                config.dbBlockSizeKB = cli["db-block-size"].as<uint64_t>();
             }
 
             if (cli.count("db-enable-compression") > 0)
@@ -915,6 +934,14 @@ namespace DaemonConfig
                     {
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
+                }
+                else if (cfgKey.compare("db-compression-dict-bytes") == 0)
+                {
+                    config.dbCompressionDictBytes = std::stoull(cfgValue);
+                }
+                else if (cfgKey.compare("db-block-size") == 0)
+                {
+                    config.dbBlockSizeKB = std::stoull(cfgValue);
                 }
                 else if (cfgKey.compare("db-enable-compression") == 0)
                 {
@@ -1491,6 +1518,16 @@ namespace DaemonConfig
         config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
         config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
+        if (j.contains("db-compression-dict-bytes"))
+        {
+            config.dbCompressionDictBytes = j["db-compression-dict-bytes"].get<uint64_t>();
+        }
+
+        if (j.contains("db-block-size"))
+        {
+            config.dbBlockSizeKB = j["db-block-size"].get<uint64_t>();
+        }
+
         if (j.contains("db-enable-compression"))
         {
             config.enableDbCompression = j["db-enable-compression"].get<bool>();
@@ -1827,6 +1864,8 @@ namespace DaemonConfig
         j["no-console"] = config.noConsole;
         j["skip-boot-compaction"] = config.skipBootCompaction;
         j["db-enable-compression"] = config.enableDbCompression;
+        j["db-compression-dict-bytes"] = config.dbCompressionDictBytes;
+        j["db-block-size"] = config.dbBlockSizeKB;
         j["db-max-open-files"] = config.dbMaxOpenFiles;
         j["db-read-buffer-size"] = config.dbReadCacheSizeMB;
         j["db-threads"] = config.dbThreads;

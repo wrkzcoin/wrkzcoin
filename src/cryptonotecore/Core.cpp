@@ -3280,7 +3280,7 @@ namespace CryptoNote
         return compactDatabaseDetailed().first;
     }
 
-    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed()
+    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed(bool rewriteBottommost)
     {
         IBlockchainCache *mainChain = chainsLeaves[0];
         auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
@@ -3290,7 +3290,7 @@ namespace CryptoNote
             return {make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR), "No database-backed blockchain cache"};
         }
 
-        return dbCache->compactDatabaseDetailed();
+        return dbCache->compactDatabaseDetailed(rewriteBottommost);
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

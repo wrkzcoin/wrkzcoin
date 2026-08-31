@@ -256,7 +256,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     m_consoleHandler.setHandler(
         "compact_db",
         std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
-        "Manage DB compaction: compact_db [start|status|wait]");
+        "Manage DB compaction: compact_db [start|status|wait|force]");
     m_consoleHandler.setHandler(
         "ban",
         std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1),
@@ -975,11 +975,20 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
 {
     const std::string sub = args.empty() ? "start" : args[0];
 
-    if (sub != "start" && sub != "status" && sub != "wait")
+    if (sub != "start" && sub != "status" && sub != "wait" && sub != "force")
     {
-        std::cout << "Usage: compact_db [start|status|wait]" << std::endl;
+        std::cout << "Usage: compact_db [start|status|wait|force]" << std::endl;
         return true;
     }
+
+    /* An ordinary compaction leaves the bottommost level alone, and after the
+       first one that level holds essentially the whole database. That is the
+       right default - it reclaims space from deletes without rewriting terabytes
+       of settled data - but it means changed compression settings never reach
+       what is already written. `force` is how you apply them: it rewrites
+       everything, so it is slow and wants free space of about the database's
+       size. */
+    const bool rewriteBottommost = (sub == "force");
 
     std::lock_guard<std::mutex> lock(m_compactionMutex);
     refresh_compaction_state_locked();
@@ -1065,8 +1074,10 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
     m_compactionStartedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
     m_compactionRunning = true;
     create_compaction_marker_locked();
-    logger(Logging::INFO) << "Starting DB compaction (manual console request).";
-    m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
+    logger(Logging::INFO) << "Starting DB compaction (manual console request)"
+                          << (rewriteBottommost ? ", rewriting the bottommost level." : ".");
+    m_compactionTask = std::async(
+        std::launch::async, [this, rewriteBottommost]() { return m_core.compactDatabaseDetailed(rewriteBottommost); });
 
     std::cout << InformationMsg("DB compaction started in background. Use `compact_db status` or `compact_db wait`.")
               << std::endl;

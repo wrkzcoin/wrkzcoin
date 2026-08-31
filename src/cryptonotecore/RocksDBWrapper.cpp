@@ -285,21 +285,35 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
 
 std::error_code RocksDBWrapper::compact()
 {
-    return compactDetailed().first;
+    return compactDetailed(false).first;
 }
 
-std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
+std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed(bool rewriteBottommost)
 {
     if (state.load() != INITIALIZED)
     {
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
-    logger(INFO) << "Starting RocksDB full compaction...";
+    logger(INFO) << "Starting RocksDB full compaction"
+                 << (rewriteBottommost ? " (rewriting the bottommost level)..." : "...");
 
     rocksdb::CompactRangeOptions options;
     options.change_level = true;
     options.target_level = -1;
+
+    /* CompactRange leaves the bottommost level alone unless there is a compaction
+     * filter, and there is none here. After an earlier full compaction that level
+     * holds essentially the whole database, so an ordinary compaction rewrites
+     * almost nothing - which is what you want for reclaiming space after deletes,
+     * and useless for applying changed compression settings to data already
+     * written. kForce rather than kForceOptimized because the latter skips files
+     * a previous manual compaction produced, and those are exactly the ones still
+     * carrying the old settings. */
+    if (rewriteBottommost)
+    {
+        options.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForce;
+    }
 
     const rocksdb::Status status = db->CompactRange(options, nullptr, nullptr);
     if (!status.ok())
@@ -429,8 +443,23 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     // Keep bottom-most level compressed as well when compression is enabled.
     fOptions.bottommost_compression = compressionLevel;
 
+    /* A per-SST ZSTD dictionary. Off unless asked for: it costs training time on
+     * every compaction, and what it buys depends entirely on how repetitive the
+     * records are. See DataBaseConfig::compressionDictBytes for why this database
+     * is a good candidate. The trainer is fed a multiple of the dictionary size,
+     * which is what RocksDB recommends over sampling less. */
+    if (config.compressionEnabled && config.compressionDictBytes > 0)
+    {
+        fOptions.compression_opts.max_dict_bytes = static_cast<uint32_t>(config.compressionDictBytes);
+        fOptions.compression_opts.zstd_max_train_bytes = static_cast<uint32_t>(config.compressionDictBytes * 100);
+
+        fOptions.bottommost_compression_opts = fOptions.compression_opts;
+        fOptions.bottommost_compression_opts.enabled = true;
+    }
+
     rocksdb::BlockBasedTableOptions tableOptions;
     tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize - rowCacheSize);
+    tableOptions.block_size = static_cast<size_t>(config.blockSize);
 
     /* This workload is almost entirely point lookups - block hash to index,
      * index to raw block, transaction hash to transaction. Without a bloom

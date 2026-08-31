@@ -266,7 +266,7 @@ namespace CryptoNote
 
         std::error_code compactDatabase();
 
-        std::pair<std::error_code, std::string> compactDatabaseDetailed();
+        std::pair<std::error_code, std::string> compactDatabaseDetailed(bool rewriteBottommost = false);
 
       private:
         const Currency &currency;

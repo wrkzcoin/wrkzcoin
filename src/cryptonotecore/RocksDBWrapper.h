@@ -49,7 +49,7 @@ namespace CryptoNote
 
         std::error_code compact() override;
 
-        std::pair<std::error_code, std::string> compactDetailed() override;
+        std::pair<std::error_code, std::string> compactDetailed(bool rewriteBottommost) override;
 
         void recreate() override;
 

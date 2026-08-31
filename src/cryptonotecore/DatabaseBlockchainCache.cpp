@@ -3133,9 +3133,9 @@ namespace CryptoNote
         return database.compact();
     }
 
-    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed()
+    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed(bool rewriteBottommost)
     {
-        return database.compactDetailed();
+        return database.compactDetailed(rewriteBottommost);
     }
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>

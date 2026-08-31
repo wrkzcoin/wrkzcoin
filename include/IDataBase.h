@@ -46,6 +46,27 @@ namespace CryptoNote
         uint64_t readCacheSize;
 
         bool compressionEnabled;
+
+        /* Size of the ZSTD dictionary trained per SST file, in bytes. Zero, the
+           default, disables dictionary compression entirely.
+
+           Plain block compression only ever sees one block at a time - about
+           fifty records at the default block size - so it relearns this
+           database's repeated key framing in every block it writes. A trained
+           dictionary is shared by the whole file, which is what this shape of
+           data wants: hundreds of millions of small records that differ in a few
+           high-entropy bytes and agree on everything else. Applies to newly
+           written SST files, so an existing database needs a compaction that
+           rewrites the bottommost level before it shows up. */
+        uint64_t compressionDictBytes = 0;
+
+        /* Uncompressed size of an SST data block. RocksDB's default is 4 KiB.
+
+           Larger blocks give the compressor more context and shrink the index,
+           at the cost of decompressing more bytes for a point lookup that misses
+           the row and block caches. This workload is almost entirely point
+           lookups, which is why the default is left where RocksDB put it. */
+        uint64_t blockSize = 4 * 1024;
     };
 
     class IDataBase
@@ -76,7 +97,11 @@ namespace CryptoNote
 
         virtual std::error_code compact() = 0;
 
-        virtual std::pair<std::error_code, std::string> compactDetailed() = 0;
+        /* rewriteBottommost forces the bottommost level to be rewritten. Needed
+           after changing compression settings, which otherwise only apply to data
+           written from then on. It rewrites the whole database, so it is slow and
+           wants free space of about the database's size. */
+        virtual std::pair<std::error_code, std::string> compactDetailed(bool rewriteBottommost) = 0;
 
         virtual void recreate() = 0;
 

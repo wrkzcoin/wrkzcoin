@@ -60,6 +60,8 @@ namespace DaemonConfig
             printGenesisTx = false;
             dumpConfig = false;
             enableDbCompression = true;
+            dbCompressionDictBytes = 0;
+            dbBlockSizeKB = 4;
             resync = false;
             importChain = false;
             exportChain = false;
@@ -271,6 +273,13 @@ namespace DaemonConfig
         bool dumpConfig;
 
         bool enableDbCompression;
+
+        /* Per-SST ZSTD dictionary size in bytes; 0 disables it. See
+           DataBaseConfig::compressionDictBytes. */
+        uint64_t dbCompressionDictBytes;
+
+        /* SST data block size in kilobytes. RocksDB's default is 4. */
+        uint64_t dbBlockSizeKB;
     };
 
     DaemonConfiguration initConfiguration(const char *path);
