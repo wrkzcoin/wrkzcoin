@@ -14,6 +14,7 @@
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <chrono>
 #include <cstdio>
 #include <deque>
 #include <iterator>
@@ -3069,9 +3070,19 @@ namespace CryptoNote
 
         std::map<std::string, StorageStats> result;
 
+        /* The scans run in the order above and the biggest table comes first, so
+           without a line per table this is many silent minutes on a synced chain
+           - and four times that on a full node. Report each one as it lands. */
+        size_t tableNumber = 0;
+
         for (const auto &[name, prefix] : tables)
         {
             StorageStats stats;
+
+            const auto started = std::chrono::steady_clock::now();
+
+            logger(Logging::INFO) << "measureStorage: walking " << name << " (" << ++tableNumber << "/"
+                                  << tables.size() << ")...";
 
             const auto error =
                 database.iterate(tableKeyPrefix(prefix), [&stats](const std::string &key, const std::string &value) {
@@ -3086,6 +3097,12 @@ namespace CryptoNote
                 logger(Logging::ERROR) << "measureStorage: failed walking " << name << ": " << error.message();
                 throw std::system_error(error);
             }
+
+            const auto seconds =
+                std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
+
+            logger(Logging::INFO) << "measureStorage: " << name << ": " << stats.records << " records, "
+                                  << (stats.totalBytes() / (1024 * 1024)) << " MB logical, " << seconds << "s";
 
             result.emplace(name, stats);
         }

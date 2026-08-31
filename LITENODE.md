@@ -161,16 +161,21 @@ chain over a forgotten flag would be the worst possible reading of an operator's
 |---|---|---|---|
 | `"j"` | `(amount, globalIndex)` → `KeyOutputInfo` | **yes** | Ring member resolution, decoy serving |
 | `"7"` | key image → block index | **yes** | Double-spend detection |
-| `"b"` | `(amount, idx)` → `PackedOutIndex` | **yes** | Decoy maturity check |
-| `"h"` | per-amount output counts | **yes** | Ring index bounds |
+| `"b"` | `(amount, idx)` → `PackedOutIndex`, **and** `amount` → output count | **yes** | Decoy maturity check, ring index bounds |
+| `"h"` | the list of distinct amounts | **yes** | Enumerating amounts |
 | `"6"` | `CachedBlockInfo` | **yes** | Difficulty, emission, timestamps, block sizes |
 | `"5"` | block hash → index | **yes** | Chain queries |
 | `"4"` | raw block body | no | Where ring signatures live — the bulk of the chain |
 | `"a"` | `ExtendedTransactionInfo` | no | Only needed for rescan and explorer |
-| `"1"` | block index → tx hashes | no | Only read alongside `"a"` |
+| `"1"` | block index → tx hashes | written empty | `insertCachedBlock` writes this key for every block; below `H` the list is empty |
 | `"0"` | block index → key images | no | Rewind index only; a lite node never rewinds that far |
 | `"f"` | payment ID → tx hash | no | Explorer only |
 | `"e"`, `"g"` | timestamp indexes | no | Answer "which height was this date" for scans that cannot start below `H` anyway |
+
+Two record kinds share the `"b"` prefix — the per-output `PackedOutIndex` and the
+one-per-amount output count — so a `--snapshot-stats` measurement of `"b"` counts
+one extra record per distinct amount. On mainnet that is the 140,079 by which the
+`"b"` row exceeds the `"j"` row, which are otherwise 1:1.
 
 The running transaction counter is still updated for skipped transactions, so
 `getBlockchainTransactionCount()` and `tx_count` in `/info` stay chain-wide totals.
@@ -191,26 +196,50 @@ Wrkzd --snapshot-stats --data-dir <dir>
 
 Rows tagged `(snapshot)` are what a lite-node snapshot must carry.
 
-A measurement at 27,956 blocks (lite height 3,000) gives the shape of it:
+**The byte totals are logical, not on-disk.** They are the key and value bytes as
+the records deserialise; RocksDB compresses them on the way to disk. The report
+prints the directory size and the ratio alongside them, because every decision
+about snapshot size was previously being made against a number about three times
+too large.
 
-| Table | Records | Stored |
+A real mainnet measurement, lite node at `H` = 4,000,000, top block 4,201,153:
+
+| Table | Records | Logical |
 |---|---|---|
-| key output info `"j"` | 1,825,692 | 358.7 MB |
-| key output indexes `"b"` | 1,825,770 | 139.3 MB |
-| spent key images `"7"` | 347,577 | 26.8 MB |
-| block info `"6"` | 27,957 | 6.3 MB |
-| **snapshot payload** | | **531.2 MB** |
+| key output info `"j"` | 78,534,957 | 15,428.7 MB |
+| key output indexes `"b"` | 78,675,036 | 5,999.2 MB |
+| spent key images `"7"` | 67,187,899 | 5,190.1 MB |
+| block info `"6"` | 4,201,154 | 953.6 MB |
+| **snapshot payload** | 228,599,046 | **27,571.6 MB** |
+| *whole database, logical* | | *28,492.9 MB* |
+| **whole database, on disk** | | **9.4 GiB — 2.96x** |
 
-Two things to take from it. **Key outputs are ~94% of a snapshot** — block info is
-about 1%, so shrinking the block section is not worth doing. And the stored form
-carries heavy per-record framing: `KeyOutputInfo` is 74 bytes of payload in 196
-bytes on disk, because the KV binary format writes field names into every record.
-A packed canonical dump is roughly 3.2x smaller than these totals, and merging
-`"j"` with `"b"` (they are 1:1 by `(amount, globalIndex)`) drops a duplicated key
-encoding on top of that.
+### What that means for a snapshot format
 
-Do not extrapolate the table above to a full chain: early blocks are dense in
-denominated outputs and are not representative. Measure on a synced node.
+The compressor has already taken the framing. `KeyOutputInfo` is 74 bytes of
+payload in ~206 bytes of stored record because the KV binary format writes field
+names into every one — and repeated field names are exactly what ZSTD removes.
+So a packed canonical dump does **not** save 3x on top of what you see on disk;
+it saves what is left after compression, which is not much.
+
+The floor is the high-entropy payload, which no format and no compressor touches:
+
+| | records | random bytes each | irreducible |
+|---|---|---|---|
+| key output info — `publicKey` + `transactionHash` | 78.53M | 64 | 4.68 GiB |
+| spent key images — the image itself | 67.19M | 32 | 2.00 GiB |
+| block hashes — block info + hash index | 4.20M | 32 x2 | 0.25 GiB |
+| everything else | | | ~0.3 GiB |
+| **floor** | | | **~7.2 GiB** |
+
+Against 9.4 GiB actually on disk. RocksDB with ZSTD is already within about 25%
+of the entropy floor, so a bespoke snapshot format would buy roughly 20% over a
+tarball of a compacted `DB` directory — in exchange for a serialiser, a verifier
+and a new trust surface. **The lever worth pulling is dropping fields, not
+framing**: see the `transactionHash` note under "What is retained" below.
+
+Do not extrapolate a measurement at one height to another: early blocks are dense
+in denominated outputs and are not representative. Measure on a synced node.
 
 ## Running one
 

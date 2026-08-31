@@ -73,6 +73,46 @@ namespace
        DatabaseBlockchainCache.cpp. */
     const std::string DB_SCHEME_VERSION_KEY = "db_scheme_version";
 
+    /* Sum of the SST and log files a database directory occupies. Zero if the
+       directory cannot be walked, which the caller treats as "do not report it"
+       rather than as a size. */
+    uint64_t directorySize(const fs::path &directory)
+    {
+        std::error_code ec;
+        uint64_t bytes = 0;
+
+        fs::recursive_directory_iterator it(directory, ec), end;
+
+        if (ec)
+        {
+            return 0;
+        }
+
+        for (; it != end; it.increment(ec))
+        {
+            if (ec)
+            {
+                break;
+            }
+
+            std::error_code entryEc;
+
+            if (!it->is_regular_file(entryEc) || entryEc)
+            {
+                continue;
+            }
+
+            const auto size = it->file_size(entryEc);
+
+            if (!entryEc)
+            {
+                bytes += size;
+            }
+        }
+
+        return bytes;
+    }
+
     class DaemonModeProfileReadBatch : public IReadBatch
     {
       public:
@@ -739,7 +779,7 @@ int main(int argc, char *argv[])
             };
 
             std::cout << std::endl
-                      << "Storage by table (top block " << ccore->getTopBlockIndex() << ")" << std::endl
+                      << "Storage by table, logical bytes (top block " << ccore->getTopBlockIndex() << ")" << std::endl
                       << std::string(78, '-') << std::endl;
 
             for (const auto &entry : stats)
@@ -757,14 +797,36 @@ int main(int argc, char *argv[])
             }
 
             std::cout << std::string(78, '-') << std::endl
-                      << std::left << std::setw(36) << "TOTAL measured" << std::right << std::setw(14) << ""
+                      << std::left << std::setw(36) << "TOTAL measured (logical)" << std::right << std::setw(14) << ""
                       << std::setw(16) << mb(totalBytes) << std::endl
-                      << std::left << std::setw(36) << "Snapshot payload (as stored)" << std::right << std::setw(14)
-                      << snapshotRecords << std::setw(16) << mb(snapshotBytes) << std::endl
-                      << std::endl
-                      << "The (snapshot) rows are what a lite node snapshot must carry. A canonical" << std::endl
-                      << "dump is smaller than these totals: they include per-key framing a packed" << std::endl
-                      << "format does not repeat. See LITENODE.md." << std::endl
+                      << std::left << std::setw(36) << "Snapshot payload (logical)" << std::right << std::setw(14)
+                      << snapshotRecords << std::setw(16) << mb(snapshotBytes) << std::endl;
+
+            /* Without this the totals read as a directory size and are wrong by
+               the compression ratio - which on a synced chain is about three.
+               Every decision about snapshot size was being made against the
+               logical number, so print what the thing actually occupies. */
+            const uint64_t onDiskBytes = directorySize(fs::path(dbConfig.dataDir) / "DB");
+
+            if (onDiskBytes > 0)
+            {
+                std::ostringstream ratio;
+                ratio << std::fixed << std::setprecision(2)
+                      << (static_cast<double>(totalBytes) / static_cast<double>(onDiskBytes)) << "x";
+
+                std::cout << std::left << std::setw(36) << "On disk (compressed)" << std::right << std::setw(14) << ""
+                          << std::setw(16) << mb(onDiskBytes) << std::endl
+                          << std::left << std::setw(36) << "Compression ratio" << std::right << std::setw(14) << ""
+                          << std::setw(16) << ratio.str() << std::endl;
+            }
+
+            std::cout << std::endl
+                      << "These are logical key and value bytes, not what the database occupies." << std::endl
+                      << "RocksDB compresses them on the way to disk, and what compresses best is" << std::endl
+                      << "the per-key field-name framing - the very thing a packed snapshot format" << std::endl
+                      << "would remove. So a packed dump saves far less than the logical totals" << std::endl
+                      << "suggest; the floor is the high-entropy payload. The (snapshot) rows are" << std::endl
+                      << "what a lite node snapshot must carry. See LITENODE.md." << std::endl
                       << std::endl;
 
             exit(0);
