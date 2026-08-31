@@ -73,6 +73,13 @@ class DaemonCommandsHandler
 
     httplib::Client m_rpcServer;
 
+    /* The maintenance scheduler polls /info on its own client rather than
+       sharing the console's. httplib serialises requests per client, so one
+       client meant an operator's `status` could queue behind a background poll
+       - a console that looks stuck for reasons that have nothing to do with
+       the command just typed. */
+    httplib::Client m_maintenanceRpcServer;
+
     Logging::LoggerRef logger;
 
     DaemonConfig::DaemonConfiguration m_config;
@@ -120,6 +127,8 @@ class DaemonCommandsHandler
     bool ban(const std::vector<std::string> &args);
 
     httplib::Result rpc_get(const std::string &path);
+
+    httplib::Result rpc_get(httplib::Client &client, const std::string &path);
 
     void refresh_compaction_state_locked();
 

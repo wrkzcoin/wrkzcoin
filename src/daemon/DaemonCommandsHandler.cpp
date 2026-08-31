@@ -153,13 +153,18 @@ namespace
 
 httplib::Result DaemonCommandsHandler::rpc_get(const std::string &path)
 {
+    return rpc_get(m_rpcServer, path);
+}
+
+httplib::Result DaemonCommandsHandler::rpc_get(httplib::Client &client, const std::string &path)
+{
     if (m_config.rpcAccessToken.empty())
     {
-        return m_rpcServer.Get(path.c_str());
+        return client.Get(path.c_str());
     }
 
     httplib::Headers headers = {{"X-API-Key", m_config.rpcAccessToken}};
-    return m_rpcServer.Get(path.c_str(), headers);
+    return client.Get(path.c_str(), headers);
 }
 
 DaemonCommandsHandler::DaemonCommandsHandler(
@@ -175,6 +180,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     logger(log, "daemon"),
     m_logManager(log),
     m_rpcServer(rpcIpcPath.empty() ? ip : rpcIpcPath, port),
+    m_maintenanceRpcServer(rpcIpcPath.empty() ? ip : rpcIpcPath, port),
     m_config(config)
 {
     /* The console is the most local caller the daemon has. When an IPC socket
@@ -183,6 +189,18 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     if (!rpcIpcPath.empty())
     {
         Common::Ipc::configureClient(m_rpcServer);
+        Common::Ipc::configureClient(m_maintenanceRpcServer);
+    }
+
+    /* Both clients talk to a server in this same process over the loopback, so
+       anything that takes seconds means the daemon is busy, not that the network
+       is slow. Stated explicitly rather than inherited from httplib's defaults,
+       because what these bound is how long the console can appear to hang. */
+    for (httplib::Client *client : {&m_rpcServer, &m_maintenanceRpcServer})
+    {
+        client->set_connection_timeout(2, 0);
+        client->set_read_timeout(5, 0);
+        client->set_write_timeout(5, 0);
     }
 
     m_consoleHandler.setHandler(
@@ -1158,14 +1176,14 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
 
-        std::lock_guard<std::mutex> lock(m_compactionMutex);
-        refresh_compaction_state_locked();
-
-        const uint64_t now = static_cast<uint64_t>(time(nullptr));
-        const uint64_t currentHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
-
+        /* Polled before the lock is taken, and on this thread's own client.
+           This is a round trip to an HTTP server inside this same process, and
+           holding the compaction mutex across it made a console `compact_db`
+           wait on a network call for no reason at all. The state it updates -
+           the near sync streak and the check interval - is touched only by this
+           thread, so it needs no lock of its own. */
         {
-            auto res = rpc_get("/info");
+            auto res = rpc_get(m_maintenanceRpcServer, "/info");
             if (res && res->status == 200)
             {
                 nlohmann::json resp;
@@ -1203,6 +1221,12 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
                 }
             }
         }
+
+        std::lock_guard<std::mutex> lock(m_compactionMutex);
+        refresh_compaction_state_locked();
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        const uint64_t currentHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
 
         const fs::path dbPath = fs::path(m_config.dataDirectory) / "DB";
         const uint64_t freeBytes = getAvailableBytes(dbPath);
