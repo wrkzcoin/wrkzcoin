@@ -232,6 +232,9 @@ daemon exits and names the highest value the network currently allows.
 **Monitoring**
 
 - `/info` reports `lite` and `lite_start_height`
+- `status` shows `Lite Node`, and on a lite node `Full Block Data From`. While the
+  node's own tip is still below `H` it also shows `Lite Sync Stage: Index only`,
+  which is why `Block Version` reads `v0` for that part of the sync
 - `print_cn` shows which peers are pruned
 
 **Things that will refuse to run**

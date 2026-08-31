@@ -719,6 +719,29 @@ bool DaemonCommandsHandler::status(const std::vector<std::string> &args)
     statusTable.push_back({"Pruned Node",          getBoolFromJSON(resp, "pruned") ? "Yes" : "No"});
     statusTable.push_back({"Prune Depth",          std::to_string(getUint64FromJSON(resp, "prune_depth"))});
     statusTable.push_back({"Prune Capability Fork Active", getBoolFromJSON(resp, "prune_capability_active") ? "Yes" : "No"});
+
+    /* A lite node holds no block bodies below its lite height, so an operator
+       reading this table needs to know which mode the database was built in -
+       it is permanent, and it decides which wallets this node can serve. */
+    const bool liteNode = getBoolFromJSON(resp, "lite");
+    const uint64_t liteStartHeight = getUint64FromJSON(resp, "lite_start_height");
+
+    statusTable.push_back({"Lite Node",            liteNode ? "Yes" : "No"});
+
+    if (liteNode)
+    {
+        statusTable.push_back({"Full Block Data From", std::to_string(liteStartHeight)});
+
+        /* Below the lite height the node is still building the indexes that the
+           full block region needs, and /info reports no block version down
+           there. Say so rather than leave the table looking like a full node
+           that has lost its block version. */
+        if (height < liteStartHeight)
+        {
+            statusTable.push_back({"Lite Sync Stage", "Index only (below lite height)"});
+        }
+    }
+
     statusTable.push_back({"Active Sync Peers",    std::to_string(getUint64FromJSON(resp, "sync_active_peers"))});
     statusTable.push_back({"Avg Sync Batch Size",  std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))});
     statusTable.push_back({"Demoted Sync Peers",   std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))});
