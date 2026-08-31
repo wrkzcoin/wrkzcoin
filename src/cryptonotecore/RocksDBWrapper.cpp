@@ -397,7 +397,9 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
      * decompression and index search a block cache hit still pays for. Carved
      * out of the configured read cache rather than added on top, so the memory
      * an operator asked for is the memory they get. */
-    const uint64_t rowCacheSize = config.readCacheSize / 8;
+    const uint64_t rowCacheSize = config.rowCachePercent > 0
+        ? (config.readCacheSize / 100) * std::min<uint64_t>(config.rowCachePercent, 90)
+        : config.readCacheSize / 8;
 
     if (rowCacheSize > 0)
     {
@@ -452,9 +454,20 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     {
         fOptions.compression_opts.max_dict_bytes = static_cast<uint32_t>(config.compressionDictBytes);
         fOptions.compression_opts.zstd_max_train_bytes = static_cast<uint32_t>(config.compressionDictBytes * 100);
+    }
 
+    /* bottommost_compression_opts is ignored unless enabled is set, so this has
+     * to be built whenever either knob is in play - otherwise raising the level
+     * would silently do nothing to the level that holds nearly all the data. */
+    if (config.compressionEnabled && (config.compressionDictBytes > 0 || config.compressionLevel > 0))
+    {
         fOptions.bottommost_compression_opts = fOptions.compression_opts;
         fOptions.bottommost_compression_opts.enabled = true;
+
+        if (config.compressionLevel > 0)
+        {
+            fOptions.bottommost_compression_opts.level = config.compressionLevel;
+        }
     }
 
     rocksdb::BlockBasedTableOptions tableOptions;
@@ -476,9 +489,12 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     tableOptions.cache_index_and_filter_blocks = true;
     tableOptions.pin_l0_filter_and_index_blocks_in_cache = true;
 
-    /* Most of our lookups are for keys that do exist, so RocksDB can skip
-     * building filters for the bottommost level and save that space. */
-    fOptions.optimize_filters_for_hits = true;
+    /* Most block and transaction hash lookups are for keys that do exist, so by
+     * default RocksDB skips building filters for the bottommost level and saves
+     * that space. Spent key image checks are the exception - they ask about a key
+     * image exactly when it should be absent - so a node that finds transaction
+     * validation slow can buy those filters back. */
+    fOptions.optimize_filters_for_hits = !config.bottommostFilters;
 
     std::shared_ptr<rocksdb::TableFactory> tfp(NewBlockBasedTableFactory(tableOptions));
     fOptions.table_factory = tfp;

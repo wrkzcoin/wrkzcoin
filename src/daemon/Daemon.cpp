@@ -583,6 +583,9 @@ int main(int argc, char *argv[])
 
         dbConfig.compressionDictBytes = config.dbCompressionDictBytes;
         dbConfig.blockSize = std::max<uint64_t>(config.dbBlockSizeKB, 1) * 1024;
+        dbConfig.compressionLevel = config.dbCompressionLevel;
+        dbConfig.rowCachePercent = config.dbRowCachePercent;
+        dbConfig.bottommostFilters = config.dbBottommostFilters;
 
         bool use_checkpoints = !config.checkPoints.empty();
         CryptoNote::Checkpoints checkpoints(logManager);

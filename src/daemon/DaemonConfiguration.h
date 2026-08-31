@@ -62,6 +62,9 @@ namespace DaemonConfig
             enableDbCompression = true;
             dbCompressionDictBytes = 0;
             dbBlockSizeKB = 4;
+            dbCompressionLevel = 0;
+            dbRowCachePercent = 0;
+            dbBottommostFilters = false;
             resync = false;
             importChain = false;
             exportChain = false;
@@ -280,6 +283,15 @@ namespace DaemonConfig
 
         /* SST data block size in kilobytes. RocksDB's default is 4. */
         uint64_t dbBlockSizeKB;
+
+        /* Bottommost ZSTD level; 0 leaves RocksDB's default. */
+        int dbCompressionLevel;
+
+        /* Row cache share of the read buffer as a percentage; 0 keeps 1/8. */
+        uint64_t dbRowCachePercent;
+
+        /* Keep bloom filters on the bottommost level. */
+        bool dbBottommostFilters;
     };
 
     DaemonConfiguration initConfiguration(const char *path);

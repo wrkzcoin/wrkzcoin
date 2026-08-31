@@ -67,6 +67,37 @@ namespace CryptoNote
            the row and block caches. This workload is almost entirely point
            lookups, which is why the default is left where RocksDB put it. */
         uint64_t blockSize = 4 * 1024;
+
+        /* ZSTD compression level for the bottommost level. Zero leaves RocksDB's
+           own default, which is ZSTD's, which is 3.
+
+           This is the one space knob that is free on the read path: ZSTD
+           decompresses at much the same speed whatever level compressed it, so a
+           harder setting costs compaction CPU and nothing else. Applied only to
+           the bottommost level, which holds the great majority of the data and is
+           rewritten rarely - the levels above churn constantly during a sync and
+           are better left cheap. */
+        int compressionLevel = 0;
+
+        /* Share of readCacheSize given to the row cache, as a percentage. Zero
+           keeps the built-in split of one eighth.
+
+           The row cache holds finished key/value pairs, so a hit skips block
+           decompression entirely - which is exactly the cost a larger blockSize
+           adds. A node whose job is serving wallet reads may want more of the
+           read buffer spent here. */
+        uint64_t rowCachePercent = 0;
+
+        /* Keep bloom filters on the bottommost level.
+
+           Off by default, matching optimize_filters_for_hits: it saves the space
+           those filters would take, on the reasoning that most lookups here are
+           for keys that exist. That reasoning does not hold for spent key image
+           checks, which ask about a key image precisely when it is expected to be
+           absent - once per input of every transaction validated. Turning this on
+           trades a few hundred megabytes for making those misses a filter probe
+           rather than an index search and a block read. */
+        bool bottommostFilters = false;
     };
 
     class IDataBase

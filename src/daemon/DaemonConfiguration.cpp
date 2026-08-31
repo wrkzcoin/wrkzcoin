@@ -355,6 +355,20 @@ namespace DaemonConfig
              "Size of an uncompressed SST data block in kilobytes. Larger compresses better and reads slower",
              cxxopts::value<uint64_t>()->default_value("4"),
              "#")
+            ("db-compression-level",
+             "ZSTD level for the bottommost database level, 0 for RocksDB's default of 3. Higher compresses "
+             "harder for the same decompression speed, paying only in compaction time",
+             cxxopts::value<int>()->default_value("0"),
+             "#")
+            ("db-row-cache-percent",
+             "Percentage of the read buffer given to the row cache, 0 for the built-in eighth. A row cache hit "
+             "skips block decompression entirely",
+             cxxopts::value<uint64_t>()->default_value("0"),
+             "#")
+            ("db-bottom-filters",
+             "Keep bloom filters on the bottommost database level. Costs space, but spent key image checks are "
+             "lookups that are meant to miss, and without filters each one reads and decompresses a block",
+             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("db-max-open-files",
              "Number of files that can be used by the database at one time " + maxOpenFiles,
              cxxopts::value<int>(),
@@ -533,6 +547,21 @@ namespace DaemonConfig
             if (cli.count("log-level") > 0)
             {
                 config.logLevel = cli["log-level"].as<int>();
+            }
+
+            if (cli.count("db-compression-level") > 0)
+            {
+                config.dbCompressionLevel = cli["db-compression-level"].as<int>();
+            }
+
+            if (cli.count("db-row-cache-percent") > 0)
+            {
+                config.dbRowCachePercent = cli["db-row-cache-percent"].as<uint64_t>();
+            }
+
+            if (cli.count("db-bottom-filters") > 0)
+            {
+                config.dbBottommostFilters = cli["db-bottom-filters"].as<bool>();
             }
 
             if (cli.count("db-compression-dict-bytes") > 0)
@@ -934,6 +963,18 @@ namespace DaemonConfig
                     {
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
+                }
+                else if (cfgKey.compare("db-compression-level") == 0)
+                {
+                    config.dbCompressionLevel = std::stoi(cfgValue);
+                }
+                else if (cfgKey.compare("db-row-cache-percent") == 0)
+                {
+                    config.dbRowCachePercent = std::stoull(cfgValue);
+                }
+                else if (cfgKey.compare("db-bottom-filters") == 0)
+                {
+                    config.dbBottommostFilters = (cfgValue == "true" || cfgValue == "1");
                 }
                 else if (cfgKey.compare("db-compression-dict-bytes") == 0)
                 {
@@ -1518,6 +1559,21 @@ namespace DaemonConfig
         config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
         config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
+        if (j.contains("db-compression-level"))
+        {
+            config.dbCompressionLevel = j["db-compression-level"].get<int>();
+        }
+
+        if (j.contains("db-row-cache-percent"))
+        {
+            config.dbRowCachePercent = j["db-row-cache-percent"].get<uint64_t>();
+        }
+
+        if (j.contains("db-bottom-filters"))
+        {
+            config.dbBottommostFilters = j["db-bottom-filters"].get<bool>();
+        }
+
         if (j.contains("db-compression-dict-bytes"))
         {
             config.dbCompressionDictBytes = j["db-compression-dict-bytes"].get<uint64_t>();
@@ -1865,6 +1921,9 @@ namespace DaemonConfig
         j["skip-boot-compaction"] = config.skipBootCompaction;
         j["db-enable-compression"] = config.enableDbCompression;
         j["db-compression-dict-bytes"] = config.dbCompressionDictBytes;
+        j["db-compression-level"] = config.dbCompressionLevel;
+        j["db-row-cache-percent"] = config.dbRowCachePercent;
+        j["db-bottom-filters"] = config.dbBottommostFilters;
         j["db-block-size"] = config.dbBlockSizeKB;
         j["db-max-open-files"] = config.dbMaxOpenFiles;
         j["db-read-buffer-size"] = config.dbReadCacheSizeMB;
