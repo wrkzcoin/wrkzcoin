@@ -53,19 +53,22 @@ namespace CryptoNote
     };
 
     const std::initializer_list<LiteSnapshotDigest> LITE_SNAPSHOT_DIGESTS = {
-        /* NOT YET INDEPENDENTLY REPRODUCED - do not ship this to users.
+        /* Exported 2026-09-01 at top block ~4,201,153: 148,728,732 records, of
+           which exactly 4,000,000 are block info.
 
-           Exported 2026-09-01 from one lite node at top block ~4,201,153:
-           148,728,732 records, of which exactly 4,000,000 are block info. It is
-           here so the import path can be tested against a real file at all.
+           Reproduced from a full node and a lite node independently, and they
+           agreed to the bit. That is the check worth having, because
+           KeyOutputInfo.transactionHash is the one field the two store
+           differently - a lite node zeroes it below the lite height, a full node
+           keeps the real 32 bytes - and the exporter zeroes it unconditionally
+           so that they agree. Across 78.5 million key outputs, and against a
+           38 GB database on one side and a 9 GB one on the other, they do.
 
-           What it does not yet have is the property that makes a digest worth
-           anything: a second person producing the same snapshot from their own
-           chain and arriving at the same value. Until that has happened this
-           entry records one machine's word. Before a release, reproduce it -
-           ideally from a full node, which exercises the transactionHash
-           normalisation the exporter does precisely so that a full node and a
-           lite node agree - and only then treat it as published. */
+           What that does not establish is reproduction by another party on
+           another build: both runs used the same binary, so a fault in the
+           exporter would reproduce faithfully in both. It rules out the
+           normalisation and filtering errors, which were the plausible ones. A
+           third export from someone else's build would close the rest. */
         {4000000, "4601d802d990fa26b876ed7fdaffc00953cff6ca6b77299fd1c6981ef94fe09e"},
     };
 } // namespace CryptoNote

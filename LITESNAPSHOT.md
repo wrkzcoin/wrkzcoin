@@ -316,11 +316,33 @@ should expect it.
 
 One test decides whether any of this is real:
 
-**Two nodes at different tips, exporting at the same `H`, must produce the same payload
-digest.** Without it in CI the digest is decorative, nobody can reproduce a published
-snapshot, and the trust model quietly reduces to "whoever sent you the file".
+**Two nodes exporting at the same `H` must produce the same payload digest.** Without it
+the digest is decorative, nobody can reproduce a published snapshot, and the trust model
+quietly reduces to "whoever sent you the file".
 
-Beyond that: a full node and a lite node at the same `H` must agree on the digest; an
-imported node and a natively synced node at the same `H` must have identical databases
-under `--snapshot-stats`; and a truncated, a bit-flipped and a digest-mismatched file must
-each be refused without writing anything.
+### What has been run
+
+**A full node and a lite node at `H` = 4,000,000 produced the same digest**
+(`4601d802...f94fe09e`, 148,728,732 records). That is the check that matters most, because
+`KeyOutputInfo.transactionHash` is the one field the two node types store differently - a
+lite node zeroes it below the lite height, a full node keeps the real 32 bytes - and the
+exporter zeroes it unconditionally so they agree. Across 78.5 million key outputs, and
+against a 38 GB database on one side and a 9 GB one on the other, they did.
+
+It does not establish reproduction by another party on another build. Both runs used the
+same binary, so a fault in the exporter itself would reproduce faithfully in both. What it
+rules out is normalisation and filtering error, which were the plausible failures.
+
+### What is still owed
+
+- **A third export, from someone else's build.** Closes the gap above, and is what a
+  published digest should rest on.
+- **An imported node against a natively synced one** at the same `H`, compared under
+  `--snapshot-stats`. Expect one difference and only one: the `amountId -> amount` records
+  under `"h"`, whose ids an importer assigns in ascending amount order rather than in the
+  order a syncing node first met each amount. Nothing reads them back.
+- **Refusal paths.** A truncated file, a bit-flipped one, one whose digest is not in the
+  table, one for the wrong height, one for the wrong chain, and one aimed at a database
+  that already holds a chain - each refused without writing anything.
+- **Any of this in CI.** None of it is automated. The reproducibility check in particular
+  wants to run on every release, because it is the one that stops being true silently.
