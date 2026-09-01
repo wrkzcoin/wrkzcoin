@@ -391,9 +391,32 @@ bool BlockDownloader::downloadBlocks()
     /* Whether the response is allowed to have holes in it. Read here rather
        than after the response, so it is the same answer the request itself
        was built from - the daemon can be swapped underneath us, and reading
-       it twice could say the holes we asked for were never asked for. */
-    const bool holesExpected =
-        Config::config.wallet.skipCoinbaseTransactions && m_daemon->daemonSkipsEmptyBlocks();
+       it twice could say the holes we asked for were never asked for.
+
+       Asking for coinbase transactions to be left out is enough on its own. A
+       block whose only transaction is its coinbase carries nothing we asked
+       for once that is stripped, and daemons drop the whole block - whether or
+       not they advertise skipEmptyBlocks as a feature, because they were doing
+       it before the feature existed.
+
+       This used to also require daemonSkipsEmptyBlocks, which predicted the
+       behaviour from a flag rather than from what we asked for, and got it
+       wrong for every daemon older than the flag. Measured against
+       nodes.wrkz.work, v0.4.6, advertising no sync_features at all: a request
+       from height 4202339 with skipCoinbaseTransactions set comes back
+       4202340, 4202342, 4202344, 4202346, 4202352, and the same request
+       without it comes back 4202339, 4202340, 4202341 contiguous. So the holes
+       are ours, we asked for them, and the check below was reading them as a
+       daemon that could not serve us and stopping sync for good.
+
+       What that costs: while coinbases are being skipped, a daemon answering
+       from higher up is taken at its word. That protection was already absent
+       against any daemon advertising the feature, and against the rest it only
+       ever fired on holes the wallet had requested. The case worth protecting -
+       a daemon that structurally cannot serve the range - is caught exactly,
+       by its declared lite start height, and is unaffected. Turning coinbase
+       scanning on restores the strict check. */
+    const bool holesExpected = Config::config.wallet.skipCoinbaseTransactions;
 
     const uint64_t liteStartHeight = m_daemon->liteStartHeight();
 
