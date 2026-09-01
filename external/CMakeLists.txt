@@ -171,6 +171,31 @@ if (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN AND WRKZ_SYSTEM_ROCKSDB)
         set(WRKZ_ROCKSDB_LIBS wrkz-system-rocksdb PARENT_SCOPE)
         message(STATUS "RocksDB: using system library ${WRKZ_ROCKSDB_LIBRARY}")
     endif ()
+    # The daemon compresses lite node snapshots with zstd directly, so it is a
+    # dependency in its own right and not just RocksDB's compressor. With a
+    # system RocksDB there is no bundled zstd target to lean on, so find one.
+    find_package(zstd CONFIG QUIET)
+    if (TARGET zstd::libzstd_shared)
+        set(WRKZ_ZSTD_LIBS zstd::libzstd_shared PARENT_SCOPE)
+    elseif (TARGET zstd::libzstd_static)
+        set(WRKZ_ZSTD_LIBS zstd::libzstd_static PARENT_SCOPE)
+    else ()
+        find_path(WRKZ_ZSTD_INCLUDE_DIR NAMES zstd.h)
+        find_library(WRKZ_ZSTD_LIBRARY NAMES zstd)
+        if (NOT WRKZ_ZSTD_INCLUDE_DIR OR NOT WRKZ_ZSTD_LIBRARY)
+            message(FATAL_ERROR
+                "WRKZ_SYSTEM_ROCKSDB=ON but no system zstd was found. The daemon needs "
+                "it to read and write lite node snapshots. Install the zstd development "
+                "package (libzstd-dev / zstd-devel), or re-run with "
+                "-DWRKZ_SYSTEM_ROCKSDB=OFF to build the bundled copy.")
+        endif ()
+        add_library(wrkz-system-zstd INTERFACE)
+        target_include_directories(wrkz-system-zstd INTERFACE ${WRKZ_ZSTD_INCLUDE_DIR})
+        target_link_libraries(wrkz-system-zstd INTERFACE ${WRKZ_ZSTD_LIBRARY})
+        set(WRKZ_ZSTD_LIBS wrkz-system-zstd PARENT_SCOPE)
+        message(STATUS "zstd: using system library ${WRKZ_ZSTD_LIBRARY}")
+    endif ()
+
     set_property(TARGET libminiupnpc-static argon2 PROPERTY FOLDER "external")
 elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
     # zstd (new layout): CMake entrypoint lives under build/cmake
@@ -214,6 +239,7 @@ elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
 
         set_property(TARGET libminiupnpc-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         set(WRKZ_ROCKSDB_LIBS rocksdb libzstd PARENT_SCOPE)
+        set(WRKZ_ZSTD_LIBS libzstd PARENT_SCOPE)
     else ()
         set_property(TARGET libminiupnpc-static libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         if (DEFINED ROCKSDB_BUILD_PARALLEL AND NOT ROCKSDB_BUILD_PARALLEL STREQUAL "")
@@ -260,6 +286,7 @@ elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
         set_target_properties(rocksdblib PROPERTIES IMPORTED_LOCATION ${PROJECT_BINARY_DIR}/rocksdb/librocksdb.a)
         add_dependencies(rocksdblib rocksdb)
         set(WRKZ_ROCKSDB_LIBS rocksdblib libzstd PARENT_SCOPE)
+        set(WRKZ_ZSTD_LIBS libzstd PARENT_SCOPE)
 
         unset(_WRKZ_ROCKSDB_FALLBACK_JOBS)
         unset(_WRKZ_ROCKSDB_PARALLEL_SOURCE)

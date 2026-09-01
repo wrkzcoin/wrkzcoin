@@ -1232,11 +1232,21 @@ bool DaemonCommandsHandler::snapshot_export(const std::vector<std::string> &args
 
     const std::string outputPath = m_snapshotPath;
 
-    m_snapshotTask = std::async(std::launch::async, [this, outputPath, height]() {
+    /* The chain knows what a snapshot contains; the file format lives here,
+       because it needs a compressor and CryptoNoteCore is linked into every
+       wallet binary, none of which has any use for a snapshot. */
+    const Crypto::Hash genesisHash = m_core.getBlockHashByIndex(0);
+
+    m_snapshotTask = std::async(std::launch::async, [this, outputPath, height, genesisHash]() {
         try
         {
-            const auto header = m_core.exportLiteSnapshot(
-                outputPath, height, [this](const std::string &table, const uint64_t scanned, const uint64_t kept) {
+            CryptoNote::LiteSnapshot::Writer writer(outputPath);
+            writer.begin();
+
+            const auto stats = m_core.walkSnapshotRecords(
+                height,
+                [&writer](const std::string &key, const std::string &value) { writer.add(key, value); },
+                [this](const std::string &table, const uint64_t scanned, const uint64_t kept) {
                     std::lock_guard<std::mutex> progressLock(m_snapshotMutex);
 
                     m_snapshotStage = table;
@@ -1246,9 +1256,18 @@ bool DaemonCommandsHandler::snapshot_export(const std::vector<std::string> &args
                     return !m_snapshotCancel.load();
                 });
 
+            CryptoNote::LiteSnapshot::Header header;
+            header.genesisHash = genesisHash;
+            header.liteHeight = height;
+            header.blockInfoRecords = stats.blockInfoRecords;
+            header.keyImageRecords = stats.keyImageRecords;
+            header.keyOutputRecords = stats.keyOutputRecords;
+            header.transactionsCount = stats.transactionsCount;
+            header.keyOutputAmountsCount = stats.keyOutputAmountsCount;
+
             std::lock_guard<std::mutex> resultLock(m_snapshotMutex);
 
-            m_snapshotResult = header;
+            m_snapshotResult = writer.finish(header);
             m_snapshotStage = "done";
         }
         catch (const std::exception &e)

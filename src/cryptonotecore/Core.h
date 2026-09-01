@@ -19,7 +19,6 @@
 #include "ITransactionPool.h"
 #include "ITransactionPoolCleaner.h"
 #include "IUpgradeManager.h"
-#include "LiteSnapshot.h"
 #include "MessageQueue.h"
 #include "TransactionValidatiorState.h"
 
@@ -265,17 +264,16 @@ namespace CryptoNote
            chain and is only run from the --snapshot-stats flag. */
         std::map<std::string, StorageStats> measureStorage() const;
 
-        /* Writes the index only region below snapshotHeight to a lite node
-           snapshot file, so another machine can import it instead of rebuilding
-           the region from the chain. Walks the three largest tables in the
-           database and takes tens of minutes. See LITESNAPSHOT.md.
+        /* Hands every record of the index only region below snapshotHeight to
+           sink, in ascending key order, for a caller that means to write it to
+           a lite node snapshot. Walks the three largest tables in the database
+           and takes tens of minutes. See LITESNAPSHOT.md.
 
-           progress returning false cancels the export and removes the partial
-           file. Throws on anything else that goes wrong, with a message meant
-           for an operator. */
-        LiteSnapshot::Header exportLiteSnapshot(
-            const std::string &path,
+           progress returning false cancels the walk. Throws on anything else
+           that goes wrong, with a message meant for an operator. */
+        SnapshotWalkStats walkSnapshotRecords(
             uint32_t snapshotHeight,
+            const std::function<void(const std::string &key, const std::string &value)> &sink,
             const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const;
 
         std::error_code compactDatabase();

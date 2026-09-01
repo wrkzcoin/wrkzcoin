@@ -2,7 +2,7 @@
 //
 // Please see the included LICENSE file for more information.
 
-#include "cryptonotecore/LiteSnapshot.h"
+#include "daemon/LiteSnapshot.h"
 
 #include "crypto/hash.h"
 
@@ -180,7 +180,7 @@ namespace CryptoNote
             }
         }
 
-        void Writer::begin(const Header &header)
+        void Writer::begin()
         {
             if (m_begun)
             {
@@ -194,13 +194,10 @@ namespace CryptoNote
                 throw std::runtime_error("Could not open " + m_path + " for writing");
             }
 
-            m_header = header;
-            m_header.formatVersion = FORMAT_VERSION;
-            m_header.payloadDigest = Crypto::Hash {};
-
-            /* Reserved and rewritten by finish(); the digest is not knowable
-               until the payload has been written. */
-            const std::string reserved = serializeHeader(m_header);
+            /* Reserved and written over by finish(). Neither the record counts
+               nor the digest are knowable until the payload has been written,
+               and the counts belong to the caller doing the walking. */
+            const std::string reserved = serializeHeader(Header {});
 
             m_file.write(reserved.data(), static_cast<std::streamsize>(reserved.size()));
 
@@ -286,7 +283,7 @@ namespace CryptoNote
             m_frame.clear();
         }
 
-        Header Writer::finish()
+        Header Writer::finish(Header header)
         {
             if (!m_begun || m_finished)
             {
@@ -294,6 +291,9 @@ namespace CryptoNote
             }
 
             flushFrame();
+
+            m_header = header;
+            m_header.formatVersion = FORMAT_VERSION;
 
             /* A zero raw length is the end of the payload. Without it a truncated
                file and a complete one look the same to a reader that has simply
@@ -306,10 +306,10 @@ namespace CryptoNote
 
             m_header.payloadDigest = m_digest;
 
-            const std::string header = serializeHeader(m_header);
+            const std::string serialized = serializeHeader(m_header);
 
             m_file.seekp(0, std::ios::beg);
-            m_file.write(header.data(), static_cast<std::streamsize>(header.size()));
+            m_file.write(serialized.data(), static_cast<std::streamsize>(serialized.size()));
             m_file.flush();
 
             if (!m_file)

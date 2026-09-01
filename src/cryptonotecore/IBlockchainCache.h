@@ -62,6 +62,26 @@ namespace CryptoNote
         }
     };
 
+    /* What the index only region of a lite node snapshot turned out to
+       contain, filled in by the walk that produces it.
+
+       The two counters are chain wide totals as of the snapshot's top block.
+       An importer has to restore them and cannot derive them from the tables a
+       lite node carries, so they travel in the snapshot header. See
+       LITESNAPSHOT.md. */
+    struct SnapshotWalkStats
+    {
+        uint64_t blockInfoRecords = 0;
+
+        uint64_t keyImageRecords = 0;
+
+        uint64_t keyOutputRecords = 0;
+
+        uint64_t transactionsCount = 0;
+
+        uint64_t keyOutputAmountsCount = 0;
+    };
+
     struct CachedBlockInfo
     {
         Crypto::Hash blockHash;

@@ -12,7 +12,7 @@
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
 #include "rpc/JsonRpc.h"
 #include "rpc/RpcServer.h"
-#include <cryptonotecore/LiteSnapshot.h>
+#include <daemon/LiteSnapshot.h>
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>

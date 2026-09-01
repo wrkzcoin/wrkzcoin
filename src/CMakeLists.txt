@@ -15,9 +15,11 @@ include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
-# zstd.h itself lives under lib/; the lite node snapshot container compresses its
-# frames with it. Header only at compile time - the symbols are daemon-only, like
-# RocksDB's.
+# zstd.h itself lives under lib/. Only the daemon includes it - the lite node
+# snapshot container compresses its frames with zstd - and only the daemon links
+# the library, via WRKZ_ZSTD_LIBS below. Keeping the snapshot format in the
+# daemon rather than in CryptoNoteCore is deliberate: that library is linked into
+# every wallet binary, and none of them has any use for a snapshot.
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd/lib)
 
 # wallet_capi shared target links many internal static libraries. Ensure they
@@ -341,7 +343,7 @@ endif ()
 if (WRKZ_BUILD_EXECUTABLES)
     # WRKZ_ROCKSDB_LIBS is set by external/CMakeLists.txt and names whichever
     # RocksDB (plus bundled zstd, when we build it) this configuration uses.
-    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} Errors)
+    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} ${WRKZ_ZSTD_LIBS} Errors)
 endif ()
 
 # Add the dependencies we need

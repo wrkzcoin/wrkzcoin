@@ -20,7 +20,6 @@
 #include "Currency.h"
 #include "IBlockchainCache.h"
 #include "common/StringView.h"
-#include "cryptonotecore/LiteSnapshot.h"
 #include "cryptonotecore/UpgradeManager.h"
 
 #include <IDataBase.h>
@@ -297,9 +296,14 @@ namespace CryptoNote
            chain. See LITENODE.md. */
         std::map<std::string, StorageStats> measureStorage() const;
 
-        /* Writes the index only region [0, snapshotHeight) to a lite node
-           snapshot file, so another machine can start from it instead of
-           spending days rebuilding it from the chain. See LITESNAPSHOT.md.
+        /* Hands every record of the index only region [0, snapshotHeight) to
+           sink, in ascending key order, so a caller can write it somewhere -
+           a lite node snapshot file, in the only caller there is. See
+           LITESNAPSHOT.md.
+
+           The file format deliberately lives in the daemon rather than here.
+           It needs a compressor, and this library is linked into every wallet
+           binary, none of which has any use for a snapshot.
 
            The exporting node is at some tip well above snapshotHeight and its
            tables describe that tip, so every table is filtered back to the
@@ -311,10 +315,9 @@ namespace CryptoNote
            progress is called periodically with the table being walked and how
            much of it has been seen; returning false cancels the export and
            removes the partial file. */
-        LiteSnapshot::Header exportLiteSnapshot(
-            const std::string &path,
+        SnapshotWalkStats walkSnapshotRecords(
             uint32_t snapshotHeight,
-            const Crypto::Hash &genesisHash,
+            const std::function<void(const std::string &key, const std::string &value)> &sink,
             const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const;
 
         std::error_code compactDatabase();

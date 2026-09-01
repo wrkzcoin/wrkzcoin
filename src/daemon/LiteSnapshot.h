@@ -104,15 +104,16 @@ namespace CryptoNote
 
             Writer &operator=(const Writer &) = delete;
 
-            /* Reserves the header, which is rewritten by finish() once the
-               digest is known. Throws on failure to open. */
-            void begin(const Header &header);
+            /* Reserves the header, which finish() writes over once the counts
+               and the digest are known. Throws on failure to open. */
+            void begin();
 
             void add(const std::string &key, const std::string &value);
 
-            /* Flushes the last frame, seeks back and writes the real header.
-               Returns it, with the digest and record counts filled in. */
-            Header finish();
+            /* Flushes the last frame, stamps the payload digest into the header
+               it is given and writes that over the reserved bytes. Returns the
+               header as written. */
+            Header finish(Header header);
 
             uint64_t bytesWritten() const
             {

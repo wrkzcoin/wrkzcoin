@@ -3073,10 +3073,9 @@ namespace CryptoNote
         return result;
     }
 
-    LiteSnapshot::Header DatabaseBlockchainCache::exportLiteSnapshot(
-        const std::string &path,
+    SnapshotWalkStats DatabaseBlockchainCache::walkSnapshotRecords(
         const uint32_t snapshotHeight,
-        const Crypto::Hash &genesisHash,
+        const std::function<void(const std::string &key, const std::string &value)> &sink,
         const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
     {
         if (snapshotHeight == 0)
@@ -3084,12 +3083,7 @@ namespace CryptoNote
             throw std::runtime_error("A lite snapshot describes the chain below a height, so that height cannot be 0");
         }
 
-        LiteSnapshot::Header header;
-        header.genesisHash = genesisHash;
-        header.liteHeight = snapshotHeight;
-
-        LiteSnapshot::Writer writer(path);
-        writer.begin(header);
+        SnapshotWalkStats stats;
 
         /* iterate() has no way to report why a callback stopped, so the reason
            is carried out by hand: a throw from inside the callback would cross
@@ -3124,7 +3118,7 @@ namespace CryptoNote
 
                             if (keep(key, value, normalised))
                             {
-                                writer.add(key, normalised);
+                                sink(key, normalised);
                                 keptCounter++;
                             }
                         }
@@ -3174,7 +3168,7 @@ namespace CryptoNote
         walk(
             DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX,
             "block info",
-            header.blockInfoRecords,
+            stats.blockInfoRecords,
             [&](const std::string &key, const std::string &value, std::string &out) {
                 std::pair<std::string, uint32_t> decodedKey;
                 DB::deserialize(key, decodedKey, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
@@ -3189,7 +3183,7 @@ namespace CryptoNote
                     CachedBlockInfo info;
                     DB::deserialize(value, info, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
 
-                    header.transactionsCount = info.alreadyGeneratedTransactions;
+                    stats.transactionsCount = info.alreadyGeneratedTransactions;
                     sawTopBlock = true;
                 }
 
@@ -3198,10 +3192,10 @@ namespace CryptoNote
                 return true;
             });
 
-        if (header.blockInfoRecords != snapshotHeight || !sawTopBlock)
+        if (stats.blockInfoRecords != snapshotHeight || !sawTopBlock)
         {
             throw std::runtime_error(
-                "This node holds " + std::to_string(header.blockInfoRecords) + " blocks below height "
+                "This node holds " + std::to_string(stats.blockInfoRecords) + " blocks below height "
                 + std::to_string(snapshotHeight) + ", and a snapshot needs all " + std::to_string(snapshotHeight)
                 + " of them. Let it finish syncing first.");
         }
@@ -3211,7 +3205,7 @@ namespace CryptoNote
         walk(
             DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX,
             "spent key images",
-            header.keyImageRecords,
+            stats.keyImageRecords,
             [&](const std::string &, const std::string &value, std::string &out) {
                 uint32_t spentAt = 0;
                 DB::deserialize(value, spentAt, DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX);
@@ -3240,7 +3234,7 @@ namespace CryptoNote
         walk(
             DB::KEY_OUTPUT_KEY_PREFIX,
             "key output info",
-            header.keyOutputRecords,
+            stats.keyOutputRecords,
             [&](const std::string &key, const std::string &value, std::string &out) {
                 KeyOutputInfo info;
                 DB::deserialize(value, info, DB::KEY_OUTPUT_KEY_PREFIX);
@@ -3261,7 +3255,7 @@ namespace CryptoNote
                    No set, on a table this size. */
                 if (!lastAmount || *lastAmount != amount)
                 {
-                    header.keyOutputAmountsCount++;
+                    stats.keyOutputAmountsCount++;
                     lastAmount = amount;
                 }
 
@@ -3272,7 +3266,7 @@ namespace CryptoNote
                 return true;
             });
 
-        return writer.finish();
+        return stats;
     }
 
     std::error_code DatabaseBlockchainCache::compactDatabase()
