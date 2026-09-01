@@ -975,7 +975,7 @@ class SPt extends S {
 
   @override
   String get shutdownTakingLong =>
-      'Está demorando mais do que o esperado. Sair agora pode danificar o arquivo da carteira — só faça isso se o PLUTON estiver travado.';
+      'Está demorando mais do que o esperado. Sair agora perde este salvamento — o arquivo da carteira no disco fica como estava, então nada é danificado, mas tudo desde o último salvamento se perde.';
 
   @override
   String get quitAnyway => 'Sair mesmo assim';
@@ -998,4 +998,51 @@ class SPt extends S {
   @override
   String get localNodeStartHeightRequired =>
       'Informe a altura a partir da qual manter blocos completos. Precisa ser maior que zero — um nó lite não pode começar no bloco gênese.';
+
+  @override
+  String get nodeExitTitle => 'O nó local ainda está rodando';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'A primeira sincronização dele não terminou. Isso leva horas e só avança enquanto o nó está rodando — mas um nó deixado rodando continua usando o disco e a rede depois que o PLUTON fecha.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Ele está em dia com a rede. Deixá-lo rodando o mantém assim e continua usando CPU, banda e disco enquanto o PLUTON está fechado; pará-lo custa uma breve atualização na próxima vez.';
+
+  @override
+  String get nodeExitKeep => 'Deixar rodando';
+
+  @override
+  String get nodeExitStop => 'Parar';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Pode ser alterado depois em Configurações, em Nó lite local.';
+
+  @override
+  String get rememberMyChoice => 'Lembrar minha escolha';
+
+  @override
+  String get shutdownStoppingNode => 'Parando o nó local…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Deixando-o gravar o banco de dados, para o próximo início não ter de repetir o log de escrita.';
+
+  @override
+  String get nodeExitPolicyLabel => 'Ao fechar a carteira';
+
+  @override
+  String get nodeExitPolicyAsk => 'Perguntar';
+
+  @override
+  String get nodeExitPolicyKeep => 'Deixar o nó rodando';
+
+  @override
+  String get nodeExitPolicyStop => 'Parar o nó';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'O nó lite local continua rodando em segundo plano. Abra o PLUTON para pará-lo.';
 }

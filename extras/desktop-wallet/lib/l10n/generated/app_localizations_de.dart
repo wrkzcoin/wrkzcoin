@@ -973,7 +973,7 @@ class SDe extends S {
 
   @override
   String get shutdownTakingLong =>
-      'Das dauert länger als erwartet. Jetzt zu beenden kann die Wallet-Datei beschädigen — tun Sie es nur, wenn PLUTON hängt.';
+      'Das dauert länger als erwartet. Jetzt zu beenden verwirft diesen Speichervorgang — die Wallet-Datei auf der Festplatte bleibt unverändert, es wird also nichts beschädigt, aber alles seit dem letzten Speichern ist weg.';
 
   @override
   String get quitAnyway => 'Trotzdem beenden';
@@ -996,4 +996,51 @@ class SDe extends S {
   @override
   String get localNodeStartHeightRequired =>
       'Geben Sie die Höhe an, ab der vollständige Blöcke behalten werden. Sie muss größer als null sein — ein Lite-Node kann nicht beim Genesis-Block beginnen.';
+
+  @override
+  String get nodeExitTitle => 'Der lokale Node läuft noch';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Seine erste Synchronisierung ist nicht fertig. Sie dauert Stunden und kommt nur voran, solange der Node läuft — ein laufender Node nutzt aber auch nach dem Schließen von PLUTON weiter Festplatte und Netzwerk.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Er ist auf dem Stand des Netzwerks. Weiterlaufen zu lassen hält ihn dort und verbraucht weiter CPU, Bandbreite und Festplatte, während PLUTON geschlossen ist; ihn zu stoppen kostet beim nächsten Mal kurzes Aufholen.';
+
+  @override
+  String get nodeExitKeep => 'Weiterlaufen lassen';
+
+  @override
+  String get nodeExitStop => 'Stoppen';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Später in den Einstellungen unter Lokaler Lite-Node änderbar.';
+
+  @override
+  String get rememberMyChoice => 'Auswahl merken';
+
+  @override
+  String get shutdownStoppingNode => 'Lokaler Node wird gestoppt…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Er darf seine Datenbank schreiben, damit der nächste Start das Write-Ahead-Log nicht nachspielen muss.';
+
+  @override
+  String get nodeExitPolicyLabel => 'Beim Schließen des Wallets';
+
+  @override
+  String get nodeExitPolicyAsk => 'Nachfragen';
+
+  @override
+  String get nodeExitPolicyKeep => 'Node weiterlaufen lassen';
+
+  @override
+  String get nodeExitPolicyStop => 'Node stoppen';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Der lokale Lite-Node läuft weiter im Hintergrund. Öffnen Sie PLUTON, um ihn zu stoppen.';
 }

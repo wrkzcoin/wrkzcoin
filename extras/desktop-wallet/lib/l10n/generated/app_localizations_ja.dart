@@ -948,7 +948,7 @@ class SJa extends S {
 
   @override
   String get shutdownTakingLong =>
-      '予想より時間がかかっています。ここで終了するとウォレットファイルが破損する可能性があります。PLUTON が応答しない場合のみ実行してください。';
+      '予想より時間がかかっています。ここで終了すると今回の保存は失われます。ディスク上のウォレットファイルはそのままなので破損はしませんが、前回の保存以降の内容はなくなります。';
 
   @override
   String get quitAnyway => '強制終了';
@@ -971,4 +971,50 @@ class SJa extends S {
   @override
   String get localNodeStartHeightRequired =>
       '完全なブロックを保持し始める高さを入力してください。0 より大きい必要があります。ライトノードはジェネシスブロックからは始められません。';
+
+  @override
+  String get nodeExitTitle => 'ローカルノードはまだ実行中です';
+
+  @override
+  String get nodeExitBodySyncing =>
+      '初回同期がまだ終わっていません。数時間かかり、ノードが動いている間だけ進みます。ただし実行したままにすると、PLUTON を閉じた後もディスクとネットワークを使い続けます。';
+
+  @override
+  String get nodeExitBodySynced =>
+      'ネットワークに追いついています。実行したままにすればその状態を保てますが、PLUTON を閉じても CPU・帯域・ディスクを使います。停止すると次回に短い追いつきが必要です。';
+
+  @override
+  String get nodeExitKeep => '実行したままにする';
+
+  @override
+  String get nodeExitStop => '停止する';
+
+  @override
+  String get nodeExitChangeLater => '後から設定の「ローカルライトノード」で変更できます。';
+
+  @override
+  String get rememberMyChoice => 'この選択を覚えておく';
+
+  @override
+  String get shutdownStoppingNode => 'ローカルノードを停止しています…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'データベースを書き出させています。次回起動時に先行書き込みログを再生しなくて済みます。';
+
+  @override
+  String get nodeExitPolicyLabel => 'ウォレットを閉じるとき';
+
+  @override
+  String get nodeExitPolicyAsk => '毎回尋ねる';
+
+  @override
+  String get nodeExitPolicyKeep => 'ノードを実行したままにする';
+
+  @override
+  String get nodeExitPolicyStop => 'ノードを停止する';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'ローカルライトノードはバックグラウンドで実行中です。停止するには PLUTON を開いてください。';
 }

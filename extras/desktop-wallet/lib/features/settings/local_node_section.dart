@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -184,6 +186,9 @@ class LocalNodeSection extends ConsumerWidget {
           selectable: true,
         ),
       ],
+
+      const SizedBox(height: 14),
+      const _NodeExitPolicyRow(),
 
       const SizedBox(height: 16),
       Wrap(
@@ -543,6 +548,73 @@ class _PhaseChip extends StatelessWidget {
       child: Text(label,
           style: TextStyle(
               color: colour, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+/// "When the wallet closes: …" — the standing answer to the question the
+/// shutdown overlay asks, so a remembered choice can be taken back.
+class _NodeExitPolicyRow extends StatefulWidget {
+  const _NodeExitPolicyRow();
+
+  @override
+  State<_NodeExitPolicyRow> createState() => _NodeExitPolicyRowState();
+}
+
+class _NodeExitPolicyRowState extends State<_NodeExitPolicyRow> {
+  NodeExitPolicy? _policy;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final policy = await readNodeExitPolicy();
+    if (mounted) setState(() => _policy = policy);
+  }
+
+  Future<void> _set(NodeExitPolicy policy) async {
+    setState(() => _policy = policy);
+    await writeNodeExitPolicy(policy);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tr = S.of(context);
+    final policy = _policy;
+    if (policy == null) return const SizedBox.shrink();
+
+    String label(NodeExitPolicy p) => switch (p) {
+          NodeExitPolicy.ask => tr?.nodeExitPolicyAsk ?? 'Ask me',
+          NodeExitPolicy.keep =>
+            tr?.nodeExitPolicyKeep ?? 'Leave the node running',
+          NodeExitPolicy.stop => tr?.nodeExitPolicyStop ?? 'Stop the node',
+        };
+
+    return Row(
+      children: [
+        Text(
+          tr?.nodeExitPolicyLabel ?? 'When the wallet closes',
+          style: const TextStyle(color: kTextSecondary, fontSize: 12),
+        ),
+        const SizedBox(width: 10),
+        DropdownButton<NodeExitPolicy>(
+          value: policy,
+          isDense: true,
+          underline: const SizedBox.shrink(),
+          style: const TextStyle(fontSize: 12),
+          items: [
+            for (final p in NodeExitPolicy.values)
+              DropdownMenuItem(
+                value: p,
+                child: Text(label(p), style: const TextStyle(fontSize: 12)),
+              ),
+          ],
+          onChanged: (p) => p == null ? null : unawaited(_set(p)),
+        ),
+      ],
     );
   }
 }

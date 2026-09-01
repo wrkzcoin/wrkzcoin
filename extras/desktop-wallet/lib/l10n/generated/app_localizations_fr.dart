@@ -976,7 +976,7 @@ class SFr extends S {
 
   @override
   String get shutdownTakingLong =>
-      'Cela prend plus de temps que prévu. Quitter maintenant peut endommager le fichier du portefeuille — ne le faites que si PLUTON est bloqué.';
+      'Cela prend plus de temps que prévu. Quitter maintenant perd cette sauvegarde — le fichier du portefeuille sur le disque reste tel quel, rien n\'est endommagé, mais tout ce qui suit la dernière sauvegarde est perdu.';
 
   @override
   String get quitAnyway => 'Quitter quand même';
@@ -999,4 +999,51 @@ class SFr extends S {
   @override
   String get localNodeStartHeightRequired =>
       'Indiquez la hauteur à partir de laquelle garder les blocs complets. Elle doit être supérieure à zéro — un nœud allégé ne peut pas démarrer au bloc de genèse.';
+
+  @override
+  String get nodeExitTitle => 'Le nœud local fonctionne toujours';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Sa première synchronisation n\'est pas terminée. Elle prend des heures et n\'avance que pendant que le nœud tourne — mais un nœud laissé en marche continue d\'utiliser le disque et le réseau après la fermeture de PLUTON.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Il est à jour avec le réseau. Le laisser tourner le maintient à jour et continue d\'utiliser le processeur, la bande passante et le disque pendant que PLUTON est fermé ; l\'arrêter coûte un bref rattrapage la prochaine fois.';
+
+  @override
+  String get nodeExitKeep => 'Le laisser tourner';
+
+  @override
+  String get nodeExitStop => 'L\'arrêter';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Modifiable ensuite dans Paramètres, sous Nœud allégé local.';
+
+  @override
+  String get rememberMyChoice => 'Retenir mon choix';
+
+  @override
+  String get shutdownStoppingNode => 'Arrêt du nœud local…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'On le laisse vider sa base de données, pour que le prochain démarrage n\'ait pas à rejouer le journal d\'écriture.';
+
+  @override
+  String get nodeExitPolicyLabel => 'À la fermeture du portefeuille';
+
+  @override
+  String get nodeExitPolicyAsk => 'Me demander';
+
+  @override
+  String get nodeExitPolicyKeep => 'Laisser le nœud tourner';
+
+  @override
+  String get nodeExitPolicyStop => 'Arrêter le nœud';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Le nœud allégé local fonctionne toujours en arrière-plan. Ouvrez PLUTON pour l\'arrêter.';
 }

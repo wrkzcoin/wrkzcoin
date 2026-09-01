@@ -26,6 +26,14 @@ const Duration _kStopGrace = Duration(seconds: 45);
 /// Lines of daemon output kept for the failure display.
 const int _kLogTailLines = 40;
 
+/// How long a node named by the pid file is given to answer its RPC before the
+/// app gives up on adopting it.
+///
+/// Generous on purpose: this covers RocksDB opening a database that can be
+/// several gigabytes, and the cost of guessing low is a second daemon started
+/// against the same directory.
+const Duration _kAdoptGrace = Duration(seconds: 90);
+
 class LocalNodeController extends Notifier<LocalNodeState> {
   Process? _process;
 
@@ -73,9 +81,38 @@ class LocalNodeController extends Notifier<LocalNodeState> {
     // anything after a reboot, including a full node the user runs themselves.
     // Only a daemon reporting this config's own lite height is ours; anything
     // else is left alone, and start() then fails honestly on the bind.
-    final alive = await _probeOurNode(config);
+    var alive = await _probeOurNode(config);
+
+    // Silence is not the same as absence. A daemon opening a multi-gigabyte
+    // RocksDB takes a while and its RPC only comes up afterwards, so a single
+    // probe misses one that is starting — and this app would then launch a
+    // second on the same directory, which dies on
+    // "Failed to create lock file: .../DB/LOCK". Observed with two app
+    // instances a few seconds apart. The pid file says whether there is
+    // anything to wait for.
+    final recordedPid = await _readPidFile();
+    if (alive == null &&
+        recordedPid != null &&
+        await processIsAlive(recordedPid)) {
+      alive = await _awaitOurNode(config, _kAdoptGrace);
+
+      if (alive == null && await processIsAlive(recordedPid)) {
+        // Ours by the pid file, up as a process, but not answering. Starting
+        // another one against the same database is worse than saying so.
+        state = LocalNodeState(
+          phase: LocalNodePhase.failed,
+          config: config,
+          error: 'A local node (pid $recordedPid) is running but has not '
+              'answered on port ${config.rpcPort} within '
+              '${_kAdoptGrace.inSeconds}s. It may still be opening its '
+              'database. Wait, or stop that process, then press Start.',
+        );
+        return;
+      }
+    }
+
     if (alive != null) {
-      _adoptedPid = await _readPidFile();
+      _adoptedPid = recordedPid;
       state = LocalNodeState(
         phase: LocalNodePhase.running,
         config: config,
@@ -176,8 +213,14 @@ class LocalNodeController extends Notifier<LocalNodeState> {
     _startPolling();
   }
 
-  Future<void> stop() async {
-    await _setAutoStart(false);
+  /// Stops the node.
+  ///
+  /// [keepAutoStart] is for the app shutting down: the node is being stopped
+  /// because the wallet is closing, not because the user turned it off, so it
+  /// should come back with the app. A Stop pressed in settings means the
+  /// opposite and clears the flag.
+  Future<void> stop({bool keepAutoStart = false}) async {
+    if (!keepAutoStart) await _setAutoStart(false);
 
     // The exitCode handler fires before this method gets to set the phase, so
     // it has to be told this exit was asked for or it reports it as a crash.
@@ -348,6 +391,18 @@ class LocalNodeController extends Notifier<LocalNodeState> {
 
   /// Whether the port went quiet within [limit]. False means it timed out and
   /// the daemon is still answering, which is the only case that earns a kill.
+  /// Polls until this config's own node answers, or [limit] runs out.
+  Future<Map<String, dynamic>?> _awaitOurNode(
+      LocalNodeConfig config, Duration limit) async {
+    final deadline = DateTime.now().add(limit);
+    while (DateTime.now().isBefore(deadline)) {
+      final info = await _probeOurNode(config);
+      if (info != null) return info;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return null;
+  }
+
   Future<bool> _waitForPortToClose(int port, Duration limit) async {
     final deadline = DateTime.now().add(limit);
     while (DateTime.now().isBefore(deadline)) {

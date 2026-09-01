@@ -1848,7 +1848,7 @@ abstract class S {
   /// Shutdown overlay and minimise-to-tray notice
   ///
   /// In en, this message translates to:
-  /// **'This is taking longer than expected. Quitting now can damage the wallet file — only do it if PLUTON is stuck.'**
+  /// **'This is taking longer than expected. Quitting now loses this save — the wallet on disk stays as it was, so nothing is damaged, but anything since the last save is gone.'**
   String get shutdownTakingLong;
 
   /// Shutdown overlay and minimise-to-tray notice
@@ -1886,6 +1886,90 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.'**
   String get localNodeStartHeightRequired;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'The local node is still running'**
+  String get nodeExitTitle;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Its first sync has not finished. That takes hours, and it only makes progress while the node is running — but a node left running keeps using the disk and the network after PLUTON has closed.'**
+  String get nodeExitBodySyncing;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'It is level with the network. Leaving it running keeps it that way and keeps using CPU, bandwidth and the disk while PLUTON is closed; stopping it costs a short catch-up next time.'**
+  String get nodeExitBodySynced;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Leave it running'**
+  String get nodeExitKeep;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Stop it'**
+  String get nodeExitStop;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Changeable later in Settings, under Local Lite Node.'**
+  String get nodeExitChangeLater;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Remember my choice'**
+  String get rememberMyChoice;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Stopping the local node…'**
+  String get shutdownStoppingNode;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Letting it flush its database, so the next start does not have to replay the write-ahead log.'**
+  String get shutdownStoppingNodeBody;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'When the wallet closes'**
+  String get nodeExitPolicyLabel;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Ask me'**
+  String get nodeExitPolicyAsk;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Leave the node running'**
+  String get nodeExitPolicyKeep;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'Stop the node'**
+  String get nodeExitPolicyStop;
+
+  /// Local node exit question and policy
+  ///
+  /// In en, this message translates to:
+  /// **'The local lite node is still running in the background. Open PLUTON to stop it.'**
+  String get localNodeStillRunningBody;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

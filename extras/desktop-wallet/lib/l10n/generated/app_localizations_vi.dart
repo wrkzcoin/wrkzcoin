@@ -964,7 +964,7 @@ class SVi extends S {
 
   @override
   String get shutdownTakingLong =>
-      'Quá trình này lâu hơn dự kiến. Thoát ngay bây giờ có thể làm hỏng tệp ví — chỉ làm vậy nếu PLUTON bị treo.';
+      'Quá trình này lâu hơn dự kiến. Thoát ngay bây giờ sẽ mất lần lưu này — tệp ví trên đĩa vẫn nguyên vẹn, không hỏng gì, nhưng mọi thay đổi từ lần lưu trước sẽ mất.';
 
   @override
   String get quitAnyway => 'Vẫn thoát';
@@ -987,4 +987,51 @@ class SVi extends S {
   @override
   String get localNodeStartHeightRequired =>
       'Nhập độ cao bắt đầu giữ khối đầy đủ. Giá trị phải lớn hơn 0 — nút lite không thể bắt đầu từ khối genesis.';
+
+  @override
+  String get nodeExitTitle => 'Nút cục bộ vẫn đang chạy';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Lần đồng bộ đầu tiên chưa xong. Việc này mất nhiều giờ và chỉ tiến triển khi nút đang chạy — nhưng một nút để chạy vẫn dùng đĩa và mạng sau khi PLUTON đóng.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Nó đã ngang với mạng. Để chạy tiếp sẽ giữ như vậy và vẫn dùng CPU, băng thông và đĩa khi PLUTON đóng; dừng lại thì lần sau phải bắt kịp một chút.';
+
+  @override
+  String get nodeExitKeep => 'Để chạy tiếp';
+
+  @override
+  String get nodeExitStop => 'Dừng lại';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Có thể đổi sau trong Cài đặt, mục Nút lite cục bộ.';
+
+  @override
+  String get rememberMyChoice => 'Ghi nhớ lựa chọn';
+
+  @override
+  String get shutdownStoppingNode => 'Đang dừng nút cục bộ…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Để nó ghi nốt cơ sở dữ liệu, lần khởi động sau không phải phát lại nhật ký ghi.';
+
+  @override
+  String get nodeExitPolicyLabel => 'Khi đóng ví';
+
+  @override
+  String get nodeExitPolicyAsk => 'Hỏi tôi';
+
+  @override
+  String get nodeExitPolicyKeep => 'Để nút chạy tiếp';
+
+  @override
+  String get nodeExitPolicyStop => 'Dừng nút';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Nút lite cục bộ vẫn chạy nền. Mở PLUTON để dừng nó.';
 }

@@ -973,7 +973,7 @@ class SRu extends S {
 
   @override
   String get shutdownTakingLong =>
-      'Это занимает больше времени, чем ожидалось. Выход сейчас может повредить файл кошелька — делайте это, только если PLUTON завис.';
+      'Это занимает больше времени, чем ожидалось. Выход сейчас отменит это сохранение — файл кошелька на диске останется прежним, ничего не испортится, но всё после последнего сохранения пропадёт.';
 
   @override
   String get quitAnyway => 'Всё равно выйти';
@@ -996,4 +996,51 @@ class SRu extends S {
   @override
   String get localNodeStartHeightRequired =>
       'Укажите высоту, с которой хранить полные блоки. Она должна быть больше нуля — лайт-узел не может начинаться с генезис-блока.';
+
+  @override
+  String get nodeExitTitle => 'Локальный узел всё ещё работает';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Первая синхронизация не завершена. Она занимает часы и идёт только пока узел запущен — но оставленный работать узел продолжает использовать диск и сеть после закрытия PLUTON.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Он на уровне сети. Если оставить его работать, он таким и останется и продолжит тратить процессор, трафик и диск, пока PLUTON закрыт; если остановить — в следующий раз потребуется короткое догоняние.';
+
+  @override
+  String get nodeExitKeep => 'Оставить работать';
+
+  @override
+  String get nodeExitStop => 'Остановить';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Можно изменить позже в Настройках, в разделе Локальный лайт-узел.';
+
+  @override
+  String get rememberMyChoice => 'Запомнить выбор';
+
+  @override
+  String get shutdownStoppingNode => 'Остановка локального узла…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Даём ему сбросить базу на диск, чтобы следующий запуск не переигрывал журнал записи.';
+
+  @override
+  String get nodeExitPolicyLabel => 'При закрытии кошелька';
+
+  @override
+  String get nodeExitPolicyAsk => 'Спрашивать';
+
+  @override
+  String get nodeExitPolicyKeep => 'Оставлять узел работать';
+
+  @override
+  String get nodeExitPolicyStop => 'Останавливать узел';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Локальный лайт-узел продолжает работать в фоне. Откройте PLUTON, чтобы его остановить.';
 }

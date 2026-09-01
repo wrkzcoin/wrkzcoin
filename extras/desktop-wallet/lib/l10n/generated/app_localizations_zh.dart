@@ -941,7 +941,8 @@ class SZh extends S {
   String get savingWalletBody => 'PLUTON 正在将钱包写入磁盘。钱包较大时可能需要一点时间。';
 
   @override
-  String get shutdownTakingLong => '耗时超出预期。此时退出可能损坏钱包文件——只有在 PLUTON 卡住时才这样做。';
+  String get shutdownTakingLong =>
+      '耗时超出预期。此时退出会丢失本次保存——磁盘上的钱包文件保持原样，不会损坏，但上次保存之后的改动会丢失。';
 
   @override
   String get quitAnyway => '仍要退出';
@@ -961,4 +962,48 @@ class SZh extends S {
   @override
   String get localNodeStartHeightRequired =>
       '请输入从哪个高度开始保留完整区块。必须大于零——轻节点无法从创世区块开始。';
+
+  @override
+  String get nodeExitTitle => '本地节点仍在运行';
+
+  @override
+  String get nodeExitBodySyncing =>
+      '它的首次同步尚未完成。这需要数小时，且只有节点运行时才会推进——但保持运行的节点在 PLUTON 关闭后仍会占用磁盘和网络。';
+
+  @override
+  String get nodeExitBodySynced =>
+      '它已与网络同步。保持运行可以维持这一状态，但在 PLUTON 关闭期间仍会占用 CPU、带宽和磁盘；停止它则下次需要短暂追赶。';
+
+  @override
+  String get nodeExitKeep => '保持运行';
+
+  @override
+  String get nodeExitStop => '停止';
+
+  @override
+  String get nodeExitChangeLater => '以后可在设置的“本地轻节点”中更改。';
+
+  @override
+  String get rememberMyChoice => '记住我的选择';
+
+  @override
+  String get shutdownStoppingNode => '正在停止本地节点…';
+
+  @override
+  String get shutdownStoppingNodeBody => '让它写完数据库，下次启动就不用重放预写日志。';
+
+  @override
+  String get nodeExitPolicyLabel => '关闭钱包时';
+
+  @override
+  String get nodeExitPolicyAsk => '询问我';
+
+  @override
+  String get nodeExitPolicyKeep => '保持节点运行';
+
+  @override
+  String get nodeExitPolicyStop => '停止节点';
+
+  @override
+  String get localNodeStillRunningBody => '本地轻节点仍在后台运行。打开 PLUTON 可以停止它。';
 }

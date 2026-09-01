@@ -544,7 +544,7 @@
   "@savingWalletBody": {
     "description": "Shutdown overlay and minimise-to-tray notice"
   },
-  "shutdownTakingLong": "This is taking longer than expected. Quitting now can damage the wallet file — only do it if PLUTON is stuck.",
+  "shutdownTakingLong": "This is taking longer than expected. Quitting now loses this save — the wallet on disk stays as it was, so nothing is damaged, but anything since the last save is gone.",
   "@shutdownTakingLong": {
     "description": "Shutdown overlay and minimise-to-tray notice"
   },
@@ -575,5 +575,61 @@
   "localNodeStartHeightRequired": "Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.",
   "@localNodeStartHeightRequired": {
     "description": "Local node data folder picker and start-height hint"
+  },
+  "nodeExitTitle": "The local node is still running",
+  "@nodeExitTitle": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitBodySyncing": "Its first sync has not finished. That takes hours, and it only makes progress while the node is running — but a node left running keeps using the disk and the network after PLUTON has closed.",
+  "@nodeExitBodySyncing": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitBodySynced": "It is level with the network. Leaving it running keeps it that way and keeps using CPU, bandwidth and the disk while PLUTON is closed; stopping it costs a short catch-up next time.",
+  "@nodeExitBodySynced": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitKeep": "Leave it running",
+  "@nodeExitKeep": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitStop": "Stop it",
+  "@nodeExitStop": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitChangeLater": "Changeable later in Settings, under Local Lite Node.",
+  "@nodeExitChangeLater": {
+    "description": "Local node exit question and policy"
+  },
+  "rememberMyChoice": "Remember my choice",
+  "@rememberMyChoice": {
+    "description": "Local node exit question and policy"
+  },
+  "shutdownStoppingNode": "Stopping the local node…",
+  "@shutdownStoppingNode": {
+    "description": "Local node exit question and policy"
+  },
+  "shutdownStoppingNodeBody": "Letting it flush its database, so the next start does not have to replay the write-ahead log.",
+  "@shutdownStoppingNodeBody": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyLabel": "When the wallet closes",
+  "@nodeExitPolicyLabel": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyAsk": "Ask me",
+  "@nodeExitPolicyAsk": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyKeep": "Leave the node running",
+  "@nodeExitPolicyKeep": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyStop": "Stop the node",
+  "@nodeExitPolicyStop": {
+    "description": "Local node exit question and policy"
+  },
+  "localNodeStillRunningBody": "The local lite node is still running in the background. Open PLUTON to stop it.",
+  "@localNodeStillRunningBody": {
+    "description": "Local node exit question and policy"
   }
 }

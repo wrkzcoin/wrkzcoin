@@ -51,7 +51,42 @@ const String kNodeDirName = 'node-data';
 /// itself, for the obvious reason.
 const String _kNodeDirPrefKey = 'local_node_data_dir';
 
+/// Where the remembered answer to "the node is still running" is stored.
+const String _kNodeExitPolicyKey = 'local_node_exit_policy';
+
 const _storage = FlutterSecureStorage();
+
+/// What happens to a running local node when the wallet is closed.
+enum NodeExitPolicy {
+  /// Put the question to the user, with a way to stop being asked.
+  ask,
+
+  /// Leave it running. It keeps syncing with the wallet closed.
+  keep,
+
+  /// Stop it cleanly, and start it again with the app next time.
+  stop,
+}
+
+Future<NodeExitPolicy> readNodeExitPolicy() async {
+  try {
+    final raw = await _storage.read(key: _kNodeExitPolicyKey);
+    return NodeExitPolicy.values.firstWhere(
+      (p) => p.name == raw,
+      orElse: () => NodeExitPolicy.ask,
+    );
+  } catch (_) {
+    return NodeExitPolicy.ask;
+  }
+}
+
+Future<void> writeNodeExitPolicy(NodeExitPolicy policy) async {
+  try {
+    await _storage.write(key: _kNodeExitPolicyKey, value: policy.name);
+  } catch (_) {
+    // Being asked again is the failure mode, which is the safe one.
+  }
+}
 
 /// A configured local node. Written to disk once and then read back; the
 /// values here are what the daemon is launched with every time.
@@ -323,6 +358,34 @@ class LocalNodePaths {
       return 0;
     }
     return total;
+  }
+}
+
+/// Whether a process with this pid exists.
+///
+/// `dart:io` has no way to ask — every `ProcessSignal` it exposes does
+/// something to the target, and POSIX's signal-0 idiom is not reachable. So it
+/// asks the OS: `tasklist` filtered by pid on Windows, `kill -0` elsewhere.
+///
+/// Answers false on any doubt. A wrong "alive" would make the app wait for a
+/// node that is not coming; a wrong "dead" costs at worst the situation that
+/// held before this check existed.
+Future<bool> processIsAlive(int? pid) async {
+  if (pid == null || pid <= 0) return false;
+  try {
+    if (Platform.isWindows) {
+      final result = await Process.run(
+        'tasklist',
+        ['/FI', 'PID eq $pid', '/NH', '/FO', 'CSV'],
+      );
+      // A filter that matches nothing still exits 0, printing an INFO line
+      // rather than a row, so the exit code cannot be the test.
+      return result.stdout.toString().contains('"$pid"');
+    }
+    final result = await Process.run('kill', ['-0', '$pid']);
+    return result.exitCode == 0;
+  } catch (_) {
+    return false;
   }
 }
 
