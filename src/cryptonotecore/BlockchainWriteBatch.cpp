@@ -81,6 +81,13 @@ BlockchainWriteBatch &BlockchainWriteBatch::insertKeyOutputCountForAmount(
     return *this;
 }
 
+BlockchainWriteBatch &BlockchainWriteBatch::insertLastBlockIndex(uint32_t blockIndex)
+{
+    rawDataToInsert.emplace_back(
+        DB::serialize(DB::BLOCK_INDEX_TO_BLOCK_HASH_PREFIX, DB::LAST_BLOCK_INDEX_KEY, blockIndex));
+    return *this;
+}
+
 BlockchainWriteBatch &BlockchainWriteBatch::insertRawBlock(uint32_t blockIndex, const RawBlock &block)
 {
     rawDataToInsert.emplace_back(DB::serialize(DB::BLOCK_INDEX_TO_RAW_BLOCK_PREFIX, blockIndex, block));

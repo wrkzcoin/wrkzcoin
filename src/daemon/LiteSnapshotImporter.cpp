@@ -535,6 +535,17 @@ namespace CryptoNote
 
             counters.insertTransactionCount(header.transactionsCount);
 
+            /* The chain's top block, stated rather than left to whichever block
+               was written last.
+
+               insertCachedBlock sets this on every call, and the records above
+               arrive in the order the stored keys sort - which is not the order
+               the blocks were mined. Leaving it implicit put the top at an
+               arbitrary block a couple of thousand short of the lite height, and
+               the node then tried to sync forward from there over blocks it
+               already held as index only records. */
+            counters.insertLastBlockIndex(liteHeight - 1);
+
             const auto counterError = database.write(counters);
 
             if (counterError)

@@ -55,6 +55,15 @@ namespace CryptoNote
         BlockchainWriteBatch &
             insertKeyOutputCountForAmount(IBlockchainCache::Amount amount, uint32_t totalOutputsCountForAmount);
 
+        /* Sets the chain's top block index on its own.
+
+           insertCachedBlock writes this as a side effect of every block it
+           stores, which is right when blocks are pushed in order and wrong for
+           anything that writes them in another one. A snapshot import writes
+           them in the order the stored keys sort, which is not the order the
+           blocks were mined, so it has to state the top explicitly afterwards. */
+        BlockchainWriteBatch &insertLastBlockIndex(uint32_t blockIndex);
+
         BlockchainWriteBatch &insertRawBlock(uint32_t blockIndex, const RawBlock &block);
 
         BlockchainWriteBatch &insertClosestTimestampBlockIndex(uint64_t timestamp, uint32_t blockIndex);
