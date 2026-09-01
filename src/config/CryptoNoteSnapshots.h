@@ -53,8 +53,19 @@ namespace CryptoNote
     };
 
     const std::initializer_list<LiteSnapshotDigest> LITE_SNAPSHOT_DIGESTS = {
-        /* No snapshot has been published yet, so nothing can be imported.
-           Deliberate: see above. The first blessed height is intended to be
-           4,000,000. */
+        /* NOT YET INDEPENDENTLY REPRODUCED - do not ship this to users.
+
+           Exported 2026-09-01 from one lite node at top block ~4,201,153:
+           148,728,732 records, of which exactly 4,000,000 are block info. It is
+           here so the import path can be tested against a real file at all.
+
+           What it does not yet have is the property that makes a digest worth
+           anything: a second person producing the same snapshot from their own
+           chain and arriving at the same value. Until that has happened this
+           entry records one machine's word. Before a release, reproduce it -
+           ideally from a full node, which exercises the transactionHash
+           normalisation the exporter does precisely so that a full node and a
+           lite node agree - and only then treat it as published. */
+        {4000000, "4601d802d990fa26b876ed7fdaffc00953cff6ca6b77299fd1c6981ef94fe09e"},
     };
 } // namespace CryptoNote
