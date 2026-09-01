@@ -1044,4 +1044,21 @@ class SEn extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Sync stopped at block $covered. The node it was talking to answers only from block $servesFrom upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'This node is not ready';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'The local node is still $behind blocks behind the network. Point the wallet at it now and the sync will park until it catches up, showing a balance that is missing anything it has not reached — with nothing on screen to say why. Staying on the remote node costs nothing; the node keeps syncing either way.';
+  }
+
+  @override
+  String get switchAnyway => 'Switch anyway';
+
+  @override
+  String get switchToRemoteNode => 'Switch to the remote node';
+
+  @override
+  String get nodeWillServeFromLabel => 'Will serve blocks from';
 }

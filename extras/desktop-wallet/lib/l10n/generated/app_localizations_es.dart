@@ -1052,4 +1052,21 @@ class SEs extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Sincronización detenida en el bloque $covered. El nodo con el que hablaba solo responde desde el bloque $servesFrom en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Este nodo no está listo';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Al nodo local aún le faltan $behind bloques para alcanzar la red. Si apuntas el monedero ahí ahora, la sincronización se detendrá hasta que se ponga al día, mostrando un saldo al que le falta todo lo que no ha alcanzado, y sin nada en pantalla que lo explique. Quedarte en el nodo remoto no cuesta nada; el nodo sigue sincronizando igual.';
+  }
+
+  @override
+  String get switchAnyway => 'Cambiar de todos modos';
+
+  @override
+  String get switchToRemoteNode => 'Cambiar al nodo remoto';
+
+  @override
+  String get nodeWillServeFromLabel => 'Servirá bloques desde';
 }

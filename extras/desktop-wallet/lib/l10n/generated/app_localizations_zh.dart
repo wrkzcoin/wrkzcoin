@@ -1014,4 +1014,21 @@ class SZh extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
   }
+
+  @override
+  String get localNodeNotReadyTitle => '该节点尚未就绪';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return '本地节点仍落后网络 $behind 个区块。现在将钱包指向它，同步会停止直到它追上，余额会缺少它尚未到达的部分——而且屏幕上没有任何说明。继续使用远程节点没有任何损失；无论如何节点都在继续同步。';
+  }
+
+  @override
+  String get switchAnyway => '仍要切换';
+
+  @override
+  String get switchToRemoteNode => '切换到远程节点';
+
+  @override
+  String get nodeWillServeFromLabel => '将从此高度提供区块';
 }

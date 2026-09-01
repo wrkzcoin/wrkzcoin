@@ -58,6 +58,8 @@ BlockDownloader &BlockDownloader::operator=(BlockDownloader &&old)
 
     m_syncGapDaemonServesFrom = old.m_syncGapDaemonServesFrom.load();
 
+    m_unexplainedStartCount = old.m_unexplainedStartCount.load();
+
     m_daemon = std::move(old.m_daemon);
 
     m_startTimestamp = std::move(old.m_startTimestamp);
@@ -171,6 +173,12 @@ void BlockDownloader::recordSyncGap(const uint64_t haveCoveredTo, const uint64_t
 
 void BlockDownloader::clearSyncGap()
 {
+    /* A run of anomalies only counts while it is unbroken. One good answer
+       means the reorg settled or the daemon caught up with our checkpoints,
+       and the next unrelated hiccup should start counting from one again
+       rather than inheriting a tally from an hour ago. */
+    m_unexplainedStartCount = 0;
+
     if (m_syncGapDetected.exchange(false))
     {
         Logger::logger.log(
@@ -515,7 +523,48 @@ bool BlockDownloader::downloadBlocks()
 
         if (blocks.front().blockHeight > expectedStart)
         {
-            recordSyncGap(expectedStart == 0 ? 0 : expectedStart - 1, blocks.front().blockHeight);
+            const uint64_t coveredToReport = expectedStart == 0 ? 0 : expectedStart - 1;
+
+            /* A daemon that cannot serve the range says so, and it says so
+               with a number: its lite start height. That is structural - no
+               amount of retrying will produce blocks it does not hold - so
+               stop at once and report the height it gave us. */
+            if (liteStartHeight != 0 && expectedStart < liteStartHeight)
+            {
+                recordSyncGap(coveredToReport, liteStartHeight);
+
+                return false;
+            }
+
+            /* Otherwise the daemon holds the range and still answered from
+               higher up. That is a reorg at the tip, or its idea of where our
+               checkpoints land differing from ours by a block - both transient,
+               both fixed by asking again. Treating one of these as a permanent
+               fault stopped a wallet dead over a single block on a 4.2 million
+               block chain, and told the user their balance was incomplete.
+
+               So retry, and only call it real once it keeps happening. The
+               cursor is dropped so the parallel path re-establishes position
+               rather than carrying on from a guess. */
+            m_nextDownloadHeight = 0;
+
+            const uint64_t seen = ++m_unexplainedStartCount;
+
+            if (seen < Constants::UNEXPLAINED_SYNC_START_LIMIT)
+            {
+                Logger::logger.log(
+                    "Daemon answered from height " + std::to_string(blocks.front().blockHeight) + " when height "
+                        + std::to_string(expectedStart) + " was expected, and reports no lite start height that "
+                        "would explain it. Attempt " + std::to_string(seen) + " of "
+                        + std::to_string(Constants::UNEXPLAINED_SYNC_START_LIMIT) + " before sync is stopped; "
+                        "retrying, as a reorg at the tip looks exactly like this.",
+                    Logger::WARNING,
+                    {Logger::SYNC, Logger::DAEMON});
+
+                return false;
+            }
+
+            recordSyncGap(coveredToReport, blocks.front().blockHeight);
 
             return false;
         }

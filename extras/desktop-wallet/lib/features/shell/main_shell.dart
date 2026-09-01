@@ -230,7 +230,6 @@ class _NodeStatusFooter extends ConsumerWidget {
     final isOnline = nodeInfoAsync.valueOrNull?['daemonOnline'] as bool? ?? false;
     final host = nodeInfoAsync.valueOrNull?['daemonHost'] as String? ?? '…';
     final port = nodeInfoAsync.valueOrNull?['daemonPort'];
-    final nodeStr = port != null ? '$host:$port' : host;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
@@ -248,13 +247,23 @@ class _NodeStatusFooter extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(
+          // The port is the half that matters when two nodes differ only by
+          // it, and it is the half an ellipsis eats. Keep it, and let the
+          // hostname be the part that gives way.
+          Flexible(
             child: Text(
-              nodeStr,
+              host,
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
               overflow: TextOverflow.ellipsis,
+              softWrap: false,
             ),
           ),
+          if (port != null)
+            Text(
+              ':$port',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+            ),
+          const Spacer(),
           // Language switcher
           const LanguageSelectorButton(),
           const SizedBox(width: 2),

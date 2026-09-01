@@ -1025,4 +1025,21 @@ class SJa extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'ブロック $covered で同期が停止しました。接続先のノードはブロック $servesFrom 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'このノードはまだ使えません';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'ローカルノードはまだネットワークより $behind ブロック遅れています。今ウォレットをここに向けると、追いつくまで同期が止まり、未到達分を欠いた残高が表示されます——しかも理由は画面に出ません。リモートノードのままでも損はなく、ノードの同期はどちらでも続きます。';
+  }
+
+  @override
+  String get switchAnyway => 'それでも切り替える';
+
+  @override
+  String get switchToRemoteNode => 'リモートノードに切り替える';
+
+  @override
+  String get nodeWillServeFromLabel => '今後提供するブロックの開始位置';
 }

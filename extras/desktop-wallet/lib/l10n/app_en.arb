@@ -646,5 +646,17 @@
   },
   "@syncStoppedTitle": {
     "description": "Banner label when sync has stopped over a range no daemon served"
-  }
+  },
+  "localNodeNotReadyTitle": "This node is not ready",
+  "localNodeNotReadyBody": "The local node is still {behind} blocks behind the network. Point the wallet at it now and the sync will park until it catches up, showing a balance that is missing anything it has not reached — with nothing on screen to say why. Staying on the remote node costs nothing; the node keeps syncing either way.",
+  "@localNodeNotReadyBody": {
+    "placeholders": {
+      "behind": {
+        "type": "int"
+      }
+    }
+  },
+  "switchAnyway": "Switch anyway",
+  "switchToRemoteNode": "Switch to the remote node",
+  "nodeWillServeFromLabel": "Will serve blocks from"
 }

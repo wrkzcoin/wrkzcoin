@@ -1051,4 +1051,21 @@ class SDe extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Dieser Node ist nicht bereit';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Der lokale Node liegt noch $behind Blöcke hinter dem Netzwerk. Wenn Sie das Wallet jetzt darauf richten, pausiert die Synchronisierung, bis er aufgeholt hat, und zeigt einen Kontostand ohne alles, was er noch nicht erreicht hat — ohne dass etwas auf dem Bildschirm das erklärt. Auf dem entfernten Node zu bleiben kostet nichts; der Node synchronisiert so oder so weiter.';
+  }
+
+  @override
+  String get switchAnyway => 'Trotzdem wechseln';
+
+  @override
+  String get switchToRemoteNode => 'Zum entfernten Node wechseln';
+
+  @override
+  String get nodeWillServeFromLabel => 'Wird Blöcke liefern ab';
 }

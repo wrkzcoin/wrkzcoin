@@ -524,5 +524,10 @@
   "nodeExitPolicyStop": "Node stoppen",
   "localNodeStillRunningBody": "Der lokale Lite-Node läuft weiter im Hintergrund. Öffnen Sie PLUTON, um ihn zu stoppen.",
   "syncStoppedTitle": "Synchronisierung gestoppt",
-  "syncGapStalled": "Synchronisierung bei Block {covered} gestoppt. Der befragte Node antwortet erst ab Block {servesFrom}, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden."
+  "syncGapStalled": "Synchronisierung bei Block {covered} gestoppt. Der befragte Node antwortet erst ab Block {servesFrom}, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.",
+  "localNodeNotReadyTitle": "Dieser Node ist nicht bereit",
+  "localNodeNotReadyBody": "Der lokale Node liegt noch {behind} Blöcke hinter dem Netzwerk. Wenn Sie das Wallet jetzt darauf richten, pausiert die Synchronisierung, bis er aufgeholt hat, und zeigt einen Kontostand ohne alles, was er noch nicht erreicht hat — ohne dass etwas auf dem Bildschirm das erklärt. Auf dem entfernten Node zu bleiben kostet nichts; der Node synchronisiert so oder so weiter.",
+  "switchAnyway": "Trotzdem wechseln",
+  "switchToRemoteNode": "Zum entfernten Node wechseln",
+  "nodeWillServeFromLabel": "Wird Blöcke liefern ab"
 }

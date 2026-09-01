@@ -14,7 +14,6 @@ import '../../core/providers/wallet_notifiers.dart';
 import '../../core/node/local_node.dart';
 import '../../core/node/local_node_controller.dart';
 import '../../shared/theme/app_theme.dart';
-import '../../shared/widgets/lite_node_banner.dart';
 import '../../l10n/generated/app_localizations.dart';
 import 'local_node_section.dart';
 
@@ -74,12 +73,83 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     super.dispose();
   }
 
+  /// True when Apply may go ahead.
+  ///
+  /// Only asks when the target is this machine's own lite node and that node
+  /// cannot serve the wallet yet — it is still catching up, has no peers, or
+  /// has not reached its own start height. Any other daemon is the user's
+  /// business and is applied without comment.
+  Future<bool> _confirmUnreadyLocalNode() async {
+    final node = ref.read(localNodeProvider);
+    final config = node.config;
+    if (config == null) return true;
+
+    final targetingLocal = _nodeHostCtrl.text.trim() == kLocalNodeHost &&
+        int.tryParse(_nodePortCtrl.text) == config.rpcPort;
+    if (!targetingLocal || node.canServeWallet) return true;
+
+    final tr = S.of(context);
+    final behind = node.networkHeight > node.height
+        ? node.networkHeight - node.height
+        : 0;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.localNodeNotReadyTitle ?? 'This node is not ready'),
+          content: SizedBox(
+            width: 420,
+            child: Text(
+              dlgTr?.localNodeNotReadyBody(behind) ??
+                  'The local node is still $behind blocks behind the network. '
+                      'Point the wallet at it now and the sync will park until '
+                      'it catches up, showing a balance that is missing '
+                      'anything it has not reached — with nothing on screen to '
+                      'say why. Staying on the remote node until it is ready '
+                      'costs nothing; the node keeps syncing either way.',
+              style: const TextStyle(height: 1.5, fontSize: 13),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dlgTr?.cancel ?? 'Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dlgTr?.switchAnyway ?? 'Switch anyway'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (proceed != true) {
+      if (mounted) {
+        setState(() =>
+            _nodeError = tr?.localNodeNotReadyTitle ?? 'This node is not ready');
+      }
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _saveNode() async {
     final tr = S.of(context);
     if (_nodeHostCtrl.text.trim().isEmpty) {
       setState(() => _nodeError = tr?.hostIpAddress ?? 'Host / IP address');
       return;
     }
+
+    // "Use this node" in the card below is gated on the node being able to
+    // serve the wallet. This field and Apply reached the same daemon with no
+    // gate at all, which made that check two clicks from useless - and pointing
+    // a wallet at a lite node that has not reached its own start height is
+    // exactly what parks the sync with an incomplete balance.
+    if (!await _confirmUnreadyLocalNode()) return;
+
     setState(() { _savingNode = true; _nodeError = null; _nodeSuccess = null; });
     try {
       await ref.read(walletCApiProvider).swapNode(
@@ -535,35 +605,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      // Quick targets. Filling the fields rather than
-                      // switching outright, so the choice is still confirmed
-                      // with Apply like any other node change.
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ActionChip(
-                            avatar: const Icon(Icons.cloud_outlined, size: 16),
-                            label: Text(tr?.nodePresetRemote ?? 'Remote node'),
-                            onPressed: () => setState(() {
-                              _nodeHostCtrl.text = kDefaultDaemonHost;
-                              _nodePortCtrl.text = '$kDefaultDaemonPort';
-                              _nodeSSL = kDefaultDaemonSSL;
-                            }),
-                          ),
-                          if (ref.watch(localNodeProvider).config
-                              case final localConfig?)
-                            ActionChip(
-                              avatar: const Icon(Icons.dns_outlined, size: 16),
-                              label: Text(tr?.nodePresetLocal ?? 'Local lite node'),
-                              onPressed: () => setState(() {
-                                _nodeHostCtrl.text = kLocalNodeHost;
-                                _nodePortCtrl.text = '${localConfig.rpcPort}';
-                                _nodeSSL = false;
+                      // Quick targets, and the only thing on screen that says
+                      // which node the wallet is actually on: the host field
+                      // shows what will be applied, not what is connected, and
+                      // those differ the moment anyone types in it.
+                      //
+                      // Selection is decided by the live connection, not by the
+                      // fields.
+                      Builder(builder: (context) {
+                        final localConfig = ref.watch(localNodeProvider).config;
+                        final info = ref.watch(nodeInfoProvider).valueOrNull;
+                        final liveHost = info?['daemonHost'] as String?;
+                        final livePort = (info?['daemonPort'] as num?)?.toInt();
+
+                        final onLocal = localConfig != null &&
+                            liveHost == kLocalNodeHost &&
+                            livePort == localConfig.rpcPort;
+                        final onRemote = liveHost != null && !onLocal;
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ChoiceChip(
+                              avatar: Icon(Icons.cloud_outlined,
+                                  size: 16,
+                                  color: onRemote ? kPrimary : null),
+                              label: Text(tr?.nodePresetRemote ?? 'Remote node'),
+                              selected: onRemote,
+                              selectedColor: kPrimary.withAlpha(40),
+                              onSelected: (_) => setState(() {
+                                _nodeHostCtrl.text = kDefaultDaemonHost;
+                                _nodePortCtrl.text = '$kDefaultDaemonPort';
+                                _nodeSSL = kDefaultDaemonSSL;
                               }),
                             ),
-                        ],
-                      ),
+                            if (localConfig != null)
+                              ChoiceChip(
+                                avatar: Icon(Icons.dns_outlined,
+                                    size: 16, color: onLocal ? kPrimary : null),
+                                label:
+                                    Text(tr?.nodePresetLocal ?? 'Local lite node'),
+                                selected: onLocal,
+                                selectedColor: kPrimary.withAlpha(40),
+                                onSelected: (_) => setState(() {
+                                  _nodeHostCtrl.text = kLocalNodeHost;
+                                  _nodePortCtrl.text = '${localConfig.rpcPort}';
+                                  _nodeSSL = false;
+                                }),
+                              ),
+                          ],
+                        );
+                      }),
                       const SizedBox(height: 14),
                       Row(
                         children: [
@@ -643,11 +736,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                           ],
                         ),
-                        if (status.isLiteNode || status.hasReportableSyncGap) ...[
+                        // The shell already shows this banner across the top
+                        // of every screen, this one included. Two copies of the
+                        // same red paragraph on one page is not twice the
+                        // warning, and the second one pushed the node controls
+                        // off the fold. The shell's is the one that stays.
+                        if (status.hasReportableSyncGap) ...[
                           const SizedBox(height: 10),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: LiteNodeBanner(status: status, compact: true),
+                          OutlinedButton.icon(
+                            onPressed: _savingNode
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _nodeHostCtrl.text = kDefaultDaemonHost;
+                                      _nodePortCtrl.text =
+                                          '$kDefaultDaemonPort';
+                                      _nodeSSL = kDefaultDaemonSSL;
+                                    });
+                                    unawaited(_saveNode());
+                                  },
+                            icon: const Icon(Icons.cloud_outlined, size: 16),
+                            label: Text(tr?.switchToRemoteNode ??
+                                'Switch to the remote node'),
                           ),
                         ],
                       ],

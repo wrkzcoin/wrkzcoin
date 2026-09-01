@@ -524,5 +524,10 @@
   "nodeExitPolicyStop": "ノードを停止する",
   "localNodeStillRunningBody": "ローカルライトノードはバックグラウンドで実行中です。停止するには PLUTON を開いてください。",
   "syncStoppedTitle": "同期を停止しました",
-  "syncGapStalled": "ブロック {covered} で同期が停止しました。接続先のノードはブロック {servesFrom} 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。"
+  "syncGapStalled": "ブロック {covered} で同期が停止しました。接続先のノードはブロック {servesFrom} 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。",
+  "localNodeNotReadyTitle": "このノードはまだ使えません",
+  "localNodeNotReadyBody": "ローカルノードはまだネットワークより {behind} ブロック遅れています。今ウォレットをここに向けると、追いつくまで同期が止まり、未到達分を欠いた残高が表示されます——しかも理由は画面に出ません。リモートノードのままでも損はなく、ノードの同期はどちらでも続きます。",
+  "switchAnyway": "それでも切り替える",
+  "switchToRemoteNode": "リモートノードに切り替える",
+  "nodeWillServeFromLabel": "今後提供するブロックの開始位置"
 }

@@ -1982,6 +1982,36 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
   String syncGapStalled(int covered, int servesFrom);
+
+  /// No description provided for @localNodeNotReadyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This node is not ready'**
+  String get localNodeNotReadyTitle;
+
+  /// No description provided for @localNodeNotReadyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The local node is still {behind} blocks behind the network. Point the wallet at it now and the sync will park until it catches up, showing a balance that is missing anything it has not reached — with nothing on screen to say why. Staying on the remote node costs nothing; the node keeps syncing either way.'**
+  String localNodeNotReadyBody(int behind);
+
+  /// No description provided for @switchAnyway.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch anyway'**
+  String get switchAnyway;
+
+  /// No description provided for @switchToRemoteNode.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch to the remote node'**
+  String get switchToRemoteNode;
+
+  /// No description provided for @nodeWillServeFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Will serve blocks from'**
+  String get nodeWillServeFromLabel;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

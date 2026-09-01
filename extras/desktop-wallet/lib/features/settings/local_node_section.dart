@@ -85,12 +85,24 @@ class LocalNodeSection extends ConsumerWidget {
         children: [
           _PhaseChip(phase: node.phase),
           const SizedBox(width: 12),
-          if (node.isRunning && node.networkHeight > 0)
+          if (node.isRunning && node.networkHeight > 0) ...[
             Text(
               tr?.localNodeProgress(node.height, node.networkHeight) ??
                   'Block ${node.height} of ${node.networkHeight}',
               style: const TextStyle(color: kTextSecondary, fontSize: 12),
             ),
+            // A bar creeping across a first sync says almost nothing on its
+            // own. "1.9%" is the number people actually want, and it is the
+            // difference between "stuck" and "working".
+            if (progress != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                '${(progress * 100).toStringAsFixed(progress < 0.1 ? 2 : 1)}%',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
           const Spacer(),
           if (node.diskBytes > 0)
             Text(
@@ -114,7 +126,12 @@ class LocalNodeSection extends ConsumerWidget {
       Row(
         children: [
           Text(
-            tr?.nodeServesFromLabel ?? 'Serves blocks from',
+            // Present tense would be a lie while it is still catching up: a
+            // node at block 78,000 configured to keep everything from 4,000,000
+            // serves nothing at all yet.
+            node.canServeWallet
+                ? (tr?.nodeServesFromLabel ?? 'Serves blocks from')
+                : (tr?.nodeWillServeFromLabel ?? 'Will serve blocks from'),
             style: const TextStyle(color: kTextSecondary, fontSize: 12),
           ),
           const SizedBox(width: 8),

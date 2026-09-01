@@ -524,5 +524,10 @@
   "nodeExitPolicyStop": "Parar o nó",
   "localNodeStillRunningBody": "O nó lite local continua rodando em segundo plano. Abra o PLUTON para pará-lo.",
   "syncStoppedTitle": "Sincronização parada",
-  "syncGapStalled": "Sincronização parada no bloco {covered}. O nó com que falava só responde a partir do bloco {servesFrom}, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira."
+  "syncGapStalled": "Sincronização parada no bloco {covered}. O nó com que falava só responde a partir do bloco {servesFrom}, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.",
+  "localNodeNotReadyTitle": "Este nó não está pronto",
+  "localNodeNotReadyBody": "O nó local ainda está {behind} blocos atrás da rede. Apontar a carteira para ele agora faz a sincronização parar até ele alcançar, mostrando um saldo sem tudo o que ele ainda não alcançou — e sem nada na tela explicando. Ficar no nó remoto não custa nada; o nó continua sincronizando de qualquer forma.",
+  "switchAnyway": "Trocar mesmo assim",
+  "switchToRemoteNode": "Trocar para o nó remoto",
+  "nodeWillServeFromLabel": "Servirá blocos a partir de"
 }

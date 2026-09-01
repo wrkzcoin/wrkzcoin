@@ -1042,4 +1042,21 @@ class SVi extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Đồng bộ dừng ở khối $covered. Nút đang kết nối chỉ trả lời từ khối $servesFrom trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Nút này chưa sẵn sàng';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Nút cục bộ vẫn còn chậm hơn mạng $behind khối. Chuyển ví sang nó ngay bây giờ sẽ khiến việc đồng bộ dừng lại cho đến khi nó bắt kịp, hiển thị số dư thiếu mọi thứ nó chưa tới — và không có gì trên màn hình giải thích. Ở lại nút từ xa không mất gì cả; nút vẫn tiếp tục đồng bộ.';
+  }
+
+  @override
+  String get switchAnyway => 'Vẫn chuyển';
+
+  @override
+  String get switchToRemoteNode => 'Chuyển sang nút từ xa';
+
+  @override
+  String get nodeWillServeFromLabel => 'Sẽ phục vụ khối từ';
 }

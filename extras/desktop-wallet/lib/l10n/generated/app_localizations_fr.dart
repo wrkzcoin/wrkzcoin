@@ -1054,4 +1054,21 @@ class SFr extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Synchronisation arrêtée au bloc $covered. Le nœud interrogé ne répond qu\'à partir du bloc $servesFrom, donc les blocs intermédiaires ne peuvent pas en être téléchargés. Le solde est incomplet tant que vous ne vous connectez pas à un nœud détenant toute la chaîne.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Ce nœud n\'est pas prêt';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Le nœud local a encore $behind blocs de retard sur le réseau. Y connecter le portefeuille maintenant met la synchronisation en attente jusqu\'à ce qu\'il rattrape, en affichant un solde amputé de tout ce qu\'il n\'a pas atteint — sans rien à l\'écran pour l\'expliquer. Rester sur le nœud distant ne coûte rien ; le nœud continue de se synchroniser dans les deux cas.';
+  }
+
+  @override
+  String get switchAnyway => 'Basculer quand même';
+
+  @override
+  String get switchToRemoteNode => 'Basculer vers le nœud distant';
+
+  @override
+  String get nodeWillServeFromLabel => 'Servira les blocs à partir de';
 }

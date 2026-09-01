@@ -194,4 +194,21 @@ class BlockDownloader
     std::atomic<uint64_t> m_syncGapCoveredTo = 0;
 
     std::atomic<uint64_t> m_syncGapDaemonServesFrom = 0;
+
+    /* How many times in a row a daemon has answered from higher up than the
+       next block we asked for, without declaring a lite height that explains
+       it.
+
+       A daemon that structurally cannot serve a range says so - it reports a
+       lite start height, and that case is caught on its own and stops sync at
+       once. This counter is for the other reason the same symptom appears: a
+       reorg at the tip dropping the block we were about to ask for, or a
+       daemon resolving our checkpoints one block further on than our own
+       height accounting. Those are transient and one block wide, and stopping
+       a wallet dead over one is out of all proportion - the first time it
+       happened here the recorded gap was 4202338 to 4202340, on a chain
+       4.2 million blocks long.
+
+       So the anomaly is retried, and only a run of them is treated as real. */
+    std::atomic<uint64_t> m_unexplainedStartCount = 0;
 };

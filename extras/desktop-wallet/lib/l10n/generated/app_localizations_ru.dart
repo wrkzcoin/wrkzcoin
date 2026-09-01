@@ -1051,4 +1051,21 @@ class SRu extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Синхронизация остановлена на блоке $covered. Узел, с которым шёл обмен, отвечает только начиная с блока $servesFrom, поэтому блоки между ними с него не скачать. Баланс неполный, пока вы не подключите узел с полной цепочкой.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Этот узел не готов';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Локальный узел отстаёт от сети ещё на $behind блоков. Если переключить кошелёк на него сейчас, синхронизация встанет до его догона, а баланс будет без всего, чего он ещё не достиг — и ничто на экране этого не объяснит. Остаться на удалённом узле ничего не стоит: узел в любом случае продолжает синхронизацию.';
+  }
+
+  @override
+  String get switchAnyway => 'Всё равно переключить';
+
+  @override
+  String get switchToRemoteNode => 'Переключиться на удалённый узел';
+
+  @override
+  String get nodeWillServeFromLabel => 'Будет отдавать блоки с';
 }

@@ -1053,4 +1053,21 @@ class SPt extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Sincronização parada no bloco $covered. O nó com que falava só responde a partir do bloco $servesFrom, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.';
   }
+
+  @override
+  String get localNodeNotReadyTitle => 'Este nó não está pronto';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'O nó local ainda está $behind blocos atrás da rede. Apontar a carteira para ele agora faz a sincronização parar até ele alcançar, mostrando um saldo sem tudo o que ele ainda não alcançou — e sem nada na tela explicando. Ficar no nó remoto não custa nada; o nó continua sincronizando de qualquer forma.';
+  }
+
+  @override
+  String get switchAnyway => 'Trocar mesmo assim';
+
+  @override
+  String get switchToRemoteNode => 'Trocar para o nó remoto';
+
+  @override
+  String get nodeWillServeFromLabel => 'Servirá blocos a partir de';
 }
