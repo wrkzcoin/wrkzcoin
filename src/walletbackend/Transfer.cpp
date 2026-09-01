@@ -300,7 +300,15 @@ namespace SendTransaction
         }
 
         WalletTypes::TransactionResult txResult;
-        uint64_t changeRequired;
+
+        /* Zero, not uninitialised: the loop below only assigns this once the
+           inputs cover the total, and the guard after it only returns early
+           when they do not cover requiredAmount - which starts equal to
+           totalAmount but does not stay there. A zero total with no available
+           inputs slips between the two and reaches txInfo.changeRequired and
+           storeSentTransaction with whatever was on the stack. No change owed
+           is what zero means here anyway. */
+        uint64_t changeRequired = 0;
         uint64_t requiredAmount = totalAmount;
         WalletTypes::PreparedTransactionInfo txInfo;
 

@@ -96,13 +96,18 @@ template<typename T> class ThreadSafeQueue
         m_consumedData.notify_all();
     }
     
-    /* Take an item from the front of the queue, and do NOT remove it */
-    T &front()
+    /* Take a copy of the item at the front of the queue, and do NOT remove
+       it. Returns a default constructed T when the queue is stopping - the
+       caller is expected to be checking for that itself, as the one caller
+       does before it asks. */
+    T front()
     {
         /* Acquire the lock */
         std::unique_lock<std::mutex> lock(m_mutex);
 
-        return getFirstItem(lock);
+        const T *item = getFirstItem(lock);
+
+        return item == nullptr ? T() : *item;
     }
 
     /* Take and remove an item from the front of the queue */
@@ -111,12 +116,14 @@ template<typename T> class ThreadSafeQueue
         /* Acquire the lock */
         std::unique_lock<std::mutex> lock(m_mutex);
 
-        T item = std::move(getFirstItem(lock));
+        T *item = getFirstItem(lock);
 
-        if (m_shouldStop)
+        if (item == nullptr)
         {
             return T();
         }
+
+        T taken = std::move(*item);
 
         /* Remove item */
         m_queue.pop();
@@ -127,7 +134,7 @@ template<typename T> class ThreadSafeQueue
 
         m_consumedData.notify_all();
 
-        return item;
+        return taken;
     }
 
     /* Stop the queue if something is waiting on it, so we don't block
@@ -158,13 +165,24 @@ template<typename T> class ThreadSafeQueue
     }
 
   private:
-    T &getFirstItem(std::unique_lock<std::mutex> &lock)
+    /* Returns the front of the queue, or nullptr when the queue is stopping
+       and there is nothing to hand back.
+
+       This used to return T& and, on the stopping path, default construct a
+       local and return a reference to it - a reference to a destroyed object,
+       every time. front() handed that straight to its caller, and pop() move
+       constructed from it, which for a type owning heap memory (the queue
+       holds WalletTypes::Transaction in zedwallet++, and std::future in the
+       daemon's block export) is a move out of freed stack rather than merely a
+       garbage read. Both callers already discard the value when stopping, so
+       there was never anything to return; saying so with a pointer is what the
+       code always meant. */
+    T *getFirstItem(std::unique_lock<std::mutex> &lock)
     {
         /* Stopping, don't return data */
         if (m_shouldStop)
         {
-            T item;
-            return item;
+            return nullptr;
         }
 
         /* Wait for data to become available (releases the lock whilst
@@ -182,12 +200,11 @@ template<typename T> class ThreadSafeQueue
         /* Stopping, don't return data */
         if (m_shouldStop)
         {
-            T item;
-            return item;
+            return nullptr;
         }
 
         /* Get the first item in the queue */
-        return m_queue.front();
+        return &m_queue.front();
     }
 
     /* The deque data structure */

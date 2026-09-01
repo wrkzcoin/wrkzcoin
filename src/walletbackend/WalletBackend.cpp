@@ -1824,6 +1824,12 @@ std::vector<WalletTypes::Transaction>
     } catch (const std::exception &e)
     {
     }
+
+    /* getTransactions() threw and the catch above swallowed it. Falling off the
+       end of a function returning a vector is undefined behaviour, so say what
+       happens instead: the caller gets the empty range it would have got had
+       there been no transactions in it. */
+    return result;
 }
 
 std::tuple<uint64_t, std::string> WalletBackend::getNodeFee() const
