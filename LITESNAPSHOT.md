@@ -320,6 +320,34 @@ One test decides whether any of this is real:
 the digest is decorative, nobody can reproduce a published snapshot, and the trust model
 quietly reduces to "whoever sent you the file".
 
+### An import, measured
+
+A full round trip on mainnet at `H` = 4,000,000, importing the 5.20 GiB snapshot into an
+empty data directory and then starting the node on it:
+
+| | |
+|---|---|
+| verify pass (writes nothing) | 411 s |
+| write pass | ~33 min |
+| **total** | **2,379 s, about 40 minutes** |
+| resulting database | **5.77 GiB** |
+| a natively synced lite node at the same height | 5.80 GB |
+| peak memory | ~160 MB |
+
+The two sizes agreeing is the useful part: an imported database and a synced one come out
+the same, which is some evidence the import is neither missing records nor duplicating
+them. Restarted without the import flag, the node reported `height: 4000000` and synced
+forward from there.
+
+Against a native lite sync - a day on a server, two to three on a laptop - that is the
+whole point of the feature, and it holds.
+
+**Run it with the same `--db-*` flags the node will use afterwards.** The same import
+without them took 20 minutes rather than 40 and produced 6.71 GiB instead of 5.77. Ingested
+files land at the bottommost level and nothing rewrites them, so the difference is
+permanent until a `compact_db force`, which costs a full rewrite. The extra twenty minutes
+of ZSTD is the cheaper end of that trade.
+
 ### What has been run
 
 **A full node and a lite node at `H` = 4,000,000 produced the same digest**
@@ -338,9 +366,14 @@ rules out is normalisation and filtering error, which were the plausible failure
 - **A third export, from someone else's build.** Closes the gap above, and is what a
   published digest should rest on.
 - **An imported node against a natively synced one** at the same `H`, compared under
-  `--snapshot-stats`. Expect one difference and only one: the `amountId -> amount` records
-  under `"h"`, whose ids an importer assigns in ascending amount order rather than in the
-  order a syncing node first met each amount. Nothing reads them back.
+  `--snapshot-stats`. The two agree on total size to within half a percent, but that is not
+  the same as agreeing table by table. Expect one difference and only one: the
+  `amountId -> amount` records under `"h"`, whose ids an importer assigns in ascending
+  amount order rather than in the order a syncing node first met each amount. Nothing reads
+  them back.
+- **A wallet against an imported node.** Everything in [LITENODE.md](LITENODE.md) about
+  scan floors and stalled syncs should hold unchanged, because after the restart this is an
+  ordinary lite node - but no wallet has been pointed at one.
 - **Refusal paths.** A truncated file, a bit-flipped one, one whose digest is not in the
   table, one for the wrong height, one for the wrong chain, and one aimed at a database
   that already holds a chain - each refused without writing anything.
