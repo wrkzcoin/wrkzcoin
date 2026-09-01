@@ -339,6 +339,12 @@ the same, which is some evidence the import is neither missing records nor dupli
 them. Restarted without the import flag, the node reported `height: 4000000` and synced
 forward from there.
 
+The same snapshot imported on Linux took **1,357 s - 22.6 minutes** - and came up at
+`height: 4000000` as well. Both nodes reported a chain-wide transaction total of
+7,469,434: two imports, different operating systems, different hardware, different
+database flags, agreeing on a counter that is restored from the header rather than
+recomputed. That is a harder thing to pass by accident than the record counts are.
+
 Against a native lite sync - a day on a server, two to three on a laptop - that is the
 whole point of the feature, and it holds.
 
