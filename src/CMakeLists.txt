@@ -15,6 +15,10 @@ include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
+# zstd.h itself lives under lib/; the lite node snapshot container compresses its
+# frames with it. Header only at compile time - the symbols are daemon-only, like
+# RocksDB's.
+include_directories(${CMAKE_SOURCE_DIR}/external/zstd/lib)
 
 # wallet_capi shared target links many internal static libraries. Ensure they
 # are built with PIC so shared linking succeeds on ELF/Mach-O platforms.

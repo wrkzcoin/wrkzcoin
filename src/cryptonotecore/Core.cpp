@@ -3275,6 +3275,26 @@ namespace CryptoNote
         return dbCache->measureStorage();
     }
 
+    LiteSnapshot::Header Core::exportLiteSnapshot(
+        const std::string &path,
+        const uint32_t snapshotHeight,
+        const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            throw std::runtime_error("This node is not backed by a database, so it has nothing to export");
+        }
+
+        /* The genesis hash goes in the header so a snapshot for one network
+           cannot be imported into another. Reading it from the chain rather
+           than the currency keeps it the hash this node actually validated
+           against. */
+        return dbCache->exportLiteSnapshot(path, snapshotHeight, getBlockHashByIndex(0), progress);
+    }
+
     std::error_code Core::compactDatabase()
     {
         return compactDatabaseDetailed().first;

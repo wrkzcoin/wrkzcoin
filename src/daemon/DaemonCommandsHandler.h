@@ -12,6 +12,7 @@
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
 #include "rpc/JsonRpc.h"
 #include "rpc/RpcServer.h"
+#include <cryptonotecore/LiteSnapshot.h>
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>
@@ -124,6 +125,15 @@ class DaemonCommandsHandler
 
     bool compact_db(const std::vector<std::string> &args);
 
+    /* Writes the index only region of the chain to a lite node snapshot file,
+       so another machine can import it rather than spend days rebuilding it.
+       Runs on its own thread - it walks the three biggest tables in the
+       database - so the console stays usable and the work can be cancelled.
+       See LITESNAPSHOT.md. */
+    bool snapshot_export(const std::vector<std::string> &args);
+
+    void refresh_snapshot_state_locked();
+
     bool ban(const std::vector<std::string> &args);
 
     httplib::Result rpc_get(const std::string &path);
@@ -171,4 +181,31 @@ class DaemonCommandsHandler
     uint64_t m_schedulerCheckIntervalSeconds = 60;
 
     uint32_t m_nearSyncStreak = 0;
+
+    std::mutex m_snapshotMutex;
+
+    std::future<void> m_snapshotTask;
+
+    bool m_snapshotRunning = false;
+
+    bool m_snapshotHasResult = false;
+
+    /* Empty means the last export succeeded. The worker never throws out of
+       itself: an operator reads the reason here or from `snapshot_export
+       status`, not from a stack unwinding through a console thread. */
+    std::string m_snapshotError;
+
+    std::string m_snapshotPath;
+
+    std::string m_snapshotStage;
+
+    uint64_t m_snapshotScanned = 0;
+
+    uint64_t m_snapshotKept = 0;
+
+    uint64_t m_snapshotStartedAt = 0;
+
+    std::atomic<bool> m_snapshotCancel {false};
+
+    CryptoNote::LiteSnapshot::Header m_snapshotResult;
 };

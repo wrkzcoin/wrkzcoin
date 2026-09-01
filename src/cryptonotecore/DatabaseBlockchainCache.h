@@ -20,6 +20,7 @@
 #include "Currency.h"
 #include "IBlockchainCache.h"
 #include "common/StringView.h"
+#include "cryptonotecore/LiteSnapshot.h"
 #include "cryptonotecore/UpgradeManager.h"
 
 #include <IDataBase.h>
@@ -295,6 +296,26 @@ namespace CryptoNote
            compare to it. Walking the whole database takes minutes on a synced
            chain. See LITENODE.md. */
         std::map<std::string, StorageStats> measureStorage() const;
+
+        /* Writes the index only region [0, snapshotHeight) to a lite node
+           snapshot file, so another machine can start from it instead of
+           spending days rebuilding it from the chain. See LITESNAPSHOT.md.
+
+           The exporting node is at some tip well above snapshotHeight and its
+           tables describe that tip, so every table is filtered back to the
+           height the snapshot claims to describe. Works on a full node as well
+           as a lite one: key output records are normalised to the form a lite
+           node would have written, which is what lets the two produce the same
+           digest.
+
+           progress is called periodically with the table being walked and how
+           much of it has been seen; returning false cancels the export and
+           removes the partial file. */
+        LiteSnapshot::Header exportLiteSnapshot(
+            const std::string &path,
+            uint32_t snapshotHeight,
+            const Crypto::Hash &genesisHash,
+            const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const;
 
         std::error_code compactDatabase();
 

@@ -25,6 +25,7 @@
 #include <utilities/String.h>
 #include <utilities/Utilities.h>
 #include <common/CheckDifficulty.h>
+#include <common/StringTools.h>
 #include <common/FileSystemShim.h>
 #include <map>
 #include <chrono>
@@ -276,6 +277,10 @@ DaemonCommandsHandler::DaemonCommandsHandler(
         std::bind(&DaemonCommandsHandler::compact_db, this, std::placeholders::_1),
         "Manage DB compaction: compact_db [start|status|wait|force]");
     m_consoleHandler.setHandler(
+        "snapshot_export",
+        std::bind(&DaemonCommandsHandler::snapshot_export, this, std::placeholders::_1),
+        "Export a lite node snapshot: snapshot_export [start [height] [path] | status | cancel]");
+    m_consoleHandler.setHandler(
         "ban",
         std::bind(&DaemonCommandsHandler::ban, this, std::placeholders::_1),
         "Manage in-memory host bans: ban list | ban add <ip> [seconds] | ban delete <ip>");
@@ -284,6 +289,16 @@ DaemonCommandsHandler::DaemonCommandsHandler(
 DaemonCommandsHandler::~DaemonCommandsHandler()
 {
     stop_compaction_scheduler();
+
+    /* std::future's destructor blocks until the worker finishes, and a snapshot
+       export is tens of minutes. Ask it to stop first so shutting the daemon
+       down does not appear to hang; the partial file removes itself. */
+    m_snapshotCancel = true;
+
+    if (m_snapshotTask.valid())
+    {
+        m_snapshotTask.wait();
+    }
 }
 
 //--------------------------------------------------------------------------------
@@ -984,6 +999,273 @@ bool DaemonCommandsHandler::db_status(const std::vector<std::string> &args)
     {
         std::cout << "  " << ext << ": " << count << std::endl;
     }
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+void DaemonCommandsHandler::refresh_snapshot_state_locked()
+{
+    if (!m_snapshotRunning || !m_snapshotTask.valid())
+    {
+        return;
+    }
+
+    if (m_snapshotTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    {
+        return;
+    }
+
+    m_snapshotTask.get();
+    m_snapshotRunning = false;
+    m_snapshotHasResult = true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::snapshot_export(const std::vector<std::string> &args)
+{
+    const std::string sub = args.empty() ? "start" : args[0];
+
+    if (sub != "start" && sub != "status" && sub != "cancel")
+    {
+        std::cout << "Usage: snapshot_export [start [height] [path] | status | cancel]" << std::endl;
+        return true;
+    }
+
+    std::lock_guard<std::mutex> lock(m_snapshotMutex);
+    refresh_snapshot_state_locked();
+
+    if (sub == "status")
+    {
+        if (m_snapshotRunning)
+        {
+            const uint64_t now = static_cast<uint64_t>(time(nullptr));
+            const uint64_t elapsed = now > m_snapshotStartedAt ? (now - m_snapshotStartedAt) : 0;
+
+            std::cout << InformationMsg("Snapshot export: ")
+                      << SuccessMsg("running (" + std::to_string(elapsed) + "s elapsed)") << std::endl;
+            std::cout << InformationMsg("  Writing: ") << SuccessMsg(m_snapshotPath) << std::endl;
+            std::cout << InformationMsg("  Table:   ") << SuccessMsg(m_snapshotStage) << std::endl;
+            std::cout << InformationMsg("  Records: ")
+                      << SuccessMsg(std::to_string(m_snapshotKept) + " kept of " + std::to_string(m_snapshotScanned)
+                                    + " scanned")
+                      << std::endl;
+
+            return true;
+        }
+
+        std::cout << InformationMsg("Snapshot export: ") << SuccessMsg("idle") << std::endl;
+
+        if (m_snapshotHasResult)
+        {
+            if (!m_snapshotError.empty())
+            {
+                std::cout << WarningMsg("Last result: failed - " + m_snapshotError) << std::endl;
+            }
+            else
+            {
+                std::cout << SuccessMsg("Last result: wrote " + m_snapshotPath) << std::endl;
+                std::cout << InformationMsg("  Lite height: ")
+                          << SuccessMsg(std::to_string(m_snapshotResult.liteHeight)) << std::endl;
+                std::cout << InformationMsg("  Records:     ")
+                          << SuccessMsg(std::to_string(m_snapshotResult.totalRecords())) << std::endl;
+                std::cout << InformationMsg("  Digest:      ")
+                          << SuccessMsg(Common::podToHex(m_snapshotResult.payloadDigest)) << std::endl;
+            }
+        }
+
+        return true;
+    }
+
+    if (sub == "cancel")
+    {
+        if (!m_snapshotRunning)
+        {
+            std::cout << InformationMsg("No snapshot export is running.") << std::endl;
+
+            return true;
+        }
+
+        m_snapshotCancel = true;
+
+        std::cout << InformationMsg("Cancelling the snapshot export. The partial file will be removed.") << std::endl;
+
+        return true;
+    }
+
+    if (m_snapshotRunning)
+    {
+        std::cout << WarningMsg("A snapshot export is already running. Use `snapshot_export status`.") << std::endl;
+
+        return true;
+    }
+
+    /* start [height] [path]. The height is optional on a lite node, where the
+       only sensible value is the one this database was built at - exporting at
+       any other height would describe a chain region this node does not hold in
+       the form a snapshot needs. A full node has no lite height, so it has to
+       say. */
+    uint32_t height = m_config.liteHeight;
+
+    std::string path;
+
+    for (size_t i = 1; i < args.size(); i++)
+    {
+        const std::string &arg = args[i];
+
+        const bool numeric = !arg.empty() && arg.find_first_not_of("0123456789") == std::string::npos;
+
+        if (numeric && height == m_config.liteHeight && path.empty())
+        {
+            try
+            {
+                height = static_cast<uint32_t>(std::stoul(arg));
+            }
+            catch (const std::exception &)
+            {
+                std::cout << WarningMsg("Could not read " + arg + " as a height.") << std::endl;
+
+                return true;
+            }
+        }
+        else
+        {
+            path = arg;
+        }
+    }
+
+    if (height == 0)
+    {
+        std::cout << WarningMsg("This node has no lite height, so a snapshot height has to be given:") << std::endl;
+        std::cout << "  snapshot_export start <height> [path]" << std::endl;
+
+        return true;
+    }
+
+    if (m_config.liteHeight != 0 && height != m_config.liteHeight)
+    {
+        std::cout << WarningMsg(
+                         "This is a lite node built at height " + std::to_string(m_config.liteHeight)
+                         + ", and it does not hold the block data a snapshot at " + std::to_string(height)
+                         + " would need.")
+                  << std::endl;
+
+        return true;
+    }
+
+    /* The exported region can never be reorganised away, so it has to be
+       settled by the same margin lite mode already demands of its own boundary
+       rather than some looser rule invented here. */
+    const uint32_t topIndex = m_core.getTopBlockIndex();
+    const uint64_t settledFrom =
+        static_cast<uint64_t>(height) + CryptoNote::parameters::MIN_LITE_FULL_BLOCK_DEPTH;
+
+    if (static_cast<uint64_t>(topIndex) + 1 < settledFrom)
+    {
+        std::cout << WarningMsg(
+                         "This node is at height " + std::to_string(topIndex + 1) + " and a snapshot at "
+                         + std::to_string(height) + " needs it to be at least " + std::to_string(settledFrom)
+                         + ", so the exported region is beyond any reorg.")
+                  << std::endl;
+
+        return true;
+    }
+
+    fs::path output;
+
+    if (path.empty())
+    {
+        std::error_code ec;
+        const fs::path dataDir = fs::absolute(fs::path(m_config.dataDirectory), ec);
+
+        const fs::path parent = ec ? fs::path(m_config.dataDirectory).parent_path() : dataDir.parent_path();
+
+        output = parent / CryptoNote::LiteSnapshot::defaultFileName(height);
+    }
+    else
+    {
+        output = fs::path(path);
+
+        std::error_code ec;
+
+        if (fs::is_directory(output, ec))
+        {
+            output /= CryptoNote::LiteSnapshot::defaultFileName(height);
+        }
+    }
+
+    std::error_code ec;
+
+    if (fs::exists(output, ec))
+    {
+        std::cout << WarningMsg(output.string() + " already exists. Move it aside or name another path.") << std::endl;
+
+        return true;
+    }
+
+    /* A snapshot is smaller than the database it comes out of, so the database
+       size is a conservative floor that costs nothing to compute and beats
+       discovering the problem 4 GB in. */
+    const DbDirStats dbStats = collectDbDirStats(fs::path(m_config.dataDirectory) / "DB");
+    const uint64_t available = getAvailableBytes(output.parent_path());
+
+    if (available < dbStats.bytes)
+    {
+        std::cout << WarningMsg(
+                         "Only " + Utilities::prettyPrintBytes(available) + " free where the snapshot would go, and "
+                         + "the database it comes from is " + Utilities::prettyPrintBytes(dbStats.bytes) + ".")
+                  << std::endl;
+
+        return true;
+    }
+
+    m_snapshotCancel = false;
+    m_snapshotRunning = true;
+    m_snapshotHasResult = false;
+    m_snapshotError.clear();
+    m_snapshotPath = output.string();
+    m_snapshotStage = "starting";
+    m_snapshotScanned = 0;
+    m_snapshotKept = 0;
+    m_snapshotStartedAt = static_cast<uint64_t>(time(nullptr));
+    m_snapshotResult = CryptoNote::LiteSnapshot::Header {};
+
+    const std::string outputPath = m_snapshotPath;
+
+    m_snapshotTask = std::async(std::launch::async, [this, outputPath, height]() {
+        try
+        {
+            const auto header = m_core.exportLiteSnapshot(
+                outputPath, height, [this](const std::string &table, const uint64_t scanned, const uint64_t kept) {
+                    std::lock_guard<std::mutex> progressLock(m_snapshotMutex);
+
+                    m_snapshotStage = table;
+                    m_snapshotScanned = scanned;
+                    m_snapshotKept = kept;
+
+                    return !m_snapshotCancel.load();
+                });
+
+            std::lock_guard<std::mutex> resultLock(m_snapshotMutex);
+
+            m_snapshotResult = header;
+            m_snapshotStage = "done";
+        }
+        catch (const std::exception &e)
+        {
+            std::lock_guard<std::mutex> resultLock(m_snapshotMutex);
+
+            m_snapshotError = e.what();
+            m_snapshotStage = "failed";
+        }
+    });
+
+    std::cout << InformationMsg("Exporting a lite node snapshot at height ") << SuccessMsg(std::to_string(height))
+              << InformationMsg(" to ") << SuccessMsg(outputPath) << std::endl;
+    std::cout << InformationMsg(
+                     "This walks the whole database and takes tens of minutes. Follow it with `snapshot_export "
+                     "status`.")
+              << std::endl;
 
     return true;
 }

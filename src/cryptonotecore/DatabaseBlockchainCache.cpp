@@ -3073,6 +3073,208 @@ namespace CryptoNote
         return result;
     }
 
+    LiteSnapshot::Header DatabaseBlockchainCache::exportLiteSnapshot(
+        const std::string &path,
+        const uint32_t snapshotHeight,
+        const Crypto::Hash &genesisHash,
+        const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
+    {
+        if (snapshotHeight == 0)
+        {
+            throw std::runtime_error("A lite snapshot describes the chain below a height, so that height cannot be 0");
+        }
+
+        LiteSnapshot::Header header;
+        header.genesisHash = genesisHash;
+        header.liteHeight = snapshotHeight;
+
+        LiteSnapshot::Writer writer(path);
+        writer.begin(header);
+
+        /* iterate() has no way to report why a callback stopped, so the reason
+           is carried out by hand: a throw from inside the callback would cross
+           the RocksDB iterator, and cancellation is not an error to log. */
+        std::string failure;
+
+        bool cancelled = false;
+
+        uint64_t scanned = 0;
+
+        /* Tables are walked in ascending prefix order - "6" then "7" then "j" -
+           which is also the order their keys sort in, because every key of these
+           tables shares an identical preamble ending in the one byte prefix. The
+           payload is therefore globally sorted and the importer can build SST
+           files straight from it. Writer::add re-checks rather than trusting
+           this reasoning. */
+        const auto walk =
+            [&](const std::string &tablePrefix,
+                const std::string &name,
+                uint64_t &keptCounter,
+                const std::function<bool(const std::string &, const std::string &, std::string &)> &keep) {
+                scanned = 0;
+                keptCounter = 0;
+
+                const auto error = database.iterate(
+                    tableKeyPrefix(tablePrefix), [&](const std::string &key, const std::string &value) {
+                        scanned++;
+
+                        try
+                        {
+                            std::string normalised;
+
+                            if (keep(key, value, normalised))
+                            {
+                                writer.add(key, normalised);
+                                keptCounter++;
+                            }
+                        }
+                        catch (const std::exception &e)
+                        {
+                            failure = "while walking " + name + ": " + e.what();
+
+                            return false;
+                        }
+
+                        /* Checked often enough that a console command can be
+                           cancelled, rarely enough that the check is free. */
+                        if ((scanned & 0xffff) == 0 && !progress(name, scanned, keptCounter))
+                        {
+                            cancelled = true;
+
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                if (error)
+                {
+                    throw std::runtime_error("Failed reading " + name + ": " + error.message());
+                }
+
+                if (!failure.empty())
+                {
+                    throw std::runtime_error(failure);
+                }
+
+                if (cancelled)
+                {
+                    throw std::runtime_error("Lite snapshot export cancelled");
+                }
+
+                progress(name, scanned, keptCounter);
+            };
+
+        /* Block info. The key carries the height, so this is also where the
+           transaction counter as of the snapshot top block comes from -
+           CachedBlockInfo maintains it for skipped transactions precisely so it
+           stays a chain wide total on a lite node. */
+        bool sawTopBlock = false;
+
+        walk(
+            DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX,
+            "block info",
+            header.blockInfoRecords,
+            [&](const std::string &key, const std::string &value, std::string &out) {
+                std::pair<std::string, uint32_t> decodedKey;
+                DB::deserialize(key, decodedKey, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
+
+                if (decodedKey.second >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                if (decodedKey.second == snapshotHeight - 1)
+                {
+                    CachedBlockInfo info;
+                    DB::deserialize(value, info, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
+
+                    header.transactionsCount = info.alreadyGeneratedTransactions;
+                    sawTopBlock = true;
+                }
+
+                out = value;
+
+                return true;
+            });
+
+        if (header.blockInfoRecords != snapshotHeight || !sawTopBlock)
+        {
+            throw std::runtime_error(
+                "This node holds " + std::to_string(header.blockInfoRecords) + " blocks below height "
+                + std::to_string(snapshotHeight) + ", and a snapshot needs all " + std::to_string(snapshotHeight)
+                + " of them. Let it finish syncing first.");
+        }
+
+        /* Spent key images. The value is the block the image was spent in, which
+           is what decides whether it belongs in this snapshot. */
+        walk(
+            DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX,
+            "spent key images",
+            header.keyImageRecords,
+            [&](const std::string &, const std::string &value, std::string &out) {
+                uint32_t spentAt = 0;
+                DB::deserialize(value, spentAt, DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX);
+
+                if (spentAt >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                out = value;
+
+                return true;
+            });
+
+        /* Key output info, the bulk of the file.
+
+           Two things happen per record. The value is normalised to the form a
+           lite node writes - transactionHash zeroed, because below the lite
+           height its only consumer is an explorer answer a lite node cannot
+           give - so that a full node and a lite node exporting at the same
+           height produce the same digest. And the amount is read out of the key
+           to count distinct amounts, which the importer derives independently
+           and checks against the header. */
+        std::optional<IBlockchainCache::Amount> lastAmount;
+
+        walk(
+            DB::KEY_OUTPUT_KEY_PREFIX,
+            "key output info",
+            header.keyOutputRecords,
+            [&](const std::string &key, const std::string &value, std::string &out) {
+                KeyOutputInfo info;
+                DB::deserialize(value, info, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                if (info.blockIndex >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                std::pair<std::string, std::pair<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex>>
+                    decodedKey;
+                DB::deserialize(key, decodedKey, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                const auto amount = decodedKey.second.first;
+
+                /* Keys sort by amount before global index, so every record of
+                   one amount is contiguous and a change of amount is a new one.
+                   No set, on a table this size. */
+                if (!lastAmount || *lastAmount != amount)
+                {
+                    header.keyOutputAmountsCount++;
+                    lastAmount = amount;
+                }
+
+                info.transactionHash = Crypto::Hash {};
+
+                out = DB::serialize(info, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                return true;
+            });
+
+        return writer.finish();
+    }
+
     std::error_code DatabaseBlockchainCache::compactDatabase()
     {
         return database.compact();
