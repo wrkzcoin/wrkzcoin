@@ -207,30 +207,71 @@ export runs. Export from a node at the tip where churn is low.
 
 ## Importing one
 
+Two runs. The first imports and exits; the second is an ordinary lite node.
+
 ```
 Wrkzd --lite --lite-height 4000000 --import-lite-snapshot <file>
+Wrkzd --lite --lite-height 4000000
 ```
 
-In order:
+**Why it exits rather than carrying straight on.** The import runs after the core has
+loaded, because the genesis block is written in full by that load - raw block, base
+transaction and all - and a snapshot carries none of it. Importing before that would leave
+a half stored genesis, which too much code reads directly for it to be safe. But by then
+the core has cached what it believes the chain's shape to be, and the import has just
+changed it underneath. Restarting is cheap and settles the question; it is also what
+`--import-blockchain` already does. For a host application driving the daemon it is
+arguably nicer: one child process that imports, one that runs.
 
-1. **The database must be empty.** Anything else refuses, without touching it
-2. Header `H` must equal `--lite-height`, and the genesis hash must be this network's
-3. The payload digest must match the compiled-in entry for this network and `H`
-4. The block info audit and the checkpoint comparison described under **Trust**
-5. Records go through `SstFileWriter` and `IngestExternalFile` - one write of about the
-   file's size, rather than the 25 to 30 GB the normal write path amplifies to. This is
-   the difference between half an hour and several hours on a laptop
-6. `"5"` and `"h"` are derived; the `"b"` counts carried in the file are cross-checked
-   against a count of `"j"`, because an off-by-one here silently corrupts the global index
-   of every output the node writes afterwards
-7. `LAST_BLOCK_INDEX_KEY` = `H - 1`, plus `TRANSACTIONS_COUNT_KEY`,
-   `KEY_OUTPUT_AMOUNTS_COUNT_KEY`, `lite_node_profile` = `lite:H`, and the scheme version
-8. Startup continues normally and the node syncs `[H, tip]` over P2P
+### What happens, in order
 
-Step 8 is the whole point: after import the node is an ordinary lite node that happens to
-already hold its index region. It validates, relays and mines exactly as one that synced
-the region itself, and every wallet behaviour in [LITENODE.md](LITENODE.md) applies
-unchanged.
+**Refusals first, before the file is read twice:**
+
+1. The database must hold nothing but genesis
+2. The genesis hash in the header must be this network's
+3. The header's height must equal `--lite-height`
+4. The header's digest must appear in `LITE_SNAPSHOT_DIGESTS`
+
+**Then a verifying pass that writes nothing:**
+
+5. The payload is streamed and hashed, and must hash to the digest the header claims
+6. Every record must belong to a table a snapshot may carry
+7. Block info must be complete (exactly `H` records, none twice, none at or above `H`),
+   monotonic in cumulative difficulty, generated coins and transaction count, and must
+   match every compiled-in checkpoint below `H`
+8. The record counts and the final transaction count must match the header
+
+Nothing reaches the database until all of that passes. A digest can only be confirmed
+once the whole payload has been read, so writing as it went would mean a failed check
+leaves a half imported chain that looks whole - which is the failure this design exists to
+prevent. The second read costs about a minute of decompression.
+
+**Then a writing pass:**
+
+9. Key images and key output info go through `SstFileWriter` and `IngestExternalFile` -
+   one write of about the file's size, rather than the 25 to 30 GB the normal write path
+   amplifies to. This is the difference between half an hour and several hours on a laptop
+10. Block info goes through the ordinary write path, where `insertCachedBlock` also writes
+    the block hash index and the empty transaction hash list a syncing lite node writes for
+    every block below its height - so the result matches a synced database rather than
+    merely working. Block 0 is skipped: genesis is already there, in full
+11. `"b"` and `"h"` are derived from the key outputs and cross-checked against the header's
+    amount count, because an off-by-one there silently corrupts the global index of every
+    output the node writes afterwards
+12. `TRANSACTIONS_COUNT_KEY` is taken from the header
+
+After the restart the node is an ordinary lite node that happens to already hold its index
+region. It validates, relays and mines exactly as one that synced the region itself, and
+every wallet behaviour in [LITENODE.md](LITENODE.md) applies unchanged.
+
+### One place it is not byte identical
+
+`"h"` holds `amountId -> amount` records, and a syncing node assigns those ids in the order
+it first meets each amount - an order an importer cannot reproduce without replaying the
+chain. The importer assigns them in ascending amount order instead. Nothing reads those
+records back; only the count stored beside them is ever read. So the difference is
+invisible, but a test comparing an imported database against a synced one byte for byte
+should expect it.
 
 ## What this does not change
 

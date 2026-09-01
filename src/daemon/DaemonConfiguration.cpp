@@ -130,7 +130,12 @@ namespace DaemonConfig
             "max-export-blocks",
             "Maximum number of blocks for export to dump file.",
             cxxopts::value<uint32_t>(),
-            "#");
+            "#")(
+            "import-lite-snapshot",
+            "Load a lite node snapshot into an empty database, then exit. Needs --lite and the --lite-height the "
+            "snapshot was made at",
+            cxxopts::value<std::string>()->default_value(config.importLiteSnapshot),
+            "<file>");
 
         options.add_options("Genesis Block")(
             "print-genesis-tx",
@@ -512,6 +517,11 @@ namespace DaemonConfig
             if (cli.count("lite-height") > 0)
             {
                 config.liteHeight = cli["lite-height"].as<uint32_t>();
+            }
+
+            if (cli.count("import-lite-snapshot") > 0)
+            {
+                config.importLiteSnapshot = cli["import-lite-snapshot"].as<std::string>();
             }
 
             if (cli.count("snapshot-stats") > 0)

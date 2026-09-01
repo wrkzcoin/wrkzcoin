@@ -67,6 +67,7 @@ namespace DaemonConfig
             dbBottommostFilters = false;
             resync = false;
             importChain = false;
+            importLiteSnapshot = "";
             exportChain = false;
             exportNumBlocks = 0;
             prune = false;
@@ -169,6 +170,12 @@ namespace DaemonConfig
         std::string rpcBindIpv6Address;
 
         bool rpcUseIpv6;
+
+        /* Path to a lite node base snapshot to load into an empty database
+           instead of rebuilding its index only region from the chain. Only
+           meaningful with --lite and a matching --lite-height, and only into a
+           database that holds nothing but genesis. See LITESNAPSHOT.md. */
+        std::string importLiteSnapshot;
 
         bool importChain;
 

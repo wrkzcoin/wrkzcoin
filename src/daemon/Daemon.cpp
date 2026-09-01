@@ -7,6 +7,7 @@
 // Please see the included LICENSE file for more information.
 
 #include "DaemonCommandsHandler.h"
+#include "daemon/LiteSnapshotImporter.h"
 #include "DaemonConfiguration.h"
 #include "ChainNotifier.h"
 #include "ZmqPublisher.h"
@@ -762,6 +763,62 @@ int main(int argc, char *argv[])
                           << std::endl;
                 exit(0);
             }
+        }
+
+        /* Loading a lite node snapshot replaces the days a lite node would
+           otherwise spend rebuilding its index only region from the chain.
+
+           It runs here, after the core has loaded, for one reason: the genesis
+           block is written in full by that load - raw block, base transaction
+           and all - and a snapshot carries none of that. Importing before it
+           would leave a half stored genesis, which too much code reads directly
+           for that to be safe.
+
+           And it exits afterwards rather than carrying on, because the core
+           above has already cached what it believes the chain's shape to be and
+           the import has just changed it underneath. Restarting is cheap, it is
+           what --import-blockchain already does, and it means a host application
+           driving the daemon gets one process that imports and one that runs. */
+        if (!config.importLiteSnapshot.empty())
+        {
+            if (liteHeight == 0)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "--import-lite-snapshot needs --lite and the --lite-height the snapshot was made at. A "
+                       "snapshot only describes the region below a lite height, so there is nothing to import it "
+                       "into without one.";
+
+                exit(1);
+            }
+
+            try
+            {
+                CryptoNote::LiteSnapshotImport::importSnapshot(
+                    *database,
+                    config.importLiteSnapshot,
+                    liteHeight,
+                    ccore->getBlockHashByIndex(0),
+                    dbConfig.dataDir,
+                    logger);
+            }
+            catch (const std::exception &e)
+            {
+                logger(ERROR, BRIGHT_RED) << "Could not import that snapshot: " << e.what();
+
+                database->shutdown();
+                dbShutdownOnExit.cancel();
+
+                exit(1);
+            }
+
+            logger(INFO, BRIGHT_GREEN)
+                << "Import finished. Start the daemon again with the same flags but without "
+                   "--import-lite-snapshot, and it will sync the rest of the chain from the network.";
+
+            database->shutdown();
+            dbShutdownOnExit.cancel();
+
+            exit(0);
         }
 
         /* If we were told to rewind the blockchain to a certain height

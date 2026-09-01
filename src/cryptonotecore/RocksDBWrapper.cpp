@@ -11,6 +11,10 @@
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/table.h"
+#include "rocksdb/sst_file_writer.h"
+#include <common/ScopeExit.h>
+#include <cstdio>
+#include <memory>
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
@@ -379,6 +383,147 @@ std::error_code RocksDBWrapper::iterate(
     db->ReleaseSnapshot(snapshot);
 
     return result;
+}
+
+std::error_code RocksDBWrapper::ingestSorted(
+    const std::string &scratchDirectory,
+    const std::function<bool(std::string &key, std::string &value)> &next)
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    /* Rolled at this size so a failed or cancelled load leaves bounded rubbish
+       behind, and so the engine gets several files to place rather than one
+       enormous one. */
+    constexpr uint64_t BYTES_PER_FILE = 256 * 1024 * 1024;
+
+    const rocksdb::Options options = getDBOptions(m_config);
+    const rocksdb::EnvOptions envOptions;
+
+    std::vector<std::string> files;
+
+    /* Anything still on disk here is ours and is either half written or already
+       ingested by reference; either way nothing else will ever look for it. */
+    Tools::ScopeExit removeLeftovers([&files]() {
+        for (const auto &file : files)
+        {
+            std::remove(file.c_str());
+        }
+    });
+
+    std::unique_ptr<rocksdb::SstFileWriter> writer;
+
+    uint64_t bytesInFile = 0;
+
+    std::string key;
+    std::string value;
+
+    const auto closeCurrentFile = [&]() -> std::error_code {
+        if (!writer)
+        {
+            return {};
+        }
+
+        const auto status = writer->Finish();
+
+        writer.reset();
+        bytesInFile = 0;
+
+        if (!status.ok())
+        {
+            logger(ERROR) << "RocksDBWrapper::ingestSorted failed closing a table file: " << status.ToString();
+
+            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        return {};
+    };
+
+    while (next(key, value))
+    {
+        if (!writer)
+        {
+            writer = std::make_unique<rocksdb::SstFileWriter>(envOptions, options);
+
+            const std::string path = scratchDirectory + "/ingest-" + std::to_string(files.size()) + ".sst";
+
+            const auto status = writer->Open(path);
+
+            if (!status.ok())
+            {
+                logger(ERROR) << "RocksDBWrapper::ingestSorted could not open " << path << ": " << status.ToString();
+
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+
+            files.push_back(path);
+        }
+
+        const auto status = writer->Put(key, value);
+
+        if (!status.ok())
+        {
+            /* Out of order keys land here, which is the one caller error this
+               can actually detect, so say so rather than only quoting RocksDB. */
+            logger(ERROR) << "RocksDBWrapper::ingestSorted rejected a record - are the keys really sorted? "
+                          << status.ToString();
+
+            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        bytesInFile += key.size() + value.size();
+
+        if (bytesInFile >= BYTES_PER_FILE)
+        {
+            const auto error = closeCurrentFile();
+
+            if (error)
+            {
+                return error;
+            }
+        }
+    }
+
+    const auto error = closeCurrentFile();
+
+    if (error)
+    {
+        return error;
+    }
+
+    if (files.empty())
+    {
+        return {};
+    }
+
+    rocksdb::IngestExternalFileOptions ingestOptions;
+
+    /* Move rather than copy - the files were written next to the database for
+       exactly this reason, and copying 9 GB to save nothing is a poor trade. */
+    ingestOptions.move_files = true;
+
+    /* Nothing is reading this database while an import runs: it happens before
+       the core is constructed, on a database that has to be empty. Skipping the
+       consistency snapshot lets the files keep sequence number zero and land
+       directly at the bottom level, which is where they belong. */
+    ingestOptions.snapshot_consistency = false;
+    ingestOptions.allow_global_seqno = true;
+    ingestOptions.allow_blocking_flush = true;
+
+    const auto status = db->IngestExternalFile(files, ingestOptions);
+
+    if (!status.ok())
+    {
+        logger(ERROR) << "RocksDBWrapper::ingestSorted failed handing the table files over: " << status.ToString();
+
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
+
+    /* Ingest consumed them. Anything left is a file it declined to move, and
+       removeLeftovers is welcome to it. */
+    return {};
 }
 
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
