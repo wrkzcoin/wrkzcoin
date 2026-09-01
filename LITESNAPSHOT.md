@@ -160,9 +160,39 @@ key output for `publicKey` plus `transactionHash` and **below `H` the hash is ze
 | block hashes | 4.20M | 32 | 0.13 GiB |
 | **floor** | | | **~4.5 GiB** |
 
-So expect a **~5 to 5.5 GB** file. Re-measure with `--snapshot-stats` before trusting any
-of this on another chain or another height; early blocks are dense in denominated outputs
-and do not extrapolate.
+### What one actually came out at
+
+The first real export, from a lite node at top block ~4,201,153:
+
+| | |
+|---|---|
+| file | 5,588,563,802 bytes - **5.20 GiB** |
+| records | 148,728,732, of which exactly 4,000,000 are block info |
+| bytes per record, on disk | 37.6 |
+| compression over the logical payload | **~4.0x** |
+| distance above the entropy floor | **~16%** |
+
+Two things worth taking from that.
+
+**The floor is close, so there is nothing left to win on format.** Sixteen percent above
+the irreducible bytes means no rearrangement of the container buys anything material. The
+only lever that remains is dropping fields, which zeroing `transactionHash` already
+did - and doing it again would mean finding another field a lite node never reads.
+
+**The bespoke format was never justified by size, and this confirms it.** A tarball of the
+compacted lite `DB` directory measured 5.80 GB at ZSTD-12, so this buys about 10% - which
+is roughly what [LITENODE.md](LITENODE.md) predicted when it argued against building one.
+The reason to have built it is that a tarball of SST files cannot be reproduced
+byte-for-byte by a second person, so no digest over one could ever be checked. That is the
+whole case, and it does not rest on the 10%.
+
+**On the filter.** Restricting to `[0, H)` dropped 994,124 key output and key image
+records across the 201,153 blocks above the lite height - about 4.9 per block, against a
+chain-wide average of 34.7. The gap is what a quiet chain looks like from the top: recent
+blocks are mostly empty, carrying a coinbase's few denominated outputs and no key images
+at all, while the early blocks that lift the average are dense in denominations. Which is
+the same reason not to extrapolate any of this to another height or another chain.
+Re-measure with `--snapshot-stats` first.
 
 ## Blessed heights
 
