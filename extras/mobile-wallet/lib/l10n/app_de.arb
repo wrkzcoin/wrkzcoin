@@ -365,5 +365,64 @@
   "retry": "Erneut versuchen",
   "youReceivedAmount": "Sie haben {amount} erhalten",
   "ringSize": "Ringgröße",
-  "ringSizeReduced": "Ringgröße auf {actual} reduziert (normalerweise {normal}). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich."
+  "ringSizeReduced": "Ringgröße auf {actual} reduziert (normalerweise {normal}). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.",
+  "liteNodeTitle": "Lite-Node",
+  "liteNodeServesFrom": "Dieser Node hält nur Blöcke ab {height}. Transaktionen vor diesem Block sind über ihn nicht auffindbar.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Dieser Node beginnt bei Block {nodeHeight}, diese Wallet aber bei Block {walletHeight}. Alles, was dazwischen empfangen wurde, ist hier unsichtbar, der angezeigte Kontostand kann also zu niedrig sein. Verbinde einen Node mit der vollständigen Blockchain, um ihn zu sehen.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Synchronisierung bei Block {wallet} gestoppt. Dieser Node hält nichts unterhalb von Block {node}, die Blöcke dazwischen können also nicht von ihm geladen werden. Der Kontostand bleibt unvollständig, bis du einen Node mit der vollständigen Blockchain verbindest.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Dieser Node kann nicht so weit zurück scannen",
+  "liteNodeRescanRefused": "Der verbundene Node ist ein Lite-Node ohne Blockdaten unterhalb von {height}. Ein Rescan von tiefer würde bereits gefundene Transaktionen dieser Wallet verwerfen, ohne sie hier wiederfinden zu können. Es wurde nichts geändert.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Stattdessen ab {height} scannen",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Der verbundene Node kann nur ab Block {height} oder höher scannen.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Liefert Blöcke ab",
+  "nodeFullChain": "Vollständige Blockchain",
+  "localNodeMobileFuture": "Den Node direkt auf dem Telefon zu betreiben ist geplant, aber noch nicht verfügbar — ein Node braucht mehrere GB Speicher und Stunden zum Synchronisieren. Richte diese Wallet bis dahin auf einen selbst betriebenen Node."
 }

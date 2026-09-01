@@ -818,4 +818,168 @@ class SEs extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nodo ligero';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Este nodo solo guarda bloques a partir de $height. Las transacciones anteriores a ese bloque no se pueden encontrar a través de él.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Este nodo empieza en el bloque $nodeHeight, pero esta cartera empieza en el bloque $walletHeight. Todo lo recibido entre medias es invisible aquí, así que el saldo mostrado puede ser demasiado bajo. Conecta un nodo con la cadena completa para verlo.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'La sincronización se detuvo en el bloque $wallet. Este nodo no guarda nada por debajo del bloque $node, así que los bloques intermedios no se pueden descargar de él. El saldo estará incompleto hasta que conectes un nodo con la cadena completa.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Este nodo no puede reescanear tan atrás';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'El nodo conectado es un nodo ligero sin datos de bloque por debajo de $height. Reescanear desde más abajo descartaría transacciones que esta cartera ya encontró, sin forma de recuperarlas aquí. No se ha cambiado nada.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Reescanear desde $height en su lugar';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'El nodo conectado solo puede reescanear desde el bloque $height o superior.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Sirve bloques desde';
+
+  @override
+  String get nodeFullChain => 'Cadena completa';
+
+  @override
+  String get sectionLocalNode => 'Nodo ligero local';
+
+  @override
+  String get localNodeDescription =>
+      'Ejecuta un nodo en este ordenador y sincroniza con él en vez de con un servidor remoto. Un nodo ligero solo guarda lo que necesita una cartera, pero aun así descarga la cadena entera una vez.';
+
+  @override
+  String get localNodeSetUp => 'Configurar nodo local';
+
+  @override
+  String get localNodeStart => 'Iniciar';
+
+  @override
+  String get localNodeStop => 'Detener';
+
+  @override
+  String get localNodeUse => 'Usar este nodo';
+
+  @override
+  String get localNodeDelete => 'Eliminar datos del nodo';
+
+  @override
+  String get localNodeStateStopped => 'Detenido';
+
+  @override
+  String get localNodeStateStarting => 'Iniciando';
+
+  @override
+  String get localNodeStateSyncing => 'Sincronizando';
+
+  @override
+  String get localNodeStateReady => 'Sincronizado';
+
+  @override
+  String get localNodeStateFailed => 'Falló';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Bloque $height de $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count pares';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'El nodo local todavía se está poniendo al día y aún no puede servir a la cartera. Sigue sincronizando en segundo plano: quédate en un nodo remoto hasta que esté listo y luego cambia.';
+
+  @override
+  String get localNodeInUse => 'La cartera está conectada a este nodo.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return 'No se encontró $name. Coloca el binario del demonio junto al ejecutable de la cartera, o en una carpeta «sidecar» al lado, e inténtalo de nuevo.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Configurar un nodo ligero local';
+
+  @override
+  String get localNodeSetupCost =>
+      'Antes de empezar:\n• Unos 6 GB de espacio en disco, y la cadena entera se descarga una vez.\n• La primera sincronización tarda horas. Continúa en segundo plano y mientras tanto puedes seguir usando un nodo remoto.\n• La altura inicial de abajo es permanente. Cambiarla después implica eliminar el nodo y sincronizar otra vez desde cero.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Altura inicial';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Los bloques por debajo de esta altura se descargan y comprueban, y solo se conserva el índice que necesitan los bloques posteriores. Mantenla igual o por debajo de la altura inicial de esta cartera ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Superior a la altura inicial de esta cartera ($height). El nodo nunca podría mostrar las transacciones antiguas de esta cartera.';
+  }
+
+  @override
+  String get localNodeCreate => 'Crear nodo';
+
+  @override
+  String get localNodeDeleteTitle => '¿Eliminar los datos del nodo local?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'Esto detiene el nodo y elimina permanentemente su base de datos de la cadena del disco. Tu cartera, su semilla y sus fondos no se tocan, pero un nodo local nuevo volverá a sincronizar desde cero, lo que lleva horas.';
+
+  @override
+  String get localNodeDeleted => 'Nodo local eliminado.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size en disco';
+  }
+
+  @override
+  String get nodePresetRemote => 'Nodo remoto';
+
+  @override
+  String get nodePresetLocal => 'Nodo ligero local';
+
+  @override
+  String get savingWallet => 'Guardando tu monedero…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON está escribiendo tu monedero en el disco. Puede tardar un momento en un monedero grande.';
+
+  @override
+  String get shutdownTakingLong =>
+      'Está tardando más de lo esperado. Salir ahora puede dañar el archivo del monedero: hazlo solo si PLUTON está bloqueado.';
+
+  @override
+  String get quitAnyway => 'Salir de todos modos';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON sigue ejecutándose en la bandeja del sistema. Haz clic en el icono para recuperarlo, o haz clic derecho y elige Salir.';
 }

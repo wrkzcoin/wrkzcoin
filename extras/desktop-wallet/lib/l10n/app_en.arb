@@ -403,5 +403,157 @@
         "type": "int"
       }
     }
+  },
+  "liteNodeTitle": "Lite node",
+  "liteNodeServesFrom": "This node only holds blocks from {height} onward. Transactions before that block cannot be found through it.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "This node starts at block {nodeHeight}, but this wallet starts at block {walletHeight}. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Sync stopped at block {wallet}. This node holds nothing below block {node}, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "This node cannot rescan that far back",
+  "liteNodeRescanRefused": "The connected node is a lite node holding no block data below {height}. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Rescan from {height} instead",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "The connected node can only rescan from block {height} or above.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Serves blocks from",
+  "nodeFullChain": "Full chain",
+  "sectionLocalNode": "Local Lite Node",
+  "localNodeDescription": "Run a node on this computer and sync against it instead of a remote server. A lite node stores only what a wallet needs, but it still downloads the whole chain once.",
+  "localNodeSetUp": "Set up local node",
+  "localNodeStart": "Start",
+  "localNodeStop": "Stop",
+  "localNodeUse": "Use this node",
+  "localNodeDelete": "Delete node data",
+  "localNodeStateStopped": "Stopped",
+  "localNodeStateStarting": "Starting",
+  "localNodeStateSyncing": "Syncing",
+  "localNodeStateReady": "Synced",
+  "localNodeStateFailed": "Failed",
+  "localNodeProgress": "Block {height} of {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} peers",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "The local node is still catching up and cannot serve the wallet yet. It keeps syncing in the background — stay on a remote node until it is ready, then switch over.",
+  "localNodeInUse": "The wallet is connected to this node.",
+  "localNodeBinaryMissing": "{name} was not found. Place the daemon binary next to the wallet executable, or in a 'sidecar' folder beside it, and try again.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Set up a local lite node",
+  "localNodeSetupCost": "Before you start:\n• Around 6 GB of disk space, and the whole chain is downloaded once.\n• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.",
+  "localNodeStartHeightLabel": "Start height",
+  "localNodeStartHeightHelp": "Blocks below this height are downloaded and checked, then only the index later blocks need is kept. Keep it at or below this wallet's own start height ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Higher than this wallet's start height ({height}). The node would never be able to show this wallet's older transactions.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Create node",
+  "localNodeDeleteTitle": "Delete local node data?",
+  "localNodeDeleteWarning": "This stops the node and permanently deletes its blockchain database from disk. Your wallet, its seed and its funds are not touched — but a new local node starts syncing again from nothing, which takes hours.",
+  "localNodeDeleted": "Local node deleted.",
+  "localNodeDiskUsage": "{size} on disk",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Remote node",
+  "nodePresetLocal": "Local lite node",
+  "savingWallet": "Saving your wallet…",
+  "@savingWallet": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "savingWalletBody": "PLUTON is writing your wallet to disk. This can take a moment on a large wallet.",
+  "@savingWalletBody": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "shutdownTakingLong": "This is taking longer than expected. Quitting now can damage the wallet file — only do it if PLUTON is stuck.",
+  "@shutdownTakingLong": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "quitAnyway": "Quit anyway",
+  "@quitAnyway": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "stillRunningInTray": "PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.",
+  "@stillRunningInTray": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
   }
 }

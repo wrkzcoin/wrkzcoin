@@ -783,4 +783,51 @@ class SFr extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nœud allégé';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Ce nœud ne conserve que les blocs à partir de $height. Les transactions antérieures à ce bloc sont introuvables via ce nœud.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Ce nœud démarre au bloc $nodeHeight, mais ce portefeuille démarre au bloc $walletHeight. Tout ce qui a été reçu entre les deux est invisible ici, le solde affiché peut donc être trop bas. Connectez un nœud disposant de la chaîne complète pour le voir.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Synchronisation arrêtée au bloc $wallet. Ce nœud ne conserve rien en dessous du bloc $node, les blocs intermédiaires ne peuvent donc pas en être téléchargés. Le solde restera incomplet tant qu\'un nœud disposant de la chaîne complète n\'est pas connecté.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Ce nœud ne peut pas réanalyser aussi loin';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Le nœud connecté est un nœud allégé sans données de bloc en dessous de $height. Réanalyser plus bas supprimerait des transactions déjà trouvées par ce portefeuille, sans moyen de les retrouver ici. Rien n\'a été modifié.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Réanalyser depuis $height à la place';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Le nœud connecté ne peut réanalyser qu\'à partir du bloc $height ou au-delà.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Fournit les blocs à partir de';
+
+  @override
+  String get nodeFullChain => 'Chaîne complète';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Faire tourner le nœud sur le téléphone est prévu, mais pas encore disponible : un nœud demande plusieurs Go de stockage et des heures de synchronisation. En attendant, pointez ce portefeuille vers un nœud que vous hébergez.';
 }

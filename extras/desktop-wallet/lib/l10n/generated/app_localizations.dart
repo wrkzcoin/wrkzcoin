@@ -1598,6 +1598,270 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.'**
   String ringSizeReduced(int actual, int normal);
+
+  /// No description provided for @liteNodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lite node'**
+  String get liteNodeTitle;
+
+  /// No description provided for @liteNodeServesFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'This node only holds blocks from {height} onward. Transactions before that block cannot be found through it.'**
+  String liteNodeServesFrom(int height);
+
+  /// No description provided for @liteNodeMissesHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'This node starts at block {nodeHeight}, but this wallet starts at block {walletHeight}. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.'**
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight);
+
+  /// No description provided for @liteNodeSyncStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped at block {wallet}. This node holds nothing below block {node}, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
+  String liteNodeSyncStalled(int wallet, int node);
+
+  /// No description provided for @liteNodeRescanRefusedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This node cannot rescan that far back'**
+  String get liteNodeRescanRefusedTitle;
+
+  /// No description provided for @liteNodeRescanRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node is a lite node holding no block data below {height}. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.'**
+  String liteNodeRescanRefused(int height);
+
+  /// No description provided for @liteNodeRescanFromInstead.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescan from {height} instead'**
+  String liteNodeRescanFromInstead(int height);
+
+  /// No description provided for @liteNodeRescanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node can only rescan from block {height} or above.'**
+  String liteNodeRescanHint(int height);
+
+  /// No description provided for @nodeServesFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Serves blocks from'**
+  String get nodeServesFromLabel;
+
+  /// No description provided for @nodeFullChain.
+  ///
+  /// In en, this message translates to:
+  /// **'Full chain'**
+  String get nodeFullChain;
+
+  /// No description provided for @sectionLocalNode.
+  ///
+  /// In en, this message translates to:
+  /// **'Local Lite Node'**
+  String get sectionLocalNode;
+
+  /// No description provided for @localNodeDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Run a node on this computer and sync against it instead of a remote server. A lite node stores only what a wallet needs, but it still downloads the whole chain once.'**
+  String get localNodeDescription;
+
+  /// No description provided for @localNodeSetUp.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up local node'**
+  String get localNodeSetUp;
+
+  /// No description provided for @localNodeStart.
+  ///
+  /// In en, this message translates to:
+  /// **'Start'**
+  String get localNodeStart;
+
+  /// No description provided for @localNodeStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get localNodeStop;
+
+  /// No description provided for @localNodeUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this node'**
+  String get localNodeUse;
+
+  /// No description provided for @localNodeDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete node data'**
+  String get localNodeDelete;
+
+  /// No description provided for @localNodeStateStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Stopped'**
+  String get localNodeStateStopped;
+
+  /// No description provided for @localNodeStateStarting.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting'**
+  String get localNodeStateStarting;
+
+  /// No description provided for @localNodeStateSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Syncing'**
+  String get localNodeStateSyncing;
+
+  /// No description provided for @localNodeStateReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced'**
+  String get localNodeStateReady;
+
+  /// No description provided for @localNodeStateFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get localNodeStateFailed;
+
+  /// No description provided for @localNodeProgress.
+  ///
+  /// In en, this message translates to:
+  /// **'Block {height} of {network}'**
+  String localNodeProgress(int height, int network);
+
+  /// No description provided for @localNodePeers.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} peers'**
+  String localNodePeers(int count);
+
+  /// No description provided for @localNodeNotReadyYet.
+  ///
+  /// In en, this message translates to:
+  /// **'The local node is still catching up and cannot serve the wallet yet. It keeps syncing in the background — stay on a remote node until it is ready, then switch over.'**
+  String get localNodeNotReadyYet;
+
+  /// No description provided for @localNodeInUse.
+  ///
+  /// In en, this message translates to:
+  /// **'The wallet is connected to this node.'**
+  String get localNodeInUse;
+
+  /// No description provided for @localNodeBinaryMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} was not found. Place the daemon binary next to the wallet executable, or in a \'sidecar\' folder beside it, and try again.'**
+  String localNodeBinaryMissing(String name);
+
+  /// No description provided for @localNodeSetupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up a local lite node'**
+  String get localNodeSetupTitle;
+
+  /// No description provided for @localNodeSetupCost.
+  ///
+  /// In en, this message translates to:
+  /// **'Before you start:\n• Around 6 GB of disk space, and the whole chain is downloaded once.\n• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.'**
+  String get localNodeSetupCost;
+
+  /// No description provided for @localNodeStartHeightLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Start height'**
+  String get localNodeStartHeightLabel;
+
+  /// No description provided for @localNodeStartHeightHelp.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocks below this height are downloaded and checked, then only the index later blocks need is kept. Keep it at or below this wallet\'s own start height ({height}).'**
+  String localNodeStartHeightHelp(int height);
+
+  /// No description provided for @localNodeStartHeightTooHigh.
+  ///
+  /// In en, this message translates to:
+  /// **'Higher than this wallet\'s start height ({height}). The node would never be able to show this wallet\'s older transactions.'**
+  String localNodeStartHeightTooHigh(int height);
+
+  /// No description provided for @localNodeCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create node'**
+  String get localNodeCreate;
+
+  /// No description provided for @localNodeDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete local node data?'**
+  String get localNodeDeleteTitle;
+
+  /// No description provided for @localNodeDeleteWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'This stops the node and permanently deletes its blockchain database from disk. Your wallet, its seed and its funds are not touched — but a new local node starts syncing again from nothing, which takes hours.'**
+  String get localNodeDeleteWarning;
+
+  /// No description provided for @localNodeDeleted.
+  ///
+  /// In en, this message translates to:
+  /// **'Local node deleted.'**
+  String get localNodeDeleted;
+
+  /// No description provided for @localNodeDiskUsage.
+  ///
+  /// In en, this message translates to:
+  /// **'{size} on disk'**
+  String localNodeDiskUsage(String size);
+
+  /// No description provided for @nodePresetRemote.
+  ///
+  /// In en, this message translates to:
+  /// **'Remote node'**
+  String get nodePresetRemote;
+
+  /// No description provided for @nodePresetLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Local lite node'**
+  String get nodePresetLocal;
+
+  /// Shutdown overlay and minimise-to-tray notice
+  ///
+  /// In en, this message translates to:
+  /// **'Saving your wallet…'**
+  String get savingWallet;
+
+  /// Shutdown overlay and minimise-to-tray notice
+  ///
+  /// In en, this message translates to:
+  /// **'PLUTON is writing your wallet to disk. This can take a moment on a large wallet.'**
+  String get savingWalletBody;
+
+  /// Shutdown overlay and minimise-to-tray notice
+  ///
+  /// In en, this message translates to:
+  /// **'This is taking longer than expected. Quitting now can damage the wallet file — only do it if PLUTON is stuck.'**
+  String get shutdownTakingLong;
+
+  /// Shutdown overlay and minimise-to-tray notice
+  ///
+  /// In en, this message translates to:
+  /// **'Quit anyway'**
+  String get quitAnyway;
+
+  /// Shutdown overlay and minimise-to-tray notice
+  ///
+  /// In en, this message translates to:
+  /// **'PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.'**
+  String get stillRunningInTray;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
+import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../core/storage/wallet_registry.dart';
@@ -13,6 +14,7 @@ import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/haptics.dart';
 import '../../shared/widgets/copy_button.dart';
 import '../../shared/widgets/language_selector.dart';
+import '../../shared/widgets/lite_node_banner.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -137,9 +139,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Rescan from the height in the field.
+  ///
+  /// Against a lite node anything below that node's start height is refused
+  /// here rather than sent: the node holds nothing down there and would answer
+  /// from its own start whatever it was asked for, which would move the
+  /// wallet's recorded position over blocks nobody ever looked at. The native
+  /// side refuses it too (error 62) — the daemon can be swapped between this
+  /// check and the call. See LITENODE.md.
   Future<void> _resetScan() async {
     final tr = S.of(context)!;
     final height = int.tryParse(_resetHeightCtrl.text) ?? 0;
+    final liteStart =
+        ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0;
+
+    if (liteStart > 0 && height < liteStart) {
+      await _showLiteRescanRefused(liteStart);
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -159,6 +177,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     if (confirmed != true) return;
 
+    await _runReset(height);
+  }
+
+  Future<void> _runReset(int height) async {
+    final tr = S.of(context)!;
     try {
       await ref.read(walletCApiProvider).reset(scanHeight: height);
       hapticMedium();
@@ -167,12 +190,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SnackBar(content: Text(tr.scanResetTo(height))),
         );
       }
+    } on WalletCApiException catch (e) {
+      if (!mounted) return;
+      if (e.errorCode == kErrLiteNodeCannotRescanThatLow) {
+        await ref.read(statusProvider.notifier).refresh();
+        if (!mounted) return;
+        await _showLiteRescanRefused(
+            ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0);
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr.resetFailed(e.message))),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(tr.resetFailed(e.toString()))),
         );
       }
+    }
+  }
+
+  /// The connected node is a lite node that cannot serve the requested range.
+  /// Nothing has been changed, so the only choices are to rescan from a height
+  /// it can serve, or to connect a node holding the whole chain.
+  Future<void> _showLiteRescanRefused(int liteStart) async {
+    final tr = S.of(context)!;
+    final rescanFrom = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr.liteNodeRescanRefusedTitle),
+        content: Text(tr.liteNodeRescanRefused(liteStart),
+            style: const TextStyle(height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr.cancel),
+          ),
+          if (liteStart > 0)
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(tr.liteNodeRescanFromInstead(liteStart)),
+            ),
+        ],
+      ),
+    );
+
+    if (rescanFrom == true && liteStart > 0) {
+      _resetHeightCtrl.text = '$liteStart';
+      await _runReset(liteStart);
     }
   }
 
@@ -626,6 +692,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final biometric = ref.watch(biometricEnabledProvider);
     final autoLockIdx = ref.watch(autoLockIndexProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
+    final status = ref.watch(statusProvider).valueOrNull;
     final walletCaption = () {
       final fn = ref.read(activeWalletFilenameProvider);
       if (fn == null) return 'Wallet';
@@ -710,6 +777,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                   ),
                 ],
+                // What the node actually holds. A lite node answers every
+                // scan from its own start height, so how far back it goes is
+                // not a detail — it decides whether this wallet's older
+                // transactions can be seen at all. See LITENODE.md.
+                if (status != null) ...[
+                  const Divider(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(tr.nodeServesFromLabel,
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                      Text(
+                        status.isLiteNode
+                            ? '${status.daemonLiteStartHeight}'
+                            : tr.nodeFullChain,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyMedium
+                            ?.copyWith(
+                                color: status.isLiteNode ? kWarning : kSuccess),
+                      ),
+                    ],
+                  ),
+                  if (status.isLiteNode ||
+                      status.isSyncStalledByLiteNode) ...[
+                    const SizedBox(height: 10),
+                    LiteNodeBanner(status: status),
+                  ],
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  tr.localNodeMobileFuture,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
                 if (_nodeMsg != null) ...[
                   const SizedBox(height: 8),
                   Text(_nodeMsg!,
@@ -760,18 +862,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.restart_alt),
                 title: Text(tr.resetScanHeight),
-                subtitle: SizedBox(
-                  width: 120,
-                  child: TextField(
-                    controller: _resetHeightCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      hintText: '0',
-                      isDense: true,
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: TextField(
+                        controller: _resetHeightCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          hintText: '0',
+                          isDense: true,
+                          contentPadding:
+                              EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        ),
+                      ),
                     ),
-                  ),
+                    // Say the floor before the button is pressed, not after
+                    // the wallet has refused the request.
+                    if (status != null && status.isLiteNode) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        tr.liteNodeRescanHint(status.daemonLiteStartHeight),
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: kWarning),
+                      ),
+                    ],
+                  ],
                 ),
                 trailing: TextButton(
                   onPressed: _resetScan,

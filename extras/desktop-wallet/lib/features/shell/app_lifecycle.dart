@@ -1,0 +1,383 @@
+/// app_lifecycle.dart
+///
+/// Owns the three things that have to outlive any route: the tray icon, the
+/// window close/minimise interception, and the shutdown sequence.
+///
+/// They used to live in MainShell, which a ShellRoute builds. Locking the
+/// wallet routes to `/lock`, which sits outside that shell, so the state was
+/// disposed while the tray icon stayed on screen with an Exit item still bound
+/// to it — and riverpod throws on `ref` after dispose, so Exit did nothing at
+/// all until the wallet was unlocked again. Nothing here is tied to a route.
+library;
+
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:local_notifier/local_notifier.dart';
+import 'package:path/path.dart' as p;
+import 'package:system_tray/system_tray.dart';
+import 'package:window_manager/window_manager.dart';
+
+import '../../core/providers/app_providers.dart';
+import '../../core/providers/providers.dart';
+import '../../l10n/generated/app_localizations.dart';
+
+/// How far along the shutdown is, for the overlay that covers the window while
+/// the wallet is written out.
+enum ShutdownPhase {
+  /// Not quitting.
+  none,
+
+  /// Closing the wallet, which saves it.
+  saving,
+
+  /// Still going well past the point where it should have finished, so the
+  /// user is offered a way out that is not Task Manager.
+  slow,
+}
+
+final shutdownPhaseProvider =
+    StateProvider<ShutdownPhase>((_) => ShutdownPhase.none);
+
+/// The live tray, so [forceQuitNow] can take its icon down without building a
+/// second [SystemTray]: the constructor claims the plugin's method channel, and
+/// a throwaway instance would silently steal tray events from the real one.
+SystemTray? _liveTray;
+
+/// Ends the process.
+///
+/// The tray icon is taken down first — the shell only reaps one whose owner it
+/// has noticed is gone, so skipping this leaves a ghost in the notification
+/// area until the user happens to hover over it. Then the process exits
+/// outright.
+///
+/// `windowManager.destroy()` is deliberately not used, and this is the whole
+/// reason the app was unclosable. On Windows it is `PostQuitMessage(0)`, and
+/// Windows hands `WM_QUIT` to `GetMessage` only once the message queue is
+/// empty. An animation — the shutdown overlay's own spinner will do — posts a
+/// frame every vsync, so the queue never empties and the loop never ends.
+/// Worse, the attempt starves the Dart event loop, so anything scheduled after
+/// it is stranded too. Measured on this build: awaiting `destroy()` never
+/// returned on any of five launches; not awaiting it still pushed a 500 ms
+/// fallback timer out to about fifteen seconds. `exit()` needs none of that
+/// machinery.
+///
+/// Exiting like this is safe: on the ordinary path the wallet has already been
+/// closed and written out, and on the "quit anyway" path leaving mid-write is
+/// the risk the button states.
+Future<void> forceQuitNow() async {
+  try {
+    await _liveTray?.destroy();
+  } catch (_) {
+    // Nothing installed, or the shell is not answering. Quit regardless.
+  }
+  exit(0);
+}
+
+class AppLifecycle extends ConsumerStatefulWidget {
+  final Widget child;
+
+  const AppLifecycle({super.key, required this.child});
+
+  @override
+  ConsumerState<AppLifecycle> createState() => _AppLifecycleState();
+}
+
+class _AppLifecycleState extends ConsumerState<AppLifecycle>
+    with WindowListener {
+  final _systemTray = SystemTray();
+
+  Timer? _trayClickTimer;
+
+  /// The icon is really on screen. Only then may closing the window hide it
+  /// instead of quitting — otherwise the app vanishes with nothing left to
+  /// bring it back.
+  bool _trayReady = false;
+
+  /// The one shutdown in flight. Every later Exit joins it rather than starting
+  /// a competing close, and — unlike the flag this replaced — it always
+  /// completes, so a slow save can no longer leave the window unclosable.
+  Future<void>? _shutdown;
+
+  bool _explainedTray = false;
+
+  /// How long the wallet close is given before the overlay offers a way out.
+  static const _slowShutdownAfter = Duration(seconds: 20);
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    // Every close is intercepted, on the setup and lock screens too: whether it
+    // hides or quits is decided in onWindowClose, and quitting has to run
+    // through _quit() so the wallet is written out first.
+    unawaited(windowManager.setPreventClose(true));
+    unawaited(_initSystemTray());
+  }
+
+  @override
+  void dispose() {
+    _trayClickTimer?.cancel();
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  // ── strings ────────────────────────────────────────────────────────────────
+
+  /// Tray labels are built outside the widget tree, above MaterialApp, so they
+  /// cannot come from `S.of(context)`. Look them up by locale instead.
+  S get _tr {
+    final locale = ref.read(localeProvider);
+    try {
+      if (locale != null && supportedLocales.contains(locale)) {
+        return lookupS(locale);
+      }
+    } catch (_) {
+      // An unsupported locale slipped through; English is always there.
+    }
+    return lookupS(const Locale('en'));
+  }
+
+  // ── system tray ────────────────────────────────────────────────────────────
+
+  /// Flutter copies `assets/` into `data/flutter_assets/` next to the
+  /// executable, so the tray icon has to be addressed there — a bare
+  /// `assets/...` path only resolves when running from the project root.
+  String get _trayIconPath {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
+    final name = Platform.isWindows ? 'app_icon.ico' : 'app_icon.png';
+    final bundled =
+        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'images', name);
+    if (File(bundled).existsSync()) return bundled;
+    return p.join('assets', 'images', name); // `flutter run` from the repo
+  }
+
+  Future<void> _initSystemTray() async {
+    try {
+      // The return value matters. A shell that refuses the icon reports it here
+      // rather than throwing, and taking that for success is what left the app
+      // hiding itself into a tray that was not there.
+      final installed = await _systemTray.initSystemTray(
+        title: _tr.plutonWallet,
+        iconPath: _trayIconPath,
+        toolTip: _tr.plutonWallet,
+      );
+      if (!installed) {
+        debugPrint('[tray] the shell refused the icon');
+        return;
+      }
+
+      await _buildTrayMenu();
+      _liveTray = _systemTray;
+      // Only now is hiding the window safe — there is something to restore it.
+      _trayReady = true;
+
+      _systemTray.registerSystemTrayEventHandler(_onTrayEvent);
+    } catch (e) {
+      // No tray: leave close and minimise behaving normally so the window stays
+      // reachable.
+      _trayReady = false;
+      debugPrint('[tray] init failed: $e');
+    }
+  }
+
+  Future<void> _buildTrayMenu() async {
+    final tr = _tr;
+    final menu = Menu();
+    await menu.buildFrom([
+      MenuItemLabel(label: tr.show, onClicked: (_) => unawaited(_showWindow())),
+      MenuSeparator(),
+      MenuItemLabel(label: tr.exit, onClicked: (_) => unawaited(_quit())),
+    ]);
+    await _systemTray.setContextMenu(menu);
+  }
+
+  void _onTrayEvent(String eventName) {
+    if (eventName == kSystemTrayEventClick) {
+      // Single left click → show window
+      if (_trayClickTimer?.isActive ?? false) {
+        // Second click within threshold → double-click: maximize
+        _trayClickTimer!.cancel();
+        _trayClickTimer = null;
+        unawaited(_showWindow(maximize: true));
+      } else {
+        _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
+          unawaited(_showWindow());
+          _trayClickTimer = null;
+        });
+      }
+    } else if (eventName == kSystemTrayEventRightClick) {
+      unawaited(_systemTray.popUpContextMenu());
+    }
+  }
+
+  // ── window ─────────────────────────────────────────────────────────────────
+
+  Future<void> _showWindow({bool maximize = false}) async {
+    await windowManager.show();
+    if (maximize) await windowManager.maximize();
+    // Windows restricts SetForegroundWindow from background processes.
+    // Briefly setting alwaysOnTop forces the window to the front reliably.
+    await windowManager.setAlwaysOnTop(true);
+    await windowManager.focus();
+    await windowManager.setAlwaysOnTop(false);
+  }
+
+  /// Hides the window, and says so the first time.
+  ///
+  /// On Windows a new app's tray icon goes into the overflow flyout, so a
+  /// window that disappears with no icon in sight reads as a crash — or as an
+  /// app that cannot be quit, which is how this arrived as a bug report.
+  Future<void> _hideToTray() async {
+    await windowManager.hide();
+    if (_explainedTray) return;
+    _explainedTray = true;
+    try {
+      await LocalNotification(
+        title: _tr.plutonWallet,
+        body: _tr.stillRunningInTray,
+      ).show();
+    } catch (e) {
+      debugPrint('[tray] notification failed: $e');
+    }
+  }
+
+  /// Whether the window should park in the tray rather than close or minimise
+  /// normally.
+  ///
+  /// Only once a wallet is open. Before that there is nothing to keep running
+  /// for, and an app the user has not even finished setting up should not
+  /// survive its own window.
+  bool get _canHideToTray => _trayReady && ref.read(walletOpenProvider);
+
+  @override
+  Future<void> onWindowMinimize() async {
+    if (_canHideToTray) await _hideToTray();
+  }
+
+  @override
+  Future<void> onWindowClose() async {
+    if (_canHideToTray && _shutdown == null) {
+      await _hideToTray();
+      return;
+    }
+    await _quit();
+  }
+
+  // ── shutdown ───────────────────────────────────────────────────────────────
+
+  /// Writes the wallet out and quits.
+  ///
+  /// Returns the shutdown already in flight if there is one, so a second Exit
+  /// is harmless rather than starting a competing close — or, as the flag this
+  /// replaced did, latching the app into a state where neither the tray nor the
+  /// window's own close button could ever quit it again.
+  Future<void> _quit() => _shutdown ??= _runShutdown();
+
+  Future<void> _runShutdown() async {
+    _setPhase(ShutdownPhase.saving);
+    final slow = Timer(_slowShutdownAfter, () => _setPhase(ShutdownPhase.slow));
+    try {
+      final ffi = ref.read(walletCApiProvider);
+      // close() is the whole save: ~WalletBackend writes the wallet on its way
+      // out. The explicit save() that used to run first meant one quit did the
+      // entire pause-synchroniser, PBKDF2 and AES pass twice over.
+      if (ffi.isOpen) await ffi.close();
+    } catch (e) {
+      debugPrint('[shutdown] close failed: $e');
+    } finally {
+      slow.cancel();
+    }
+    await forceQuitNow();
+  }
+
+  void _setPhase(ShutdownPhase phase) {
+    if (!mounted) return;
+    ref.read(shutdownPhaseProvider.notifier).state = phase;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Tray labels are baked into the native menu, so switching language has to
+    // rebuild it.
+    ref.listen<Locale?>(localeProvider, (_, _) {
+      if (_trayReady) unawaited(_buildTrayMenu());
+    });
+    return widget.child;
+  }
+}
+
+/// Covers the window while the wallet is being written out.
+///
+/// The close is not interruptible: the wallet file is rewritten in place rather
+/// than through a temporary, so a process that dies partway through leaves a
+/// truncated one. A save that is clearly never going to finish still needs an
+/// exit though, so the slow phase offers one with the risk spelled out.
+class ShutdownOverlay extends ConsumerWidget {
+  const ShutdownOverlay({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final phase = ref.watch(shutdownPhaseProvider);
+    if (phase == ShutdownPhase.none) return const SizedBox.shrink();
+
+    final tr = S.of(context);
+    final theme = Theme.of(context);
+
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black.withAlpha(160),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Card(
+              margin: const EdgeInsets.all(24),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 20),
+                    Text(
+                      tr?.savingWallet ?? 'Saving your wallet…',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      tr?.savingWalletBody ??
+                          'Do not power off. This can take a moment on a large '
+                              'wallet.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (phase == ShutdownPhase.slow) ...[
+                      const SizedBox(height: 20),
+                      Text(
+                        tr?.shutdownTakingLong ??
+                            'This is taking longer than expected. Quitting now '
+                                'can damage the wallet file — only do it if '
+                                'PLUTON is stuck.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.error),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () => unawaited(forceQuitNow()),
+                        child: Text(tr?.quitAnyway ?? 'Quit anyway'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

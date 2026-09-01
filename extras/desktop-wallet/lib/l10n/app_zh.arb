@@ -366,5 +366,142 @@
   "exportJsonWarningBody": "导出的文件以明文包含您的私有查看密钥和私有花费密钥。任何读取该文件的人都能动用您的资金。\n\n请仅保存到您掌控的存储中，并在使用完毕后立即删除。",
   "passwordTooShort": "密码至少需要{count}个字符",
   "ringSize": "环签名大小",
-  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。"
+  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。",
+  "liteNodeTitle": "轻节点",
+  "liteNodeServesFrom": "此节点仅保存从 {height} 起的区块。该区块之前的交易无法通过它找到。",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "此节点从区块 {nodeHeight} 开始，而此钱包从区块 {walletHeight} 开始。两者之间收到的款项在这里不可见，因此显示的余额可能偏低。请连接保存完整链的节点以查看。",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "同步已在区块 {wallet} 停止。此节点不保存区块 {node} 以下的任何数据，因此无法从它下载中间的区块。在连接保存完整链的节点之前，余额并不完整。",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "此节点无法回溯到那么早重新扫描",
+  "liteNodeRescanRefused": "当前连接的是轻节点，不保存 {height} 以下的区块数据。从更低处重新扫描会丢弃钱包已找到的交易，且在此无法再次找回。未做任何更改。",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "改为从 {height} 重新扫描",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "当前连接的节点只能从区块 {height} 或更高处重新扫描。",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "提供区块起始于",
+  "nodeFullChain": "完整链",
+  "sectionLocalNode": "本地轻节点",
+  "localNodeDescription": "在这台电脑上运行节点并与它同步，而不是使用远程服务器。轻节点只保存钱包需要的数据，但仍需完整下载一次全链。",
+  "localNodeSetUp": "设置本地节点",
+  "localNodeStart": "启动",
+  "localNodeStop": "停止",
+  "localNodeUse": "使用此节点",
+  "localNodeDelete": "删除节点数据",
+  "localNodeStateStopped": "已停止",
+  "localNodeStateStarting": "启动中",
+  "localNodeStateSyncing": "同步中",
+  "localNodeStateReady": "已同步",
+  "localNodeStateFailed": "失败",
+  "localNodeProgress": "区块 {height} / {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} 个节点连接",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "本地节点仍在追赶进度，尚不能为钱包提供服务。它会在后台继续同步——请先使用远程节点，就绪后再切换。",
+  "localNodeInUse": "钱包已连接到此节点。",
+  "localNodeBinaryMissing": "未找到 {name}。请将守护进程可执行文件放在钱包程序旁边，或放入旁边的“sidecar”文件夹，然后重试。",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "设置本地轻节点",
+  "localNodeSetupCost": "开始之前请注意：\n• 需要约 6 GB 磁盘空间，并会完整下载一次全链。\n• 首次同步需要数小时，会在后台继续，其间你仍可使用远程节点。\n• 下方的起始高度不可更改。以后要改，只能删除节点并从头重新同步。",
+  "localNodeStartHeightLabel": "起始高度",
+  "localNodeStartHeightHelp": "低于此高度的区块仍会下载并校验，但只保留后续区块所需的索引。请设为不高于此钱包自身的起始高度（{height}）。",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "高于此钱包的起始高度（{height}）。该节点将永远无法显示此钱包更早的交易。",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "创建节点",
+  "localNodeDeleteTitle": "删除本地节点数据？",
+  "localNodeDeleteWarning": "这会停止节点并从磁盘上永久删除其区块链数据库。你的钱包、助记词和资金不受影响，但新的本地节点需要从零重新同步，耗时数小时。",
+  "localNodeDeleted": "已删除本地节点。",
+  "localNodeDiskUsage": "占用磁盘 {size}",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "远程节点",
+  "nodePresetLocal": "本地轻节点",
+  "savingWallet": "正在保存钱包…",
+  "savingWalletBody": "PLUTON 正在将钱包写入磁盘。钱包较大时可能需要一点时间。",
+  "shutdownTakingLong": "耗时超出预期。此时退出可能损坏钱包文件——只有在 PLUTON 卡住时才这样做。",
+  "quitAnyway": "仍要退出",
+  "stillRunningInTray": "PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。"
 }

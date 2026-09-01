@@ -788,4 +788,164 @@ class SZh extends S {
   String ringSizeReduced(int actual, int normal) {
     return '环签名大小已降至 $actual（通常为 $normal）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。';
   }
+
+  @override
+  String get liteNodeTitle => '轻节点';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return '此节点仅保存从 $height 起的区块。该区块之前的交易无法通过它找到。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return '此节点从区块 $nodeHeight 开始，而此钱包从区块 $walletHeight 开始。两者之间收到的款项在这里不可见，因此显示的余额可能偏低。请连接保存完整链的节点以查看。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return '同步已在区块 $wallet 停止。此节点不保存区块 $node 以下的任何数据，因此无法从它下载中间的区块。在连接保存完整链的节点之前，余额并不完整。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => '此节点无法回溯到那么早重新扫描';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '当前连接的是轻节点，不保存 $height 以下的区块数据。从更低处重新扫描会丢弃钱包已找到的交易，且在此无法再次找回。未做任何更改。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '改为从 $height 重新扫描';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '当前连接的节点只能从区块 $height 或更高处重新扫描。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供区块起始于';
+
+  @override
+  String get nodeFullChain => '完整链';
+
+  @override
+  String get sectionLocalNode => '本地轻节点';
+
+  @override
+  String get localNodeDescription =>
+      '在这台电脑上运行节点并与它同步，而不是使用远程服务器。轻节点只保存钱包需要的数据，但仍需完整下载一次全链。';
+
+  @override
+  String get localNodeSetUp => '设置本地节点';
+
+  @override
+  String get localNodeStart => '启动';
+
+  @override
+  String get localNodeStop => '停止';
+
+  @override
+  String get localNodeUse => '使用此节点';
+
+  @override
+  String get localNodeDelete => '删除节点数据';
+
+  @override
+  String get localNodeStateStopped => '已停止';
+
+  @override
+  String get localNodeStateStarting => '启动中';
+
+  @override
+  String get localNodeStateSyncing => '同步中';
+
+  @override
+  String get localNodeStateReady => '已同步';
+
+  @override
+  String get localNodeStateFailed => '失败';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return '区块 $height / $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count 个节点连接';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      '本地节点仍在追赶进度，尚不能为钱包提供服务。它会在后台继续同步——请先使用远程节点，就绪后再切换。';
+
+  @override
+  String get localNodeInUse => '钱包已连接到此节点。';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '未找到 $name。请将守护进程可执行文件放在钱包程序旁边，或放入旁边的“sidecar”文件夹，然后重试。';
+  }
+
+  @override
+  String get localNodeSetupTitle => '设置本地轻节点';
+
+  @override
+  String get localNodeSetupCost =>
+      '开始之前请注意：\n• 需要约 6 GB 磁盘空间，并会完整下载一次全链。\n• 首次同步需要数小时，会在后台继续，其间你仍可使用远程节点。\n• 下方的起始高度不可更改。以后要改，只能删除节点并从头重新同步。';
+
+  @override
+  String get localNodeStartHeightLabel => '起始高度';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return '低于此高度的区块仍会下载并校验，但只保留后续区块所需的索引。请设为不高于此钱包自身的起始高度（$height）。';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return '高于此钱包的起始高度（$height）。该节点将永远无法显示此钱包更早的交易。';
+  }
+
+  @override
+  String get localNodeCreate => '创建节点';
+
+  @override
+  String get localNodeDeleteTitle => '删除本地节点数据？';
+
+  @override
+  String get localNodeDeleteWarning =>
+      '这会停止节点并从磁盘上永久删除其区块链数据库。你的钱包、助记词和资金不受影响，但新的本地节点需要从零重新同步，耗时数小时。';
+
+  @override
+  String get localNodeDeleted => '已删除本地节点。';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '占用磁盘 $size';
+  }
+
+  @override
+  String get nodePresetRemote => '远程节点';
+
+  @override
+  String get nodePresetLocal => '本地轻节点';
+
+  @override
+  String get savingWallet => '正在保存钱包…';
+
+  @override
+  String get savingWalletBody => 'PLUTON 正在将钱包写入磁盘。钱包较大时可能需要一点时间。';
+
+  @override
+  String get shutdownTakingLong => '耗时超出预期。此时退出可能损坏钱包文件——只有在 PLUTON 卡住时才这样做。';
+
+  @override
+  String get quitAnyway => '仍要退出';
+
+  @override
+  String get stillRunningInTray => 'PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。';
 }

@@ -1532,6 +1532,72 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.'**
   String ringSizeReduced(int actual, int normal);
+
+  /// No description provided for @liteNodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lite node'**
+  String get liteNodeTitle;
+
+  /// No description provided for @liteNodeServesFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'This node only holds blocks from {height} onward. Transactions before that block cannot be found through it.'**
+  String liteNodeServesFrom(int height);
+
+  /// No description provided for @liteNodeMissesHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'This node starts at block {nodeHeight}, but this wallet starts at block {walletHeight}. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.'**
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight);
+
+  /// No description provided for @liteNodeSyncStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped at block {wallet}. This node holds nothing below block {node}, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
+  String liteNodeSyncStalled(int wallet, int node);
+
+  /// No description provided for @liteNodeRescanRefusedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This node cannot rescan that far back'**
+  String get liteNodeRescanRefusedTitle;
+
+  /// No description provided for @liteNodeRescanRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node is a lite node holding no block data below {height}. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.'**
+  String liteNodeRescanRefused(int height);
+
+  /// No description provided for @liteNodeRescanFromInstead.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescan from {height} instead'**
+  String liteNodeRescanFromInstead(int height);
+
+  /// No description provided for @liteNodeRescanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node can only rescan from block {height} or above.'**
+  String liteNodeRescanHint(int height);
+
+  /// No description provided for @nodeServesFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Serves blocks from'**
+  String get nodeServesFromLabel;
+
+  /// No description provided for @nodeFullChain.
+  ///
+  /// In en, this message translates to:
+  /// **'Full chain'**
+  String get nodeFullChain;
+
+  /// No description provided for @localNodeMobileFuture.
+  ///
+  /// In en, this message translates to:
+  /// **'Running the node on the phone itself is planned, but not available yet — a node needs several GB of storage and hours of syncing. Until then, point this wallet at a node you run yourself.'**
+  String get localNodeMobileFuture;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

@@ -3,8 +3,11 @@ import '../../core/api/models/wallet_status.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../theme/app_theme.dart';
 
-/// Thin progress bar + label shown at the top of screens while wallet is syncing.
-/// Tracks block-rate over the last 60 s to compute an ETA.
+/// Thin progress bar + label shown at the top of the overview while the wallet
+/// is syncing. Tracks block-rate over the last 60 s to compute an ETA.
+///
+/// The lite-node notice is a separate widget shown by the shell, so it is up
+/// on every screen and does not disappear when syncing finishes.
 class SyncBanner extends StatefulWidget {
   final WalletStatus status;
   const SyncBanner({super.key, required this.status});
@@ -58,10 +61,7 @@ class _SyncBannerState extends State<SyncBanner> {
     return mins > 0 ? '~${hours}h ${mins}m' : '~${hours}h';
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (widget.status.isWalletSynced) return const SizedBox.shrink();
-
+  Widget _progressRow(BuildContext context) {
     final tr = S.of(context);
     final pct = (widget.status.syncProgress * 100).toStringAsFixed(1);
     final eta = _eta();
@@ -99,5 +99,16 @@ class _SyncBannerState extends State<SyncBanner> {
         ],
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // A stalled sync is not progress. The shell's LiteNodeBanner says why it
+    // stopped; a bar creeping along underneath would contradict it.
+    if (widget.status.isWalletSynced ||
+        widget.status.isSyncStalledByLiteNode) {
+      return const SizedBox.shrink();
+    }
+    return _progressRow(context);
   }
 }

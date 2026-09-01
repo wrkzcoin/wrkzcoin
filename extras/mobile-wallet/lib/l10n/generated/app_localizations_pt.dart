@@ -780,4 +780,51 @@ class SPt extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nó leve';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Este nó só guarda blocos a partir de $height. Transações anteriores a esse bloco não podem ser encontradas através dele.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Este nó começa no bloco $nodeHeight, mas esta carteira começa no bloco $walletHeight. Tudo o que foi recebido entre os dois é invisível aqui, por isso o saldo apresentado pode estar baixo demais. Ligue-se a um nó com a cadeia completa para o ver.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Sincronização parada no bloco $wallet. Este nó não guarda nada abaixo do bloco $node, por isso os blocos intermédios não podem ser transferidos dele. O saldo fica incompleto até ligar um nó com a cadeia completa.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Este nó não consegue reanalisar tão atrás';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'O nó ligado é um nó leve sem dados de bloco abaixo de $height. Reanalisar a partir de um ponto mais baixo descartaria transações que esta carteira já encontrou, sem forma de as recuperar aqui. Nada foi alterado.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Reanalisar a partir de $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'O nó ligado só pode reanalisar a partir do bloco $height ou acima.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Fornece blocos a partir de';
+
+  @override
+  String get nodeFullChain => 'Cadeia completa';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Executar o nó no próprio telemóvel está planeado, mas ainda não está disponível — um nó precisa de vários GB de armazenamento e horas de sincronização. Até lá, aponte esta carteira para um nó seu.';
 }

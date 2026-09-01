@@ -365,5 +365,64 @@
   "retry": "Réessayer",
   "youReceivedAmount": "Vous avez reçu {amount}",
   "ringSize": "Taille de l'anneau",
-  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude.",
+  "liteNodeTitle": "Nœud allégé",
+  "liteNodeServesFrom": "Ce nœud ne conserve que les blocs à partir de {height}. Les transactions antérieures à ce bloc sont introuvables via ce nœud.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Ce nœud démarre au bloc {nodeHeight}, mais ce portefeuille démarre au bloc {walletHeight}. Tout ce qui a été reçu entre les deux est invisible ici, le solde affiché peut donc être trop bas. Connectez un nœud disposant de la chaîne complète pour le voir.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Synchronisation arrêtée au bloc {wallet}. Ce nœud ne conserve rien en dessous du bloc {node}, les blocs intermédiaires ne peuvent donc pas en être téléchargés. Le solde restera incomplet tant qu'un nœud disposant de la chaîne complète n'est pas connecté.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Ce nœud ne peut pas réanalyser aussi loin",
+  "liteNodeRescanRefused": "Le nœud connecté est un nœud allégé sans données de bloc en dessous de {height}. Réanalyser plus bas supprimerait des transactions déjà trouvées par ce portefeuille, sans moyen de les retrouver ici. Rien n'a été modifié.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Réanalyser depuis {height} à la place",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Le nœud connecté ne peut réanalyser qu'à partir du bloc {height} ou au-delà.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Fournit les blocs à partir de",
+  "nodeFullChain": "Chaîne complète",
+  "localNodeMobileFuture": "Faire tourner le nœud sur le téléphone est prévu, mais pas encore disponible : un nœud demande plusieurs Go de stockage et des heures de synchronisation. En attendant, pointez ce portefeuille vers un nœud que vous hébergez."
 }

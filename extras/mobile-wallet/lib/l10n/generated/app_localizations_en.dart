@@ -772,4 +772,51 @@ class SEn extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ring size reduced to $actual (normally $normal). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Lite node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'This node only holds blocks from $height onward. Transactions before that block cannot be found through it.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'This node starts at block $nodeHeight, but this wallet starts at block $walletHeight. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Sync stopped at block $wallet. This node holds nothing below block $node, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'This node cannot rescan that far back';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'The connected node is a lite node holding no block data below $height. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Rescan from $height instead';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'The connected node can only rescan from block $height or above.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Serves blocks from';
+
+  @override
+  String get nodeFullChain => 'Full chain';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Running the node on the phone itself is planned, but not available yet — a node needs several GB of storage and hours of syncing. Until then, point this wallet at a node you run yourself.';
 }

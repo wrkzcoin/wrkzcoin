@@ -57,10 +57,12 @@ class OverviewScreen extends ConsumerWidget {
               ) ??
               const SizedBox.shrink(),
 
-          // Sync banner
+          // Sync banner (the lite-node notice is shown by the shell, on every
+          // tab, so it is not repeated here)
           statusAsync.whenOrNull(
                 data: (status) {
-                  if (!status.isWalletSynced) {
+                  if (!status.isWalletSynced &&
+                      !status.isSyncStalledByLiteNode) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: SyncBanner(status: status),

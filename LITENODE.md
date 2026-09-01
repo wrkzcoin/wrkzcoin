@@ -424,3 +424,58 @@ daemon is concerned. So a wallet that holds any is refused rather than quietly r
   the wallet.
 
 A wallet holding nothing below the floor loses nothing, so it is not stopped.
+
+## The wallet apps
+
+`extras/desktop-wallet` and `extras/mobile-wallet` both read `daemonLiteStartHeight`
+and `isSyncStalledByLiteNode` out of `wallet_get_status_json`, and neither will let a
+lite node be mistaken for a full one.
+
+**Both apps** carry a standing notice naming the lowest block the connected node holds.
+It does not go away when the wallet finishes syncing — that is precisely when a balance
+missing its older half looks most trustworthy. If the node starts above the wallet's own
+start height the notice becomes a warning that the balance reads low; if sync has stopped
+on a gap, it becomes an error naming both heights. Settings shows *Serves blocks from*
+for whatever node is connected, a height for a lite node and *Full chain* otherwise.
+
+**Rescans are floored at the node's start height in the app**, not just refused by the
+backend afterwards. The desktop dialog disables its button below the floor, the mobile
+screen prints the floor under the height field, and both map error `62` onto a dialog
+offering to rescan from the height the node can actually serve.
+
+To make choosing a start height possible at all, `wallet_get_status_json` gained
+`walletSyncStartHeight` and `walletSyncStartTimestamp` — the lowest height any sub wallet
+was told to scan from. A synced wallet's block count says nothing about how far back its
+funds go, so this is the only number a caller can size a lite node against. One of the
+two is zero: a wallet is created from a height or from a timestamp, never both, and a
+timestamp only resolves to a height once the first sync response arrives.
+
+### The desktop app can run one for you
+
+Settings → **Local Lite Node** supervises a `Wrkzd` child process on the user's own
+machine: it picks its own ports, keeps its chain under the app's support directory,
+resumes on the next launch, and adopts a node left behind by a force-quit app rather than
+starting a second one on the same database. The wizard defaults the start height to the
+wallet's own and demands an explicit acknowledgement to go above it.
+
+The node syncs whether or not the wallet is pointed at it, so the intended flow is to
+stay on a remote node for the hours a first sync takes and switch over when it is ready.
+Switching is gated on the node reporting itself synced; stopping or deleting it moves the
+wallet back to a remote node first. See `extras/desktop-wallet/README.md` for how to ship
+the binary and what the loopback RPC does and does not protect.
+
+### The mobile app cannot, yet
+
+Three things stand in the way, and only the first is work:
+
+- The Android profile forces `WRKZ_BUILD_EXECUTABLES=OFF` and RocksDB is only built when
+  executables are on, so the daemon has never been compiled for Android here.
+- **Size does not follow `H`.** Key output info is written for every block from genesis,
+  so a lite node is ~6 GB whatever height it starts at, and it downloads the whole chain
+  to build that index. Raising `H` to the tip saves a couple of hundred megabytes.
+- A first sync is hours of continuous work against Android's doze and background
+  execution limits.
+
+So the mobile app gets the warnings and the node picker, and points at a node the user
+runs elsewhere. Revisit if snapshot sync ever exists — it is the download, not the
+daemon, that rules this out.

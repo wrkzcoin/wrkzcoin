@@ -762,4 +762,50 @@ class SJa extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'リングサイズが $actual に縮小されました（通常は $normal）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。';
   }
+
+  @override
+  String get liteNodeTitle => 'ライトノード';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'このノードはブロック $height 以降しか保持していません。それより前の取引はこのノードでは見つけられません。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'このノードはブロック $nodeHeight から始まりますが、このウォレットはブロック $walletHeight から始まります。その間に受け取った分はここでは見えないため、表示される残高が実際より少ない可能性があります。チェーン全体を保持するノードに接続してください。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'ブロック $wallet で同期を停止しました。このノードはブロック $node より下を保持していないため、その間のブロックを取得できません。チェーン全体を保持するノードに接続するまで残高は不完全です。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => 'このノードではそこまで遡って再スキャンできません';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '接続中のノードはライトノードで、$height より下のブロックデータを持っていません。それより低い位置から再スキャンすると、すでに見つかっている取引が失われ、ここでは二度と見つけられません。何も変更していません。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '代わりに $height から再スキャン';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '接続中のノードはブロック $height 以降からしか再スキャンできません。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供ブロック開始位置';
+
+  @override
+  String get nodeFullChain => 'チェーン全体';
+
+  @override
+  String get localNodeMobileFuture =>
+      '端末上でノードを動かす機能は計画中ですが、まだ利用できません。ノードには数 GB の保存容量と数時間の同期が必要です。それまでは自分で運用するノードを指定してください。';
 }

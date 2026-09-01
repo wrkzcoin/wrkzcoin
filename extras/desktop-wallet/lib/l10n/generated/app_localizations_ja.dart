@@ -793,4 +793,167 @@ class SJa extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'リングサイズが $actual に縮小されました（通常は $normal）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。';
   }
+
+  @override
+  String get liteNodeTitle => 'ライトノード';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'このノードはブロック $height 以降しか保持していません。それより前の取引はこのノードでは見つけられません。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'このノードはブロック $nodeHeight から始まりますが、このウォレットはブロック $walletHeight から始まります。その間に受け取った分はここでは見えないため、表示される残高が実際より少ない可能性があります。チェーン全体を保持するノードに接続してください。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'ブロック $wallet で同期を停止しました。このノードはブロック $node より下を保持していないため、その間のブロックを取得できません。チェーン全体を保持するノードに接続するまで残高は不完全です。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => 'このノードではそこまで遡って再スキャンできません';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '接続中のノードはライトノードで、$height より下のブロックデータを持っていません。それより低い位置から再スキャンすると、すでに見つかっている取引が失われ、ここでは二度と見つけられません。何も変更していません。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '代わりに $height から再スキャン';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '接続中のノードはブロック $height 以降からしか再スキャンできません。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供ブロック開始位置';
+
+  @override
+  String get nodeFullChain => 'チェーン全体';
+
+  @override
+  String get sectionLocalNode => 'ローカルライトノード';
+
+  @override
+  String get localNodeDescription =>
+      'このコンピューターでノードを動かし、リモートサーバーの代わりにそれと同期します。ライトノードはウォレットに必要なものだけを保存しますが、チェーン全体を一度はダウンロードします。';
+
+  @override
+  String get localNodeSetUp => 'ローカルノードを設定';
+
+  @override
+  String get localNodeStart => '開始';
+
+  @override
+  String get localNodeStop => '停止';
+
+  @override
+  String get localNodeUse => 'このノードを使う';
+
+  @override
+  String get localNodeDelete => 'ノードデータを削除';
+
+  @override
+  String get localNodeStateStopped => '停止中';
+
+  @override
+  String get localNodeStateStarting => '起動中';
+
+  @override
+  String get localNodeStateSyncing => '同期中';
+
+  @override
+  String get localNodeStateReady => '同期済み';
+
+  @override
+  String get localNodeStateFailed => '失敗';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'ブロック $height / $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count ピア';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'ローカルノードはまだ追いついておらず、ウォレットに応答できません。バックグラウンドで同期を続けます。準備できるまでリモートノードを使い、その後で切り替えてください。';
+
+  @override
+  String get localNodeInUse => 'ウォレットはこのノードに接続しています。';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name が見つかりません。デーモンの実行ファイルをウォレット実行ファイルの隣、または隣接する「sidecar」フォルダーに置いて、もう一度お試しください。';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'ローカルライトノードを設定';
+
+  @override
+  String get localNodeSetupCost =>
+      '始める前に:\n• 約 6 GB のディスク容量が必要で、チェーン全体を一度ダウンロードします。\n• 初回同期には数時間かかります。バックグラウンドで続行し、その間はリモートノードを使えます。\n• 下の開始ブロック高は変更できません。後で変えるにはノードを削除し、最初から同期し直す必要があります。';
+
+  @override
+  String get localNodeStartHeightLabel => '開始ブロック高';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'この高さより下のブロックはダウンロードして検証したうえで、後続ブロックに必要なインデックスだけを残します。このウォレットの開始ブロック高 ($height) 以下にしてください。';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'このウォレットの開始ブロック高 ($height) より高い値です。このノードでは古い取引を表示できなくなります。';
+  }
+
+  @override
+  String get localNodeCreate => 'ノードを作成';
+
+  @override
+  String get localNodeDeleteTitle => 'ローカルノードのデータを削除しますか？';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'ノードを停止し、そのブロックチェーンデータベースをディスクから完全に削除します。ウォレット、シード、資金には影響しませんが、新しいローカルノードは一からの同期になり数時間かかります。';
+
+  @override
+  String get localNodeDeleted => 'ローカルノードを削除しました。';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return 'ディスク使用量 $size';
+  }
+
+  @override
+  String get nodePresetRemote => 'リモートノード';
+
+  @override
+  String get nodePresetLocal => 'ローカルライトノード';
+
+  @override
+  String get savingWallet => 'ウォレットを保存しています…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON がウォレットをディスクに書き込んでいます。大きなウォレットでは少し時間がかかることがあります。';
+
+  @override
+  String get shutdownTakingLong =>
+      '予想より時間がかかっています。ここで終了するとウォレットファイルが破損する可能性があります。PLUTON が応答しない場合のみ実行してください。';
+
+  @override
+  String get quitAnyway => '強制終了';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON は通知領域で実行中です。アイコンをクリックすると再表示できます。終了するにはアイコンを右クリックして「終了」を選択してください。';
 }

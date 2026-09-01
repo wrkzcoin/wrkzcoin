@@ -1712,6 +1712,12 @@ WalletTypes::WalletStatus WalletBackend::getStatus() const
        it are already derivable from walletBlockCount and this field. */
     status.syncStalledByLiteNode = std::get<0>(m_walletSynchronizer->getSyncGap());
 
+    /* Where this wallet was told to start, not where it has got to. A synced
+       wallet's block count says nothing about how far back its funds go, so
+       this is the only number a caller can size a lite node against. */
+    std::tie(status.walletSyncStartHeight, status.walletSyncStartTimestamp) =
+        m_subWallets->getMinInitialSyncStart();
+
     return status;
 }
 

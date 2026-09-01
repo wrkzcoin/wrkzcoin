@@ -1,13 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_notifier/local_notifier.dart';
-import 'package:path/path.dart' as p;
-import 'package:system_tray/system_tray.dart';
-import 'package:window_manager/window_manager.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/api/models/wallet_status.dart';
 import '../../core/providers/app_providers.dart';
@@ -17,6 +13,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/language_selector.dart';
+import '../../shared/widgets/lite_node_banner.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -27,17 +24,9 @@ class MainShell extends ConsumerStatefulWidget {
   ConsumerState<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends ConsumerState<MainShell>
-    with WindowListener {
-
+class _MainShellState extends ConsumerState<MainShell> {
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
-  Timer? _trayClickTimer;
-  bool _trayReady = false;
-  bool _shuttingDown = false;
-
-  // ── System tray ──────────────────────────────────────────────────────────────
-  final _systemTray = SystemTray();
 
   // ── Autosave ────────────────────────────────────────────────────────────────
   static const _autosaveInterval = Duration(minutes: 5);
@@ -45,104 +34,9 @@ class _MainShellState extends ConsumerState<MainShell>
   bool _savedAfterSync = false;
 
   @override
-  void initState() {
-    super.initState();
-    windowManager.addListener(this);
-    // Intercept the close so the wallet can be saved and closed first. Whether
-    // closing hides to tray or actually quits is decided in onWindowClose,
-    // once we know if the tray icon exists.
-    windowManager.setPreventClose(true);
-    _initSystemTray();
-  }
-
-  @override
   void dispose() {
-    _trayClickTimer?.cancel();
     _autosaveTimer?.cancel();
-    windowManager.setPreventClose(false);
-    windowManager.removeListener(this);
     super.dispose();
-  }
-
-  /// Flutter copies `assets/` into `data/flutter_assets/` next to the
-  /// executable, so the tray icon has to be addressed there — a bare
-  /// `assets/...` path only resolves when running from the project root.
-  String get _trayIconPath {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final name = Platform.isWindows ? 'app_icon.ico' : 'app_icon.png';
-    final bundled =
-        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'images', name);
-    if (File(bundled).existsSync()) return bundled;
-    return p.join('assets', 'images', name); // `flutter run` from the repo
-  }
-
-  Future<void> _initSystemTray() async {
-    try {
-      await _systemTray.initSystemTray(
-        title: 'PLUTON Wallet',
-        iconPath: _trayIconPath,
-        toolTip: 'PLUTON Wallet',
-      );
-
-      final menu = Menu();
-      await menu.buildFrom([
-        MenuItemLabel(label: 'Show', onClicked: (_) => _showWindow()),
-        MenuSeparator(),
-        MenuItemLabel(label: 'Exit', onClicked: (_) => _quit()),
-      ]);
-      await _systemTray.setContextMenu(menu);
-      // Only now is hiding the window safe — there is something to restore it.
-      _trayReady = true;
-
-      _systemTray.registerSystemTrayEventHandler((eventName) {
-        if (eventName == kSystemTrayEventClick) {
-          // Single left click → show window
-          if (_trayClickTimer?.isActive ?? false) {
-            // Second click within threshold → double-click: maximize
-            _trayClickTimer!.cancel();
-            _trayClickTimer = null;
-            _showWindow(maximize: true);
-          } else {
-            _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
-              _showWindow();
-              _trayClickTimer = null;
-            });
-          }
-        } else if (eventName == kSystemTrayEventRightClick) {
-          _systemTray.popUpContextMenu();
-        }
-      });
-    } catch (e) {
-      // No tray: leave close/minimise behaving normally so the window stays
-      // reachable.
-      _trayReady = false;
-      debugPrint('[tray] init failed: $e');
-    }
-  }
-
-  /// Saves and closes the wallet, then lets the window close for real.
-  ///
-  /// Quitting used to bypass this entirely, discarding everything since the
-  /// last autosave and leaving the wallet file open.
-  Future<void> _quit() async {
-    if (_shuttingDown) return;
-    _shuttingDown = true;
-    _autosaveTimer?.cancel();
-    final ffi = ref.read(walletCApiProvider);
-    if (ffi.isOpen) {
-      try {
-        await ffi.save();
-      } catch (e) {
-        debugPrint('[shutdown] save failed: $e');
-      }
-      try {
-        await ffi.close();
-      } catch (e) {
-        debugPrint('[shutdown] close failed: $e');
-      }
-    }
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
   }
 
   // ── Autosave logic ──────────────────────────────────────────────────────────
@@ -181,34 +75,6 @@ class _MainShellState extends ConsumerState<MainShell>
     } catch (e) {
       debugPrint('[autosave] failed: $e');
     }
-  }
-
-  // ── Window helpers ─────────────────────────────────────────────────────────
-
-  Future<void> _showWindow({bool maximize = false}) async {
-    await windowManager.show();
-    if (maximize) await windowManager.maximize();
-    // Windows restricts SetForegroundWindow from background processes.
-    // Briefly setting alwaysOnTop forces the window to the front reliably.
-    await windowManager.setAlwaysOnTop(true);
-    await windowManager.focus();
-    await windowManager.setAlwaysOnTop(false);
-  }
-
-  // ── Window events ─────────────────────────────────────────────────────────────
-
-  @override
-  Future<void> onWindowMinimize() async {
-    if (_trayReady) await windowManager.hide();
-  }
-
-  @override
-  Future<void> onWindowClose() async {
-    if (_trayReady && !_shuttingDown) {
-      await windowManager.hide();
-      return;
-    }
-    await _quit();
   }
 
   // ── Incoming transaction notifications ────────────────────────────────────────
@@ -330,7 +196,24 @@ class _MainShellState extends ConsumerState<MainShell>
             ),
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: widget.child),
+          Expanded(
+            child: Column(
+              children: [
+                // Lite-node notice lives in the shell so it is on every
+                // screen, and stays up once the wallet is synced — which is
+                // exactly when a balance missing its older half looks most
+                // trustworthy. See LITENODE.md.
+                Consumer(
+                  builder: (context, ref, _) {
+                    final status = ref.watch(statusProvider).valueOrNull;
+                    if (status == null) return const SizedBox.shrink();
+                    return LiteNodeBanner(status: status);
+                  },
+                ),
+                Expanded(child: widget.child),
+              ],
+            ),
+          ),
         ],
       ),
     );

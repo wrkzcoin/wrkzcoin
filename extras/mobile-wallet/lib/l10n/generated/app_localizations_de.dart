@@ -780,4 +780,51 @@ class SDe extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
   }
+
+  @override
+  String get liteNodeTitle => 'Lite-Node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Dieser Node hält nur Blöcke ab $height. Transaktionen vor diesem Block sind über ihn nicht auffindbar.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Dieser Node beginnt bei Block $nodeHeight, diese Wallet aber bei Block $walletHeight. Alles, was dazwischen empfangen wurde, ist hier unsichtbar, der angezeigte Kontostand kann also zu niedrig sein. Verbinde einen Node mit der vollständigen Blockchain, um ihn zu sehen.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Synchronisierung bei Block $wallet gestoppt. Dieser Node hält nichts unterhalb von Block $node, die Blöcke dazwischen können also nicht von ihm geladen werden. Der Kontostand bleibt unvollständig, bis du einen Node mit der vollständigen Blockchain verbindest.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Dieser Node kann nicht so weit zurück scannen';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Der verbundene Node ist ein Lite-Node ohne Blockdaten unterhalb von $height. Ein Rescan von tiefer würde bereits gefundene Transaktionen dieser Wallet verwerfen, ohne sie hier wiederfinden zu können. Es wurde nichts geändert.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Stattdessen ab $height scannen';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Der verbundene Node kann nur ab Block $height oder höher scannen.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Liefert Blöcke ab';
+
+  @override
+  String get nodeFullChain => 'Vollständige Blockchain';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Den Node direkt auf dem Telefon zu betreiben ist geplant, aber noch nicht verfügbar — ein Node braucht mehrere GB Speicher und Stunden zum Synchronisieren. Richte diese Wallet bis dahin auf einen selbst betriebenen Node.';
 }

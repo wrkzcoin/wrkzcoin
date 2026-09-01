@@ -365,5 +365,64 @@
   "retry": "Thử lại",
   "youReceivedAmount": "Bạn đã nhận {amount}",
   "ringSize": "Kích thước vòng",
-  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường."
+  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.",
+  "liteNodeTitle": "Node rút gọn",
+  "liteNodeServesFrom": "Node này chỉ lưu các khối từ {height} trở đi. Không thể tìm thấy giao dịch trước khối đó qua node này.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Node này bắt đầu từ khối {nodeHeight}, nhưng ví này bắt đầu từ khối {walletHeight}. Mọi khoản nhận được ở khoảng giữa đều không hiển thị ở đây, nên số dư có thể thấp hơn thực tế. Hãy kết nối tới node giữ toàn bộ chuỗi để xem.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Đồng bộ đã dừng ở khối {wallet}. Node này không giữ gì dưới khối {node}, nên không thể tải các khối ở giữa từ nó. Số dư sẽ chưa đầy đủ cho tới khi bạn kết nối node giữ toàn bộ chuỗi.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Node này không thể quét lại từ mức đó",
+  "liteNodeRescanRefused": "Node đang kết nối là node rút gọn, không giữ dữ liệu khối dưới {height}. Quét lại từ mức thấp hơn sẽ làm mất các giao dịch ví đã tìm thấy, và không thể tìm lại qua node này. Chưa có gì bị thay đổi.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Quét lại từ {height}",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Node đang kết nối chỉ có thể quét lại từ khối {height} trở lên.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Cung cấp khối từ",
+  "nodeFullChain": "Toàn bộ chuỗi",
+  "localNodeMobileFuture": "Chạy node ngay trên điện thoại đã có trong kế hoạch nhưng chưa khả dụng — một node cần vài GB dung lượng và nhiều giờ đồng bộ. Trong lúc đó, hãy trỏ ví này tới node do bạn tự chạy."
 }

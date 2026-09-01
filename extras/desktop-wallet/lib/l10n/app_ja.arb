@@ -366,5 +366,142 @@
   "exportJsonWarningBody": "エクスポートされたファイルには、プライベートビューキーとプライベートスペンドキーが平文で含まれます。読んだ人は誰でもあなたの資金を使えます。\n\n自分が管理する保存先にのみ保存し、用が済んだらすぐに削除してください。",
   "passwordTooShort": "パスワードは{count}文字以上でなければなりません",
   "ringSize": "リングサイズ",
-  "ringSizeReduced": "リングサイズが {actual} に縮小されました（通常は {normal}）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。"
+  "ringSizeReduced": "リングサイズが {actual} に縮小されました（通常は {normal}）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。",
+  "liteNodeTitle": "ライトノード",
+  "liteNodeServesFrom": "このノードはブロック {height} 以降しか保持していません。それより前の取引はこのノードでは見つけられません。",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "このノードはブロック {nodeHeight} から始まりますが、このウォレットはブロック {walletHeight} から始まります。その間に受け取った分はここでは見えないため、表示される残高が実際より少ない可能性があります。チェーン全体を保持するノードに接続してください。",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "ブロック {wallet} で同期を停止しました。このノードはブロック {node} より下を保持していないため、その間のブロックを取得できません。チェーン全体を保持するノードに接続するまで残高は不完全です。",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "このノードではそこまで遡って再スキャンできません",
+  "liteNodeRescanRefused": "接続中のノードはライトノードで、{height} より下のブロックデータを持っていません。それより低い位置から再スキャンすると、すでに見つかっている取引が失われ、ここでは二度と見つけられません。何も変更していません。",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "代わりに {height} から再スキャン",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "接続中のノードはブロック {height} 以降からしか再スキャンできません。",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "提供ブロック開始位置",
+  "nodeFullChain": "チェーン全体",
+  "sectionLocalNode": "ローカルライトノード",
+  "localNodeDescription": "このコンピューターでノードを動かし、リモートサーバーの代わりにそれと同期します。ライトノードはウォレットに必要なものだけを保存しますが、チェーン全体を一度はダウンロードします。",
+  "localNodeSetUp": "ローカルノードを設定",
+  "localNodeStart": "開始",
+  "localNodeStop": "停止",
+  "localNodeUse": "このノードを使う",
+  "localNodeDelete": "ノードデータを削除",
+  "localNodeStateStopped": "停止中",
+  "localNodeStateStarting": "起動中",
+  "localNodeStateSyncing": "同期中",
+  "localNodeStateReady": "同期済み",
+  "localNodeStateFailed": "失敗",
+  "localNodeProgress": "ブロック {height} / {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} ピア",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "ローカルノードはまだ追いついておらず、ウォレットに応答できません。バックグラウンドで同期を続けます。準備できるまでリモートノードを使い、その後で切り替えてください。",
+  "localNodeInUse": "ウォレットはこのノードに接続しています。",
+  "localNodeBinaryMissing": "{name} が見つかりません。デーモンの実行ファイルをウォレット実行ファイルの隣、または隣接する「sidecar」フォルダーに置いて、もう一度お試しください。",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "ローカルライトノードを設定",
+  "localNodeSetupCost": "始める前に:\n• 約 6 GB のディスク容量が必要で、チェーン全体を一度ダウンロードします。\n• 初回同期には数時間かかります。バックグラウンドで続行し、その間はリモートノードを使えます。\n• 下の開始ブロック高は変更できません。後で変えるにはノードを削除し、最初から同期し直す必要があります。",
+  "localNodeStartHeightLabel": "開始ブロック高",
+  "localNodeStartHeightHelp": "この高さより下のブロックはダウンロードして検証したうえで、後続ブロックに必要なインデックスだけを残します。このウォレットの開始ブロック高 ({height}) 以下にしてください。",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "このウォレットの開始ブロック高 ({height}) より高い値です。このノードでは古い取引を表示できなくなります。",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "ノードを作成",
+  "localNodeDeleteTitle": "ローカルノードのデータを削除しますか？",
+  "localNodeDeleteWarning": "ノードを停止し、そのブロックチェーンデータベースをディスクから完全に削除します。ウォレット、シード、資金には影響しませんが、新しいローカルノードは一からの同期になり数時間かかります。",
+  "localNodeDeleted": "ローカルノードを削除しました。",
+  "localNodeDiskUsage": "ディスク使用量 {size}",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "リモートノード",
+  "nodePresetLocal": "ローカルライトノード",
+  "savingWallet": "ウォレットを保存しています…",
+  "savingWalletBody": "PLUTON がウォレットをディスクに書き込んでいます。大きなウォレットでは少し時間がかかることがあります。",
+  "shutdownTakingLong": "予想より時間がかかっています。ここで終了するとウォレットファイルが破損する可能性があります。PLUTON が応答しない場合のみ実行してください。",
+  "quitAnyway": "強制終了",
+  "stillRunningInTray": "PLUTON は通知領域で実行中です。アイコンをクリックすると再表示できます。終了するにはアイコンを右クリックして「終了」を選択してください。"
 }

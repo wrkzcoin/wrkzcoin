@@ -366,5 +366,142 @@
   "exportJsonWarningBody": "Tệp xuất ra chứa khóa xem riêng tư và khóa chi tiêu riêng tư của bạn ở dạng văn bản thuần. Bất kỳ ai đọc được đều có thể tiêu tiền của bạn.\n\nChỉ lưu vào bộ nhớ bạn kiểm soát và xóa ngay khi xong.",
   "passwordTooShort": "Mật khẩu phải có ít nhất {count} ký tự",
   "ringSize": "Kích thước vòng",
-  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường."
+  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.",
+  "liteNodeTitle": "Node rút gọn",
+  "liteNodeServesFrom": "Node này chỉ lưu các khối từ {height} trở đi. Không thể tìm thấy giao dịch trước khối đó qua node này.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Node này bắt đầu từ khối {nodeHeight}, nhưng ví này bắt đầu từ khối {walletHeight}. Mọi khoản nhận được ở khoảng giữa đều không hiển thị ở đây, nên số dư có thể thấp hơn thực tế. Hãy kết nối tới node giữ toàn bộ chuỗi để xem.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Đồng bộ đã dừng ở khối {wallet}. Node này không giữ gì dưới khối {node}, nên không thể tải các khối ở giữa từ nó. Số dư sẽ chưa đầy đủ cho tới khi bạn kết nối node giữ toàn bộ chuỗi.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Node này không thể quét lại từ mức đó",
+  "liteNodeRescanRefused": "Node đang kết nối là node rút gọn, không giữ dữ liệu khối dưới {height}. Quét lại từ mức thấp hơn sẽ làm mất các giao dịch ví đã tìm thấy, và không thể tìm lại qua node này. Chưa có gì bị thay đổi.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Quét lại từ {height}",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Node đang kết nối chỉ có thể quét lại từ khối {height} trở lên.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Cung cấp khối từ",
+  "nodeFullChain": "Toàn bộ chuỗi",
+  "sectionLocalNode": "Node rút gọn cục bộ",
+  "localNodeDescription": "Chạy một node trên máy này và đồng bộ với nó thay vì máy chủ từ xa. Node rút gọn chỉ lưu những gì ví cần, nhưng vẫn tải toàn bộ chuỗi một lần.",
+  "localNodeSetUp": "Thiết lập node cục bộ",
+  "localNodeStart": "Khởi động",
+  "localNodeStop": "Dừng",
+  "localNodeUse": "Dùng node này",
+  "localNodeDelete": "Xoá dữ liệu node",
+  "localNodeStateStopped": "Đã dừng",
+  "localNodeStateStarting": "Đang khởi động",
+  "localNodeStateSyncing": "Đang đồng bộ",
+  "localNodeStateReady": "Đã đồng bộ",
+  "localNodeStateFailed": "Thất bại",
+  "localNodeProgress": "Khối {height} trên {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} peer",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "Node cục bộ vẫn đang bắt kịp và chưa phục vụ được ví. Nó tiếp tục đồng bộ ở nền — hãy dùng node từ xa cho tới khi nó sẵn sàng rồi chuyển sang.",
+  "localNodeInUse": "Ví đang kết nối tới node này.",
+  "localNodeBinaryMissing": "Không tìm thấy {name}. Hãy đặt tệp daemon cạnh tệp chạy của ví, hoặc trong thư mục \"sidecar\" bên cạnh, rồi thử lại.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Thiết lập node rút gọn cục bộ",
+  "localNodeSetupCost": "Trước khi bắt đầu:\n• Cần khoảng 6 GB dung lượng đĩa, và toàn bộ chuỗi sẽ được tải một lần.\n• Lần đồng bộ đầu mất nhiều giờ. Quá trình chạy nền và bạn vẫn có thể dùng node từ xa.\n• Chiều cao bắt đầu bên dưới là vĩnh viễn. Muốn đổi sau này phải xoá node và đồng bộ lại từ đầu.",
+  "localNodeStartHeightLabel": "Chiều cao bắt đầu",
+  "localNodeStartHeightHelp": "Các khối dưới chiều cao này vẫn được tải và kiểm tra, nhưng chỉ giữ lại chỉ mục mà các khối sau cần. Hãy đặt bằng hoặc thấp hơn chiều cao bắt đầu của ví này ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Cao hơn chiều cao bắt đầu của ví này ({height}). Node sẽ không bao giờ hiển thị được các giao dịch cũ hơn của ví.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Tạo node",
+  "localNodeDeleteTitle": "Xoá dữ liệu node cục bộ?",
+  "localNodeDeleteWarning": "Thao tác này dừng node và xoá vĩnh viễn cơ sở dữ liệu chuỗi khỏi đĩa. Ví, cụm từ khôi phục và số dư của bạn không bị ảnh hưởng — nhưng node cục bộ mới sẽ đồng bộ lại từ đầu, mất nhiều giờ.",
+  "localNodeDeleted": "Đã xoá node cục bộ.",
+  "localNodeDiskUsage": "{size} trên đĩa",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Node từ xa",
+  "nodePresetLocal": "Node rút gọn cục bộ",
+  "savingWallet": "Đang lưu ví của bạn…",
+  "savingWalletBody": "PLUTON đang ghi ví của bạn xuống đĩa. Việc này có thể mất một lúc với ví lớn.",
+  "shutdownTakingLong": "Quá trình này lâu hơn dự kiến. Thoát ngay bây giờ có thể làm hỏng tệp ví — chỉ làm vậy nếu PLUTON bị treo.",
+  "quitAnyway": "Vẫn thoát",
+  "stillRunningInTray": "PLUTON vẫn đang chạy trong khay hệ thống. Nhấp vào biểu tượng để mở lại, hoặc nhấp chuột phải và chọn Thoát."
 }

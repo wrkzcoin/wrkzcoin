@@ -780,4 +780,51 @@ class SEs extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nodo ligero';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Este nodo solo guarda bloques a partir de $height. Las transacciones anteriores a ese bloque no se pueden encontrar a través de él.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Este nodo empieza en el bloque $nodeHeight, pero esta cartera empieza en el bloque $walletHeight. Todo lo recibido entre medias es invisible aquí, así que el saldo mostrado puede ser demasiado bajo. Conecta un nodo con la cadena completa para verlo.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'La sincronización se detuvo en el bloque $wallet. Este nodo no guarda nada por debajo del bloque $node, así que los bloques intermedios no se pueden descargar de él. El saldo estará incompleto hasta que conectes un nodo con la cadena completa.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Este nodo no puede reescanear tan atrás';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'El nodo conectado es un nodo ligero sin datos de bloque por debajo de $height. Reescanear desde más abajo descartaría transacciones que esta cartera ya encontró, sin forma de recuperarlas aquí. No se ha cambiado nada.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Reescanear desde $height en su lugar';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'El nodo conectado solo puede reescanear desde el bloque $height o superior.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Sirve bloques desde';
+
+  @override
+  String get nodeFullChain => 'Cadena completa';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Ejecutar el nodo en el propio teléfono está planeado, pero aún no disponible: un nodo necesita varios GB de almacenamiento y horas de sincronización. Mientras tanto, apunta esta cartera a un nodo tuyo.';
 }

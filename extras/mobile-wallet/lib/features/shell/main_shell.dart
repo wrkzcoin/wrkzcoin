@@ -15,6 +15,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/utils/haptics.dart';
 import '../../shared/widgets/language_selector.dart';
+import '../../shared/widgets/lite_node_banner.dart';
 
 class MainShell extends ConsumerStatefulWidget {
   final Widget child;
@@ -203,7 +204,28 @@ class _MainShellState extends ConsumerState<MainShell>
             LanguageSelectorButton(),
           ],
         ),
-        body: widget.child,
+        body: Column(
+          children: [
+            // Lite-node notice lives in the shell so it is on every tab, and
+            // stays up once the wallet is synced — which is exactly when a
+            // balance missing its older half looks most trustworthy.
+            // See LITENODE.md.
+            Consumer(
+              builder: (context, ref, _) {
+                final status = ref.watch(statusProvider).valueOrNull;
+                if (status == null ||
+                    (!status.isLiteNode && !status.isSyncStalledByLiteNode)) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: LiteNodeBanner(status: status),
+                );
+              },
+            ),
+            Expanded(child: widget.child),
+          ],
+        ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: idx,
           onTap: (i) {

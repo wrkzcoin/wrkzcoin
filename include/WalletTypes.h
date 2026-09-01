@@ -418,6 +418,13 @@ namespace WalletTypes
            because a jump would look exactly like being synced while hiding
            every transaction in between. */
         bool syncStalledByLiteNode;
+        /* The lowest height any sub wallet asked to be scanned from, and the
+           timestamp equivalent. One of the two is zero - a wallet is created
+           from a height or from a timestamp, never both. Reported so a caller
+           choosing a lite node's start height has the one number that decides
+           it: pick above this and the wallet loses transactions. */
+        uint64_t walletSyncStartHeight;
+        uint64_t walletSyncStartTimestamp;
     };
 
     /* A structure just used to display locked balance, due to change from

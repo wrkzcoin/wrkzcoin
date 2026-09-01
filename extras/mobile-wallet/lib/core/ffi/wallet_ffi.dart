@@ -254,6 +254,16 @@ typedef _FnPowStatusDart = void Function(
 typedef _FnSetScanCoinbaseNative = Void Function(Bool);
 typedef _FnSetScanCoinbaseDart = void Function(bool);
 
+// ─── error codes (match src/errors/Errors.h) ─────────────────────────────────
+
+/// `LITE_NODE_CANNOT_RESCAN_THAT_LOW` — returned by `wallet_reset` when the
+/// connected daemon is a lite node holding no data as far back as the
+/// requested scan height, and the wallet already holds transactions from
+/// below there. Nothing is touched: rescanning would drop those transactions
+/// with no way to find them again through this daemon. The height it *can*
+/// serve from is `daemonLiteStartHeight` in `wallet_get_status_json`.
+const int kErrLiteNodeCannotRescanThatLow = 62;
+
 // ─── exception ────────────────────────────────────────────────────────────────
 
 class WalletCApiException implements Exception {

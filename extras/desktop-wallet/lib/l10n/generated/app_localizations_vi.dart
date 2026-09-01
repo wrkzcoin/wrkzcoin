@@ -808,4 +808,168 @@ class SVi extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Kích thước vòng giảm xuống $actual (thông thường là $normal). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.';
   }
+
+  @override
+  String get liteNodeTitle => 'Node rút gọn';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Node này chỉ lưu các khối từ $height trở đi. Không thể tìm thấy giao dịch trước khối đó qua node này.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Node này bắt đầu từ khối $nodeHeight, nhưng ví này bắt đầu từ khối $walletHeight. Mọi khoản nhận được ở khoảng giữa đều không hiển thị ở đây, nên số dư có thể thấp hơn thực tế. Hãy kết nối tới node giữ toàn bộ chuỗi để xem.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Đồng bộ đã dừng ở khối $wallet. Node này không giữ gì dưới khối $node, nên không thể tải các khối ở giữa từ nó. Số dư sẽ chưa đầy đủ cho tới khi bạn kết nối node giữ toàn bộ chuỗi.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Node này không thể quét lại từ mức đó';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Node đang kết nối là node rút gọn, không giữ dữ liệu khối dưới $height. Quét lại từ mức thấp hơn sẽ làm mất các giao dịch ví đã tìm thấy, và không thể tìm lại qua node này. Chưa có gì bị thay đổi.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Quét lại từ $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Node đang kết nối chỉ có thể quét lại từ khối $height trở lên.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Cung cấp khối từ';
+
+  @override
+  String get nodeFullChain => 'Toàn bộ chuỗi';
+
+  @override
+  String get sectionLocalNode => 'Node rút gọn cục bộ';
+
+  @override
+  String get localNodeDescription =>
+      'Chạy một node trên máy này và đồng bộ với nó thay vì máy chủ từ xa. Node rút gọn chỉ lưu những gì ví cần, nhưng vẫn tải toàn bộ chuỗi một lần.';
+
+  @override
+  String get localNodeSetUp => 'Thiết lập node cục bộ';
+
+  @override
+  String get localNodeStart => 'Khởi động';
+
+  @override
+  String get localNodeStop => 'Dừng';
+
+  @override
+  String get localNodeUse => 'Dùng node này';
+
+  @override
+  String get localNodeDelete => 'Xoá dữ liệu node';
+
+  @override
+  String get localNodeStateStopped => 'Đã dừng';
+
+  @override
+  String get localNodeStateStarting => 'Đang khởi động';
+
+  @override
+  String get localNodeStateSyncing => 'Đang đồng bộ';
+
+  @override
+  String get localNodeStateReady => 'Đã đồng bộ';
+
+  @override
+  String get localNodeStateFailed => 'Thất bại';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Khối $height trên $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count peer';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'Node cục bộ vẫn đang bắt kịp và chưa phục vụ được ví. Nó tiếp tục đồng bộ ở nền — hãy dùng node từ xa cho tới khi nó sẵn sàng rồi chuyển sang.';
+
+  @override
+  String get localNodeInUse => 'Ví đang kết nối tới node này.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return 'Không tìm thấy $name. Hãy đặt tệp daemon cạnh tệp chạy của ví, hoặc trong thư mục \"sidecar\" bên cạnh, rồi thử lại.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Thiết lập node rút gọn cục bộ';
+
+  @override
+  String get localNodeSetupCost =>
+      'Trước khi bắt đầu:\n• Cần khoảng 6 GB dung lượng đĩa, và toàn bộ chuỗi sẽ được tải một lần.\n• Lần đồng bộ đầu mất nhiều giờ. Quá trình chạy nền và bạn vẫn có thể dùng node từ xa.\n• Chiều cao bắt đầu bên dưới là vĩnh viễn. Muốn đổi sau này phải xoá node và đồng bộ lại từ đầu.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Chiều cao bắt đầu';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Các khối dưới chiều cao này vẫn được tải và kiểm tra, nhưng chỉ giữ lại chỉ mục mà các khối sau cần. Hãy đặt bằng hoặc thấp hơn chiều cao bắt đầu của ví này ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Cao hơn chiều cao bắt đầu của ví này ($height). Node sẽ không bao giờ hiển thị được các giao dịch cũ hơn của ví.';
+  }
+
+  @override
+  String get localNodeCreate => 'Tạo node';
+
+  @override
+  String get localNodeDeleteTitle => 'Xoá dữ liệu node cục bộ?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'Thao tác này dừng node và xoá vĩnh viễn cơ sở dữ liệu chuỗi khỏi đĩa. Ví, cụm từ khôi phục và số dư của bạn không bị ảnh hưởng — nhưng node cục bộ mới sẽ đồng bộ lại từ đầu, mất nhiều giờ.';
+
+  @override
+  String get localNodeDeleted => 'Đã xoá node cục bộ.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size trên đĩa';
+  }
+
+  @override
+  String get nodePresetRemote => 'Node từ xa';
+
+  @override
+  String get nodePresetLocal => 'Node rút gọn cục bộ';
+
+  @override
+  String get savingWallet => 'Đang lưu ví của bạn…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON đang ghi ví của bạn xuống đĩa. Việc này có thể mất một lúc với ví lớn.';
+
+  @override
+  String get shutdownTakingLong =>
+      'Quá trình này lâu hơn dự kiến. Thoát ngay bây giờ có thể làm hỏng tệp ví — chỉ làm vậy nếu PLUTON bị treo.';
+
+  @override
+  String get quitAnyway => 'Vẫn thoát';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON vẫn đang chạy trong khay hệ thống. Nhấp vào biểu tượng để mở lại, hoặc nhấp chuột phải và chọn Thoát.';
 }

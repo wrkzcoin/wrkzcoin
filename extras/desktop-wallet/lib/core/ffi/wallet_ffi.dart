@@ -255,6 +255,16 @@ typedef _FnPowStatusDart = void Function(
 typedef _FnSetScanCoinbaseNative = Void Function(Bool);
 typedef _FnSetScanCoinbaseDart = void Function(bool);
 
+// ─── error codes (match src/errors/Errors.h) ─────────────────────────────────
+
+/// `LITE_NODE_CANNOT_RESCAN_THAT_LOW` — returned by `wallet_reset` when the
+/// connected daemon is a lite node holding no data as far back as the
+/// requested scan height, and the wallet already holds transactions from
+/// below there. Nothing is touched: rescanning would drop those transactions
+/// with no way to find them again through this daemon. The height it *can*
+/// serve from is `daemonLiteStartHeight` in `wallet_get_status_json`.
+const int kErrLiteNodeCannotRescanThatLow = 62;
+
 // ─── exception ────────────────────────────────────────────────────────────────
 
 class WalletCApiException implements Exception {
@@ -297,7 +307,6 @@ class WalletCApi {
   late final _FnVersionDart _apiVersion;
   late final _FnVersionStrDart _versionString;
   late final _FnDeleteFileDart _walletDeleteFile;
-  late final _FnCloseDart _walletClose;
   late final _FnSyncStatusDart _walletGetSyncStatus;
   late final _FnDaemonOnlineDart _walletDaemonOnline;
   late final _FnJsonOutDart _walletGetStatusJson;
@@ -385,8 +394,8 @@ class WalletCApi {
     _walletDeleteFile =
         _lib.lookupFunction<_FnDeleteFileNative, _FnDeleteFileDart>(
             'wallet_delete_file');
-    _walletClose =
-        _lib.lookupFunction<_FnCloseNative, _FnCloseDart>('wallet_close');
+    // wallet_close is deliberately absent: it runs the wallet's final save, so
+    // close() looks it up inside an isolate rather than calling it here.
     _walletGetSyncStatus =
         _lib.lookupFunction<_FnSyncStatusNative, _FnSyncStatusDart>(
             'wallet_get_sync_status');
@@ -745,6 +754,12 @@ class WalletCApi {
   /// `wallet_close` deletes the C++ handle outright, so returning before a
   /// concurrent save/send/sweep isolate has finished would leave that isolate
   /// dereferencing freed memory.
+  ///
+  /// Runs off-thread. Deleting the handle runs `~WalletBackend`, which saves
+  /// the wallet: a synchroniser pause, half a million rounds of PBKDF2 and an
+  /// AES pass over the whole file. On the UI isolate that is the window frozen
+  /// for as long as it takes, which on quit read as the Exit button doing
+  /// nothing.
   Future<void> close() async {
     final h = _handle;
     if (h == null || h.address == 0) return;
@@ -754,8 +769,14 @@ class WalletCApi {
         _idle ??= Completer<void>();
         await _idle!.future;
       }
+      final ha = h.address;
       _handle = null;
-      _walletClose(h);
+      await Isolate.run(() {
+        final lib = _openLibrary();
+        final fn = lib.lookupFunction<_FnCloseNative, _FnCloseDart>(
+            'wallet_close');
+        fn(Pointer<_WalletHandleOpaque>.fromAddress(ha));
+      });
     } finally {
       _closing = false;
     }

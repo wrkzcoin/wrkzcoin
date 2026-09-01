@@ -778,4 +778,51 @@ class SRu extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
   }
+
+  @override
+  String get liteNodeTitle => 'Облегчённый узел';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Этот узел хранит блоки только начиная с $height. Транзакции до этого блока через него найти невозможно.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Этот узел начинается с блока $nodeHeight, а кошелёк — с блока $walletHeight. Всё полученное между ними здесь не видно, поэтому показанный баланс может быть занижен. Подключитесь к узлу с полной цепочкой, чтобы увидеть его.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Синхронизация остановлена на блоке $wallet. Этот узел не хранит ничего ниже блока $node, поэтому промежуточные блоки с него не скачать. Баланс останется неполным, пока вы не подключите узел с полной цепочкой.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Этот узел не может пересканировать так далеко назад';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Подключённый узел — облегчённый и не хранит данные блоков ниже $height. Пересканирование с меньшей высоты отбросит уже найденные кошельком транзакции, и найти их здесь снова будет невозможно. Ничего не изменено.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Пересканировать с $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Подключённый узел может пересканировать только с блока $height и выше.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Отдаёт блоки с';
+
+  @override
+  String get nodeFullChain => 'Полная цепочка';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Запуск узла прямо на телефоне запланирован, но пока недоступен: узлу нужно несколько ГБ памяти и часы синхронизации. А пока укажите кошельку адрес своего собственного узла.';
 }

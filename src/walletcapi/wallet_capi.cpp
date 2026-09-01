@@ -627,6 +627,13 @@ wallet_status_t wallet_get_status_json(
            height the daemon cannot serve from. The balance is incomplete and
            stays that way until a daemon holding the range is connected. */
         {"isSyncStalledByLiteNode", s.syncStalledByLiteNode},
+        /* The lowest height this wallet was ever told to scan from. A caller
+           picking a lite node's start height must not go above it, or the
+           node it builds cannot serve the wallet it was built for. Zero when
+           the wallet was created from a timestamp instead - then
+           walletSyncStartTimestamp carries it. */
+        {"walletSyncStartHeight", s.walletSyncStartHeight},
+        {"walletSyncStartTimestamp", s.walletSyncStartTimestamp},
     };
 
     return alloc_out_string(j.dump(), out_json, out_len);

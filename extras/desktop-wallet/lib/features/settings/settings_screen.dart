@@ -11,8 +11,12 @@ import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../core/node/local_node.dart';
+import '../../core/node/local_node_controller.dart';
 import '../../shared/theme/app_theme.dart';
+import '../../shared/widgets/lite_node_banner.dart';
 import '../../l10n/generated/app_localizations.dart';
+import 'local_node_section.dart';
 
 const _storage = FlutterSecureStorage();
 const _kLastWalletKey = 'pluton_last_wallet_path';
@@ -245,46 +249,132 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Rescan from a chosen height.
+  ///
+  /// Against a lite node the field is floored at that node's start height: it
+  /// holds nothing below there and would answer a lower request from its own
+  /// start anyway, which would move the wallet's recorded position over blocks
+  /// nobody ever looked at. The native side refuses it as well — the daemon
+  /// can be swapped between this check and the call — and that refusal gets
+  /// its own dialog rather than a bare error code. See LITENODE.md.
   Future<void> _resetScanHeight() async {
-    final heightCtrl = TextEditingController(text: '0');
+    final liteStart =
+        ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0;
+
+    final heightCtrl =
+        TextEditingController(text: liteStart > 0 ? '$liteStart' : '0');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         final dlgTr = S.of(ctx);
-        return AlertDialog(
-          title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: heightCtrl,
-                decoration: InputDecoration(labelText: dlgTr?.scanHeight ?? 'Scan height'),
-                keyboardType: TextInputType.number,
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final entered = int.tryParse(heightCtrl.text);
+            final tooLow =
+                liteStart > 0 && entered != null && entered < liteStart;
+            return AlertDialog(
+              title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
+                  if (liteStart > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      dlgTr?.liteNodeRescanHint(liteStart) ??
+                          'The connected node can only rescan from block $liteStart or above.',
+                      style: const TextStyle(color: kWarning, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: heightCtrl,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      labelText: dlgTr?.scanHeight ?? 'Scan height',
+                      errorText: tooLow
+                          ? (dlgTr?.liteNodeRescanHint(liteStart) ??
+                              'The connected node can only rescan from block $liteStart or above.')
+                          : null,
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(dlgTr?.reset ?? 'Reset')),
-          ],
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+                FilledButton(
+                  onPressed: tooLow ? null : () => Navigator.pop(ctx, true),
+                  child: Text(dlgTr?.reset ?? 'Reset'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
     final height = int.tryParse(heightCtrl.text) ?? 0;
     heightCtrl.dispose();
     if (confirmed != true) return;
+    await _runReset(height);
+  }
+
+  Future<void> _runReset(int height) async {
     try {
       await ref.read(walletCApiProvider).reset(scanHeight: height);
       ref.read(statusProvider.notifier).refresh();
     } on WalletCApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: kError),
-        );
+      if (!mounted) return;
+      if (e.errorCode == kErrLiteNodeCannotRescanThatLow) {
+        await _showLiteRescanRefused();
+        return;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: kError),
+      );
+    }
+  }
+
+  /// The wallet refused the rescan because the connected lite node holds no
+  /// data that far back and the wallet already has transactions from below
+  /// there — rescanning would drop them with no way to find them again here.
+  /// Nothing has been changed, so the only choices are to rescan from a height
+  /// this node can serve, or to connect a node holding the whole chain.
+  Future<void> _showLiteRescanRefused() async {
+    await ref.read(statusProvider.notifier).refresh();
+    if (!mounted) return;
+    final liteStart =
+        ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0;
+
+    final rescanFrom = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.liteNodeRescanRefusedTitle ?? 'This node cannot rescan that far back'),
+          content: Text(
+            dlgTr?.liteNodeRescanRefused(liteStart) ??
+                'The connected node is a lite node holding no block data below '
+                    '$liteStart. Rescanning from lower than that would drop '
+                    'transactions this wallet has already found, with no way to '
+                    'find them again here. Nothing has been changed.',
+            style: const TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+            if (liteStart > 0)
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(dlgTr?.liteNodeRescanFromInstead(liteStart) ?? 'Rescan from $liteStart instead'),
+              ),
+          ],
+        );
+      },
+    );
+
+    if (rescanFrom == true && liteStart > 0) {
+      await _runReset(liteStart);
     }
   }
 
@@ -443,7 +533,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         tr?.nodeDescription ?? 'Connect to a local or remote daemon node. Changes take effect immediately.',
                         style: const TextStyle(color: kTextSecondary, fontSize: 13),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
+                      // Quick targets. Filling the fields rather than
+                      // switching outright, so the choice is still confirmed
+                      // with Apply like any other node change.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ActionChip(
+                            avatar: const Icon(Icons.cloud_outlined, size: 16),
+                            label: Text(tr?.nodePresetRemote ?? 'Remote node'),
+                            onPressed: () => setState(() {
+                              _nodeHostCtrl.text = kDefaultDaemonHost;
+                              _nodePortCtrl.text = '$kDefaultDaemonPort';
+                              _nodeSSL = kDefaultDaemonSSL;
+                            }),
+                          ),
+                          if (ref.watch(localNodeProvider).config
+                              case final localConfig?)
+                            ActionChip(
+                              avatar: const Icon(Icons.dns_outlined, size: 16),
+                              label: Text(tr?.nodePresetLocal ?? 'Local lite node'),
+                              onPressed: () => setState(() {
+                                _nodeHostCtrl.text = kLocalNodeHost;
+                                _nodePortCtrl.text = '${localConfig.rpcPort}';
+                                _nodeSSL = false;
+                              }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
@@ -496,9 +617,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                             : Text(tr?.apply ?? 'Apply'),
                       ),
+
+                      // How far back the connected node goes. A lite node
+                      // answers every scan from its own start height, so this
+                      // is not a detail: it decides whether this wallet's
+                      // older transactions can be seen at all. See LITENODE.md.
+                      if (nodeAsync.valueOrNull case final status?) ...[
+                        const Divider(height: 28),
+                        Row(
+                          children: [
+                            Text(
+                              tr?.nodeServesFromLabel ?? 'Serves blocks from',
+                              style: const TextStyle(color: kTextSecondary, fontSize: 12),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              status.isLiteNode
+                                  ? '${status.daemonLiteStartHeight}'
+                                  : (tr?.nodeFullChain ?? 'Full chain'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: status.isLiteNode ? kWarning : kSuccess,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (status.isLiteNode || status.isSyncStalledByLiteNode) ...[
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: LiteNodeBanner(status: status, compact: true),
+                          ),
+                        ],
+                      ],
                     ],
                   ),
                 ),
+              ),
+              const SizedBox(height: 24),
+
+              // -- Local lite node section -------------------------------------
+              _SectionHeader(
+                  title: tr?.sectionLocalNode ?? 'Local Lite Node',
+                  icon: Icons.dns_outlined),
+              const SizedBox(height: 12),
+              LocalNodeSection(
+                onNodeSwitched: (host, port) {
+                  setState(() {
+                    _nodeHostCtrl.text = host;
+                    _nodePortCtrl.text = '$port';
+                    _nodeSSL = false;
+                    _nodeError = null;
+                    _nodeSuccess = null;
+                  });
+                },
               ),
               const SizedBox(height: 24),
 
