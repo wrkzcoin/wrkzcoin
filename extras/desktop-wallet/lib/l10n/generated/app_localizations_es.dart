@@ -1044,4 +1044,12 @@ class SEs extends S {
   @override
   String get localNodeStillRunningBody =>
       'El nodo lite local sigue ejecutándose en segundo plano. Abre PLUTON para detenerlo.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronización detenida';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronización detenida en el bloque $covered. El nodo con el que hablaba solo responde desde el bloque $servesFrom en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.';
+  }
 }

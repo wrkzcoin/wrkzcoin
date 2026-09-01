@@ -1046,4 +1046,12 @@ class SFr extends S {
   @override
   String get localNodeStillRunningBody =>
       'Le nœud allégé local fonctionne toujours en arrière-plan. Ouvrez PLUTON pour l\'arrêter.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisation arrêtée';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisation arrêtée au bloc $covered. Le nœud interrogé ne répond qu\'à partir du bloc $servesFrom, donc les blocs intermédiaires ne peuvent pas en être téléchargés. Le solde est incomplet tant que vous ne vous connectez pas à un nœud détenant toute la chaîne.';
+  }
 }

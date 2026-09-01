@@ -167,6 +167,8 @@ void main() {
       int walletStart = 0,
       int walletStartTimestamp = 0,
       bool stalled = false,
+      int gapCoveredTo = 0,
+      int gapServesFrom = 0,
     }) =>
         WalletStatus.fromJson({
           'walletBlockCount': 4200000,
@@ -181,6 +183,8 @@ void main() {
           'subWalletCount': 1,
           'daemonLiteStartHeight': liteStart,
           'isSyncStalledByLiteNode': stalled,
+          'syncGapCoveredTo': gapCoveredTo,
+          'syncGapDaemonServesFrom': gapServesFrom,
           'walletSyncStartHeight': walletStart,
           'walletSyncStartTimestamp': walletStartTimestamp,
         });
@@ -239,6 +243,38 @@ void main() {
       expect(s.isLiteNode, isFalse);
       expect(s.isSyncStalledByLiteNode, isFalse);
       expect(s.liteNodeMissesWalletHistory, isFalse);
+      expect(s.hasReportableSyncGap, isFalse);
+    });
+
+    test('a stall with its heights is reportable', () {
+      final s = status(
+          liteStart: 4100000,
+          stalled: true,
+          gapCoveredTo: 4050000,
+          gapServesFrom: 4100000);
+      expect(s.hasReportableSyncGap, isTrue);
+      expect(s.syncGapCoveredTo, 4050000);
+      expect(s.syncGapDaemonServesFrom, 4100000);
+    });
+
+    test('a stall against a full node is not shown', () {
+      // What the bug looked like: the flag set, the connected daemon holding
+      // the whole chain, and the banner filling the blank with
+      // daemonLiteStartHeight - printing "holds nothing below block 0", which
+      // is precisely what a full node reports.
+      final s = status(liteStart: 0, stalled: true);
+      expect(s.isLiteNode, isFalse);
+      expect(s.isSyncStalledByLiteNode, isTrue);
+      expect(s.hasReportableSyncGap, isFalse,
+          reason: 'nothing truthful can be said without the recorded heights');
+    });
+
+    test('a stall from an older wallet_capi carries no heights', () {
+      // The flag arrives without the pair. Better to say nothing than to
+      // invent the numbers.
+      final s = status(liteStart: 4100000, stalled: true);
+      expect(s.isSyncStalledByLiteNode, isTrue);
+      expect(s.hasReportableSyncGap, isFalse);
     });
   });
 }

@@ -1036,4 +1036,12 @@ class SEn extends S {
   @override
   String get localNodeStillRunningBody =>
       'The local lite node is still running in the background. Open PLUTON to stop it.';
+
+  @override
+  String get syncStoppedTitle => 'Sync stopped';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sync stopped at block $covered. The node it was talking to answers only from block $servesFrom upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
 }

@@ -819,4 +819,12 @@ class SEn extends S {
   @override
   String get localNodeMobileFuture =>
       'Running the node on the phone itself is planned, but not available yet — a node needs several GB of storage and hours of syncing. Until then, point this wallet at a node you run yourself.';
+
+  @override
+  String get syncStoppedTitle => 'Sync stopped';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sync stopped at block $covered. The node it was talking to answers only from block $servesFrom upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
 }

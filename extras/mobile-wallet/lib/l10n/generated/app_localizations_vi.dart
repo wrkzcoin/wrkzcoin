@@ -817,4 +817,12 @@ class SVi extends S {
   @override
   String get localNodeMobileFuture =>
       'Chạy node ngay trên điện thoại đã có trong kế hoạch nhưng chưa khả dụng — một node cần vài GB dung lượng và nhiều giờ đồng bộ. Trong lúc đó, hãy trỏ ví này tới node do bạn tự chạy.';
+
+  @override
+  String get syncStoppedTitle => 'Đồng bộ đã dừng';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Đồng bộ dừng ở khối $covered. Nút đang kết nối chỉ trả lời từ khối $servesFrom trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.';
+  }
 }

@@ -281,12 +281,16 @@ void status(const std::shared_ptr<WalletBackend> walletBackend)
 
     if (status.syncStalledByLiteNode)
     {
+        /* The recorded heights, not walletBlockCount and the current daemon's
+           lite height: the wallet has moved on since the stall, and the daemon
+           on the other end may have been swapped for one that never caused it. */
         std::cout << "\n"
                   << WarningMsg("Sync has stopped. This wallet has scanned to height ")
-                  << WarningMsg(status.walletBlockCount)
-                  << WarningMsg(", which is below what this node can serve.") << std::endl
+                  << WarningMsg(status.syncGapCoveredTo)
+                  << WarningMsg(", but the node it was talking to answers only from height ")
+                  << WarningMsg(status.syncGapDaemonServesFrom) << WarningMsg(" upward.") << std::endl
                   << "Your balance is incomplete until this is resolved. Connect a node that holds" << std::endl
-                  << "the whole chain, or reset the wallet to " << status.daemonLiteStartHeight
+                  << "the whole chain, or reset the wallet to " << status.syncGapDaemonServesFrom
                   << " and accept that earlier transactions" << std::endl
                   << "cannot be found here." << std::endl;
     }

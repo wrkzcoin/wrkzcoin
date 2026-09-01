@@ -1043,4 +1043,12 @@ class SRu extends S {
   @override
   String get localNodeStillRunningBody =>
       'Локальный лайт-узел продолжает работать в фоне. Откройте PLUTON, чтобы его остановить.';
+
+  @override
+  String get syncStoppedTitle => 'Синхронизация остановлена';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Синхронизация остановлена на блоке $covered. Узел, с которым шёл обмен, отвечает только начиная с блока $servesFrom, поэтому блоки между ними с него не скачать. Баланс неполный, пока вы не подключите узел с полной цепочкой.';
+  }
 }

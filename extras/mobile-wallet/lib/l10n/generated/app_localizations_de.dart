@@ -827,4 +827,12 @@ class SDe extends S {
   @override
   String get localNodeMobileFuture =>
       'Den Node direkt auf dem Telefon zu betreiben ist geplant, aber noch nicht verfügbar — ein Node braucht mehrere GB Speicher und Stunden zum Synchronisieren. Richte diese Wallet bis dahin auf einen selbst betriebenen Node.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisierung gestoppt';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
+  }
 }

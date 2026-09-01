@@ -631,5 +631,20 @@
   "localNodeStillRunningBody": "The local lite node is still running in the background. Open PLUTON to stop it.",
   "@localNodeStillRunningBody": {
     "description": "Local node exit question and policy"
+  },
+  "syncStoppedTitle": "Sync stopped",
+  "syncGapStalled": "Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.",
+  "@syncGapStalled": {
+    "placeholders": {
+      "covered": {
+        "type": "int"
+      },
+      "servesFrom": {
+        "type": "int"
+      }
+    }
+  },
+  "@syncStoppedTitle": {
+    "description": "Banner label when sync has stopped over a range no daemon served"
   }
 }

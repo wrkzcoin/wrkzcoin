@@ -106,7 +106,7 @@ class _SyncBannerState extends State<SyncBanner> {
     // A stalled sync is not progress. The shell's LiteNodeBanner says why it
     // stopped; a bar creeping along underneath would contradict it.
     if (widget.status.isWalletSynced ||
-        widget.status.isSyncStalledByLiteNode) {
+        widget.status.hasReportableSyncGap) {
       return const SizedBox.shrink();
     }
     return _progressRow(context);

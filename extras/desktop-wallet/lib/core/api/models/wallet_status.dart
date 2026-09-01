@@ -28,6 +28,17 @@ class WalletStatus {
   /// and stays that way until a daemon holding the range is connected.
   final bool isSyncStalledByLiteNode;
 
+  /// The two heights behind [isSyncStalledByLiteNode]: how far the wallet had
+  /// covered, and the lowest height the daemon would answer from. Both zero
+  /// when there is no stall, and zero from an older wallet_capi that did not
+  /// report them.
+  ///
+  /// Nothing may stand in for these. Substituting [daemonLiteStartHeight]
+  /// produced "holds nothing below block 0" against a full node, which is what
+  /// this pair exists to stop.
+  final int syncGapCoveredTo;
+  final int syncGapDaemonServesFrom;
+
   /// The lowest height this wallet was ever told to scan from — where its
   /// funds can start, not where it has got to. Zero when the wallet was
   /// created from a timestamp instead; then [walletSyncStartTimestamp] holds
@@ -51,6 +62,8 @@ class WalletStatus {
     this.defaultMixin = 0,
     this.daemonLiteStartHeight = 0,
     this.isSyncStalledByLiteNode = false,
+    this.syncGapCoveredTo = 0,
+    this.syncGapDaemonServesFrom = 0,
     this.walletSyncStartHeight = 0,
     this.walletSyncStartTimestamp = 0,
   });
@@ -73,6 +86,9 @@ class WalletStatus {
             (json['daemonLiteStartHeight'] as num?)?.toInt() ?? 0,
         isSyncStalledByLiteNode:
             json['isSyncStalledByLiteNode'] as bool? ?? false,
+        syncGapCoveredTo: (json['syncGapCoveredTo'] as num?)?.toInt() ?? 0,
+        syncGapDaemonServesFrom:
+            (json['syncGapDaemonServesFrom'] as num?)?.toInt() ?? 0,
         walletSyncStartHeight:
             (json['walletSyncStartHeight'] as num?)?.toInt() ?? 0,
         walletSyncStartTimestamp:
@@ -98,6 +114,14 @@ class WalletStatus {
       (walletSyncStartHeight == 0 && walletSyncStartTimestamp > 0)
           ? null
           : walletSyncStartHeight;
+
+  /// Sync has stopped *and* the heights to explain it with are known.
+  ///
+  /// The flag alone is not enough to show anything: an older wallet_capi
+  /// reports it without the heights, and a warning that has to invent its
+  /// numbers is worse than no warning.
+  bool get hasReportableSyncGap =>
+      isSyncStalledByLiteNode && syncGapDaemonServesFrom > 0;
 
   /// The connected lite node starts above the wallet's own start height, so
   /// transactions between the two are invisible and the balance reads low.

@@ -827,4 +827,12 @@ class SEs extends S {
   @override
   String get localNodeMobileFuture =>
       'Ejecutar el nodo en el propio teléfono está planeado, pero aún no disponible: un nodo necesita varios GB de almacenamiento y horas de sincronización. Mientras tanto, apunta esta cartera a un nodo tuyo.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronización detenida';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronización detenida en el bloque $covered. El nodo con el que hablaba solo responde desde el bloque $servesFrom en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.';
+  }
 }

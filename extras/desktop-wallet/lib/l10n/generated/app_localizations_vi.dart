@@ -1034,4 +1034,12 @@ class SVi extends S {
   @override
   String get localNodeStillRunningBody =>
       'Nút lite cục bộ vẫn chạy nền. Mở PLUTON để dừng nó.';
+
+  @override
+  String get syncStoppedTitle => 'Đồng bộ đã dừng';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Đồng bộ dừng ở khối $covered. Nút đang kết nối chỉ trả lời từ khối $servesFrom trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.';
+  }
 }

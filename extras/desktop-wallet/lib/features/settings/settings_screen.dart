@@ -643,7 +643,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             ),
                           ],
                         ),
-                        if (status.isLiteNode || status.isSyncStalledByLiteNode) ...[
+                        if (status.isLiteNode || status.hasReportableSyncGap) ...[
                           const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(6),

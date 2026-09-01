@@ -1970,6 +1970,18 @@ abstract class S {
   /// In en, this message translates to:
   /// **'The local lite node is still running in the background. Open PLUTON to stop it.'**
   String get localNodeStillRunningBody;
+
+  /// Banner label when sync has stopped over a range no daemon served
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped'**
+  String get syncStoppedTitle;
+
+  /// No description provided for @syncGapStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
+  String syncGapStalled(int covered, int servesFrom);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

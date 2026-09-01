@@ -62,7 +62,7 @@ class OverviewScreen extends ConsumerWidget {
           statusAsync.whenOrNull(
                 data: (status) {
                   if (!status.isWalletSynced &&
-                      !status.isSyncStalledByLiteNode) {
+                      !status.hasReportableSyncGap) {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: SyncBanner(status: status),

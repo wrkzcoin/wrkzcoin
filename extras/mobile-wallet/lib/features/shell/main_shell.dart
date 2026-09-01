@@ -214,7 +214,7 @@ class _MainShellState extends ConsumerState<MainShell>
               builder: (context, ref, _) {
                 final status = ref.watch(statusProvider).valueOrNull;
                 if (status == null ||
-                    (!status.isLiteNode && !status.isSyncStalledByLiteNode)) {
+                    (!status.isLiteNode && !status.hasReportableSyncGap)) {
                   return const SizedBox.shrink();
                 }
                 return Padding(

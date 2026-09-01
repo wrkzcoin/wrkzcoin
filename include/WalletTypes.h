@@ -418,6 +418,17 @@ namespace WalletTypes
            because a jump would look exactly like being synced while hiding
            every transaction in between. */
         bool syncStalledByLiteNode;
+        /* The two heights behind [syncStalledByLiteNode]: how far this wallet
+           had covered, and the lowest height the daemon would answer from.
+           Both zero when there is no stall.
+
+           They are reported rather than left to the caller to derive, because
+           neither is derivable. The wallet's block count is not where the stall
+           happened, and the daemon currently connected may not be the one that
+           caused it - substituting its lite start height produces "holds
+           nothing below block 0" against a full node, which is nonsense. */
+        uint64_t syncGapCoveredTo;
+        uint64_t syncGapDaemonServesFrom;
         /* The lowest height any sub wallet asked to be scanned from, and the
            timestamp equivalent. One of the two is zero - a wallet is created
            from a height or from a timestamp, never both. Reported so a caller

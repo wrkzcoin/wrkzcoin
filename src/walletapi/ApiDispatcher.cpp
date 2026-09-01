@@ -1498,7 +1498,12 @@ std::tuple<Error, uint16_t>
                          scanned past a height the daemon cannot serve from.
                          The balance is incomplete and will stay that way
                          until a daemon holding the range is connected. */
-                      {"isSyncStalledByLiteNode", status.syncStalledByLiteNode}};
+                      {"isSyncStalledByLiteNode", status.syncStalledByLiteNode},
+                      /* The heights behind it. Both zero when there is no
+                         stall; the daemon now connected may not be the one
+                         that caused it, so nothing else may stand in. */
+                      {"syncGapCoveredTo", status.syncGapCoveredTo},
+                      {"syncGapDaemonServesFrom", status.syncGapDaemonServesFrom}};
 
     res.set_content(j.dump(4) + "\n", "application/json");
 

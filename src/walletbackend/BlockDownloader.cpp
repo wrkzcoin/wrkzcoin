@@ -448,6 +448,20 @@ bool BlockDownloader::downloadBlocks()
         m_nextDownloadHeight = 0;
     }
 
+    /* A daemon with no blocks for us has nothing it is failing to serve, so a
+       recorded gap has outlived its cause. Only on a successful answer: a
+       timeout also returns nothing, and that says nothing about the gap.
+
+       This matters because the other place that clears a gap needs a batch of
+       blocks to store, and a wallet level with the chain never gets one. A gap
+       recorded once - including by a single faulty response, which the check
+       further down cannot tell from a lite node - would otherwise stay on
+       screen for the life of the wallet. */
+    if (success && blocks.empty())
+    {
+        clearSyncGap();
+    }
+
     /* Synced, store the top block so sync status displayes correctly if
        we are not scanning coinbase tx only blocks */
     /* We can have an issue where we download a block, say, block 1000,

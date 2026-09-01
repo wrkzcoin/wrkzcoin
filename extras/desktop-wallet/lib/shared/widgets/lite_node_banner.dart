@@ -24,7 +24,12 @@ class LiteNodeBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!status.isLiteNode && !status.isSyncStalledByLiteNode) {
+    // A stall is only shown when the heights behind it are known. The flag
+    // alone used to be enough, and against a full node that produced "this node
+    // holds nothing below block 0" - block 0 being exactly what a node holding
+    // the whole chain reports. An older wallet_capi sends the flag without the
+    // heights, and there is nothing truthful to say in that case.
+    if (!status.isLiteNode && !status.hasReportableSyncGap) {
       return const SizedBox.shrink();
     }
 
@@ -36,16 +41,23 @@ class LiteNodeBanner extends StatelessWidget {
     final IconData icon;
     final String text;
 
-    if (status.isSyncStalledByLiteNode) {
-      // Scanned past a range this node cannot serve. Sync has stopped on
+    if (status.hasReportableSyncGap) {
+      // Scanned past a range the daemon would not serve. Sync has stopped on
       // purpose; the balance is incomplete and stays that way here.
+      //
+      // The heights come from the stall itself, not from the wallet's current
+      // block count and the daemon currently connected. Neither of those is
+      // the same thing: the wallet moves on, and the node on the other end may
+      // have been swapped since.
       colour = kError;
       icon = Icons.error_outline;
-      text = tr?.liteNodeSyncStalled(status.walletBlockCount, node) ??
-          'Sync stopped at block ${status.walletBlockCount}. This node holds '
-              'nothing below block $node, so the blocks in between cannot be '
-              'downloaded from it. The balance is incomplete until you connect '
-              'a node holding the whole chain.';
+      text = tr?.syncGapStalled(
+              status.syncGapCoveredTo, status.syncGapDaemonServesFrom) ??
+          'Sync stopped at block ${status.syncGapCoveredTo}. The node it was '
+              'talking to answers only from block '
+              '${status.syncGapDaemonServesFrom} upward, so the blocks in '
+              'between cannot be downloaded from it. The balance is incomplete '
+              'until you connect a node holding the whole chain.';
     } else if (status.liteNodeMissesWalletHistory) {
       // The node starts above where this wallet does, so what is on screen
       // can be missing everything received in between.
@@ -77,7 +89,13 @@ class LiteNodeBanner extends StatelessWidget {
           const SizedBox(width: 8),
           if (!compact) ...[
             Text(
-              tr?.liteNodeTitle ?? 'Lite node',
+              // Not always a lite node: the same stop happens whenever a
+              // daemon answers from higher up than the wallet still needs,
+              // which its own detection lists as "a lite or pruned node, a
+              // blockchain cache API, or a fault".
+              status.hasReportableSyncGap
+                  ? (tr?.syncStoppedTitle ?? 'Sync stopped')
+                  : (tr?.liteNodeTitle ?? 'Lite node'),
               style: TextStyle(
                   color: colour, fontSize: 12, fontWeight: FontWeight.w600),
             ),

@@ -1006,4 +1006,12 @@ class SZh extends S {
 
   @override
   String get localNodeStillRunningBody => '本地轻节点仍在后台运行。打开 PLUTON 可以停止它。';
+
+  @override
+  String get syncStoppedTitle => '同步已停止';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
+  }
 }

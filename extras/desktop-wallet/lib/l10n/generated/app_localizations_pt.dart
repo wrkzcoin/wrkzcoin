@@ -1045,4 +1045,12 @@ class SPt extends S {
   @override
   String get localNodeStillRunningBody =>
       'O nó lite local continua rodando em segundo plano. Abra o PLUTON para pará-lo.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronização parada';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronização parada no bloco $covered. O nó com que falava só responde a partir do bloco $servesFrom, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.';
+  }
 }

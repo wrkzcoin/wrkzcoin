@@ -1756,9 +1756,11 @@ WalletTypes::WalletStatus WalletBackend::getStatus() const
 
     status.daemonLiteStartHeight = m_daemon->liteStartHeight();
 
-    /* Only whether we are stalled belongs here; the two heights that go with
-       it are already derivable from walletBlockCount and this field. */
-    status.syncStalledByLiteNode = std::get<0>(m_walletSynchronizer->getSyncGap());
+    /* The heights come with the flag. They are not derivable from anything
+       else here: the wallet's block count moves on after the stall, and the
+       daemon now connected may not be the one that caused it. */
+    std::tie(status.syncStalledByLiteNode, status.syncGapCoveredTo, status.syncGapDaemonServesFrom) =
+        m_walletSynchronizer->getSyncGap();
 
     /* Where this wallet was told to start, not where it has got to. A synced
        wallet's block count says nothing about how far back its funds go, so

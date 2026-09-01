@@ -627,6 +627,11 @@ wallet_status_t wallet_get_status_json(
            height the daemon cannot serve from. The balance is incomplete and
            stays that way until a daemon holding the range is connected. */
         {"isSyncStalledByLiteNode", s.syncStalledByLiteNode},
+        /* The heights that go with it. Both zero when there is no stall, and a
+           caller must not substitute anything else for them: the daemon now
+           connected may not be the one that stalled the sync. */
+        {"syncGapCoveredTo", s.syncGapCoveredTo},
+        {"syncGapDaemonServesFrom", s.syncGapDaemonServesFrom},
         /* The lowest height this wallet was ever told to scan from. A caller
            picking a lite node's start height must not go above it, or the
            node it builds cannot serve the wallet it was built for. Zero when

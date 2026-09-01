@@ -1017,4 +1017,12 @@ class SJa extends S {
   @override
   String get localNodeStillRunningBody =>
       'ローカルライトノードはバックグラウンドで実行中です。停止するには PLUTON を開いてください。';
+
+  @override
+  String get syncStoppedTitle => '同期を停止しました';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'ブロック $covered で同期が停止しました。接続先のノードはブロック $servesFrom 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。';
+  }
 }

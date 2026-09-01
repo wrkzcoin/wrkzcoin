@@ -1043,4 +1043,12 @@ class SDe extends S {
   @override
   String get localNodeStillRunningBody =>
       'Der lokale Lite-Node läuft weiter im Hintergrund. Öffnen Sie PLUTON, um ihn zu stoppen.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisierung gestoppt';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
+  }
 }

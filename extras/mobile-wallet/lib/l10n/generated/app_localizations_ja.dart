@@ -808,4 +808,12 @@ class SJa extends S {
   @override
   String get localNodeMobileFuture =>
       '端末上でノードを動かす機能は計画中ですが、まだ利用できません。ノードには数 GB の保存容量と数時間の同期が必要です。それまでは自分で運用するノードを指定してください。';
+
+  @override
+  String get syncStoppedTitle => '同期を停止しました';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'ブロック $covered で同期が停止しました。接続先のノードはブロック $servesFrom 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。';
+  }
 }

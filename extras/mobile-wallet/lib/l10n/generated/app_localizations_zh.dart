@@ -807,4 +807,12 @@ class SZh extends S {
   @override
   String get localNodeMobileFuture =>
       '在手机上直接运行节点已在计划中，但尚不可用——节点需要数 GB 存储和数小时同步。在此之前，请将本钱包指向你自己运行的节点。';
+
+  @override
+  String get syncStoppedTitle => '同步已停止';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
+  }
 }

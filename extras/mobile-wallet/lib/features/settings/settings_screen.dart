@@ -802,7 +802,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ],
                   ),
                   if (status.isLiteNode ||
-                      status.isSyncStalledByLiteNode) ...[
+                      status.hasReportableSyncGap) ...[
                     const SizedBox(height: 10),
                     LiteNodeBanner(status: status),
                   ],

@@ -827,4 +827,12 @@ class SPt extends S {
   @override
   String get localNodeMobileFuture =>
       'Executar o nó no próprio telemóvel está planeado, mas ainda não está disponível — um nó precisa de vários GB de armazenamento e horas de sincronização. Até lá, aponte esta carteira para um nó seu.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronização parada';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronização parada no bloco $covered. O nó com que falava só responde a partir do bloco $servesFrom, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.';
+  }
 }
