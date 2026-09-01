@@ -198,6 +198,20 @@ elseif (WRKZ_BUILD_EXECUTABLES AND NOT EMSCRIPTEN)
 
     if (MSVC)
         add_subdirectory(rocksdb EXCLUDE_FROM_ALL)
+
+        # RocksDB keeps its whole WITH_SNAPPY / WITH_ZSTD / ... block in the
+        # `else()` arm of `if(MSVC)`. On MSVC it includes thirdparty.inc instead,
+        # which expects a prebuilt NuGet-style layout under $THIRDPARTY_HOME that
+        # is not here, so ZSTD was never defined and RocksDB compiled its ZSTD
+        # support out — linking the bundled libzstd underneath changed nothing.
+        # The daemon asks for ZSTD when it creates its column families, so every
+        # MSVC-built Wrkzd died the first time it opened a fresh data directory
+        # with "Compression type ZSTD is not linked with the binary" and could
+        # not create a database at all. Wire it up on the target rather than try
+        # to drive thirdparty.inc, whose paths come from environment variables.
+        target_compile_definitions(rocksdb PRIVATE ZSTD)
+        target_link_libraries(rocksdb PRIVATE libzstd)
+
         set_property(TARGET libminiupnpc-static rocksdb libzstd libzstd_static argon2 PROPERTY FOLDER "external")
         set(WRKZ_ROCKSDB_LIBS rocksdb libzstd PARENT_SCOPE)
     else ()
