@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Native wallet backend, copied in beside the app to run it or the capi tests.
+# Built by: cmake --build build --config Release --target wallet_capi
+wallet_capi.dll
+libwallet_capi.so
+libwallet_capi.dylib

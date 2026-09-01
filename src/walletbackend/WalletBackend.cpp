@@ -671,33 +671,81 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
 
     return SUCCESS;
 #else
-    std::ofstream file(filename, std::ios_base::binary);
+    /* Write a temporary alongside and rename it over the wallet, rather than
+       truncating the wallet and writing into it.
 
-    if (!file)
+       An in-place write is only safe if nothing interrupts it. Anything that
+       does - power loss, the OS killing a GUI wallet, a user who gave up on a
+       save that would not finish and reached for Task Manager - leaves a
+       truncated file, and a truncated wallet file is unopenable: the funds are
+       gone unless there is a backup or the seed. A rename over an existing file
+       is atomic on both NTFS and POSIX, so the wallet on disk is only ever the
+       old one or the new one. */
+    const fs::path target = fs::path(filename);
+    const fs::path temp = fs::path(filename + ".tmp");
+
     {
+        std::ofstream file(temp, std::ios_base::binary | std::ios_base::trunc);
+
+        if (!file)
+        {
+            Logger::logger.log(
+                std::string("Wallet filename: ") + filename + " is invalid",
+                Logger::FATAL,
+                {Logger::FILESYSTEM, Logger::SAVE});
+
+            return INVALID_WALLET_FILENAME;
+        }
+
+        /* Write the isAWalletIdentifier to the file, so when we open it we can
+           verify that it is a wallet file */
+        std::copy(
+            Constants::IS_A_WALLET_IDENTIFIER.begin(),
+            Constants::IS_A_WALLET_IDENTIFIER.end(),
+            std::ostreambuf_iterator<char>(file));
+
+        /* Write the salt to the file, so we can use it to unencrypt the file
+           later. Note that the salt is unencrypted. */
+        std::copy(std::begin(salt), std::end(salt), std::ostreambuf_iterator<char>(file));
+
+        /* Write the encrypted wallet data to the file */
+        std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
+
+        /* Flush explicitly and check: the destructor cannot report a failed
+           write, and renaming a short file over a good wallet would be worse
+           than not saving at all. */
+        file.flush();
+
+        if (!file)
+        {
+            file.close();
+            std::error_code ignored;
+            fs::remove(temp, ignored);
+
+            Logger::logger.log(
+                std::string("Failed writing wallet to: ") + temp.string(),
+                Logger::FATAL,
+                {Logger::FILESYSTEM, Logger::SAVE});
+
+            return INVALID_WALLET_FILENAME;
+        }
+    }
+
+    std::error_code renameError;
+    fs::rename(temp, target, renameError);
+
+    if (renameError)
+    {
+        std::error_code ignored;
+        fs::remove(temp, ignored);
+
         Logger::logger.log(
-            std::string("Wallet filename: ") + filename + " is invalid",
+            std::string("Failed replacing wallet file ") + filename + ": " + renameError.message(),
             Logger::FATAL,
             {Logger::FILESYSTEM, Logger::SAVE});
 
         return INVALID_WALLET_FILENAME;
     }
-
-    std::string saltString = std::string(salt, salt + sizeof(salt));
-
-    /* Write the isAWalletIdentifier to the file, so when we open it we can
-       verify that it is a wallet file */
-    std::copy(
-        Constants::IS_A_WALLET_IDENTIFIER.begin(),
-        Constants::IS_A_WALLET_IDENTIFIER.end(),
-        std::ostreambuf_iterator<char>(file));
-
-    /* Write the salt to the file, so we can use it to unencrypt the file
-       later. Note that the salt is unencrypted. */
-    std::copy(std::begin(salt), std::end(salt), std::ostreambuf_iterator<char>(file));
-
-    /* Write the encrypted wallet data to the file */
-    std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
 
     return SUCCESS;
 #endif
