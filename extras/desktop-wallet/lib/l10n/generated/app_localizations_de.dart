@@ -427,7 +427,7 @@ class SDe extends S {
   String get continueButton => 'Weiter';
 
   @override
-  String get browse => 'Durchsuchen';
+  String get browse => 'Durchsuchen…';
 
   @override
   String get backupWarning =>
@@ -981,4 +981,19 @@ class SDe extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON läuft weiter im Infobereich. Klicken Sie auf das Symbol, um es zurückzuholen, oder klicken Sie mit der rechten Maustaste und wählen Sie Beenden.';
+
+  @override
+  String get localNodeDataFolder => 'Datenordner';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Hier werden etwa 6 GB geschrieben. Wählen Sie ein Laufwerk mit genügend Platz.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'In diesem Ordner liegen bereits andere Dateien. Wählen Sie einen leeren oder einen neuen Ordner.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Geben Sie die Höhe an, ab der vollständige Blöcke behalten werden. Sie muss größer als null sein — ein Lite-Node kann nicht beim Genesis-Block beginnen.';
 }

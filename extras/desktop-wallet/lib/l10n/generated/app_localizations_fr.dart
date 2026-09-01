@@ -429,7 +429,7 @@ class SFr extends S {
   String get continueButton => 'Continuer';
 
   @override
-  String get browse => 'Parcourir';
+  String get browse => 'Parcourir…';
 
   @override
   String get backupWarning =>
@@ -984,4 +984,19 @@ class SFr extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON fonctionne toujours dans la zone de notification. Cliquez sur l\'icône pour le rouvrir, ou faites un clic droit et choisissez Quitter.';
+
+  @override
+  String get localNodeDataFolder => 'Dossier de données';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Environ 6 Go y seront écrits. Choisissez un disque avec assez de place.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'Ce dossier contient déjà d\'autres fichiers. Choisissez un dossier vide ou un nouveau dossier.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Indiquez la hauteur à partir de laquelle garder les blocs complets. Elle doit être supérieure à zéro — un nœud allégé ne peut pas démarrer au bloc de genèse.';
 }

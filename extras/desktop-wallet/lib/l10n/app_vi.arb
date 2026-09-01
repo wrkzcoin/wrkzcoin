@@ -503,5 +503,10 @@
   "savingWalletBody": "PLUTON đang ghi ví của bạn xuống đĩa. Việc này có thể mất một lúc với ví lớn.",
   "shutdownTakingLong": "Quá trình này lâu hơn dự kiến. Thoát ngay bây giờ có thể làm hỏng tệp ví — chỉ làm vậy nếu PLUTON bị treo.",
   "quitAnyway": "Vẫn thoát",
-  "stillRunningInTray": "PLUTON vẫn đang chạy trong khay hệ thống. Nhấp vào biểu tượng để mở lại, hoặc nhấp chuột phải và chọn Thoát."
+  "stillRunningInTray": "PLUTON vẫn đang chạy trong khay hệ thống. Nhấp vào biểu tượng để mở lại, hoặc nhấp chuột phải và chọn Thoát.",
+  "browse": "Duyệt…",
+  "localNodeDataFolder": "Thư mục dữ liệu",
+  "localNodeDataFolderHelp": "Khoảng 6 GB sẽ được ghi vào đây. Hãy chọn ổ đĩa còn đủ chỗ.",
+  "localNodeDataFolderInUse": "Thư mục đó đã có các tệp khác. Hãy chọn một thư mục trống hoặc tạo mới.",
+  "localNodeStartHeightRequired": "Nhập độ cao bắt đầu giữ khối đầy đủ. Giá trị phải lớn hơn 0 — nút lite không thể bắt đầu từ khối genesis."
 }

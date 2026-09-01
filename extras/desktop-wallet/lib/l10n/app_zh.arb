@@ -503,5 +503,10 @@
   "savingWalletBody": "PLUTON 正在将钱包写入磁盘。钱包较大时可能需要一点时间。",
   "shutdownTakingLong": "耗时超出预期。此时退出可能损坏钱包文件——只有在 PLUTON 卡住时才这样做。",
   "quitAnyway": "仍要退出",
-  "stillRunningInTray": "PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。"
+  "stillRunningInTray": "PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。",
+  "browse": "浏览…",
+  "localNodeDataFolder": "数据文件夹",
+  "localNodeDataFolderHelp": "这里将写入约 6 GB。请选择空间充足的磁盘。",
+  "localNodeDataFolderInUse": "该文件夹已有其他文件。请选择空文件夹或新建一个。",
+  "localNodeStartHeightRequired": "请输入从哪个高度开始保留完整区块。必须大于零——轻节点无法从创世区块开始。"
 }

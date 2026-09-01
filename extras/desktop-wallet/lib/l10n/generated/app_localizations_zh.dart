@@ -416,7 +416,7 @@ class SZh extends S {
   String get continueButton => '继续';
 
   @override
-  String get browse => '浏览';
+  String get browse => '浏览…';
 
   @override
   String get backupWarning => '继续前请备份您的钱包。\n这些密钥丢失后无法恢复。';
@@ -948,4 +948,17 @@ class SZh extends S {
 
   @override
   String get stillRunningInTray => 'PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。';
+
+  @override
+  String get localNodeDataFolder => '数据文件夹';
+
+  @override
+  String get localNodeDataFolderHelp => '这里将写入约 6 GB。请选择空间充足的磁盘。';
+
+  @override
+  String get localNodeDataFolderInUse => '该文件夹已有其他文件。请选择空文件夹或新建一个。';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      '请输入从哪个高度开始保留完整区块。必须大于零——轻节点无法从创世区块开始。';
 }

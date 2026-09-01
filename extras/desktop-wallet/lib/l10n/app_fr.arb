@@ -503,5 +503,10 @@
   "savingWalletBody": "PLUTON écrit votre portefeuille sur le disque. Cela peut prendre un moment sur un gros portefeuille.",
   "shutdownTakingLong": "Cela prend plus de temps que prévu. Quitter maintenant peut endommager le fichier du portefeuille — ne le faites que si PLUTON est bloqué.",
   "quitAnyway": "Quitter quand même",
-  "stillRunningInTray": "PLUTON fonctionne toujours dans la zone de notification. Cliquez sur l'icône pour le rouvrir, ou faites un clic droit et choisissez Quitter."
+  "stillRunningInTray": "PLUTON fonctionne toujours dans la zone de notification. Cliquez sur l'icône pour le rouvrir, ou faites un clic droit et choisissez Quitter.",
+  "browse": "Parcourir…",
+  "localNodeDataFolder": "Dossier de données",
+  "localNodeDataFolderHelp": "Environ 6 Go y seront écrits. Choisissez un disque avec assez de place.",
+  "localNodeDataFolderInUse": "Ce dossier contient déjà d'autres fichiers. Choisissez un dossier vide ou un nouveau dossier.",
+  "localNodeStartHeightRequired": "Indiquez la hauteur à partir de laquelle garder les blocs complets. Elle doit être supérieure à zéro — un nœud allégé ne peut pas démarrer au bloc de genèse."
 }

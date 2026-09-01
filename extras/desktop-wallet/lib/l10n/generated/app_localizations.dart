@@ -891,10 +891,10 @@ abstract class S {
   /// **'Continue'**
   String get continueButton;
 
-  /// No description provided for @browse.
+  /// Local node data folder picker and start-height hint
   ///
   /// In en, this message translates to:
-  /// **'Browse'**
+  /// **'Browse…'**
   String get browse;
 
   /// No description provided for @backupWarning.
@@ -1862,6 +1862,30 @@ abstract class S {
   /// In en, this message translates to:
   /// **'PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.'**
   String get stillRunningInTray;
+
+  /// Local node data folder picker and start-height hint
+  ///
+  /// In en, this message translates to:
+  /// **'Data folder'**
+  String get localNodeDataFolder;
+
+  /// Local node data folder picker and start-height hint
+  ///
+  /// In en, this message translates to:
+  /// **'Around 6 GB is written here. Pick a drive with room for it.'**
+  String get localNodeDataFolderHelp;
+
+  /// Local node data folder picker and start-height hint
+  ///
+  /// In en, this message translates to:
+  /// **'That folder already holds other files. Choose an empty folder, or a new one.'**
+  String get localNodeDataFolderInUse;
+
+  /// Local node data folder picker and start-height hint
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.'**
+  String get localNodeStartHeightRequired;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

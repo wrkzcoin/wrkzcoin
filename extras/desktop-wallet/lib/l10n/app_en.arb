@@ -555,5 +555,25 @@
   "stillRunningInTray": "PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.",
   "@stillRunningInTray": {
     "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "browse": "Browse…",
+  "@browse": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolder": "Data folder",
+  "@localNodeDataFolder": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolderHelp": "Around 6 GB is written here. Pick a drive with room for it.",
+  "@localNodeDataFolderHelp": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolderInUse": "That folder already holds other files. Choose an empty folder, or a new one.",
+  "@localNodeDataFolderInUse": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeStartHeightRequired": "Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.",
+  "@localNodeStartHeightRequired": {
+    "description": "Local node data folder picker and start-height hint"
   }
 }

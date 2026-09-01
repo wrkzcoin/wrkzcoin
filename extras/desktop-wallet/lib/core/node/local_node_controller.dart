@@ -120,6 +120,11 @@ class LocalNodeController extends Notifier<LocalNodeState> {
 
     await Directory(LocalNodePaths.dataDir).create(recursive: true);
     await writeLocalNodeConfig(config);
+    // Remember where it went. The default is resolved fresh at every launch and
+    // can move — a portable copy relocated, a name that was free last time
+    // taken since — and an unremembered node is one the next launch offers to
+    // sync again from nothing.
+    await writeNodeDataDirPref(LocalNodePaths.dataDir);
 
     state = LocalNodeState(phase: LocalNodePhase.stopped, config: config);
     await start();

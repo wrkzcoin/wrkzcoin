@@ -503,5 +503,10 @@
   "savingWalletBody": "PLUTON schreibt Ihr Wallet auf die Festplatte. Bei einem großen Wallet kann das einen Moment dauern.",
   "shutdownTakingLong": "Das dauert länger als erwartet. Jetzt zu beenden kann die Wallet-Datei beschädigen — tun Sie es nur, wenn PLUTON hängt.",
   "quitAnyway": "Trotzdem beenden",
-  "stillRunningInTray": "PLUTON läuft weiter im Infobereich. Klicken Sie auf das Symbol, um es zurückzuholen, oder klicken Sie mit der rechten Maustaste und wählen Sie Beenden."
+  "stillRunningInTray": "PLUTON läuft weiter im Infobereich. Klicken Sie auf das Symbol, um es zurückzuholen, oder klicken Sie mit der rechten Maustaste und wählen Sie Beenden.",
+  "browse": "Durchsuchen…",
+  "localNodeDataFolder": "Datenordner",
+  "localNodeDataFolderHelp": "Hier werden etwa 6 GB geschrieben. Wählen Sie ein Laufwerk mit genügend Platz.",
+  "localNodeDataFolderInUse": "In diesem Ordner liegen bereits andere Dateien. Wählen Sie einen leeren oder einen neuen Ordner.",
+  "localNodeStartHeightRequired": "Geben Sie die Höhe an, ab der vollständige Blöcke behalten werden. Sie muss größer als null sein — ein Lite-Node kann nicht beim Genesis-Block beginnen."
 }

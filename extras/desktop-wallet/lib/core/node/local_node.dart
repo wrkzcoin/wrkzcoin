@@ -14,6 +14,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 
 /// Where the RPC listener binds. Loopback only — this node exists for this
@@ -37,6 +38,20 @@ const String _kPidFile = 'pluton-node.pid';
 
 /// The daemon's own log, which is where a startup failure explains itself.
 const String kLocalNodeLogFile = 'wrkzd.log';
+
+/// Folder name a portable install uses for the node's chain.
+///
+/// Deliberately not `data`: Flutter's own bundle already occupies
+/// `<exe dir>/data` on Windows and Linux — `app.so`, `icudtl.dat`,
+/// `flutter_assets` — and several GB of RocksDB dropped in beside them would be
+/// indistinguishable from the app's own files to anyone tidying up.
+const String kNodeDirName = 'node-data';
+
+/// Where the remembered data directory is stored. Kept outside the directory
+/// itself, for the obvious reason.
+const String _kNodeDirPrefKey = 'local_node_data_dir';
+
+const _storage = FlutterSecureStorage();
 
 /// A configured local node. Written to disk once and then read back; the
 /// values here are what the daemon is launched with every time.
@@ -308,6 +323,99 @@ class LocalNodePaths {
       return 0;
     }
     return total;
+  }
+}
+
+// ── Choosing where the chain lives ───────────────────────────────────────────
+
+/// Whether [path] is free for this app's node data.
+///
+/// Claimable when it does not exist, when it is empty, or when it already
+/// carries our config. Anything else is somebody's folder and is left alone.
+Future<bool> nodeDirIsClaimable(String path) async {
+  try {
+    final dir = Directory(path);
+    if (!await dir.exists()) return true;
+    if (await File(p.join(path, _kConfigFile)).exists()) return true;
+    return await dir.list().isEmpty;
+  } on FileSystemException {
+    return false;
+  }
+}
+
+/// [base], or `base-2`, `base-3` … until one is claimable.
+Future<String> _claimableVariant(String base) async {
+  if (await nodeDirIsClaimable(base)) return base;
+  for (var n = 2; n < 100; n++) {
+    final candidate = '$base-$n';
+    if (await nodeDirIsClaimable(candidate)) return candidate;
+  }
+  // Ninety-nine taken directories is not a situation to paper over; hand back
+  // the plain name and let the daemon fail against it in the open.
+  return base;
+}
+
+/// Whether a directory can actually be written to.
+///
+/// Tested by writing. `Directory.exists` says nothing about permissions, and an
+/// app installed under Program Files sits in a directory it may not write.
+Future<bool> _isWritable(String path) async {
+  final probe = File(p.join(path, '.wrkz-write-probe'));
+  try {
+    await probe.writeAsString('');
+    await probe.delete();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// The directory a fresh install would put the node's chain in.
+///
+/// A portable copy — one that can write to its own directory — gets
+/// [kNodeDirName] next to the executable. That is what "run a node on this
+/// computer" is usually taken to mean, and it keeps several GB off the system
+/// drive when the app itself lives somewhere else. An installed copy cannot
+/// write there and falls back to the app support directory.
+Future<String> defaultNodeDataDir(String appSupportDir) async {
+  final exeDir = p.dirname(Platform.resolvedExecutable);
+  if (await _isWritable(exeDir)) {
+    return _claimableVariant(p.join(exeDir, kNodeDirName));
+  }
+  return _claimableVariant(p.join(appSupportDir, 'node'));
+}
+
+/// Where this installation's node data lives.
+///
+/// A remembered choice wins, then an existing node, then [defaultNodeDataDir].
+/// The existing-node check matters: this app shipped with the data directory
+/// fixed at `<app support>/node`, and moving the default out from under a node
+/// that took hours to sync would orphan it and offer to build another from
+/// nothing.
+Future<String> resolveNodeDataDir(String appSupportDir) async {
+  final remembered = await readNodeDataDirPref();
+  if (remembered != null && remembered.isNotEmpty) return remembered;
+
+  final legacy = p.join(appSupportDir, 'node');
+  if (await File(p.join(legacy, _kConfigFile)).exists()) return legacy;
+
+  return defaultNodeDataDir(appSupportDir);
+}
+
+Future<String?> readNodeDataDirPref() async {
+  try {
+    return await _storage.read(key: _kNodeDirPrefKey);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> writeNodeDataDirPref(String path) async {
+  try {
+    await _storage.write(key: _kNodeDirPrefKey, value: path);
+  } catch (_) {
+    // Losing it means the next launch re-resolves, which finds the same node
+    // through the existing-node check as long as it is in the default place.
   }
 }
 

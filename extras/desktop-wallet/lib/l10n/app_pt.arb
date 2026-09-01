@@ -503,5 +503,10 @@
   "savingWalletBody": "O PLUTON está gravando sua carteira no disco. Isso pode demorar um pouco em uma carteira grande.",
   "shutdownTakingLong": "Está demorando mais do que o esperado. Sair agora pode danificar o arquivo da carteira — só faça isso se o PLUTON estiver travado.",
   "quitAnyway": "Sair mesmo assim",
-  "stillRunningInTray": "O PLUTON continua rodando na bandeja do sistema. Clique no ícone para trazê-lo de volta, ou clique com o botão direito e escolha Sair."
+  "stillRunningInTray": "O PLUTON continua rodando na bandeja do sistema. Clique no ícone para trazê-lo de volta, ou clique com o botão direito e escolha Sair.",
+  "browse": "Procurar…",
+  "localNodeDataFolder": "Pasta de dados",
+  "localNodeDataFolderHelp": "Cerca de 6 GB serão gravados aqui. Escolha um disco com espaço.",
+  "localNodeDataFolderInUse": "Essa pasta já contém outros arquivos. Escolha uma pasta vazia ou uma nova.",
+  "localNodeStartHeightRequired": "Informe a altura a partir da qual manter blocos completos. Precisa ser maior que zero — um nó lite não pode começar no bloco gênese."
 }

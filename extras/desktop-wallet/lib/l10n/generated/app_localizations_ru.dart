@@ -427,7 +427,7 @@ class SRu extends S {
   String get continueButton => 'Продолжить';
 
   @override
-  String get browse => 'Обзор';
+  String get browse => 'Обзор…';
 
   @override
   String get backupWarning =>
@@ -981,4 +981,19 @@ class SRu extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON продолжает работать в системном трее. Нажмите на значок, чтобы вернуть окно, или нажмите правой кнопкой и выберите «Выход».';
+
+  @override
+  String get localNodeDataFolder => 'Папка данных';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Сюда будет записано около 6 ГБ. Выберите диск с достаточным местом.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'В этой папке уже есть другие файлы. Выберите пустую или новую папку.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Укажите высоту, с которой хранить полные блоки. Она должна быть больше нуля — лайт-узел не может начинаться с генезис-блока.';
 }

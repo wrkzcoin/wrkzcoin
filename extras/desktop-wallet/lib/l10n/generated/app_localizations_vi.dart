@@ -424,7 +424,7 @@ class SVi extends S {
   String get continueButton => 'Tiếp tục';
 
   @override
-  String get browse => 'Duyệt';
+  String get browse => 'Duyệt…';
 
   @override
   String get backupWarning =>
@@ -972,4 +972,19 @@ class SVi extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON vẫn đang chạy trong khay hệ thống. Nhấp vào biểu tượng để mở lại, hoặc nhấp chuột phải và chọn Thoát.';
+
+  @override
+  String get localNodeDataFolder => 'Thư mục dữ liệu';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Khoảng 6 GB sẽ được ghi vào đây. Hãy chọn ổ đĩa còn đủ chỗ.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'Thư mục đó đã có các tệp khác. Hãy chọn một thư mục trống hoặc tạo mới.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Nhập độ cao bắt đầu giữ khối đầy đủ. Giá trị phải lớn hơn 0 — nút lite không thể bắt đầu từ khối genesis.';
 }

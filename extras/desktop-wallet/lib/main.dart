@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_notifier/local_notifier.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'app/app.dart';
@@ -21,8 +20,12 @@ void main() async {
   // Where an optional local lite node keeps its chain. Resolved before the
   // first frame so the settings screen can read the node's state
   // synchronously; the directory itself is only created if a node is set up.
+  //
+  // A remembered choice wins, then a node already sitting in the old fixed
+  // location, then a folder beside the executable for a portable copy. See
+  // resolveNodeDataDir.
   final support = await getApplicationSupportDirectory();
-  LocalNodePaths.bindDataDirectory(p.join(support.path, 'node'));
+  LocalNodePaths.bindDataDirectory(await resolveNodeDataDir(support.path));
 
   // Read once at launch so a configured node resumes syncing — or an existing
   // one left behind by a previous run is adopted — without waiting for the

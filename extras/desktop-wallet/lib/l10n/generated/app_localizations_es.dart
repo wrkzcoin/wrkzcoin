@@ -426,7 +426,7 @@ class SEs extends S {
   String get continueButton => 'Continuar';
 
   @override
-  String get browse => 'Examinar';
+  String get browse => 'Examinar…';
 
   @override
   String get backupWarning =>
@@ -982,4 +982,19 @@ class SEs extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON sigue ejecutándose en la bandeja del sistema. Haz clic en el icono para recuperarlo, o haz clic derecho y elige Salir.';
+
+  @override
+  String get localNodeDataFolder => 'Carpeta de datos';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Aquí se escriben unos 6 GB. Elige una unidad con espacio suficiente.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'Esa carpeta ya contiene otros archivos. Elige una carpeta vacía o una nueva.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Introduce la altura a partir de la cual conservar bloques completos. Debe ser mayor que cero: un nodo lite no puede empezar en el bloque génesis.';
 }

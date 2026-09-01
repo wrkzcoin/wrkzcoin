@@ -428,7 +428,7 @@ class SPt extends S {
   String get continueButton => 'Continuar';
 
   @override
-  String get browse => 'Procurar';
+  String get browse => 'Procurar…';
 
   @override
   String get backupWarning =>
@@ -983,4 +983,19 @@ class SPt extends S {
   @override
   String get stillRunningInTray =>
       'O PLUTON continua rodando na bandeja do sistema. Clique no ícone para trazê-lo de volta, ou clique com o botão direito e escolha Sair.';
+
+  @override
+  String get localNodeDataFolder => 'Pasta de dados';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Cerca de 6 GB serão gravados aqui. Escolha um disco com espaço.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'Essa pasta já contém outros arquivos. Escolha uma pasta vazia ou uma nova.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Informe a altura a partir da qual manter blocos completos. Precisa ser maior que zero — um nó lite não pode começar no bloco gênese.';
 }

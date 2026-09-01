@@ -424,7 +424,7 @@ class SEn extends S {
   String get continueButton => 'Continue';
 
   @override
-  String get browse => 'Browse';
+  String get browse => 'Browse…';
 
   @override
   String get backupWarning =>
@@ -974,4 +974,19 @@ class SEn extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.';
+
+  @override
+  String get localNodeDataFolder => 'Data folder';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Around 6 GB is written here. Pick a drive with room for it.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'That folder already holds other files. Choose an empty folder, or a new one.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.';
 }

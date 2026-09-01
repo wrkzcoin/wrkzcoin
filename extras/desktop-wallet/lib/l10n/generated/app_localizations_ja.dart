@@ -417,7 +417,7 @@ class SJa extends S {
   String get continueButton => '続行';
 
   @override
-  String get browse => '参照';
+  String get browse => '参照…';
 
   @override
   String get backupWarning => '続行する前にウォレットをバックアップしてください。\nこれらの鍵は紛失すると復元できません。';
@@ -956,4 +956,19 @@ class SJa extends S {
   @override
   String get stillRunningInTray =>
       'PLUTON は通知領域で実行中です。アイコンをクリックすると再表示できます。終了するにはアイコンを右クリックして「終了」を選択してください。';
+
+  @override
+  String get localNodeDataFolder => 'データフォルダ';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'ここに約 6 GB が書き込まれます。空き容量のあるドライブを選んでください。';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'そのフォルダにはすでに他のファイルがあります。空のフォルダか新しいフォルダを選んでください。';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      '完全なブロックを保持し始める高さを入力してください。0 より大きい必要があります。ライトノードはジェネシスブロックからは始められません。';
 }

@@ -503,5 +503,10 @@
   "savingWalletBody": "PLUTON está escribiendo tu monedero en el disco. Puede tardar un momento en un monedero grande.",
   "shutdownTakingLong": "Está tardando más de lo esperado. Salir ahora puede dañar el archivo del monedero: hazlo solo si PLUTON está bloqueado.",
   "quitAnyway": "Salir de todos modos",
-  "stillRunningInTray": "PLUTON sigue ejecutándose en la bandeja del sistema. Haz clic en el icono para recuperarlo, o haz clic derecho y elige Salir."
+  "stillRunningInTray": "PLUTON sigue ejecutándose en la bandeja del sistema. Haz clic en el icono para recuperarlo, o haz clic derecho y elige Salir.",
+  "browse": "Examinar…",
+  "localNodeDataFolder": "Carpeta de datos",
+  "localNodeDataFolderHelp": "Aquí se escriben unos 6 GB. Elige una unidad con espacio suficiente.",
+  "localNodeDataFolderInUse": "Esa carpeta ya contiene otros archivos. Elige una carpeta vacía o una nueva.",
+  "localNodeStartHeightRequired": "Introduce la altura a partir de la cual conservar bloques completos. Debe ser mayor que cero: un nodo lite no puede empezar en el bloque génesis."
 }

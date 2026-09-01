@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -127,6 +128,25 @@ class LocalNodeSection extends ConsumerWidget {
             ),
         ],
       ),
+      // Where the several gigabytes went. Selectable because the answer to
+      // "why is my disk full" should be copyable into a file manager.
+      const SizedBox(height: 6),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            tr?.localNodeDataFolder ?? 'Data folder',
+            style: const TextStyle(color: kTextSecondary, fontSize: 12),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SelectableText(
+              LocalNodePaths.dataDir,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
 
       // Why the wallet has not moved over yet. Without this the node looks
       // ready — it is running, it has peers — while the wallet sits on a
@@ -236,6 +256,11 @@ class LocalNodeSection extends ConsumerWidget {
         TextEditingController(text: '${walletStart ?? 0}');
     var acknowledged = false;
 
+    // Where the chain will go. Editable only here: once the node exists, moving
+    // a multi-gigabyte RocksDB is a different job from picking a folder.
+    var dataDir = LocalNodePaths.dataDir;
+    var dataDirFree = true;
+
     final create = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -293,6 +318,74 @@ class LocalNodeSection extends ConsumerWidget {
                               color: kTextSecondary, fontSize: 12, height: 1.4),
                         ),
                       ],
+                      if (!valid) ...[
+                        const SizedBox(height: 8),
+                        // Without this the button is simply greyed out with
+                        // nothing to say why, which is where a wallet whose own
+                        // start height is unknown leaves every user.
+                        Text(
+                          dlgTr?.localNodeStartHeightRequired ??
+                              'Enter the height to keep full blocks from. It '
+                                  'has to be above zero — a lite node cannot '
+                                  'start at the genesis block.',
+                          style: const TextStyle(
+                              color: kWarning, fontSize: 12, height: 1.4),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      Text(
+                        dlgTr?.localNodeDataFolder ?? 'Data folder',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              dataDir,
+                              style: const TextStyle(
+                                  color: kTextSecondary,
+                                  fontSize: 12,
+                                  height: 1.4),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () async {
+                              final picked = await FilePicker.platform
+                                  .getDirectoryPath(
+                                      dialogTitle: dlgTr?.localNodeDataFolder ??
+                                          'Data folder');
+                              if (picked == null) return;
+                              final free = await nodeDirIsClaimable(picked);
+                              setDialogState(() {
+                                dataDir = picked;
+                                dataDirFree = free;
+                              });
+                            },
+                            child: Text(dlgTr?.browse ?? 'Browse…'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        dlgTr?.localNodeDataFolderHelp ??
+                            'Around 6 GB is written here. Pick a drive with '
+                                'room for it.',
+                        style: const TextStyle(
+                            color: kTextSecondary, fontSize: 12, height: 1.4),
+                      ),
+                      if (!dataDirFree) ...[
+                        const SizedBox(height: 12),
+                        _Note(
+                          colour: kError,
+                          icon: Icons.folder_off_outlined,
+                          text: dlgTr?.localNodeDataFolderInUse ??
+                              'That folder already holds other files. Choose an '
+                                  'empty folder, or a new one.',
+                        ),
+                      ],
                       if (tooHigh) ...[
                         const SizedBox(height: 12),
                         _Note(
@@ -328,9 +421,10 @@ class LocalNodeSection extends ConsumerWidget {
                   child: Text(dlgTr?.cancel ?? 'Cancel'),
                 ),
                 FilledButton(
-                  onPressed: (!valid || (tooHigh && !acknowledged))
-                      ? null
-                      : () => Navigator.pop(ctx, true),
+                  onPressed:
+                      (!valid || !dataDirFree || (tooHigh && !acknowledged))
+                          ? null
+                          : () => Navigator.pop(ctx, true),
                   child: Text(dlgTr?.localNodeCreate ?? 'Create node'),
                 ),
               ],
@@ -343,6 +437,11 @@ class LocalNodeSection extends ConsumerWidget {
     final height = int.tryParse(heightCtrl.text) ?? 0;
     heightCtrl.dispose();
     if (create != true || height <= 0) return;
+
+    // create() writes into LocalNodePaths.dataDir and then remembers it, so the
+    // choice has to be bound before it runs. Safe here and nowhere else: the
+    // wizard only opens when no node is configured.
+    LocalNodePaths.bindDataDirectory(dataDir);
 
     await ref.read(localNodeProvider.notifier).create(liteHeight: height);
   }
