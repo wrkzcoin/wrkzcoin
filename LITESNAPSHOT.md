@@ -377,9 +377,16 @@ rules out is normalisation and filtering error, which were the plausible failure
   `amountId -> amount` records under `"h"`, whose ids an importer assigns in ascending
   amount order rather than in the order a syncing node first met each amount. Nothing reads
   them back.
-- **A wallet against an imported node.** Everything in [LITENODE.md](LITENODE.md) about
-  scan floors and stalled syncs should hold unchanged, because after the restart this is an
-  ordinary lite node - but no wallet has been pointed at one.
+- **A wallet *sending* from an imported node.** A wallet has now been synced against one:
+  the desktop wallet against an imported node and zedwallet++ against a full node, both
+  scanning from 4,000,000, reported identical balances down to the cent - available, locked
+  and total. So the node serves `/getwalletsyncdata` indistinguishably from a full node.
+
+  That covers the boundary and everything above it, which both wallets got from peers. It
+  does not cover the imported region itself. Sending does: ring members are drawn across
+  the whole output set, and below `H` those records exist only because the snapshot put
+  them there. A transaction the network accepts is the first evidence they work for
+  consensus rather than merely being well formed. Nobody has sent one.
 - **Refusal paths.** A truncated file, a bit-flipped one, one whose digest is not in the
   table, one for the wrong height, one for the wrong chain, and one aimed at a database
   that already holds a chain - each refused without writing anything.
