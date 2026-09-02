@@ -77,6 +77,13 @@ cmake -S . -B build \
 cmake --build build -j
 ```
 
+A `-static` link against glibc prints linker warnings of the form
+`Using 'getaddrinfo' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking`
+(also for `dlopen`, `gethostbyname` and `getgrnam`). They are expected for any static glibc binary and do not affect the build.
+Name and group lookups go through NSS; with glibc 2.34 or newer the `files` and `dns` backends are built into libc, so DNS
+seed resolution and `--rpc-ipc-group` work as long as `/etc/nsswitch.conf` only uses those two. Other NSS backends
+(for example `sss`, `ldap`, `mdns`, `resolve`) need a runtime glibc that matches the build machine.
+
 When changing target architecture/toolchain (for example x86_64 -> aarch64 or vice versa), use a fresh build directory or clear CMake cache first to avoid stale `-march`/ISA flags.
 
 ## Dependencies

@@ -130,7 +130,7 @@ void ApiDispatcher::setupRoutes(httplib::Server &srv)
        isWriteOperation=true: exclusive lock (reassigns m_walletBackend).
        isWriteOperation=false (default): shared lock (concurrent reads/sends). */
     const auto router = [this](const auto function, const WalletState walletState, const bool viewWalletPermitted, const bool isWriteOperation = false) {
-        return [=](const httplib::Request &req, httplib::Response &res) {
+        return [=, this](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
             middleware(

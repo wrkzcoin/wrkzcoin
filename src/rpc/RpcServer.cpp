@@ -180,7 +180,7 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
     /* Route the request through our middleware function, before forwarding
        to the specified function */
     const auto router = [this, isIpc](const auto function, const RpcMode routePermissions, const bool isBodyRequired, const bool syncRequired) {
-        return [=](const httplib::Request &req, httplib::Response &res) {
+        return [=, this](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
             middleware(
