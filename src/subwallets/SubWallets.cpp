@@ -339,7 +339,7 @@ void SubWallets::addUnconfirmedTransaction(const WalletTypes::Transaction tx)
     std::scoped_lock lock(m_mutex);
 
     const auto it2 =
-        std::find_if(m_lockedTransactions.begin(), m_lockedTransactions.end(), [tx](const auto transaction) {
+        std::find_if(m_lockedTransactions.begin(), m_lockedTransactions.end(), [&tx](const auto &transaction) {
             return tx.hash == transaction.hash;
         });
 
@@ -391,7 +391,7 @@ void SubWallets::addTransaction(WalletTypes::Transaction tx)
        when the transaction actually comes in, we will update the transaction
        with the block infomation. */
     const auto it =
-        std::remove_if(m_lockedTransactions.begin(), m_lockedTransactions.end(), [tx](const auto transaction) {
+        std::remove_if(m_lockedTransactions.begin(), m_lockedTransactions.end(), [&tx](const auto &transaction) {
             return tx.hash == transaction.hash;
         });
 
@@ -401,7 +401,12 @@ void SubWallets::addTransaction(WalletTypes::Transaction tx)
         m_lockedTransactions.erase(it, m_lockedTransactions.end());
     }
 
-    const auto it2 = std::find_if(m_transactions.begin(), m_transactions.end(), [tx](const auto transaction) {
+    /* By reference, both of them. Taken by value this copies every transaction
+       in the history - each one a heap allocation for its transfers map and its
+       payment ID - once per transaction added, so a wallet syncing n of them
+       pays O(n^2) deep copies with the lock held. That is what used to stop the
+       app answering for minutes on a wallet with a large history. */
+    const auto it2 = std::find_if(m_transactions.begin(), m_transactions.end(), [&tx](const auto &transaction) {
         return tx.hash == transaction.hash;
     });
 
@@ -1014,8 +1019,14 @@ Crypto::SecretKey SubWallets::getPrimaryPrivateSpendKey() const
     return it->second.privateSpendKey();
 }
 
+/* Under the lock: the synchronizer push_back's into m_transactions from its own
+   thread, and a vector that reallocates while this copy is reading it frees the
+   buffer out from under us. The copy is what the caller wanted anyway - handing
+   back a reference would only move the same race to the caller. */
 std::vector<WalletTypes::Transaction> SubWallets::getTransactions() const
 {
+    std::scoped_lock lock(m_mutex);
+
     return m_transactions;
 }
 
@@ -1024,6 +1035,8 @@ std::vector<WalletTypes::Transaction> SubWallets::getTransactions() const
    block yet. */
 std::vector<WalletTypes::Transaction> SubWallets::getUnconfirmedTransactions() const
 {
+    std::scoped_lock lock(m_mutex);
+
     return m_lockedTransactions;
 }
 

@@ -305,9 +305,6 @@ class WalletCApi {
   late final _FnDeleteFileDart _walletDeleteFile;
   late final _FnSyncStatusDart _walletGetSyncStatus;
   late final _FnDaemonOnlineDart _walletDaemonOnline;
-  late final _FnJsonOutDart _walletGetStatusJson;
-  late final _FnJsonOutDart _walletGetNodeInfoJson;
-  late final _FnTotalBalanceDart _walletGetTotalBalance;
   late final _FnAddressBalanceDart _walletGetBalanceForAddress;
   late final _FnJsonOutDart _walletGetBalancesJson;
   late final _FnJsonOutDart _walletGetAddressesJson;
@@ -401,15 +398,6 @@ class WalletCApi {
     _walletDaemonOnline =
         _lib.lookupFunction<_FnDaemonOnlineNative, _FnDaemonOnlineDart>(
             'wallet_daemon_online');
-    _walletGetStatusJson =
-        _lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
-            'wallet_get_status_json');
-    _walletGetNodeInfoJson =
-        _lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(
-            'wallet_get_node_info_json');
-    _walletGetTotalBalance =
-        _lib.lookupFunction<_FnTotalBalanceNative, _FnTotalBalanceDart>(
-            'wallet_get_total_balance');
     _walletGetBalanceForAddress =
         _lib.lookupFunction<_FnAddressBalanceNative, _FnAddressBalanceDart>(
             'wallet_get_balance_for_address');
@@ -552,6 +540,39 @@ class WalletCApi {
       _walletStringFree(outStr.value);
       return jsonDecode(result) as Map<String, dynamic>;
     });
+  }
+
+  /// [_jsonOut] on a background isolate, looked up by symbol name because a
+  /// bound function pointer cannot cross an isolate boundary.
+  ///
+  /// Every one of these calls takes the wallet's own lock, which the
+  /// synchronizer holds while it commits a block. Run one on the UI isolate
+  /// and the app stops answering for as long as that takes - so anything on a
+  /// poll timer belongs here rather than in [_jsonOut].
+  Future<Map<String, dynamic>> _jsonOutOffThread(String symbol) async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnJsonOutNative, _FnJsonOutDart>(symbol);
+      final free = lib.lookupFunction<_FnStringFreeNative, _FnStringFreeDart>(
+          'wallet_string_free');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final outStr = arena<Pointer<Utf8>>();
+        final outLen = arena<Size>();
+        final s = fn(
+          Pointer<_WalletHandleOpaque>.fromAddress(ha),
+          outStr,
+          outLen,
+        );
+        if (s != 0) return (status: s, data: '', err: lastErr().toDartString());
+        final data = outStr.value.toDartString();
+        free(outStr.value);
+        return (status: 0, data: data, err: '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+    return jsonDecode(r.data) as Map<String, dynamic>;
   }
 
   Map<String, dynamic> _jsonOutStatic(
@@ -873,10 +894,10 @@ class WalletCApi {
       }));
 
   Future<Map<String, dynamic>> getStatusJson() =>
-      Future(() => _jsonOut(_walletGetStatusJson));
+      _jsonOutOffThread('wallet_get_status_json');
 
   Future<Map<String, dynamic>> getNodeInfoJson() =>
-      Future(() => _jsonOut(_walletGetNodeInfoJson));
+      _jsonOutOffThread('wallet_get_node_info_json');
 
   /// Points the wallet at a different daemon.
   ///
@@ -920,13 +941,34 @@ class WalletCApi {
 
   // --- balances ---
 
-  Future<({int unlocked, int locked})> getTotalBalance() =>
-      Future(() => using((arena) {
-            final u = arena<Uint64>();
-            final l = arena<Uint64>();
-            _check(_walletGetTotalBalance(_requireHandle(), u, l));
-            return (unlocked: u.value, locked: l.value);
-          }));
+  /// Runs off-thread: this is on a poll timer, and summing a balance walks
+  /// every input the wallet owns while holding the lock the synchronizer wants
+  /// for each block it commits.
+  Future<({int unlocked, int locked})> getTotalBalance() async {
+    final r = await _offThread((ha) {
+      final lib = _openLibrary();
+      final fn = lib.lookupFunction<_FnTotalBalanceNative, _FnTotalBalanceDart>(
+          'wallet_get_total_balance');
+      final lastErr = lib.lookupFunction<_FnConstStrNative, _FnConstStrDart>(
+          'wallet_last_error_message');
+      return using((arena) {
+        final u = arena<Uint64>();
+        final l = arena<Uint64>();
+        final s = fn(Pointer<_WalletHandleOpaque>.fromAddress(ha), u, l);
+        if (s != 0) {
+          return (
+            status: s,
+            unlocked: 0,
+            locked: 0,
+            err: lastErr().toDartString()
+          );
+        }
+        return (status: 0, unlocked: u.value, locked: l.value, err: '');
+      });
+    });
+    if (r.status != 0) throw WalletCApiException(r.status, r.err);
+    return (unlocked: r.unlocked, locked: r.locked);
+  }
 
   Future<({int unlocked, int locked})> getBalanceForAddress(
           String address) =>
@@ -983,14 +1025,29 @@ class WalletCApi {
           outStr,
           outLen,
         );
-        if (s != 0) return (status: s, data: '', err: lastErr().toDartString());
+        if (s != 0) {
+          return (
+            status: s,
+            data: <String, dynamic>{},
+            err: lastErr().toDartString()
+          );
+        }
         final data = outStr.value.toDartString();
         free(outStr.value);
-        return (status: 0, data: data, err: '');
+        /* Decode in here, with the call. `Isolate.run` hands its result back
+           through `Isolate.exit`, so the parsed map is transferred rather than
+           copied and the UI isolate pays nothing for the size of the history.
+           Decoding on the result instead puts the whole parse back on the
+           thread drawing the app, every poll. */
+        return (
+          status: 0,
+          data: jsonDecode(data) as Map<String, dynamic>,
+          err: ''
+        );
       });
     });
     if (r.status != 0) throw WalletCApiException(r.status, r.err);
-    return jsonDecode(r.data) as Map<String, dynamic>;
+    return r.data;
   }
 
   Future<String> sendBasic(String destination, int amount,

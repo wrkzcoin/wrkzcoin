@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_notifier/local_notifier.dart';
+import 'app_lifecycle.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/api/models/wallet_status.dart';
 import '../../core/providers/app_providers.dart';
@@ -28,14 +29,46 @@ class _MainShellState extends ConsumerState<MainShell> {
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
 
+  /* The most toasts one transaction update may raise. Each show() is a
+     blocking call out to the platform's notification service, so this is what
+     stands between a burst of transactions and a frozen window. */
+  static const _kMaxNotificationsPerUpdate = 5;
+
   // ── Autosave ────────────────────────────────────────────────────────────────
   static const _autosaveInterval = Duration(minutes: 5);
   Timer? _autosaveTimer;
   bool _savedAfterSync = false;
 
+  /* Every toast we raise, so we can take them back down. Nothing here ever
+     closed one, and on Windows a notification outlives the process that
+     registered it - which is how a backlog of them carried on popping up in
+     the tray after the app had already quit. */
+  final List<LocalNotification> _liveNotifications = [];
+
+  @override
+  void initState() {
+    super.initState();
+    /* The app ends at exit() inside forceQuitNow, which runs no dispose(), so
+       the quit path has to be able to reach these directly. */
+    takeDownNotifications = _takeDownNotifications;
+  }
+
+  Future<void> _takeDownNotifications() async {
+    for (final n in _liveNotifications) {
+      try {
+        await n.destroy();
+      } catch (_) {
+        // Already gone, or the shell is not answering.
+      }
+    }
+    _liveNotifications.clear();
+  }
+
   @override
   void dispose() {
     _autosaveTimer?.cancel();
+    takeDownNotifications = () async {};
+    unawaited(_takeDownNotifications());
     super.dispose();
   }
 
@@ -93,13 +126,30 @@ class _MainShellState extends ConsumerState<MainShell> {
       return;
     }
 
+    /* A syncing wallet meets its whole history a chunk at a time. Those are old
+       transactions arriving late, not money coming in now, and raising a toast
+       for each one puts one blocking platform-channel call per transaction on
+       the UI isolate - a wallet with thousands of them freezes the app until
+       the queue drains. Learn them silently and only speak up once the wallet
+       has caught up and a new transaction really is new. */
+    final synced = ref.read(statusProvider).valueOrNull?.isWalletSynced ?? false;
     final notificationsEnabled = ref.read(notificationsEnabledProvider);
+
+    var shown = 0;
+
     for (final tx in txs) {
       if (_knownTxHashes.contains(tx.hash)) continue;
       _knownTxHashes.add(tx.hash);
-      if (tx.isIncoming && notificationsEnabled) {
-        _showNotification(tx);
-      }
+
+      if (!synced || !tx.isIncoming || !notificationsEnabled) continue;
+
+      /* Even a synced wallet can be handed a burst at once - a reconnect, a
+         rescan, or a block that pays it many times over. Cap what a single
+         update is allowed to raise so the UI thread survives any of them. */
+      if (shown >= _kMaxNotificationsPerUpdate) continue;
+
+      shown++;
+      _showNotification(tx);
     }
   }
 
@@ -109,6 +159,14 @@ class _MainShellState extends ConsumerState<MainShell> {
       title: tr?.wrkzReceived ?? 'WRKZ Received',
       body: tr?.youReceivedAmount(formatAmount(tx.totalAmount.abs(), showTicker: true)) ?? 'You received ${formatAmount(tx.totalAmount.abs(), showTicker: true)}',
     );
+    /* Keep only a short tail. These are for tearing down what is still on
+       screen at exit, not a log - an unbounded list would be one more thing
+       growing with the session. */
+    _liveNotifications.add(notification);
+    if (_liveNotifications.length > _kMaxNotificationsPerUpdate) {
+      _liveNotifications.removeAt(0).destroy();
+    }
+
     notification.show();
   }
 

@@ -25,6 +25,10 @@ class MainShell extends ConsumerStatefulWidget {
 
 class _MainShellState extends ConsumerState<MainShell> {
   final Set<String> _knownTxHashes = {};
+
+  /* The most notifications one transaction update may raise, so a burst cannot
+     bury the page under them. */
+  static const _kMaxNotificationsPerUpdate = 5;
   bool _firstTxLoad = true;
 
   // ── Autosave ────────────────────────────────────────────────────────────────
@@ -94,12 +98,24 @@ class _MainShellState extends ConsumerState<MainShell> {
       return;
     }
 
+    /* A syncing wallet meets its whole history a chunk at a time, and those
+       transactions are confirmed - they came out of blocks - so `isConfirmed`
+       does not hold them back. Without a sync gate every one of them raises a
+       notification for money that arrived long ago. */
+    final synced = ref.read(statusProvider).valueOrNull?.isWalletSynced ?? false;
     final notificationsEnabled = ref.read(notificationsEnabledProvider);
+
+    var shown = 0;
+
     for (final tx in txs) {
       if (_knownTxHashes.contains(tx.hash)) continue;
-      if (tx.isIncoming && tx.isConfirmed && notificationsEnabled) {
-        _showNotification(tx);
+      if (!synced || !tx.isIncoming || !tx.isConfirmed || !notificationsEnabled) {
+        continue;
       }
+      if (shown >= _kMaxNotificationsPerUpdate) continue;
+
+      shown++;
+      _showNotification(tx);
     }
     _knownTxHashes.addAll(txs.map((t) => t.hash));
   }

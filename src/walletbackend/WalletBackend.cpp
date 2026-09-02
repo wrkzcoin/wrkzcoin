@@ -1812,7 +1812,7 @@ std::vector<WalletTypes::Transaction>
                 transactions.begin(),
                 transactions.end(),
                 std::back_inserter(result),
-                [&startHeight, &endHeight](const auto tx) {
+                [&startHeight, &endHeight](const auto &tx) {
                     return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
                 });
 

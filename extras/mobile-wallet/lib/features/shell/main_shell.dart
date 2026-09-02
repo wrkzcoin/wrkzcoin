@@ -41,6 +41,11 @@ class _MainShellState extends ConsumerState<MainShell>
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
 
+  /* The most notifications one transaction update may raise. Each one is a
+     platform call, and each is paired with a haptic, so this is what stands
+     between a burst of transactions and a phone that buzzes for minutes. */
+  static const _kMaxNotificationsPerUpdate = 5;
+
   @override
   void initState() {
     super.initState();
@@ -147,15 +152,30 @@ class _MainShellState extends ConsumerState<MainShell>
       return;
     }
 
+    /* A syncing wallet meets its whole history a chunk at a time. Those are old
+       transactions arriving late, not money coming in now, and notifying for
+       each one buzzes and posts once per transaction - a wallet with thousands
+       of them does that for as long as it takes to drain. Learn them silently
+       and only speak up once the wallet has caught up. */
+    final synced = ref.read(statusProvider).valueOrNull?.isWalletSynced ?? false;
     final notificationsOn = ref.read(notificationsEnabledProvider);
     final tr = S.of(context);
+
+    var shown = 0;
+
     for (final tx in txs) {
       // Notify on first sight, whatever its confirmation state. Recording
       // mempool entries as "known" and only notifying on `isConfirmed` meant
       // an ordinary incoming payment — seen unconfirmed first — never fired.
       if (_knownTxHashes.contains(tx.hash)) continue;
       _knownTxHashes.add(tx.hash);
-      if (!tx.isIncoming || !notificationsOn) continue;
+      if (!synced || !tx.isIncoming || !notificationsOn) continue;
+
+      /* Even a caught-up wallet can be handed a burst at once - a reconnect, a
+         rescan, or a block that pays it many times over. */
+      if (shown >= _kMaxNotificationsPerUpdate) continue;
+
+      shown++;
       hapticHeavy();
       final amount = formatAmount(tx.totalAmount.abs(), showTicker: true);
       TxNotifier.instance.showIncoming(

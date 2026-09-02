@@ -133,8 +133,22 @@ Future<void> forceQuitNow() async {
   } catch (_) {
     // Nothing installed, or the shell is not answering. Quit regardless.
   }
+  /* Take our notifications with us. A toast is registered with the shell, not
+     with us, so any still outstanding here goes on popping up in the tray
+     after the process is gone - which is what the user sees, and there is no
+     app left to attribute it to. This is the last point anything of ours runs:
+     exit() below means no widget's dispose() is ever called. */
+  try {
+    await takeDownNotifications();
+  } catch (_) {
+    // Best effort. Never stand between the user and a quit.
+  }
   exit(0);
 }
+
+/// Closes every notification this session raised, set by the shell that owns
+/// them. Called from [forceQuitNow], which is the only way this app exits.
+Future<void> Function() takeDownNotifications = () async {};
 
 class AppLifecycle extends ConsumerStatefulWidget {
   final Widget child;
