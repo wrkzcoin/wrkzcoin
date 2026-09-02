@@ -544,12 +544,16 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 18;
+    const uint8_t P2P_CURRENT_VERSION = 19;
 
+    // Kept well behind P2P_CURRENT_VERSION on purpose: a node below this is refused
+    // the handshake outright, so raising it to the current version would cut us off
+    // from the whole live network on release day. Raise it only once the network has
+    // turned over.
     const uint8_t P2P_MINIMUM_VERSION = 16;
 
     // Peers advertising version >= P2P_IPV6_CAPABILITY_VERSION support IPv6 peer exchange
-    const uint8_t P2P_IPV6_CAPABILITY_VERSION = 18;
+    const uint8_t P2P_IPV6_CAPABILITY_VERSION = 19;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
