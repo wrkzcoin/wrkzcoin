@@ -168,15 +168,36 @@ class LocalNodeConfig {
         '--p2p-bind-port', '$p2pPort',
         '--log-file', p.join(dataDir, kLocalNodeLogFile),
         '--log-level', '2',
+
+        // Write the database small. A desktop user has no way to know these
+        // exist, and the cost of leaving them off is permanent: table files
+        // land at the bottommost level and nothing rewrites them, so a node
+        // built without them stays about a gigabyte larger until someone runs
+        // a full compaction, which rewrites the whole database.
+        //
+        // Measured on this chain: 9.4 GB with none of them, 8.85 with the
+        // dictionary, 8.56 adding the block size, 5.80 adding the level. The
+        // compression level is 2.76 of the 3.6 GB saved, so it is the one that
+        // matters and also the one that costs - it roughly doubles the time of
+        // a snapshot import, twenty minutes against forty. Paid once, against a
+        // database that is then read for as long as the wallet is used.
+        //
+        // Before extraDaemonArguments so an operator overriding them from
+        // WRKZ_DAEMON_EXTRA_ARGS still comes last.
+        '--db-compression-dict-bytes', '16384',
+        '--db-block-size', '16',
+        '--db-compression-level', '12',
+
         ...extraDaemonArguments(),
       ];
 
   /// Arguments for the one-shot run that loads a snapshot and exits.
   ///
-  /// The same database flags as [arguments], deliberately: ingested table files
-  /// land at the bottommost level and nothing rewrites them, so importing
-  /// without the compression settings the node will later run with bakes in a
-  /// larger database permanently — about 6.7 GB instead of 5.8.
+  /// Spreads [arguments], so the import runs with the same database settings
+  /// the node will later run with. That is not a tidiness point: ingested table
+  /// files land at the bottommost level and nothing rewrites them, so importing
+  /// without them bakes in a larger database permanently — 6.85 GB was measured
+  /// against 5.77 for the same snapshot.
   List<String> importArguments(String dataDir, String snapshotPath) => [
         ...arguments(dataDir),
         '--import-lite-snapshot', snapshotPath,
