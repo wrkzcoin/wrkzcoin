@@ -131,6 +131,10 @@ namespace DaemonConfig
             "Maximum number of blocks for export to dump file.",
             cxxopts::value<uint32_t>(),
             "#")(
+            "snapshot-info",
+            "Print what a lite node snapshot file contains, as JSON, and exit",
+            cxxopts::value<std::string>()->default_value(config.snapshotInfo),
+            "<file>")(
             "import-lite-snapshot",
             "Load a lite node snapshot into an empty database, then exit. Needs --lite and the --lite-height the "
             "snapshot was made at",
@@ -517,6 +521,11 @@ namespace DaemonConfig
             if (cli.count("lite-height") > 0)
             {
                 config.liteHeight = cli["lite-height"].as<uint32_t>();
+            }
+
+            if (cli.count("snapshot-info") > 0)
+            {
+                config.snapshotInfo = cli["snapshot-info"].as<std::string>();
             }
 
             if (cli.count("import-lite-snapshot") > 0)

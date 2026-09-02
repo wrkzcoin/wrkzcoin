@@ -68,6 +68,7 @@ namespace DaemonConfig
             resync = false;
             importChain = false;
             importLiteSnapshot = "";
+            snapshotInfo = "";
             exportChain = false;
             exportNumBlocks = 0;
             prune = false;
@@ -176,6 +177,11 @@ namespace DaemonConfig
            meaningful with --lite and a matching --lite-height, and only into a
            database that holds nothing but genesis. See LITESNAPSHOT.md. */
         std::string importLiteSnapshot;
+
+        /* Path to a lite node snapshot to describe and exit. Reads the header
+           only - no database, no chain, no core - so a caller deciding whether
+           to spend half an hour importing can ask first. Prints JSON. */
+        std::string snapshotInfo;
 
         bool importChain;
 

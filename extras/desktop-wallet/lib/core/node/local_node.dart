@@ -170,6 +170,17 @@ class LocalNodeConfig {
         '--log-level', '2',
         ...extraDaemonArguments(),
       ];
+
+  /// Arguments for the one-shot run that loads a snapshot and exits.
+  ///
+  /// The same database flags as [arguments], deliberately: ingested table files
+  /// land at the bottommost level and nothing rewrites them, so importing
+  /// without the compression settings the node will later run with bakes in a
+  /// larger database permanently — about 6.7 GB instead of 5.8.
+  List<String> importArguments(String dataDir, String snapshotPath) => [
+        ...arguments(dataDir),
+        '--import-lite-snapshot', snapshotPath,
+      ];
 }
 
 enum LocalNodePhase {
@@ -181,6 +192,13 @@ enum LocalNodePhase {
 
   /// Configured, not running.
   stopped,
+
+  /// Loading a snapshot into a fresh database, before the node first runs.
+  ///
+  /// A one-shot daemon process that imports and exits; the node proper starts
+  /// afterwards. Takes twenty to forty minutes and cannot be resumed, so an
+  /// interruption means starting over with an empty data directory.
+  importing,
 
   /// Process launched, RPC has not answered yet.
   starting,
@@ -218,7 +236,20 @@ class LocalNodeState {
   /// Why the node is in [LocalNodePhase.failed], or the tail of its log.
   final String? error;
 
+  /// Which part of a snapshot import is running: `verify`, `blocks`, `write`
+  /// or `done`. Empty when no import is in progress.
+  ///
+  /// The phases are not interchangeable and a single bar over both misleads:
+  /// verifying reads the whole payload without writing anything and takes about
+  /// a fifth of the time, and it is the part that can still refuse the file.
+  final String importPhase;
+
+  /// How far through [importPhase], 0 to 100.
+  final double importPercent;
+
   const LocalNodeState({
+    this.importPhase = '',
+    this.importPercent = 0,
     this.phase = LocalNodePhase.loading,
     this.config,
     this.height = 0,
@@ -269,6 +300,8 @@ class LocalNodeState {
     int? diskBytes,
     String? error,
     bool clearError = false,
+    String? importPhase,
+    double? importPercent,
   }) =>
       LocalNodeState(
         phase: phase ?? this.phase,
@@ -281,6 +314,8 @@ class LocalNodeState {
             reportedLiteStartHeight ?? this.reportedLiteStartHeight,
         diskBytes: diskBytes ?? this.diskBytes,
         error: clearError ? null : (error ?? this.error),
+        importPhase: importPhase ?? this.importPhase,
+        importPercent: importPercent ?? this.importPercent,
       );
 }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -167,6 +168,34 @@ class LocalNodeSection extends ConsumerWidget {
         ],
       ),
 
+      // An import runs for twenty to forty minutes with no RPC to poll, so
+      // the only thing to show is what the daemon reports about itself. The
+      // phase is named rather than folded into one bar: verifying reads the
+      // whole file without writing anything and can still refuse it, which is
+      // worth distinguishing from the part that is committing to disk.
+      if (node.phase == LocalNodePhase.importing) ...[
+        const SizedBox(height: 12),
+        _Note(
+          colour: kWarning,
+          icon: Icons.download_for_offline_outlined,
+          text: switch (node.importPhase) {
+            'verify' =>
+              'Checking the snapshot before writing any of it - '
+                  '${node.importPercent.toStringAsFixed(0)}%.',
+            'blocks' =>
+              'Writing block headers - ${node.importPercent.toStringAsFixed(0)}%.',
+            'write' =>
+              'Loading the chain index - ${node.importPercent.toStringAsFixed(0)}%. '
+                  'This is the long part.',
+            _ => 'Importing the snapshot.',
+          },
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: node.importPercent <= 0 ? null : node.importPercent / 100,
+        ),
+      ],
+
       // Why the wallet has not moved over yet. Without this the node looks
       // ready — it is running, it has peers — while the wallet sits on a
       // remote server for reasons nothing on screen explains.
@@ -283,6 +312,12 @@ class LocalNodeSection extends ConsumerWidget {
     var dataDir = LocalNodePaths.dataDir;
     var dataDirFree = true;
 
+    // Snapshot import. Null path means the ordinary sync-from-network route.
+    String? snapshotPath;
+    Map<String, dynamic>? snapshotInfo;
+    String? snapshotError;
+    var checkingSnapshot = false;
+
     final create = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -307,17 +342,149 @@ class LocalNodeSection extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        dlgTr?.localNodeSetupCost ??
-                            'Before you start:\n'
-                                '• Around 6 GB of disk space, and the whole chain is downloaded once.\n'
-                                '• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n'
-                                '• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.',
+                        snapshotPath == null
+                            ? (dlgTr?.localNodeSetupCost ??
+                                'Before you start:\n'
+                                    '• Around 6 GB of disk space, and the whole chain is downloaded once.\n'
+                                    '• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n'
+                                    '• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.')
+                            : 'Before you start:\n'
+                                '• Around 6 GB of disk space.\n'
+                                '• Importing takes twenty to forty minutes and cannot be resumed. Interrupting it means starting again with an empty folder.\n'
+                                '• The start height comes from the snapshot and is permanent. Changing it later means deleting the node and syncing again from nothing.',
                         style: const TextStyle(height: 1.6, fontSize: 13),
                       ),
+                      const SizedBox(height: 14),
+
+                      // How the chain gets here. First, because it decides
+                      // what the height field below even means: with a
+                      // snapshot the height is the file's, not a choice.
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: Text('Sync from network'),
+                            icon: Icon(Icons.cloud_download_outlined, size: 16),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text('Import a snapshot'),
+                            icon: Icon(Icons.folder_zip_outlined, size: 16),
+                          ),
+                        ],
+                        selected: {snapshotPath != null || snapshotError != null},
+                        onSelectionChanged: (s) => setDialogState(() {
+                          if (s.first) {
+                            // Nothing picked yet; the picker below is the
+                            // next step. Marked by an empty error so the
+                            // segment stays selected.
+                            snapshotError = '';
+                          } else {
+                            snapshotPath = null;
+                            snapshotInfo = null;
+                            snapshotError = null;
+                            heightCtrl.text = '${walletStart ?? 0}';
+                          }
+                        }),
+                      ),
+
+                      if (snapshotPath != null || snapshotError != null) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                snapshotPath == null
+                                    ? 'No snapshot chosen yet.'
+                                    : snapshotPath!.split(Platform.pathSeparator).last,
+                                style: const TextStyle(fontSize: 12),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: checkingSnapshot
+                                  ? null
+                                  : () async {
+                                      final result =
+                                          await FilePicker.platform.pickFiles(
+                                        dialogTitle: 'Choose a lite node snapshot',
+                                        type: FileType.any,
+                                      );
+                                      final picked =
+                                          result?.files.single.path;
+                                      if (picked == null) return;
+
+                                      setDialogState(() {
+                                        checkingSnapshot = true;
+                                        snapshotError = '';
+                                      });
+
+                                      // Ask the daemon what the file is
+                                      // rather than trusting its name. It
+                                      // also says whether this build will
+                                      // accept the digest, which is worth
+                                      // knowing now and not after half an
+                                      // hour of importing.
+                                      final info = await ref
+                                          .read(localNodeProvider.notifier)
+                                          .describeSnapshot(picked);
+
+                                      setDialogState(() {
+                                        checkingSnapshot = false;
+                                        if (info == null || info['error'] != null) {
+                                          snapshotPath = null;
+                                          snapshotInfo = null;
+                                          snapshotError = info?['error'] as String? ??
+                                              'That file is not a lite node snapshot.';
+                                          return;
+                                        }
+                                        snapshotPath = picked;
+                                        snapshotInfo = info;
+                                        snapshotError = null;
+                                        heightCtrl.text = '${info['liteHeight']}';
+                                      });
+                                    },
+                              child: Text(checkingSnapshot ? 'Reading...' : 'Choose...'),
+                            ),
+                          ],
+                        ),
+                        if (snapshotInfo != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            snapshotInfo!['accepted'] == true
+                                ? 'Serves blocks from ${snapshotInfo!['liteHeight']}. '
+                                    'Recognised by this build.'
+                                : 'Serves blocks from ${snapshotInfo!['liteHeight']}, but this '
+                                    'build does not recognise its digest and will refuse it. '
+                                    'Use a published snapshot.',
+                            style: TextStyle(
+                              color: snapshotInfo!['accepted'] == true
+                                  ? kTextSecondary
+                                  : kError,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                        if (snapshotError != null && snapshotError!.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            snapshotError!,
+                            style: const TextStyle(
+                                color: kError, fontSize: 12, height: 1.4),
+                          ),
+                        ],
+                      ],
+
                       const SizedBox(height: 18),
                       TextField(
                         controller: heightCtrl,
-                        autofocus: true,
+                        autofocus: snapshotPath == null,
+                        // A snapshot only imports at the height it was made
+                        // at - the daemon refuses a mismatch - so once one is
+                        // chosen this is a fact, not a choice.
+                        readOnly: snapshotPath != null,
                         onChanged: (_) => setDialogState(() {}),
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -465,7 +632,9 @@ class LocalNodeSection extends ConsumerWidget {
     // wizard only opens when no node is configured.
     LocalNodePaths.bindDataDirectory(dataDir);
 
-    await ref.read(localNodeProvider.notifier).create(liteHeight: height);
+    await ref
+        .read(localNodeProvider.notifier)
+        .create(liteHeight: height, snapshotPath: snapshotPath);
   }
 
   /// Points the wallet back at the default remote node.
@@ -549,6 +718,7 @@ class _PhaseChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final tr = S.of(context);
     final (String label, Color colour) = switch (phase) {
+      LocalNodePhase.importing => ('Importing', kWarning),
       LocalNodePhase.starting =>
         (tr?.localNodeStateStarting ?? 'Starting', kWarning),
       LocalNodePhase.running => (tr?.localNodeStateSyncing ?? 'Syncing', kWarning),

@@ -140,7 +140,13 @@ class LocalNodeController extends Notifier<LocalNodeState> {
   /// The height cannot be changed afterwards without deleting the database —
   /// the daemon refuses to start against a mismatch — so this is the one
   /// decision the caller has to get right.
-  Future<void> create({required int liteHeight}) async {
+  ///
+  /// With [snapshotPath] the index-only region below [liteHeight] is loaded
+  /// from a file instead of being rebuilt from the chain — twenty to forty
+  /// minutes rather than the better part of a day. The height must be the one
+  /// the snapshot was made at; the daemon refuses a mismatch, and the setup
+  /// dialog fills the field from the file for that reason.
+  Future<void> create({required int liteHeight, String? snapshotPath}) async {
     if (liteHeight <= 0) {
       throw ArgumentError.value(liteHeight, 'liteHeight', 'must be above zero');
     }
@@ -164,7 +170,128 @@ class LocalNodeController extends Notifier<LocalNodeState> {
     await writeNodeDataDirPref(LocalNodePaths.dataDir);
 
     state = LocalNodeState(phase: LocalNodePhase.stopped, config: config);
+
+    if (snapshotPath != null) {
+      final imported = await _import(config, snapshotPath);
+      // A refused or broken import leaves a part-written database that the
+      // daemon will not import into again, so there is nothing to start and
+      // the failure has to stay on screen rather than being replaced by a
+      // node coming up on an incomplete chain.
+      if (!imported) return;
+    }
+
     await start();
+  }
+
+  /// Asks the daemon what a snapshot file holds, without importing it.
+  ///
+  /// Header only, so it is instant on a 5 GB file. Returns null when the daemon
+  /// cannot be found, and a map with an `error` key when the file is not a
+  /// snapshot this build can read. The `accepted` key is the one that decides
+  /// whether importing is worth starting: an unrecognised digest is refused,
+  /// and finding that out after half an hour is the wrong time.
+  Future<Map<String, dynamic>?> describeSnapshot(String path) async {
+    final daemon = LocalNodePaths.findDaemon();
+    if (daemon == null) return null;
+
+    try {
+      final result =
+          await Process.run(daemon.path, ['--snapshot-info', path]);
+
+      for (final line in const LineSplitter().convert(result.stdout as String)) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('{')) {
+          return jsonDecode(trimmed) as Map<String, dynamic>;
+        }
+      }
+
+      return {'error': 'The daemon said nothing about that file.'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  /// Runs the one-shot import and returns whether it succeeded.
+  ///
+  /// The daemon imports and exits by design: the genesis block is written by
+  /// the ordinary startup that has to happen first, and by then the core has
+  /// cached a view of the chain that the import invalidates. So this is a
+  /// separate child process from the one [start] supervises.
+  Future<bool> _import(LocalNodeConfig config, String snapshotPath) async {
+    final daemon = LocalNodePaths.findDaemon();
+    if (daemon == null) {
+      state = state.copyWith(
+          phase: LocalNodePhase.failed, error: 'daemon-not-found');
+      return false;
+    }
+
+    _logTail.clear();
+    state = state.copyWith(
+      phase: LocalNodePhase.importing,
+      importPhase: 'verify',
+      importPercent: 0,
+      clearError: true,
+    );
+
+    try {
+      final process = await Process.start(
+        daemon.path,
+        config.importArguments(LocalNodePaths.dataDir, snapshotPath),
+        workingDirectory: LocalNodePaths.dataDir,
+      );
+      _process = process;
+
+      // Both streams still have to be drained or the daemon blocks on a full
+      // pipe, and this one runs for half an hour.
+      _drain(process.stderr);
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen(_onImportLine);
+
+      final code = await process.exitCode;
+      _process = null;
+
+      if (code != 0) {
+        state = state.copyWith(
+          phase: LocalNodePhase.failed,
+          error: _logTail.isEmpty ? 'import-failed' : _logTail.join('\n'),
+        );
+        return false;
+      }
+
+      state = state.copyWith(
+          phase: LocalNodePhase.stopped, importPhase: 'done', importPercent: 100);
+      return true;
+    } catch (e) {
+      _process = null;
+      state =
+          state.copyWith(phase: LocalNodePhase.failed, error: e.toString());
+      return false;
+    }
+  }
+
+  /// Picks the machine-readable progress lines out of the daemon's output.
+  ///
+  /// Anything else is kept for the log tail, which is what an operator gets
+  /// shown when an import fails.
+  void _onImportLine(String line) {
+    if (!line.startsWith('WRKZ-IMPORT ')) {
+      _remember(line);
+      return;
+    }
+
+    try {
+      final json =
+          jsonDecode(line.substring('WRKZ-IMPORT '.length)) as Map<String, dynamic>;
+
+      state = state.copyWith(
+        importPhase: json['phase'] as String? ?? state.importPhase,
+        importPercent: (json['percent'] as num?)?.toDouble() ?? state.importPercent,
+      );
+    } catch (_) {
+      // A malformed progress line is not worth failing an import over.
+    }
   }
 
   Future<void> start() async {
@@ -418,12 +545,16 @@ class LocalNodeController extends Notifier<LocalNodeState> {
     stream
         .transform(utf8.decoder)
         .transform(const LineSplitter())
-        .listen((line) {
-      _logTail.addLast(line);
-      while (_logTail.length > _kLogTailLines) {
-        _logTail.removeFirst();
-      }
-    }, onError: (_) {});
+        .listen(_remember, onError: (_) {});
+  }
+
+  /// Keeps the last few lines of daemon output, which is what an operator is
+  /// shown when it fails to start or an import is refused.
+  void _remember(String line) {
+    _logTail.addLast(line);
+    while (_logTail.length > _kLogTailLines) {
+      _logTail.removeFirst();
+    }
   }
 
   void _onExit(int code) {

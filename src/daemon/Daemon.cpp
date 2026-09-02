@@ -426,6 +426,16 @@ int main(int argc, char *argv[])
     // Load in the CLI specified parameters again to overwrite anything from the config file
     handleSettings(argc, argv, config);
 
+    /* Describing a snapshot needs the file and nothing else - no data
+       directory, no database, no core - so it answers here, before any of that
+       is built. A caller deciding whether to spend half an hour importing can
+       ask what it is first, and a GUI can fill in the height field from the
+       file the user picked rather than making them retype it. */
+    if (!config.snapshotInfo.empty())
+    {
+        exit(CryptoNote::LiteSnapshotImport::describeSnapshot(config.snapshotInfo) ? 0 : 1);
+    }
+
     if (config.dumpConfig)
     {
         std::cout << getProjectCLIHeader() << asString(config) << std::endl;

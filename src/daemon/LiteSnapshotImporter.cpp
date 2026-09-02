@@ -7,6 +7,9 @@
 #include "daemon/LiteSnapshot.h"
 
 #include <chrono>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 #include <common/StringTools.h>
 #include <config/CryptoNoteCheckpoints.h>
 #include <config/CryptoNoteSnapshots.h>
@@ -61,6 +64,32 @@ namespace CryptoNote
             bool hasPrefix(const std::string &key, const std::string &prefix)
             {
                 return key.size() >= prefix.size() && key.compare(0, prefix.size(), prefix) == 0;
+            }
+
+            /* One line of JSON per progress step, on stdout, behind a marker a
+               caller can grep for without parsing the whole log.
+
+               The desktop app supervises the daemon as a child process and has
+               to draw a progress bar over something that takes half an hour.
+               The human-readable INFO lines beside these are no use for that -
+               and the two phases are not interchangeable, since verifying takes
+               about seven minutes and writing about thirty, so a caller that
+               treats them as one bar will watch it stall twice. Hence the phase
+               in every line. */
+            void emitProgress(
+                const std::string &phase,
+                const uint64_t done,
+                const uint64_t total)
+            {
+                const double percent = total > 0 ? (100.0 * static_cast<double>(done) / static_cast<double>(total))
+                                                 : 0.0;
+
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(1);
+                out << "WRKZ-IMPORT {\"phase\":\"" << phase << "\",\"done\":" << done << ",\"total\":" << total
+                    << ",\"percent\":" << percent << "}";
+
+                std::cout << out.str() << std::endl;
             }
 
             /* The digest is the whole security of an imported snapshot, so an
@@ -241,6 +270,41 @@ namespace CryptoNote
             };
         } // namespace
 
+        bool describeSnapshot(const std::string &path)
+        {
+            LiteSnapshot::Header header;
+
+            try
+            {
+                LiteSnapshot::Reader reader(path);
+                header = reader.open();
+            }
+            catch (const std::exception &e)
+            {
+                std::cout << "{\"error\":\"" << e.what() << "\"}" << std::endl;
+
+                return false;
+            }
+
+            std::cout << "{"
+                      << "\"formatVersion\":" << header.formatVersion << ","
+                      << "\"liteHeight\":" << header.liteHeight << ","
+                      << "\"records\":" << header.totalRecords() << ","
+                      << "\"blockInfoRecords\":" << header.blockInfoRecords << ","
+                      << "\"keyImageRecords\":" << header.keyImageRecords << ","
+                      << "\"keyOutputRecords\":" << header.keyOutputRecords << ","
+                      << "\"transactionsCount\":" << header.transactionsCount << ","
+                      << "\"genesisHash\":\"" << Common::podToHex(header.genesisHash) << "\","
+                      << "\"digest\":\"" << Common::podToHex(header.payloadDigest) << "\","
+                      /* The one a caller most needs before committing to a
+                         download and half an hour of importing. */
+                      << "\"accepted\":" << (digestIsBlessed(header.liteHeight, header.payloadDigest) ? "true"
+                                                                                                     : "false")
+                      << "}" << std::endl;
+
+            return true;
+        }
+
         void importSnapshot(
             IDataBase &database,
             const std::string &path,
@@ -321,8 +385,15 @@ namespace CryptoNote
                 std::string key;
                 std::string value;
 
+                uint64_t seen = 0;
+
                 while (reader.next(key, value))
                 {
+                    if ((++seen % 2000000) == 0)
+                    {
+                        emitProgress("verify", seen, header.totalRecords());
+                    }
+
                     if (hasPrefix(key, blockInfoPrefix))
                     {
                         std::pair<std::string, uint32_t> decodedKey;
@@ -359,6 +430,8 @@ namespace CryptoNote
                 }
 
                 audit.transactionsCount = blockAudit.finish();
+
+                emitProgress("verify", header.totalRecords(), header.totalRecords());
             }
 
             if (audit.blockInfoRecords != header.blockInfoRecords || audit.keyImageRecords != header.keyImageRecords
@@ -456,6 +529,8 @@ namespace CryptoNote
                                 flushBlocks();
 
                                 logger(INFO) << "  block info: " << blocksWritten << " / " << header.blockInfoRecords;
+
+                                emitProgress("blocks", blocksWritten, header.blockInfoRecords);
                             }
                         }
 
@@ -473,9 +548,14 @@ namespace CryptoNote
 
                     ingested++;
 
-                    if ((ingested % 5000000) == 0)
+                    if ((ingested % 2000000) == 0)
                     {
-                        logger(INFO) << "  bulk load: " << ingested << " records";
+                        if ((ingested % 10000000) == 0)
+                        {
+                            logger(INFO) << "  bulk load: " << ingested << " records";
+                        }
+
+                        emitProgress("write", ingested, header.keyImageRecords + header.keyOutputRecords);
                     }
 
                     return true;
@@ -558,6 +638,8 @@ namespace CryptoNote
             const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(
                                      std::chrono::steady_clock::now() - writeStarted)
                                      .count();
+
+            emitProgress("done", header.totalRecords(), header.totalRecords());
 
             logger(INFO, BRIGHT_GREEN) << "Imported " << header.totalRecords() << " records in " << seconds << "s.";
             logger(INFO) << "This node now holds the chain below height " << header.liteHeight

@@ -39,6 +39,17 @@ namespace CryptoNote
            whole design exists to avoid.
 
            Throws std::runtime_error with a message meant for an operator. */
+        /* Prints what a snapshot file holds, as one JSON object, and returns
+           whether it could be read at all. Header only: no database is opened
+           and no payload is scanned, so it costs nothing and can be asked
+           before deciding to import.
+
+           Reports whether the digest is one this build will accept, which is
+           the question a caller most wants answered up front - an unrecognised
+           snapshot is refused, and finding that out after a 5 GB download and
+           half an hour of importing is the wrong time. */
+        bool describeSnapshot(const std::string &path);
+
         void importSnapshot(
             IDataBase &database,
             const std::string &path,
