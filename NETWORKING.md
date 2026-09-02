@@ -290,9 +290,27 @@ Multiple `--add-peer`, `--add-priority-node`, `--add-exclusive-node`, and `--see
 
 ## Seed Nodes & DNS Seeds
 
-Static seed nodes are compiled in (`CryptoNoteConfig.h → SEED_NODES`). DNS-based seeds (`DNS_SEED_NODES`) are resolved at startup using `IpResolver::resolveAll()` which queries **both A and AAAA records**. IPv4 results are added to the IPv4 seed list; IPv6 results are added to a separate IPv6 seed list. The daemon bootstraps from either or both, whichever respond first.
+Static seed nodes are compiled in (`CryptoNoteConfig.h → SEED_NODES`). DNS-based seeds (`DNS_SEED_NODES`) are resolved using `IpResolver::resolveAll()` which queries **both A and AAAA records**. IPv4 results are added to the IPv4 seed list; IPv6 results are added to a separate IPv6 seed list. The daemon bootstraps from either or both, whichever respond first. `--seed-node` entries join the same list.
 
 To publish IPv6 seed nodes, simply add AAAA records to the seed hostnames in your DNS zone — no daemon configuration changes are needed.
+
+### When the seeds are asked
+
+A seed is only ever asked for its peer list (the connection is closed again afterwards). The daemon asks in two situations:
+
+- **Nothing known yet** — the white lists are empty (first start, or after `--p2p-reset-peerstate`).
+- **Stuck** — a connection-maker round could not dial anybody new *and* fewer than `P2P_SEED_RETRY_OUT_PEERS_FLOOR` (3) outgoing connections are up. This is what recovers a node whose saved peer list has gone stale, for instance after a long time offline.
+
+Both cases share one rate limit, `P2P_SEED_RETRY_INTERVAL_SECONDS` (5 minutes), so seeds that are down get one walk per interval instead of one per round.
+
+Seed hostnames are looked up again on a helper thread after `P2P_SEED_RERESOLVE_INTERVAL_SECONDS` (1 hour), or at the next seed round while the lookup has produced nothing (DNS not up yet at boot). A lookup that fails keeps the previously resolved addresses.
+
+### Keeping the peer lists honest
+
+- An address that refused or timed out is left alone for `P2P_FAILED_PEER_FORGET_SECONDS` (10 minutes) instead of being retried every round.
+- Once a minute one random gray-list peer is dialled for its peer list (`P2P_GRAY_PEERLIST_HOUSEKEEPING_INTERVAL`): if it answers it moves to the white list, if not it is dropped, so addresses that peers keep relaying to each other get verified.
+- A peer list received in a handshake or timed sync is cut to `P2P_DEFAULT_PEERS_IN_HANDSHAKE` (250) entries, the same number the daemon sends.
+- After `P2P_NO_PEERS_WARNING_SECONDS` (2 minutes) without any connection the daemon logs a WARNING with the known-peer and seed counts. `/info` reports `seed_nodes_count` and `last_seed_bootstrap` (unix time, 0 = never).
 
 ---
 

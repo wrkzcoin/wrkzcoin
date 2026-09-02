@@ -911,6 +911,8 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["incoming_connections_count"] = total_conn - outgoing_connections_count;
         j["white_peerlist_size"] = m_p2p->getPeerlistManager().get_white_peers_count();
         j["grey_peerlist_size"] = m_p2p->getPeerlistManager().get_gray_peers_count();
+        j["seed_nodes_count"] = m_p2p->get_seed_nodes_count();
+        j["last_seed_bootstrap"] = m_p2p->get_last_seed_bootstrap_time();
         j["last_known_block_index"] = std::max(1u, m_syncManager->getObservedHeight()) - 1;
         j["network_height"] = networkHeight;
         j["upgrade_heights"] = upgradeHeights;
