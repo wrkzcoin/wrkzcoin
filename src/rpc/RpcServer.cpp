@@ -288,6 +288,16 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
        /* Matches everything */
        /* NOTE: Not passing through middleware */
        .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
+
+    /* Console commands change log levels, ban peers, start compactions and
+       stop the node. They are served on the local socket only, where the mode
+       on the socket file decides who may connect - the same people who could
+       type at the daemon's own console - and never on a TCP listener, token
+       or no token. */
+    if (isIpc)
+    {
+        srv.Post("/console", router(&RpcServer::console, RpcMode::Standard, bodyRequired, syncNotRequired));
+    }
 }
 
 RpcServer::~RpcServer()
@@ -421,6 +431,12 @@ std::string RpcServer::getIpcPath() const
        itself over IPC never ends up pointed at a socket that was never
        created. */
     return m_ipcBound ? m_ipcPath : std::string();
+}
+
+void RpcServer::setConsoleExecutor(ConsoleExecutor executor)
+{
+    std::lock_guard<std::mutex> lock(m_consoleExecutorMutex);
+    m_consoleExecutor = std::move(executor);
 }
 
 std::optional<nlohmann::json> RpcServer::getJsonBody(
@@ -1008,6 +1024,34 @@ std::tuple<Error, uint16_t> RpcServer::peers(
     nlohmann::json j;
     j["peers"] = peersArr;
     j["peers_gray"] = peersGrayArr;
+    j["status"] = "OK";
+    res.body = j.dump();
+
+    return {SUCCESS, 200};
+}
+
+std::tuple<Error, uint16_t> RpcServer::console(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const nlohmann::json &body)
+{
+    const std::string commandLine = getStringFromJSON(body, "command");
+
+    ConsoleExecutor executor;
+
+    {
+        std::lock_guard<std::mutex> lock(m_consoleExecutorMutex);
+        executor = m_consoleExecutor;
+    }
+
+    if (!executor)
+    {
+        failRequest(503, "The daemon console is not available yet, please retry in a moment", res);
+        return {SUCCESS, 503};
+    }
+
+    nlohmann::json j;
+    j["output"] = executor(commandLine);
     j["status"] = "OK";
     res.body = j.dump();
 

@@ -18,7 +18,10 @@
 #include <logging/LoggerRef.h>
 #include <atomic>
 #include <future>
+#include <iostream>
+#include <map>
 #include <mutex>
+#include <ostream>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -59,6 +62,11 @@ class DaemonCommandsHandler
 
     bool exit(const std::vector<std::string> &args);
 
+    /* Runs one command line on behalf of a console attached over the RPC IPC
+       socket and returns everything it printed, in place of the daemon's
+       stdout. Serialised with the local console. */
+    std::string run_remote_command(const std::string &commandLine);
+
     void start_boot_compaction_if_needed();
 
     void stop_compaction_scheduler();
@@ -88,6 +96,33 @@ class DaemonCommandsHandler
     std::shared_ptr<Logging::LoggerManager> m_logManager;
 
     std::string get_commands_str();
+
+    using Command = bool (DaemonCommandsHandler::*)(const std::vector<std::string> &);
+
+    /* Every command is registered here, for the local console and the remote
+       one alike, so the two can never drift apart. */
+    void register_command(const std::string &name, const Command command, const std::string &usage);
+
+    /* The one place a command runs: takes m_commandMutex and points out() at
+       the stream that should receive what it prints. */
+    bool run_command(const Command command, const std::vector<std::string> &args, std::ostream &output);
+
+    /* Where the command currently running writes: the daemon's stdout for the
+       local console, a buffer for an attached one. Only meaningful under
+       m_commandMutex, which is why every command goes through run_command.
+       Notices from background threads that are not the answer to a command
+       still go to std::cout directly. */
+    std::ostream *m_out = &std::cout;
+
+    std::ostream &out()
+    {
+        return *m_out;
+    }
+
+    /* One command at a time, whichever console it came from. */
+    std::mutex m_commandMutex;
+
+    std::map<std::string, Command> m_commands;
 
     bool print_block_by_height(uint32_t height);
 

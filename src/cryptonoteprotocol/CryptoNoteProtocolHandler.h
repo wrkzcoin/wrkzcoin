@@ -58,6 +58,9 @@ namespace CryptoNote
 
         void log_connections();
 
+        /* The connections table log_connections writes to the log, as text. */
+        std::string connections_to_string();
+
         // Interface t_payload_net_handler, where t_payload_net_handler is template argument of nodetool::node_server
         void stop();
 

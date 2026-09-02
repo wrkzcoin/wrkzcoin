@@ -171,6 +171,11 @@ namespace DaemonConfig
             "no-console",
             "Disable daemon console commands",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "attach",
+            "Attach a console to a daemon already running on this machine, over its RPC IPC socket "
+            "(an absolute path, @name or ipc://path), instead of starting a node",
+            cxxopts::value<std::string>(),
+            "<socket>")(
             "skip-boot-compaction",
             "Skip automatic DB compaction start/check at daemon boot",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
@@ -601,6 +606,11 @@ namespace DaemonConfig
             if (cli.count("no-console") > 0)
             {
                 config.noConsole = cli["no-console"].as<bool>();
+            }
+
+            if (cli.count("attach") > 0)
+            {
+                config.attach = cli["attach"].as<std::string>();
             }
 
             if (cli.count("skip-boot-compaction") > 0)

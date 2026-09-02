@@ -309,6 +309,11 @@ namespace CryptoNote
 
     void CryptoNoteProtocolHandler::log_connections()
     {
+        logger(INFO) << "Connections:" << ENDL << connections_to_string();
+    }
+
+    std::string CryptoNoteProtocolHandler::connections_to_string()
+    {
         std::stringstream ss;
         const int dirWidth = 3;
         const int remoteWidth = 46; // wide enough for a full bracketed IPv6 + port
@@ -370,7 +375,7 @@ namespace CryptoNote
         });
 
         ss << border << ENDL;
-        logger(INFO) << "Connections:" << ENDL << ss.str();
+        return ss.str();
     }
 
     uint32_t CryptoNoteProtocolHandler::get_current_blockchain_height() const

@@ -182,6 +182,10 @@ namespace CryptoNote
         // debug functions
         bool log_peerlist();
 
+        /* The text log_peerlist writes to the log, for a console that wants to
+           show it rather than log it. */
+        std::string peerlist_to_string();
+
         bool log_connections();
 
         virtual uint64_t get_connections_count() override;

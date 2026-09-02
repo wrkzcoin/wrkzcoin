@@ -2357,7 +2357,7 @@ namespace CryptoNote
     }
     //-----------------------------------------------------------------------------------
 
-    bool NodeServer::log_peerlist()
+    std::string NodeServer::peerlist_to_string()
     {
         std::list<PeerlistEntry> pl_wite;
         std::list<PeerlistEntry> pl_gray;
@@ -2367,11 +2367,17 @@ namespace CryptoNote
         std::list<PeerlistEntry6> pl_gray6;
         m_peerlist.get_peerlist6_full(pl_gray6, pl_wite6);
 
-        logger(INFO) << ENDL
-                     << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
-                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
-                     << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
-                     << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
+        std::stringstream ss;
+        ss << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
+           << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
+           << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
+           << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
+        return ss.str();
+    }
+
+    bool NodeServer::log_peerlist()
+    {
+        logger(INFO) << ENDL << peerlist_to_string();
         return true;
     }
     //-----------------------------------------------------------------------------------

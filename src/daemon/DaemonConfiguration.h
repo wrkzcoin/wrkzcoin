@@ -154,6 +154,11 @@ namespace DaemonConfig
 
         bool noConsole;
 
+        /* Not a daemon setting: the IPC socket of a daemon already running
+           that this invocation should attach a console to instead of starting
+           a node. Never written to a config file. */
+        std::string attach;
+
         std::string daemonMode;
 
         bool localIp;

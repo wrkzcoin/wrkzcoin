@@ -125,6 +125,39 @@ Wrkz-service --daemon-address /run/wrkz/wrkzd.sock --container-file w --containe
 The daemon's own console uses the IPC socket automatically whenever one is bound, so
 `status`, `print_cn` and friends stop making loopback TCP connections to their own process.
 
+### Attaching a console
+
+A daemon run under a process manager - pm2, systemd, a container - has no terminal, so it
+runs with `--no-console` and its commands are out of reach. `attach` puts them back: it
+opens an interactive console against a daemon that is already running, over its IPC socket.
+Every line typed runs inside that daemon through the same command handler the local console
+uses, and whatever it prints comes back.
+
+```
+pm2 start Wrkzd -- --no-console --rpc-ipc-path /run/wrkz/wrkzd.sock
+Wrkzd attach /run/wrkz/wrkzd.sock
+```
+
+`Wrkzd --attach /run/wrkz/wrkzd.sock` is the same thing. The socket is the only endpoint
+accepted: console commands change log levels, ban peers, start compactions and stop the
+node, so they are served on the IPC socket alone, where the mode on the socket file decides
+who may connect, and never on a TCP listener with or without a token. Attach therefore runs
+as a user the socket admits, which by default means the daemon's own.
+
+Inside the console `exit` and `quit` leave the session and the daemon carries on. `stop`
+shuts the daemon down; it is the same command as the local console's `exit`, and exists
+under a second name so that leaving an attached session is never confused with stopping the
+node. Commands run one at a time across all consoles, local and attached, and a command
+that blocks - `compact_db wait` - holds its connection until it finishes.
+
+Under the hood this is one route, `POST /console` with `{"command": "..."}`, answering
+`{"output": "...", "status": "OK"}`. It is registered on the IPC listener only. Scripts can
+call it directly, or pipe commands into `attach`, which exits when its input ends.
+
+A daemon whose stdin is at end of file - what a process manager hands a daemon started
+without `--no-console` - no longer spins reading empty lines. It prints one notice and runs
+headless, as if `--no-console` had been given.
+
 ### Authentication
 
 On the daemon's IPC socket `--rpc-access-token` is **not** required. The mode on the socket
@@ -404,4 +437,5 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 - **IPv6 duplicate-connection detection** — `is_peer_used6()` deduplicates by peer ID only, not by IP. Duplicate attempts gracefully fail at handshake level.
 - **IPC on Windows** — not supported. AF_UNIX exists there, but the socket file carries no permissions the OS enforces and there is no `SO_PEERCRED`, so the flags are ignored with a warning rather than opening an endpoint nobody can restrict.
 - **P2P over IPC** — not offered. A local socket cannot carry a peer-to-peer network.
+- **Console commands over TCP** — not offered. `attach` and the `/console` route exist on the IPC socket only; see "Attaching a console".
 - **`--add-peer` / `--add-priority-node` / `--add-exclusive-node`** — these CLI flags only accept IPv4 addresses. IPv6 literal support requires updating `parsePeerFromString()` in `NetNodeConfig.cpp`.

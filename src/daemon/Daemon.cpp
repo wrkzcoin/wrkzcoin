@@ -6,6 +6,7 @@
 //
 // Please see the included LICENSE file for more information.
 
+#include "AttachConsole.h"
 #include "DaemonCommandsHandler.h"
 #include "daemon/LiteSnapshotImporter.h"
 #include "DaemonConfiguration.h"
@@ -374,6 +375,20 @@ int main(int argc, char *argv[])
     const auto logManager = std::make_shared<LoggerManager>();
     LoggerRef logger(logManager, "daemon");
 
+    /* `Wrkzd attach <socket>` is the spelling geth made familiar. It means the
+       same as --attach, and is picked off here so the option parser never sees
+       a bare word it does not know. */
+    if (argc >= 2 && std::string(argv[1]) == "attach")
+    {
+        if (argc != 3)
+        {
+            std::cout << "Usage: " << temp.string() << " attach <rpc ipc socket path>" << std::endl;
+            return 1;
+        }
+
+        return Daemon::runAttachConsole(argv[2]);
+    }
+
     // Initial loading of CLI parameters
     handleSettings(argc, argv, config);
 
@@ -381,6 +396,13 @@ int main(int argc, char *argv[])
     {
         print_genesis_tx_hex(false, logManager);
         exit(0);
+    }
+
+    /* Attaching needs no data directory, no database and no core: it is a
+       client of a daemon that already has all of those. */
+    if (!config.attach.empty())
+    {
+        return Daemon::runAttachConsole(config.attach);
     }
 
     // If the user passed in the --config-file option, we need to handle that first
@@ -1104,6 +1126,18 @@ int main(int argc, char *argv[])
         /* Empty unless the IPC listener actually came up, so the console never
            gets pointed at a socket that failed to bind */
         DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config, rpcServer.getIpcPath());
+
+        /* A console attached over the IPC socket runs its commands through
+           the same handler as the local one. */
+        rpcServer.setConsoleExecutor(
+            [&dch](const std::string &commandLine) { return dch.run_remote_command(commandLine); });
+
+        if (!rpcServer.getIpcPath().empty())
+        {
+            logger(INFO) << "Console commands are available over " << Common::Ipc::describe(rpcServer.getIpcPath())
+                         << ": " << temp.string() << " attach " << rpcServer.getIpcPath();
+        }
+
         dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)
@@ -1134,6 +1168,7 @@ int main(int argc, char *argv[])
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
+        rpcServer.setConsoleExecutor(nullptr);
         dch.stop_compaction_scheduler();
         dch.wait_for_background_compaction();
 
