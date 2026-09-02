@@ -266,6 +266,14 @@ class LocalNodeState {
   bool get isRunning =>
       phase == LocalNodePhase.running || phase == LocalNodePhase.starting;
 
+  /// Something is using the data directory and must not be disturbed.
+  ///
+  /// An import is not "running" - there is no node to stop and no RPC to poll -
+  /// but starting a second daemon against a half-written database, or deleting
+  /// the directory from under it, are both worse than doing nothing. The
+  /// buttons that would do either are gated on this rather than on [isRunning].
+  bool get isBusy => isRunning || phase == LocalNodePhase.importing;
+
   /// The node can serve a wallet: it is up, answering, level with the network,
   /// and has actually spoken to someone. A node that is still catching up
   /// would leave the wallet parked — safely, but with nothing on screen to

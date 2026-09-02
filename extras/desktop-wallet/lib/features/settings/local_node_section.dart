@@ -254,7 +254,12 @@ class LocalNodeSection extends ConsumerWidget {
             )
           else
             FilledButton.icon(
-              onPressed: () => ref.read(localNodeProvider.notifier).start(),
+              // An import owns the data directory for the next half hour, and
+              // a second daemon started against it would be writing into a
+              // database that is still being built.
+              onPressed: node.phase == LocalNodePhase.importing
+                  ? null
+                  : () => ref.read(localNodeProvider.notifier).start(),
               icon: const Icon(Icons.play_arrow, size: 18),
               label: Text(tr?.localNodeStart ?? 'Start'),
             ),
@@ -266,7 +271,9 @@ class LocalNodeSection extends ConsumerWidget {
             label: Text(tr?.localNodeUse ?? 'Use this node'),
           ),
           TextButton.icon(
-            onPressed: () => _confirmDestroy(context, ref, inUse),
+            onPressed: node.phase == LocalNodePhase.importing
+                ? null
+                : () => _confirmDestroy(context, ref, inUse),
             style: TextButton.styleFrom(foregroundColor: kError),
             icon: const Icon(Icons.delete_outline, size: 18),
             label: Text(tr?.localNodeDelete ?? 'Delete node data'),
@@ -342,7 +349,11 @@ class LocalNodeSection extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        snapshotPath == null
+                        // Keyed on the mode, not on whether a file has been
+                        // chosen yet: selecting "Import a snapshot" and still
+                        // being told the whole chain will be downloaded over
+                        // hours describes the route the user just turned down.
+                        (snapshotPath == null && snapshotError == null)
                             ? (dlgTr?.localNodeSetupCost ??
                                 'Before you start:\n'
                                     '• Around 6 GB of disk space, and the whole chain is downloaded once.\n'
