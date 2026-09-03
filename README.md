@@ -78,6 +78,10 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 - A **lite node** (`--lite --lite-height H`) keeps full block data only from height `H` upward and just the indexes below it, cutting disk use to a fraction of a full node's. [LITENODE.md](LITENODE.md) explains what it serves and what it cannot.
 - A **snapshot** bootstraps that index region from a file instead of syncing it. [LITESNAPSHOT.md](LITESNAPSHOT.md) covers producing, checking and importing one.
 
+### Transaction PoW Server
+
+- Every transaction carries a small proof of work. `wrkz-txpow-server` computes it on behalf of wallets that would rather not spend their own CPU on it, such as phones and browsers; the desktop, mobile and web wallets have a setting for it and fall back to their own CPU when the server does not answer. [TXPOWSERVER.md](TXPOWSERVER.md) covers running it and the protocol.
+
 ### Daemon DB Compaction
 
 - The daemon can compact RocksDB in background while syncing.

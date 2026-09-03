@@ -23,6 +23,7 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <nigel/TxPowClient.h>
 #include <ctime> // time_t
 
 namespace SendTransaction
@@ -1547,9 +1548,15 @@ namespace SendTransaction
 
             time (&time_begin); // note time before execution
 
+            /* When a GUI wallet has configured an external PoW server the
+               solver asks it first and falls back to this CPU; otherwise the
+               solver is empty and the work is done here as always. */
+            const auto remotePoW = TxPowClient::solver();
+
             if (daemon->networkBlockCount() < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE_HEIGHT)
             {
-                setupTX.extra = CryptoNote::generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+                setupTX.extra = CryptoNote::generateTransactionPoWHeight(
+                    setupTX, extra, daemon->networkBlockCount(), remotePoW);
             } else
             {
                 const uint64_t actualFee = sumTransactionFee(setupTX);
@@ -1560,7 +1567,8 @@ namespace SendTransaction
                     setupTX.extra = extra;
                 } else
                 {
-                    setupTX.extra = CryptoNote::generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+                    setupTX.extra = CryptoNote::generateTransactionPoWHeight(
+                        setupTX, extra, daemon->networkBlockCount(), remotePoW);
                 }
             }
 

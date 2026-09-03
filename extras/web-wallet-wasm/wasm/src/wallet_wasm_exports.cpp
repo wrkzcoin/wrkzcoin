@@ -855,6 +855,22 @@ static char *dispatch(const std::string &method, const json &p)
         return ok_json(true);
     }
 
+    /* -------- external tx PoW server -------- */
+
+    /*
+     * setTxPowServer — ask a wrkz-txpow-server for the transaction PoW first
+     * and fall back to computing it in this worker. An empty host turns it off.
+     *   params: { "host": "...", "port": 17870, "ssl": false }
+     */
+    if (method == "setTxPowServer")
+    {
+        auto host = str_param(p, "host");
+        auto port = u16_param(p, "port");
+        auto ssl = bool_param(p, "ssl");
+        wallet_set_tx_pow_server(host.c_str(), port, ssl);
+        return ok_json(true);
+    }
+
     /* -------- browser storage bridge -------- */
 
     /*

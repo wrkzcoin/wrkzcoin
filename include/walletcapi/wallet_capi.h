@@ -326,6 +326,15 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_clear_logs(void);
    Set scan=true to include them (needed if the wallet mines). */
 WALLET_CAPI_EXPORT void wallet_set_scan_coinbase(bool scan);
 
+/* Route the transaction proof of work through an external PoW server
+   (wrkz-txpow-server) before falling back to this device's CPU. Applies to
+   every wallet opened in this process. An empty host or a zero port turns it
+   off again. The host may carry a scheme and a path ("https://node/txpow")
+   for a server behind a reverse proxy; the scheme then overrides `ssl`. The
+   wallet re-verifies every nonce the server returns, so a bad or slow server
+   only ever costs time. */
+WALLET_CAPI_EXPORT void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl);
+
 #ifdef __cplusplus
 }
 #endif

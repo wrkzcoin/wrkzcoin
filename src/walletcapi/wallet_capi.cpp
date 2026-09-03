@@ -12,6 +12,7 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <nigel/TxPowClient.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
 
@@ -1766,5 +1767,10 @@ wallet_status_t wallet_clear_logs(void)
 void wallet_set_scan_coinbase(bool scan)
 {
     Config::config.wallet.skipCoinbaseTransactions = !scan;
+}
+
+void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl)
+{
+    TxPowClient::configure(host == nullptr ? std::string() : std::string(host), port, ssl);
 }
 

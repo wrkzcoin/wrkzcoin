@@ -29,6 +29,7 @@
 #include <logger/Logger.h>
 #include <logging/LoggerManager.h>
 #include <mnemonics/Mnemonics.h>
+#include <nigel/TxPowClient.h>
 #include <noderpcproxy/NodeRpcProxy.h>
 #include <utilities/Addresses.h>
 #include <utilities/Mixins.h>
@@ -1116,14 +1117,16 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         /* Iteratively estimate fee: the destination amount is decomposed into canonical
            denominations, so the output count depends on the fee, which depends on the
            output count.
-           In WASM builds the fee is clamped to TRANSACTION_POW_PASS_WITH_FEE so the
-           extremely slow single-threaded PoW is bypassed entirely.  In native builds
-           we still add 9 bytes overhead for the PoW nonce that makeTransaction appends. */
+           In WASM builds without an external PoW server the fee is clamped to
+           TRANSACTION_POW_PASS_WITH_FEE so the extremely slow single-threaded PoW is
+           bypassed entirely.  Everywhere else we add 9 bytes overhead for the PoW
+           nonce that makeTransaction appends. */
 #if defined(__EMSCRIPTEN__)
-        const size_t POW_NONCE_OVERHEAD = 0;
+        const bool bypassPowWithFee = !TxPowClient::configured();
 #else
-        const size_t POW_NONCE_OVERHEAD = 9;
+        const bool bypassPowWithFee = false;
 #endif
+        const size_t POW_NONCE_OVERHEAD = bypassPowWithFee ? 0 : 9;
         size_t numOutputs = 1;
         uint64_t estimatedFee = 0;
 
@@ -1132,13 +1135,11 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             const size_t estimatedSize = Utilities::estimateTransactionSize(
                 mixin, batch.size(), numOutputs, resolvedPaymentID != "", 0) + POW_NONCE_OVERHEAD;
             estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
-#if defined(__EMSCRIPTEN__)
             /* Ensure fee is high enough to bypass tx PoW in WASM */
-            if (estimatedFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+            if (bypassPowWithFee && estimatedFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
             {
                 estimatedFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
             }
-#endif
 
             if (estimatedFee >= batchSum)
                 break;
@@ -1275,8 +1276,9 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
 
 #if defined(__EMSCRIPTEN__)
             /* Keep clearing the bar that lets WASM skip the tx PoW, which is
-               punishingly slow single-threaded. */
-            if (requiredFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+               punishingly slow single-threaded - unless an external PoW server
+               is doing that work, in which case the normal fee applies. */
+            if (!TxPowClient::configured() && requiredFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
             {
                 requiredFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
             }
