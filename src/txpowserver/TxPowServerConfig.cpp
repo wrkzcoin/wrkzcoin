@@ -183,5 +183,37 @@ TxPowServerConfig parseTxPowServerArguments(int argc, char **argv)
         exit(1);
     }
 
+    /* Access-Control-Allow-Origin is only ever "*", "null", or a scheme://host
+       origin. Anything else is silently rejected by every browser, so a typo
+       here does not fail here - it fails much later, as a web wallet that
+       cannot reach this server for reasons nothing on this side reports.
+       The specific accident worth catching: an unquoted `--enable-cors *` is
+       expanded by the shell into the first filename in the working directory,
+       which is how one deployment ended up advertising "1.wallet" as its
+       allowed origin. */
+    if (!config.corsHeader.empty() && config.corsHeader != "*" && config.corsHeader != "null")
+    {
+        const bool looksLikeOrigin = config.corsHeader.rfind("http://", 0) == 0
+                                     || config.corsHeader.rfind("https://", 0) == 0;
+
+        if (!looksLikeOrigin)
+        {
+            std::cout << "--enable-cors must be *, null, or a full origin such as "
+                         "https://web-wallet.example.com - got \""
+                      << config.corsHeader << "\"" << std::endl;
+            std::cout << "If you meant any origin, quote it: --enable-cors '*'  "
+                         "(unquoted, the shell expands * to a filename)" << std::endl;
+            exit(1);
+        }
+
+        if (config.corsHeader.back() == '/')
+        {
+            std::cout << "--enable-cors must not have a trailing slash: an origin is "
+                         "scheme://host[:port], and browsers compare it verbatim - got \""
+                      << config.corsHeader << "\"" << std::endl;
+            exit(1);
+        }
+    }
+
     return config;
 }
