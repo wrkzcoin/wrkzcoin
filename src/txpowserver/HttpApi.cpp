@@ -498,25 +498,18 @@ void HttpApi::handleStats(const httplib::Request &req, httplib::Response &res)
         return;
     }
 
+    /* Counters only. The bind addresses, proxy list, limits and CORS origin
+       describe the deployment, not the service, and /stats is meant to be
+       readable by anyone the wallets are; operators have them in the
+       start-up banner and their own command line. The two limits a client
+       can act on, max_difficulty and max_wait_ms, are the exception. */
     nlohmann::json stats = m_service.statsJson();
 
     stats["version"] = PROJECT_VERSION_LONG;
 
-    stats["config"] = {
-        {"bind_ip", m_config.bindIp},
-        {"bind_port", m_config.bindPort},
-        {"bind_ipv6_address", m_config.bindIpv6Address},
-        {"trusted_proxies", m_config.trustedProxies},
-        {"threads", m_config.threads},
-        {"rate_limit_per_minute", m_config.rateLimitPerMinute},
-        {"max_jobs_per_minute", m_config.maxJobsPerMinute},
-        {"max_queue", m_config.maxQueue},
+    stats["limits"] = {
         {"max_difficulty", m_config.maxDifficulty},
         {"max_wait_ms", m_config.maxWaitMs},
-        {"job_timeout_seconds", m_config.jobTimeoutSeconds},
-        {"result_ttl_seconds", m_config.resultTtlSeconds},
-        {"api_key_required", !m_config.apiKey.empty()},
-        {"cors", m_config.corsHeader},
     };
 
     reply(res, 200, stats);

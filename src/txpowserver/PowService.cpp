@@ -612,8 +612,10 @@ nlohmann::json PowService::statsJson() const
 
         if (m_active)
         {
+            /* No job id here: /stats is public and the id is what DELETE
+               /pow/<id> takes, so listing it would let anyone cancel the
+               job that is running. */
             active = {
-                {"job_id", m_active->id},
                 {"difficulty", m_active->difficulty},
                 {"inputs", m_active->inputs},
                 {"outputs", m_active->outputs},

@@ -166,8 +166,12 @@ unknown or expired job.
 `GET /stats` returns counters since start-up: jobs received, accepted,
 completed, failed, cancelled, expired and rejected by reason; total hashes,
 busy time and average hash rate; average and worst solve time; queue depth
-and the job currently running; HTTP request counts; and the effective
-configuration (without the API key).
+and the shape of the job currently running (never its id, which would let a
+reader cancel it); HTTP request counts; the two limits a client can act on
+(`max_difficulty`, `max_wait_ms`); and the version. It deliberately does not
+describe the deployment: bind addresses, trusted proxies, rate limits, the
+CORS origin and whether an API key is required stay in the start-up banner
+and the operator's command line.
 
 `GET /health` is outside the API key and rate limit and returns queue depth
 and capacity, for load balancers.
