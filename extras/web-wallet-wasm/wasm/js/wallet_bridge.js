@@ -457,6 +457,10 @@ export class WalletBridge {
     return this.call('setTxPowServer', { host, port, ssl });
   }
 
+  testTxPowServer(host, port, ssl = false) {
+    return this.call('testTxPowServer', { host, port, ssl });
+  }
+
   // ====== File Management (Browser Storage) ======
 
   /**
@@ -712,6 +716,7 @@ export class WalletBridgeWorker {
 
   // ====== External Tx PoW server ======
   setTxPowServer(host, port, ssl = false) { return this.call('setTxPowServer', { host, port, ssl }); }
+  testTxPowServer(host, port, ssl = false) { return this.call('testTxPowServer', { host, port, ssl }); }
 
   // ====== Version ======
   apiVersion() { return this.call('apiVersion'); }

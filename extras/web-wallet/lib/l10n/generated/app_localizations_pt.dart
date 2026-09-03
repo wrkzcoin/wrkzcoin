@@ -811,4 +811,17 @@ class SPt extends S {
 
   @override
   String get txPowServerInvalid => 'Informe um host e uma porta válidos';
+
+  @override
+  String get txPowServerTest => 'Testar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor acessível em $ms ms: $threads threads, $queue de $capacity vagas da fila em uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor inacessível: $error';
+  }
 }

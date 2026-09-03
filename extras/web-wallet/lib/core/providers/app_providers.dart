@@ -165,19 +165,18 @@ final scanCoinbaseProvider =
 
 const _kTxPowServerKey = 'pluton_tx_pow_server';
 
-/// Default port of wrkz-txpow-server.
-const int kDefaultTxPowServerPort = 17870;
-
 /// Where the wallet sends its transaction proof of work. When [active], the
 /// wallet worker asks the server first and falls back to computing it in the
 /// browser if the server does not answer. Without a server the web wallet
-/// pays the PoW bypass fee instead, because browser PoW is very slow.
+/// pays the PoW bypass fee instead, because browser PoW is very slow. Off by
+/// default: the fields start out pointing at the project's public server so
+/// enabling it is one switch.
 class TxPowServerSettings {
   const TxPowServerSettings({
     this.enabled = false,
-    this.host = '',
+    this.host = kDefaultTxPowServerHost,
     this.port = kDefaultTxPowServerPort,
-    this.ssl = false,
+    this.ssl = kDefaultTxPowServerSSL,
     this.loaded = false,
   });
 
@@ -209,14 +208,16 @@ class TxPowServerSettings {
   Map<String, dynamic> toJson() =>
       {'enabled': enabled, 'host': host, 'port': port, 'ssl': ssl};
 
-  factory TxPowServerSettings.fromJson(Map<String, dynamic> j) =>
-      TxPowServerSettings(
-        enabled: j['enabled'] as bool? ?? false,
-        host: (j['host'] as String? ?? '').trim(),
-        port: (j['port'] as num?)?.toInt() ?? kDefaultTxPowServerPort,
-        ssl: j['ssl'] as bool? ?? false,
-        loaded: true,
-      );
+  factory TxPowServerSettings.fromJson(Map<String, dynamic> j) {
+    final host = (j['host'] as String? ?? '').trim();
+    return TxPowServerSettings(
+      enabled: j['enabled'] as bool? ?? false,
+      host: host.isEmpty ? kDefaultTxPowServerHost : host,
+      port: (j['port'] as num?)?.toInt() ?? kDefaultTxPowServerPort,
+      ssl: j['ssl'] as bool? ?? kDefaultTxPowServerSSL,
+      loaded: true,
+    );
+  }
 
   /// Pushes this setting into the wallet worker. Call after every wallet
   /// open and whenever the setting changes.

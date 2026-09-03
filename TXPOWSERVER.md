@@ -175,12 +175,21 @@ and capacity, for load balancers.
 ## Wallet side
 
 The desktop, mobile and web wallets have a *Transaction PoW Server* section in
-Settings: a switch, host, port and SSL. The host may include a path (or be a
-full URL) when the server sits behind a proxy. When it is on, the wallet asks the
-server first and waits up to two minutes for an answer; if the server is
-unreachable, refuses the job, times out or returns a nonce that does not
-verify, the wallet computes the proof on its own CPU as before. The setting is
-stored on the device and applied every time a wallet is opened.
+Settings: a switch, host, port, SSL, a *Test* button and *Apply*. The switch
+is **off by default**, so every wallet keeps computing the proof of work on
+its own CPU until the user turns it on. The fields come prefilled with the
+project's public server, `txpow.wrkz.work` on port 443 with SSL, so enabling
+it is one switch; any other server can be entered instead. The host may
+include a path (or be a full URL) when the server sits behind a proxy.
+
+*Test* calls the server's `/health` over the same client path a transaction
+would use, including the native SSL support check, and reports latency,
+thread count and queue occupancy without saving anything. When the setting is
+on, the wallet asks the server first and waits up to two minutes for an
+answer; if the server is unreachable, refuses the job, times out or returns a
+nonce that does not verify, the wallet computes the proof on its own CPU as
+before. The setting is stored on the device and applied every time a wallet is
+opened.
 
 The web wallet keeps paying the 100 WRKZ bypass fee while no server is
 configured, because its local fallback is far slower than on any other

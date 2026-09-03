@@ -1085,4 +1085,17 @@ class SDe extends S {
   @override
   String get txPowServerInvalid =>
       'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String get txPowServerTest => 'Testen';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server in $ms ms erreichbar: $threads Threads, $queue von $capacity Warteschlangenplätzen belegt';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server nicht erreichbar: $error';
+  }
 }

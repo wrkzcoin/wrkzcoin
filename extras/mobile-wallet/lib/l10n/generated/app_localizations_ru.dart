@@ -849,4 +849,17 @@ class SRu extends S {
 
   @override
   String get txPowServerInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String get txPowServerTest => 'Проверить';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Сервер доступен за $ms мс: потоков $threads, занято $queue из $capacity мест в очереди';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Сервер недоступен: $error';
+  }
 }

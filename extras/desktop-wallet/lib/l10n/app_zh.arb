@@ -534,5 +534,8 @@
   "txPowServerUse": "使用外部 PoW 服务器",
   "txPowServerSubtitle": "将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。",
   "txPowServerSaved": "PoW 服务器设置已保存",
-  "txPowServerInvalid": "请输入有效的主机和端口"
+  "txPowServerInvalid": "请输入有效的主机和端口",
+  "txPowServerTest": "测试",
+  "txPowServerTestOk": "服务器可达，耗时 {ms} ms：{threads} 个线程，队列已用 {queue}/{capacity}",
+  "txPowServerTestFailed": "无法连接服务器：{error}"
 }

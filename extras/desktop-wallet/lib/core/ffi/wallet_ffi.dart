@@ -259,6 +259,12 @@ typedef _FnSetScanCoinbaseDart = void Function(bool);
 typedef _FnSetTxPowServerNative = Void Function(Pointer<Utf8>, Uint16, Bool);
 typedef _FnSetTxPowServerDart = void Function(Pointer<Utf8>, int, bool);
 
+// wallet_test_tx_pow_server(host, port, ssl, char **out_json, size_t *out_len)
+typedef _FnTestTxPowServerNative = Int32 Function(
+    Pointer<Utf8>, Uint16, Bool, Pointer<Pointer<Utf8>>, Pointer<Size>);
+typedef _FnTestTxPowServerDart = int Function(
+    Pointer<Utf8>, int, bool, Pointer<Pointer<Utf8>>, Pointer<Size>);
+
 // ─── error codes (match src/errors/Errors.h) ─────────────────────────────────
 
 /// `LITE_NODE_CANNOT_RESCAN_THAT_LOW` — returned by `wallet_reset` when the
@@ -1405,6 +1411,40 @@ class WalletCApi {
     using((arena) {
       fn(host.toNativeUtf8(allocator: arena), port, ssl);
     });
+  }
+
+  /// Checks a Tx PoW server without configuring it, over the same native
+  /// client path a transaction would use. Runs off-thread because an
+  /// unreachable host blocks for the socket timeout. Resolves to
+  /// {ok, url, latency_ms, threads, queue, capacity} or {ok: false, url,
+  /// error}; never throws for a server problem, only for a broken binding.
+  Future<Map<String, dynamic>> testTxPowServer(String host, int port,
+      {bool ssl = false}) async {
+    final text = await _guarded(() => Isolate.run(() {
+          final lib = _openLibrary();
+          final _FnTestTxPowServerDart fn;
+          try {
+            fn = lib.lookupFunction<_FnTestTxPowServerNative,
+                _FnTestTxPowServerDart>('wallet_test_tx_pow_server');
+          } on ArgumentError {
+            return '{"ok":false,"url":"","error":"this wallet build cannot test servers"}';
+          }
+          final free = lib.lookupFunction<_FnStringFreeNative,
+              _FnStringFreeDart>('wallet_string_free');
+          return using((arena) {
+            final outStr = arena<Pointer<Utf8>>();
+            final outLen = arena<Size>();
+            final s = fn(host.toNativeUtf8(allocator: arena), port, ssl,
+                outStr, outLen);
+            if (s != 0 || outStr.value == nullptr) {
+              return '{"ok":false,"url":"","error":"test call failed ($s)"}';
+            }
+            final json = outStr.value.toDartString();
+            free(outStr.value);
+            return json;
+          });
+        }));
+    return jsonDecode(text) as Map<String, dynamic>;
   }
 
   // --- prepared transactions ---

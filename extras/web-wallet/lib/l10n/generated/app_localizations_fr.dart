@@ -813,4 +813,17 @@ class SFr extends S {
 
   @override
   String get txPowServerInvalid => 'Saisissez un hôte et un port valides';
+
+  @override
+  String get txPowServerTest => 'Tester';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Serveur joignable en $ms ms : $threads threads, $queue sur $capacity places de file utilisées';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Serveur injoignable : $error';
+  }
 }

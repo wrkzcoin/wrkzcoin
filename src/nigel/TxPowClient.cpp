@@ -53,7 +53,9 @@ namespace
         std::string body;
     };
 
-    std::string baseUrl(const TxPowClient::Settings &s)
+    /* scheme://host:port - what httplib::Client is constructed with. It does
+       not accept a path there, so the mount prefix goes onto each request. */
+    std::string originUrl(const TxPowClient::Settings &s)
     {
         std::string host = s.host;
 
@@ -63,7 +65,13 @@ namespace
             host = "[" + host + "]";
         }
 
-        return std::string(s.ssl ? "https://" : "http://") + host + ":" + std::to_string(s.port) + s.basePath;
+        return std::string(s.ssl ? "https://" : "http://") + host + ":" + std::to_string(s.port);
+    }
+
+    /* The origin plus the mount prefix, for logs and for the WASM path. */
+    std::string baseUrl(const TxPowClient::Settings &s)
+    {
+        return originUrl(s) + s.basePath;
     }
 
     HttpReply request(
@@ -103,26 +111,28 @@ namespace
             std::free(buffer);
         }
 #else
-        httplib::Client client(baseUrl(s));
+        httplib::Client client(originUrl(s));
 
         client.set_connection_timeout(CONNECT_TIMEOUT_SECONDS, 0);
         client.set_read_timeout(readTimeoutSeconds, 0);
         client.set_write_timeout(readTimeoutSeconds, 0);
         client.set_follow_location(false);
 
+        const std::string fullPath = s.basePath + path;
+
         httplib::Result result;
 
         if (method == "POST")
         {
-            result = client.Post(path, body ? *body : std::string(), "application/json");
+            result = client.Post(fullPath, body ? *body : std::string(), "application/json");
         }
         else if (method == "DELETE")
         {
-            result = client.Delete(path);
+            result = client.Delete(fullPath);
         }
         else
         {
-            result = client.Get(path);
+            result = client.Get(fullPath);
         }
 
         if (result)
@@ -283,9 +293,11 @@ namespace
     }
 } // namespace
 
-namespace TxPowClient
+namespace
 {
-    void configure(const std::string &hostIn, const uint16_t port, const bool ssl)
+    /* Turns what a user typed into a Settings: a pasted URL's scheme decides
+       SSL and its path is the prefix a reverse proxy mounts the server under. */
+    TxPowClient::Settings normalize(const std::string &hostIn, const uint16_t port, const bool ssl)
     {
         std::string host = hostIn;
         bool useSsl = ssl;
@@ -330,12 +342,104 @@ namespace TxPowClient
             basePath.pop_back();
         }
 
+        TxPowClient::Settings s;
+        s.host = host;
+        s.port = port;
+        s.ssl = useSsl;
+        s.basePath = basePath;
+
+        return s;
+    }
+} // namespace
+
+namespace TxPowClient
+{
+    void configure(const std::string &hostIn, const uint16_t port, const bool ssl)
+    {
+        const Settings s = normalize(hostIn, port, ssl);
+
         std::lock_guard<std::mutex> lock(g_settingsMutex);
 
-        g_settings.host = host;
-        g_settings.port = port;
-        g_settings.ssl = useSsl;
-        g_settings.basePath = basePath;
+        g_settings.host = s.host;
+        g_settings.port = s.port;
+        g_settings.ssl = s.ssl;
+        g_settings.basePath = s.basePath;
+    }
+
+    std::string probe(const std::string &hostIn, const uint16_t port, const bool ssl)
+    {
+        const Settings s = normalize(hostIn, port, ssl);
+
+        nlohmann::json j = {{"ok", false}};
+
+        if (s.host.empty() || s.port == 0)
+        {
+            j["url"] = "";
+            j["error"] = "host and port are required";
+            return j.dump();
+        }
+
+        j["url"] = baseUrl(s);
+
+#if !defined(CPPHTTPLIB_OPENSSL_SUPPORT) && !defined(__EMSCRIPTEN__)
+        if (s.ssl)
+        {
+            j["error"] = "this wallet build has no SSL support; use http or a build with OpenSSL";
+            return j.dump();
+        }
+#endif
+
+        const auto started = std::chrono::steady_clock::now();
+
+        HttpReply reply;
+
+        try
+        {
+            reply = request(s, "GET", "/health", nullptr, 10);
+        }
+        catch (const std::exception &e)
+        {
+            j["error"] = e.what();
+            return j.dump();
+        }
+
+        j["latency_ms"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - started)
+                              .count();
+
+        if (reply.status == 0)
+        {
+            j["error"] = "no response (connection refused, timed out, or TLS failed)";
+            return j.dump();
+        }
+
+        if (reply.status != 200)
+        {
+            j["error"] = "HTTP " + std::to_string(reply.status);
+            return j.dump();
+        }
+
+        try
+        {
+            const auto health = nlohmann::json::parse(reply.body);
+
+            if (health.value("status", std::string()) != "OK" || !health.contains("threads"))
+            {
+                j["error"] = "answered, but not like a Tx PoW server";
+                return j.dump();
+            }
+
+            j["ok"] = true;
+            j["threads"] = health.value("threads", 0);
+            j["queue"] = health.value("queue", 0);
+            j["capacity"] = health.value("capacity", 0);
+        }
+        catch (const std::exception &)
+        {
+            j["error"] = "answered, but not with JSON; is this the right port or path?";
+        }
+
+        return j.dump();
     }
 
     Settings settings()

@@ -1774,3 +1774,29 @@ void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl)
     TxPowClient::configure(host == nullptr ? std::string() : std::string(host), port, ssl);
 }
 
+wallet_status_t wallet_test_tx_pow_server(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len)
+{
+    if (out_json == nullptr || out_len == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    std::string result;
+
+    try
+    {
+        result = TxPowClient::probe(host == nullptr ? std::string() : std::string(host), port, ssl);
+    }
+    catch (const std::exception &e)
+    {
+        result = nlohmann::json{{"ok", false}, {"url", ""}, {"error", e.what()}}.dump();
+    }
+
+    return alloc_out_string(result, out_json, out_len);
+}
+

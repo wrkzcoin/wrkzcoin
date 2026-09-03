@@ -335,6 +335,20 @@ WALLET_CAPI_EXPORT void wallet_set_scan_coinbase(bool scan);
    only ever costs time. */
 WALLET_CAPI_EXPORT void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl);
 
+/* Checks a Tx PoW server without changing the configuration: one GET /health
+   over the same client path a transaction would use, so it also catches a
+   wallet build without SSL support. Blocks for up to ~15 seconds when the
+   host does not answer; call it off the UI thread. Always returns SUCCESS
+   with a JSON object in out_json: {"ok": true, "url": ..., "latency_ms": N,
+   "threads": N, "queue": N, "capacity": N} or {"ok": false, "url": ...,
+   "error": "..."}. Free out_json with wallet_string_free. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_test_tx_pow_server(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

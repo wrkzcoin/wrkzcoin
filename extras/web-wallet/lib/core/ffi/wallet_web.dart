@@ -577,6 +577,14 @@ class WalletCApi {
     _call('setTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
   }
 
+  /// Checks a Tx PoW server without configuring it. Resolves to the health
+  /// summary: {ok, url, latency_ms, threads, queue, capacity} or {ok: false,
+  /// url, error}.
+  Future<Map<String, dynamic>> testTxPowServer(String host, int port,
+      {bool ssl = false}) {
+    return _callMap('testTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
+  }
+
   // --- error helpers ---
 
   String errorCodeToString(int code) {

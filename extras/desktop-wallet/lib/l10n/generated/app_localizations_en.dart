@@ -1077,4 +1077,17 @@ class SEn extends S {
 
   @override
   String get txPowServerInvalid => 'Enter a valid host and port';
+
+  @override
+  String get txPowServerTest => 'Test';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server not reachable: $error';
+  }
 }

@@ -283,5 +283,8 @@
   "txPowServerUse": "Usar un servidor PoW externo",
   "txPowServerSubtitle": "Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.",
   "txPowServerSaved": "Ajustes del servidor PoW guardados",
-  "txPowServerInvalid": "Introduce un host y un puerto válidos"
+  "txPowServerInvalid": "Introduce un host y un puerto válidos",
+  "txPowServerTest": "Probar",
+  "txPowServerTestOk": "Servidor accesible en {ms} ms: {threads} hilos, {queue} de {capacity} puestos de cola en uso",
+  "txPowServerTestFailed": "Servidor no accesible: {error}"
 }

@@ -871,6 +871,22 @@ static char *dispatch(const std::string &method, const json &p)
         return ok_json(true);
     }
 
+    /*
+     * testTxPowServer — GET /health on a server without configuring it.
+     *   params: { "host": "...", "port": 443, "ssl": true }
+     *   result: { "ok": bool, "url": ..., "latency_ms", "threads", "queue", "capacity" | "error" }
+     */
+    if (method == "testTxPowServer")
+    {
+        auto host = str_param(p, "host");
+        auto port = u16_param(p, "port");
+        auto ssl = bool_param(p, "ssl");
+        char *out = nullptr;
+        size_t len = 0;
+        wallet_status_t st = wallet_test_tx_pow_server(host.c_str(), port, ssl, &out, &len);
+        return json_result(st, out, len);
+    }
+
     /* -------- browser storage bridge -------- */
 
     /*

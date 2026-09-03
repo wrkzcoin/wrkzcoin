@@ -663,5 +663,21 @@
   "txPowServerUse": "Use an external PoW server",
   "txPowServerSubtitle": "Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device's CPU is used.",
   "txPowServerSaved": "PoW server settings saved",
-  "txPowServerInvalid": "Enter a valid host and port"
+  "txPowServerInvalid": "Enter a valid host and port",
+  "txPowServerTest": "Test",
+  "txPowServerTestOk": "Server reachable in {ms} ms: {threads} threads, {queue} of {capacity} queue slots in use",
+  "@txPowServerTestOk": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "threads": {"type": "int"},
+      "queue": {"type": "int"},
+      "capacity": {"type": "int"}
+    }
+  },
+  "txPowServerTestFailed": "Server not reachable: {error}",
+  "@txPowServerTestFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  }
 }

@@ -283,5 +283,8 @@
   "txPowServerUse": "Externen PoW-Server verwenden",
   "txPowServerSubtitle": "Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.",
   "txPowServerSaved": "PoW-Server-Einstellungen gespeichert",
-  "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben"
+  "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben",
+  "txPowServerTest": "Testen",
+  "txPowServerTestOk": "Server in {ms} ms erreichbar: {threads} Threads, {queue} von {capacity} Warteschlangenplätzen belegt",
+  "txPowServerTestFailed": "Server nicht erreichbar: {error}"
 }

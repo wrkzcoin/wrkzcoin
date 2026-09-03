@@ -47,6 +47,12 @@ namespace TxPowClient
 
     bool configured();
 
+    /* Checks a server without changing the configuration: one GET /health
+       over the same client path a transaction would use. Returns a JSON
+       object string: {"ok": true, "url": ..., "latency_ms": N, "threads": N,
+       "queue": N, "capacity": N} or {"ok": false, "url": ..., "error": ...}. */
+    std::string probe(const std::string &host, const uint16_t port, const bool ssl);
+
     /* A solver bound to the current settings, or an empty function when no
        server is configured. Pass straight to generateTransactionPoWHeight(). */
     CryptoNote::RemotePoWSolver solver();

@@ -431,5 +431,8 @@
   "txPowServerUse": "Dùng máy chủ PoW bên ngoài",
   "txPowServerSubtitle": "Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.",
   "txPowServerSaved": "Đã lưu cài đặt máy chủ PoW",
-  "txPowServerInvalid": "Nhập host và cổng hợp lệ"
+  "txPowServerInvalid": "Nhập host và cổng hợp lệ",
+  "txPowServerTest": "Kiểm tra",
+  "txPowServerTestOk": "Kết nối máy chủ trong {ms} ms: {threads} luồng, đang dùng {queue}/{capacity} chỗ trong hàng đợi",
+  "txPowServerTestFailed": "Không kết nối được máy chủ: {error}"
 }

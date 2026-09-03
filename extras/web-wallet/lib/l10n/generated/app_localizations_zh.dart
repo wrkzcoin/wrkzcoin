@@ -783,4 +783,17 @@ class SZh extends S {
 
   @override
   String get txPowServerInvalid => '请输入有效的主机和端口';
+
+  @override
+  String get txPowServerTest => '测试';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return '服务器可达，耗时 $ms ms：$threads 个线程，队列已用 $queue/$capacity';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return '无法连接服务器：$error';
+  }
 }

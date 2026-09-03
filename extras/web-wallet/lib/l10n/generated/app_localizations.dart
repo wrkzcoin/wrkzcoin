@@ -1592,6 +1592,24 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Enter a valid host and port'**
   String get txPowServerInvalid;
+
+  /// No description provided for @txPowServerTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get txPowServerTest;
+
+  /// No description provided for @txPowServerTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Server reachable in {ms} ms: {threads} threads, {queue} of {capacity} queue slots in use'**
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity);
+
+  /// No description provided for @txPowServerTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Server not reachable: {error}'**
+  String txPowServerTestFailed(String error);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

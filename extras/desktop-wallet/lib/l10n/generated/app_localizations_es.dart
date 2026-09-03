@@ -1085,4 +1085,17 @@ class SEs extends S {
 
   @override
   String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
+
+  @override
+  String get txPowServerTest => 'Probar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor accesible en $ms ms: $threads hilos, $queue de $capacity puestos de cola en uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor no accesible: $error';
+  }
 }

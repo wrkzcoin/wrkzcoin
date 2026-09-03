@@ -36,10 +36,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   // Tx PoW server
   final _powHostCtrl = TextEditingController();
-  final _powPortCtrl = TextEditingController(text: '17870');
+  final _powPortCtrl =
+      TextEditingController(text: '${AppConfig.defaultTxPowServerPort}');
   bool _powEnabled = false;
-  bool _powSsl = false;
+  bool _powSsl = AppConfig.defaultTxPowServerSsl;
   bool _powFormLoaded = false;
+  bool _powTesting = false;
   String? _powMsg;
   bool _powMsgIsError = false;
 
@@ -87,7 +89,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final settings = TxPowServerSettings(
       enabled: _powEnabled,
       host: host,
-      port: port > 0 ? port : kDefaultTxPowServerPort,
+      port: port > 0 ? port : AppConfig.defaultTxPowServerPort,
       ssl: _powSsl,
     );
     await ref.read(txPowServerProvider.notifier).set(settings);
@@ -98,6 +100,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _powMsg = tr.txPowServerSaved;
       _powMsgIsError = false;
     });
+  }
+
+  /// Probes the server named in the form, without saving anything.
+  Future<void> _testPowServer() async {
+    final tr = S.of(context)!;
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _powMsg = tr.txPowServerInvalid;
+        _powMsgIsError = true;
+      });
+      return;
+    }
+    setState(() {
+      _powTesting = true;
+      _powMsg = null;
+    });
+    try {
+      final r = await ref
+          .read(walletCApiProvider)
+          .testTxPowServer(host, port, ssl: _powSsl);
+      if (!mounted) return;
+      if (r['ok'] == true) {
+        setState(() {
+          _powMsg = tr.txPowServerTestOk(
+            (r['latency_ms'] as num?)?.toInt() ?? 0,
+            (r['threads'] as num?)?.toInt() ?? 0,
+            (r['queue'] as num?)?.toInt() ?? 0,
+            (r['capacity'] as num?)?.toInt() ?? 0,
+          );
+          _powMsgIsError = false;
+        });
+        hapticMedium();
+      } else {
+        setState(() {
+          _powMsg = tr.txPowServerTestFailed('${r['error'] ?? 'unknown error'}');
+          _powMsgIsError = true;
+        });
+        hapticError();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _powMsg = tr.txPowServerTestFailed(e.toString());
+        _powMsgIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _powTesting = false);
+    }
   }
 
   void _loadCurrentNode() {
@@ -921,7 +973,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           controller: _powPortCtrl,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
-                              hintText: '17870', labelText: tr.port),
+                              hintText: '${AppConfig.defaultTxPowServerPort}',
+                              labelText: tr.port),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -947,9 +1000,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       )),
                 ],
                 const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: _applyPowServer,
-                  child: Text(tr.apply),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: (_powEnabled && !_powTesting)
+                            ? _testPowServer
+                            : null,
+                        child: _powTesting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(tr.txPowServerTest),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _applyPowServer,
+                        child: Text(tr.apply),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

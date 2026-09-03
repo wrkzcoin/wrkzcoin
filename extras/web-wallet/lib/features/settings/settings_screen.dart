@@ -57,6 +57,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _powEnabled = false;
   bool _powSSL = false;
   bool _powFormLoaded = false;
+  bool _powTesting = false;
   String? _powError;
   String? _powSuccess;
 
@@ -117,6 +118,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       _powError = null;
       _powSuccess = tr?.txPowServerSaved ?? 'PoW server settings saved';
     });
+  }
+
+  /// Probes the server named in the form, without saving anything.
+  Future<void> _testPowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    setState(() { _powTesting = true; _powError = null; _powSuccess = null; });
+    try {
+      final r = await ref.read(walletCApiProvider).testTxPowServer(host, port, ssl: _powSSL);
+      if (!mounted) return;
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final threads = (r['threads'] as num?)?.toInt() ?? 0;
+        final queue = (r['queue'] as num?)?.toInt() ?? 0;
+        final capacity = (r['capacity'] as num?)?.toInt() ?? 0;
+        setState(() => _powSuccess = tr?.txPowServerTestOk(ms, threads, queue, capacity)
+            ?? 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use');
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _powError = tr?.txPowServerTestFailed(error) ?? 'Server not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _powError = tr?.txPowServerTestFailed(e.toString()) ?? 'Server not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _powTesting = false);
+    }
   }
 
   Future<void> _saveNode() async {
@@ -509,12 +545,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         Text(_powSuccess!, style: const TextStyle(color: kSuccess, fontSize: 13)),
                       ],
                       const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton(
-                          onPressed: _savePowServer,
-                          child: Text(tr?.apply ?? 'Apply'),
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_powEnabled && !_powTesting) ? _testPowServer : null,
+                            child: _powTesting
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.txPowServerTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: _savePowServer,
+                            child: Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

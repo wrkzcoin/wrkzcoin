@@ -534,5 +534,8 @@
   "txPowServerUse": "Utiliser un serveur PoW externe",
   "txPowServerSubtitle": "Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.",
   "txPowServerSaved": "Paramètres du serveur PoW enregistrés",
-  "txPowServerInvalid": "Saisissez un hôte et un port valides"
+  "txPowServerInvalid": "Saisissez un hôte et un port valides",
+  "txPowServerTest": "Tester",
+  "txPowServerTestOk": "Serveur joignable en {ms} ms : {threads} threads, {queue} sur {capacity} places de file utilisées",
+  "txPowServerTestFailed": "Serveur injoignable : {error}"
 }

@@ -787,4 +787,17 @@ class SJa extends S {
 
   @override
   String get txPowServerInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String get txPowServerTest => 'テスト';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'サーバーに $ms ms で接続できました: $threads スレッド、キュー $queue/$capacity 使用中';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'サーバーに接続できません: $error';
+  }
 }

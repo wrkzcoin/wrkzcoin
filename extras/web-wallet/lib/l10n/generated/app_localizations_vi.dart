@@ -801,4 +801,17 @@ class SVi extends S {
 
   @override
   String get txPowServerInvalid => 'Nhập host và cổng hợp lệ';
+
+  @override
+  String get txPowServerTest => 'Kiểm tra';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Kết nối máy chủ trong $ms ms: $threads luồng, đang dùng $queue/$capacity chỗ trong hàng đợi';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Không kết nối được máy chủ: $error';
+  }
 }

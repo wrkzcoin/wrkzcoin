@@ -283,5 +283,8 @@
   "txPowServerUse": "外部 PoW サーバーを使用",
   "txPowServerSubtitle": "トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。",
   "txPowServerSaved": "PoW サーバーの設定を保存しました",
-  "txPowServerInvalid": "有効なホストとポートを入力してください"
+  "txPowServerInvalid": "有効なホストとポートを入力してください",
+  "txPowServerTest": "テスト",
+  "txPowServerTestOk": "サーバーに {ms} ms で接続できました: {threads} スレッド、キュー {queue}/{capacity} 使用中",
+  "txPowServerTestFailed": "サーバーに接続できません: {error}"
 }
