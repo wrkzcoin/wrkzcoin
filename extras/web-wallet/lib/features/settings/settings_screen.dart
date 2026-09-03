@@ -351,16 +351,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      // Save before closing so the data is in a clean state before we delete it
-      try { await ffi.save(); } catch (_) {}
+      final walletName = await _storage.read(key: _kLastWalletKey);
+
+      // Close BEFORE deleting. close() saves, and saving exports the open
+      // wallet straight back into IndexedDB - so deleting first only got the
+      // file rewritten a moment later, which is why Delete Wallet Data left
+      // the wallet sitting in the Open Wallet list. Desktop already does it
+      // in this order.
+      try { await ffi.close(); } catch (_) {}
 
       // Delete via WASM bridge (removes from IndexedDB)
-      final walletName = await _storage.read(key: _kLastWalletKey);
-      if (walletName != null) {
+      if (walletName != null && walletName.isNotEmpty) {
         await ffi.deleteFile(walletName);
       }
 
-      ffi.close();
       await clearLastWalletPath();
       await clearWalletPassword();
       ref.read(walletOpenProvider.notifier).state = false;

@@ -223,7 +223,17 @@ export class WalletBridge {
    * Delete a wallet file from both WASM store and IndexedDB.
    */
   async deleteFile(filename) {
-    try { this.call('deleteFile', { filename }); } catch (_) { /* may not exist in WASM store */ }
+    // Forget the file first if it is the one currently open. save() and close()
+    // both export the open wallet back into IndexedDB, so any autosave landing
+    // after this point would recreate exactly what we are deleting - the delete
+    // appears to work and the wallet is back in the list on the next load.
+    if (this._currentFilename === filename) {
+      this._currentFilename = null;
+    }
+    // Absent from the WASM store is the normal case: the in-memory store only
+    // holds a wallet that is currently open, and this is usually called on one
+    // that is not. IndexedDB is the copy that actually matters.
+    try { this.call('deleteFile', { filename }); } catch (_) { /* not open - expected */ }
     await this._storage.deleteFile(filename);
   }
 
