@@ -93,38 +93,35 @@ When changing target architecture/toolchain (for example x86_64 -> aarch64 or vi
 Minimum tooling:
 
 - CMake >= 3.16
-- C++ compiler:
-  - GCC >= 7, or
-  - Clang >= 6
+- A C++20 compiler (the build sets `CMAKE_CXX_STANDARD 20`, and CMake refuses older toolchains):
+  - GCC >= 10, or
+  - Clang >= 10 (`clang >= 15` on Linux, see below), or
+  - MSVC 19.29 or later (Visual Studio 2019 16.11, or Visual Studio 2022)
 - C++20 `<chrono>` compatibility note (Linux):
   - Confirmed: `clang-15` compiles successfully.
   - `clang-14` with GCC 13 `libstdc++` headers is known to fail in `<chrono>`.
   - Use GCC, `clang >= 15`, clang with `libc++`, or point clang at an older GCC toolchain (for example GCC 11 headers/libs).
-- OpenSSL development package (`libssl-dev`)
-- zlib development package (`zlib1g-dev`) — required for static OpenSSL linking
 - Git
 - Make or Ninja
 
-Database/compression libs used by build:
+Optional, detected at configure time and skipped with a status line when absent:
 
-- RocksDB
-- Zstd
+- OpenSSL development package (`libssl-dev`): HTTPS in cpp-httplib, which the RPC clients use to reach `https://` daemons and notify-hook URLs
+- zlib development package (`zlib1g-dev`): compressed HTTP bodies; also needed to link a static OpenSSL
+
+Everything else is bundled under `external/` and built as part of the tree: RocksDB and zstd
+(daemon only), libzmq, miniupnpc, argon2, and the header-only cpp-httplib, cxxopts,
+nlohmann-json and linenoise. `-DWRKZ_SYSTEM_ROCKSDB=ON` links a system RocksDB and zstd
+instead (`librocksdb-dev`, `libzstd-dev`).
 
 ### Optional: ZeroMQ (daemon publisher)
 
-ZMQ support is enabled by default at configure time (`ENABLE_ZMQ=ON`), but it is auto-disabled with a CMake warning if `libzmq` is not found.
+ZMQ support is enabled by default at configure time (`ENABLE_ZMQ=ON`). It builds the bundled
+`external/libzmq` as a static library with CURVE off, so no system libzmq or libsodium is
+needed. Pass `-DENABLE_ZMQ=OFF` to leave it out.
 
 - Runtime feature: daemon `--zmq-pub` and `--no-zmq`
 - Default endpoint: `tcp://127.0.0.1:17857`
-
-For Linux builds:
-
-- Install headers/libs: `libzmq3-dev` and `libsodium-dev`
-- For portable/static builds, make sure static archives exist:
-  - `/usr/lib/x86_64-linux-gnu/libzmq.a`
-  - `/usr/lib/x86_64-linux-gnu/libsodium.a`
-
-If you changed dependencies, use a fresh build dir (or clear cache) so CMake does not reuse stale `ZMQ_LIBRARY` values.
 
 ## Ubuntu example
 
@@ -132,8 +129,12 @@ If you changed dependencies, use a fresh build dir (or clear cache) so CMake doe
 sudo apt update
 sudo apt install -y \
   build-essential git cmake pkg-config \
-  libzstd-dev libzmq3-dev libsodium-dev
+  libssl-dev zlib1g-dev
+```
 
+The last two packages are optional (HTTPS support); everything else the build needs is bundled.
+
+```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
@@ -141,7 +142,7 @@ cmake --build build -j$(nproc)
 ## macOS example (Homebrew)
 
 ```bash
-brew install cmake openssl zstd
+brew install cmake openssl
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
@@ -154,11 +155,12 @@ If OpenSSL is not auto-detected, pass:
 
 ## Windows (Visual Studio)
 
-Open **x64 Native Tools Command Prompt for VS 2019/2022**:
+Open **x64 Native Tools Command Prompt for VS 2022** (Visual Studio 2019 16.11 or later also
+works, with `-G "Visual Studio 16 2019"`):
 
 ```bat
 cd <your_wrkzcoin_directory>
-cmake -S . -B build -G "Visual Studio 16 2019" -A x64 -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release -- /m
 ```
 
