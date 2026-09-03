@@ -835,4 +835,21 @@ class SDe extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
   }
+
+  @override
+  String get txPowServerSection => 'Transaktions-PoW-Server';
+
+  @override
+  String get txPowServerUse => 'Externen PoW-Server verwenden';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.';
+
+  @override
+  String get txPowServerSaved => 'PoW-Server-Einstellungen gespeichert';
+
+  @override
+  String get txPowServerInvalid =>
+      'Bitte einen gültigen Host und Port eingeben';
 }

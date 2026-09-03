@@ -1068,4 +1068,20 @@ class SRu extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Будет отдавать блоки с';
+
+  @override
+  String get txPowServerSection => 'PoW-сервер транзакций';
+
+  @override
+  String get txPowServerUse => 'Использовать внешний PoW-сервер';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Отправлять proof of work транзакции на сервер вместо вычисления на этом устройстве. Если сервер не отвечает, используется процессор этого устройства.';
+
+  @override
+  String get txPowServerSaved => 'Настройки PoW-сервера сохранены';
+
+  @override
+  String get txPowServerInvalid => 'Введите корректный хост и порт';
 }

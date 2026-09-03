@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "本地节点仍落后网络 {behind} 个区块。现在将钱包指向它，同步会停止直到它追上，余额会缺少它尚未到达的部分——而且屏幕上没有任何说明。继续使用远程节点没有任何损失；无论如何节点都在继续同步。",
   "switchAnyway": "仍要切换",
   "switchToRemoteNode": "切换到远程节点",
-  "nodeWillServeFromLabel": "将从此高度提供区块"
+  "nodeWillServeFromLabel": "将从此高度提供区块",
+  "txPowServerSection": "交易 PoW 服务器",
+  "txPowServerUse": "使用外部 PoW 服务器",
+  "txPowServerSubtitle": "将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。",
+  "txPowServerSaved": "PoW 服务器设置已保存",
+  "txPowServerInvalid": "请输入有效的主机和端口"
 }

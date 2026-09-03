@@ -835,4 +835,20 @@ class SEs extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Sincronización detenida en el bloque $covered. El nodo con el que hablaba solo responde desde el bloque $servesFrom en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transacciones';
+
+  @override
+  String get txPowServerUse => 'Usar un servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.';
+
+  @override
+  String get txPowServerSaved => 'Ajustes del servidor PoW guardados';
+
+  @override
+  String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
 }

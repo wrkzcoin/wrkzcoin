@@ -228,6 +228,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
   void _openWallet() {
     ref.read(walletCApiProvider).setScanCoinbase(ref.read(scanCoinbaseProvider));
+    ref.read(txPowServerProvider).applyTo(ref.read(walletCApiProvider));
     ref.read(walletOpenProvider.notifier).state = true;
     ref.read(walletLockedProvider.notifier).state = false;
     context.go('/overview');

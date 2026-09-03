@@ -445,6 +445,12 @@ export class WalletBridge {
     return this.call('setScanCoinbase', { scan });
   }
 
+  // ====== External Tx PoW server ======
+
+  setTxPowServer(host, port, ssl = false) {
+    return this.call('setTxPowServer', { host, port, ssl });
+  }
+
   // ====== File Management (Browser Storage) ======
 
   /**
@@ -697,6 +703,9 @@ export class WalletBridgeWorker {
 
   // ====== Coinbase ======
   setScanCoinbase(scan) { return this.call('setScanCoinbase', { scan }); }
+
+  // ====== External Tx PoW server ======
+  setTxPowServer(host, port, ssl = false) { return this.call('setTxPowServer', { host, port, ssl }); }
 
   // ====== Version ======
   apiVersion() { return this.call('apiVersion'); }

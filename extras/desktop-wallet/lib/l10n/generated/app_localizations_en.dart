@@ -1061,4 +1061,20 @@ class SEn extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Will serve blocks from';
+
+  @override
+  String get txPowServerSection => 'Transaction PoW Server';
+
+  @override
+  String get txPowServerUse => 'Use an external PoW server';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.';
+
+  @override
+  String get txPowServerSaved => 'PoW server settings saved';
+
+  @override
+  String get txPowServerInvalid => 'Enter a valid host and port';
 }

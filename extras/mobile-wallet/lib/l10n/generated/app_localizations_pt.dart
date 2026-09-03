@@ -835,4 +835,20 @@ class SPt extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Sincronização parada no bloco $covered. O nó com que falava só responde a partir do bloco $servesFrom, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transações';
+
+  @override
+  String get txPowServerUse => 'Usar um servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.';
+
+  @override
+  String get txPowServerSaved => 'Configurações do servidor PoW salvas';
+
+  @override
+  String get txPowServerInvalid => 'Informe um host e uma porta válidos';
 }

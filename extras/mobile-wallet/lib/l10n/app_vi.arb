@@ -426,5 +426,10 @@
   "nodeFullChain": "Toàn bộ chuỗi",
   "localNodeMobileFuture": "Chạy node ngay trên điện thoại đã có trong kế hoạch nhưng chưa khả dụng — một node cần vài GB dung lượng và nhiều giờ đồng bộ. Trong lúc đó, hãy trỏ ví này tới node do bạn tự chạy.",
   "syncStoppedTitle": "Đồng bộ đã dừng",
-  "syncGapStalled": "Đồng bộ dừng ở khối {covered}. Nút đang kết nối chỉ trả lời từ khối {servesFrom} trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi."
+  "syncGapStalled": "Đồng bộ dừng ở khối {covered}. Nút đang kết nối chỉ trả lời từ khối {servesFrom} trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.",
+  "txPowServerSection": "Máy chủ PoW giao dịch",
+  "txPowServerUse": "Dùng máy chủ PoW bên ngoài",
+  "txPowServerSubtitle": "Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.",
+  "txPowServerSaved": "Đã lưu cài đặt máy chủ PoW",
+  "txPowServerInvalid": "Nhập host và cổng hợp lệ"
 }

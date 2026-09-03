@@ -53,6 +53,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _nodePortCtrl = TextEditingController();
   bool _nodeSSL = false;
 
+  // Tx PoW server form
+  final _powHostCtrl = TextEditingController();
+  final _powPortCtrl = TextEditingController();
+  bool _powEnabled = false;
+  bool _powSSL = false;
+  bool _powFormLoaded = false;
+  String? _powError;
+  String? _powSuccess;
+
   @override
   void initState() {
     super.initState();
@@ -70,7 +79,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _nodeHostCtrl.dispose();
     _nodePortCtrl.dispose();
+    _powHostCtrl.dispose();
+    _powPortCtrl.dispose();
     super.dispose();
+  }
+
+  /// Prefills the PoW server form once the stored setting has been read, and
+  /// leaves it alone afterwards so typing is not overwritten by rebuilds.
+  void _syncPowForm(TxPowServerSettings s) {
+    if (_powFormLoaded || !s.loaded) return;
+    _powFormLoaded = true;
+    _powEnabled = s.enabled;
+    _powSSL = s.ssl;
+    _powHostCtrl.text = s.host;
+    _powPortCtrl.text = '${s.port}';
+  }
+
+  Future<void> _savePowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (_powEnabled && (host.isEmpty || port <= 0 || port > 65535)) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    final settings = TxPowServerSettings(
+      enabled: _powEnabled,
+      host: host,
+      port: port > 0 ? port : kDefaultTxPowServerPort,
+      ssl: _powSSL,
+    );
+    await ref.read(txPowServerProvider.notifier).set(settings);
+    settings.applyTo(ref.read(walletCApiProvider));
+    if (!mounted) return;
+    setState(() {
+      _powError = null;
+      _powSuccess = tr?.txPowServerSaved ?? 'PoW server settings saved';
+    });
   }
 
   /// True when Apply may go ahead.
@@ -569,6 +617,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
+    _syncPowForm(ref.watch(txPowServerProvider));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -782,6 +831,88 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     _nodeSuccess = null;
                   });
                 },
+              ),
+              const SizedBox(height: 24),
+
+              // -- Transaction PoW server section ------------------------------
+              _SectionHeader(title: tr?.txPowServerSection ?? 'Transaction PoW Server', icon: Icons.memory_outlined),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(tr?.txPowServerUse ?? 'Use an external PoW server', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tr?.txPowServerSubtitle ?? "Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device's CPU is used.",
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Switch(
+                            value: _powEnabled,
+                            onChanged: (v) => setState(() => _powEnabled = v),
+                          ),
+                        ],
+                      ),
+                      if (_powEnabled) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: _powHostCtrl,
+                                decoration: InputDecoration(labelText: tr?.hostIpAddress ?? 'Host / IP address'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _powPortCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(labelText: tr?.port ?? 'Port'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              children: [
+                                Text(tr?.ssl ?? 'SSL', style: const TextStyle(color: kTextSecondary, fontSize: 12)),
+                                Switch(value: _powSSL, onChanged: (v) => setState(() => _powSSL = v)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_powError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powError!, style: const TextStyle(color: kError, fontSize: 13)),
+                      ],
+                      if (_powSuccess != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powSuccess!, style: const TextStyle(color: kSuccess, fontSize: 13)),
+                      ],
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton(
+                          onPressed: _savePowServer,
+                          child: Text(tr?.apply ?? 'Apply'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
 

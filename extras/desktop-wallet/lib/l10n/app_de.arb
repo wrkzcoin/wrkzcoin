@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "Der lokale Node liegt noch {behind} Blöcke hinter dem Netzwerk. Wenn Sie das Wallet jetzt darauf richten, pausiert die Synchronisierung, bis er aufgeholt hat, und zeigt einen Kontostand ohne alles, was er noch nicht erreicht hat — ohne dass etwas auf dem Bildschirm das erklärt. Auf dem entfernten Node zu bleiben kostet nichts; der Node synchronisiert so oder so weiter.",
   "switchAnyway": "Trotzdem wechseln",
   "switchToRemoteNode": "Zum entfernten Node wechseln",
-  "nodeWillServeFromLabel": "Wird Blöcke liefern ab"
+  "nodeWillServeFromLabel": "Wird Blöcke liefern ab",
+  "txPowServerSection": "Transaktions-PoW-Server",
+  "txPowServerUse": "Externen PoW-Server verwenden",
+  "txPowServerSubtitle": "Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.",
+  "txPowServerSaved": "PoW-Server-Einstellungen gespeichert",
+  "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben"
 }

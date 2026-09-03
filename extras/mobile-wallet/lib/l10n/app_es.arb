@@ -426,5 +426,10 @@
   "nodeFullChain": "Cadena completa",
   "localNodeMobileFuture": "Ejecutar el nodo en el propio teléfono está planeado, pero aún no disponible: un nodo necesita varios GB de almacenamiento y horas de sincronización. Mientras tanto, apunta esta cartera a un nodo tuyo.",
   "syncStoppedTitle": "Sincronización detenida",
-  "syncGapStalled": "Sincronización detenida en el bloque {covered}. El nodo con el que hablaba solo responde desde el bloque {servesFrom} en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa."
+  "syncGapStalled": "Sincronización detenida en el bloque {covered}. El nodo con el que hablaba solo responde desde el bloque {servesFrom} en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.",
+  "txPowServerSection": "Servidor PoW de transacciones",
+  "txPowServerUse": "Usar un servidor PoW externo",
+  "txPowServerSubtitle": "Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.",
+  "txPowServerSaved": "Ajustes del servidor PoW guardados",
+  "txPowServerInvalid": "Introduce un host y un puerto válidos"
 }

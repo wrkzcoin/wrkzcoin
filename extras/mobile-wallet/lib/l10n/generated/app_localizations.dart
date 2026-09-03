@@ -1610,6 +1610,36 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
   String syncGapStalled(int covered, int servesFrom);
+
+  /// No description provided for @txPowServerSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Transaction PoW Server'**
+  String get txPowServerSection;
+
+  /// No description provided for @txPowServerUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use an external PoW server'**
+  String get txPowServerUse;
+
+  /// No description provided for @txPowServerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.'**
+  String get txPowServerSubtitle;
+
+  /// No description provided for @txPowServerSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'PoW server settings saved'**
+  String get txPowServerSaved;
+
+  /// No description provided for @txPowServerInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid host and port'**
+  String get txPowServerInvalid;
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

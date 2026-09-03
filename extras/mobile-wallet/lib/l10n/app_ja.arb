@@ -426,5 +426,10 @@
   "nodeFullChain": "チェーン全体",
   "localNodeMobileFuture": "端末上でノードを動かす機能は計画中ですが、まだ利用できません。ノードには数 GB の保存容量と数時間の同期が必要です。それまでは自分で運用するノードを指定してください。",
   "syncStoppedTitle": "同期を停止しました",
-  "syncGapStalled": "ブロック {covered} で同期が停止しました。接続先のノードはブロック {servesFrom} 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。"
+  "syncGapStalled": "ブロック {covered} で同期が停止しました。接続先のノードはブロック {servesFrom} 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。",
+  "txPowServerSection": "トランザクション PoW サーバー",
+  "txPowServerUse": "外部 PoW サーバーを使用",
+  "txPowServerSubtitle": "トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。",
+  "txPowServerSaved": "PoW サーバーの設定を保存しました",
+  "txPowServerInvalid": "有効なホストとポートを入力してください"
 }

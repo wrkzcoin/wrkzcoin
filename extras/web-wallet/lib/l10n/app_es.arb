@@ -278,5 +278,10 @@
   "languagePt": "Portugu\u00eas",
   "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
   "ringSize": "Tamaño del anillo",
-  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual."
+  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.",
+  "txPowServerSection": "Servidor PoW de transacciones",
+  "txPowServerUse": "Usar un servidor PoW externo",
+  "txPowServerSubtitle": "Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.",
+  "txPowServerSaved": "Ajustes del servidor PoW guardados",
+  "txPowServerInvalid": "Introduce un host y un puerto válidos"
 }

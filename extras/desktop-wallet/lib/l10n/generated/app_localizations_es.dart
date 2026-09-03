@@ -1069,4 +1069,20 @@ class SEs extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Servirá bloques desde';
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transacciones';
+
+  @override
+  String get txPowServerUse => 'Usar un servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.';
+
+  @override
+  String get txPowServerSaved => 'Ajustes del servidor PoW guardados';
+
+  @override
+  String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
 }

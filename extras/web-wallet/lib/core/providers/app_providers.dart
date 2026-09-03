@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
+import '../ffi/wallet_web.dart';
 
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
@@ -157,6 +160,101 @@ class ScanCoinbaseNotifier extends Notifier<bool> {
 
 final scanCoinbaseProvider =
     NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+
+// ── External Tx PoW server ───────────────────────────────────────────────────
+
+const _kTxPowServerKey = 'pluton_tx_pow_server';
+
+/// Default port of wrkz-txpow-server.
+const int kDefaultTxPowServerPort = 17870;
+
+/// Where the wallet sends its transaction proof of work. When [active], the
+/// wallet worker asks the server first and falls back to computing it in the
+/// browser if the server does not answer. Without a server the web wallet
+/// pays the PoW bypass fee instead, because browser PoW is very slow.
+class TxPowServerSettings {
+  const TxPowServerSettings({
+    this.enabled = false,
+    this.host = '',
+    this.port = kDefaultTxPowServerPort,
+    this.ssl = false,
+    this.loaded = false,
+  });
+
+  final bool enabled;
+  final String host;
+  final int port;
+  final bool ssl;
+
+  /// True once the stored value has been read, so forms know when to prefill.
+  final bool loaded;
+
+  bool get active => enabled && host.isNotEmpty && port > 0;
+
+  TxPowServerSettings copyWith({
+    bool? enabled,
+    String? host,
+    int? port,
+    bool? ssl,
+    bool? loaded,
+  }) =>
+      TxPowServerSettings(
+        enabled: enabled ?? this.enabled,
+        host: host ?? this.host,
+        port: port ?? this.port,
+        ssl: ssl ?? this.ssl,
+        loaded: loaded ?? this.loaded,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'enabled': enabled, 'host': host, 'port': port, 'ssl': ssl};
+
+  factory TxPowServerSettings.fromJson(Map<String, dynamic> j) =>
+      TxPowServerSettings(
+        enabled: j['enabled'] as bool? ?? false,
+        host: (j['host'] as String? ?? '').trim(),
+        port: (j['port'] as num?)?.toInt() ?? kDefaultTxPowServerPort,
+        ssl: j['ssl'] as bool? ?? false,
+        loaded: true,
+      );
+
+  /// Pushes this setting into the wallet worker. Call after every wallet
+  /// open and whenever the setting changes.
+  void applyTo(WalletCApi ffi) =>
+      ffi.setTxPowServer(active ? host : '', port, ssl: ssl);
+}
+
+class TxPowServerNotifier extends Notifier<TxPowServerSettings> {
+  @override
+  TxPowServerSettings build() {
+    _load();
+    return const TxPowServerSettings();
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kTxPowServerKey);
+    if (v == null || v.isEmpty) {
+      state = state.copyWith(loaded: true);
+      return;
+    }
+    try {
+      state = TxPowServerSettings.fromJson(
+          jsonDecode(v) as Map<String, dynamic>);
+    } catch (_) {
+      state = state.copyWith(loaded: true);
+    }
+  }
+
+  Future<void> set(TxPowServerSettings settings) async {
+    state = settings.copyWith(loaded: true);
+    await _storage.write(
+        key: _kTxPowServerKey, value: jsonEncode(settings.toJson()));
+  }
+}
+
+final txPowServerProvider =
+    NotifierProvider<TxPowServerNotifier, TxPowServerSettings>(
+        TxPowServerNotifier.new);
 
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 

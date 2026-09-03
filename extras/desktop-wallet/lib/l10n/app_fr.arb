@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "Le nœud local a encore {behind} blocs de retard sur le réseau. Y connecter le portefeuille maintenant met la synchronisation en attente jusqu'à ce qu'il rattrape, en affichant un solde amputé de tout ce qu'il n'a pas atteint — sans rien à l'écran pour l'expliquer. Rester sur le nœud distant ne coûte rien ; le nœud continue de se synchroniser dans les deux cas.",
   "switchAnyway": "Basculer quand même",
   "switchToRemoteNode": "Basculer vers le nœud distant",
-  "nodeWillServeFromLabel": "Servira les blocs à partir de"
+  "nodeWillServeFromLabel": "Servira les blocs à partir de",
+  "txPowServerSection": "Serveur PoW des transactions",
+  "txPowServerUse": "Utiliser un serveur PoW externe",
+  "txPowServerSubtitle": "Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.",
+  "txPowServerSaved": "Paramètres du serveur PoW enregistrés",
+  "txPowServerInvalid": "Saisissez un hôte et un port valides"
 }

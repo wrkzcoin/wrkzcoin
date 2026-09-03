@@ -1059,4 +1059,20 @@ class SVi extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Sẽ phục vụ khối từ';
+
+  @override
+  String get txPowServerSection => 'Máy chủ PoW giao dịch';
+
+  @override
+  String get txPowServerUse => 'Dùng máy chủ PoW bên ngoài';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.';
+
+  @override
+  String get txPowServerSaved => 'Đã lưu cài đặt máy chủ PoW';
+
+  @override
+  String get txPowServerInvalid => 'Nhập host và cổng hợp lệ';
 }

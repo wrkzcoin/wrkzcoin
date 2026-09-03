@@ -795,4 +795,20 @@ class SPt extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transações';
+
+  @override
+  String get txPowServerUse => 'Usar um servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.';
+
+  @override
+  String get txPowServerSaved => 'Configurações do servidor PoW salvas';
+
+  @override
+  String get txPowServerInvalid => 'Informe um host e uma porta válidos';
 }

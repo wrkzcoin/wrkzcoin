@@ -1068,4 +1068,21 @@ class SDe extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Wird Blöcke liefern ab';
+
+  @override
+  String get txPowServerSection => 'Transaktions-PoW-Server';
+
+  @override
+  String get txPowServerUse => 'Externen PoW-Server verwenden';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.';
+
+  @override
+  String get txPowServerSaved => 'PoW-Server-Einstellungen gespeichert';
+
+  @override
+  String get txPowServerInvalid =>
+      'Bitte einen gültigen Host und Port eingeben';
 }

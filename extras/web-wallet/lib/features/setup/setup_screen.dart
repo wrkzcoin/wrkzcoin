@@ -79,6 +79,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       final keys = await ffi.getSpendKeysJson(address);
       final viewKey = await ffi.getPrivateViewKey();
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
 
       await storeWalletPassword(_passCtrl.text);
       setState(() {
@@ -110,6 +111,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storeWalletPassword(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
@@ -136,6 +138,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storeWalletPassword(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
@@ -163,6 +166,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         ssl: _daemonSSL,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storeWalletPassword(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');

@@ -1071,4 +1071,20 @@ class SFr extends S {
 
   @override
   String get nodeWillServeFromLabel => 'Servira les blocs à partir de';
+
+  @override
+  String get txPowServerSection => 'Serveur PoW des transactions';
+
+  @override
+  String get txPowServerUse => 'Utiliser un serveur PoW externe';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.';
+
+  @override
+  String get txPowServerSaved => 'Paramètres du serveur PoW enregistrés';
+
+  @override
+  String get txPowServerInvalid => 'Saisissez un hôte et un port valides';
 }

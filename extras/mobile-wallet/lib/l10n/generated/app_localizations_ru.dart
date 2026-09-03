@@ -833,4 +833,20 @@ class SRu extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Синхронизация остановлена на блоке $covered. Узел, с которым шёл обмен, отвечает только начиная с блока $servesFrom, поэтому блоки между ними с него не скачать. Баланс неполный, пока вы не подключите узел с полной цепочкой.';
   }
+
+  @override
+  String get txPowServerSection => 'PoW-сервер транзакций';
+
+  @override
+  String get txPowServerUse => 'Использовать внешний PoW-сервер';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Отправлять proof of work транзакции на сервер вместо вычисления на этом устройстве. Если сервер не отвечает, используется процессор этого устройства.';
+
+  @override
+  String get txPowServerSaved => 'Настройки PoW-сервера сохранены';
+
+  @override
+  String get txPowServerInvalid => 'Введите корректный хост и порт';
 }

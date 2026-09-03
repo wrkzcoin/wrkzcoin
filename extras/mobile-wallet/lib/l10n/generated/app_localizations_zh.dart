@@ -815,4 +815,20 @@ class SZh extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
   }
+
+  @override
+  String get txPowServerSection => '交易 PoW 服务器';
+
+  @override
+  String get txPowServerUse => '使用外部 PoW 服务器';
+
+  @override
+  String get txPowServerSubtitle =>
+      '将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。';
+
+  @override
+  String get txPowServerSaved => 'PoW 服务器设置已保存';
+
+  @override
+  String get txPowServerInvalid => '请输入有效的主机和端口';
 }

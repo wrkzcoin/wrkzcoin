@@ -838,4 +838,20 @@ class SFr extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Synchronisation arrêtée au bloc $covered. Le nœud interrogé ne répond qu\'à partir du bloc $servesFrom, donc les blocs intermédiaires ne peuvent pas en être téléchargés. Le solde est incomplet tant que vous ne vous connectez pas à un nœud détenant toute la chaîne.';
   }
+
+  @override
+  String get txPowServerSection => 'Serveur PoW des transactions';
+
+  @override
+  String get txPowServerUse => 'Utiliser un serveur PoW externe';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.';
+
+  @override
+  String get txPowServerSaved => 'Paramètres du serveur PoW enregistrés';
+
+  @override
+  String get txPowServerInvalid => 'Saisissez un hôte et un port valides';
 }

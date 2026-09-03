@@ -816,4 +816,20 @@ class SJa extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'ブロック $covered で同期が停止しました。接続先のノードはブロック $servesFrom 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。';
   }
+
+  @override
+  String get txPowServerSection => 'トランザクション PoW サーバー';
+
+  @override
+  String get txPowServerUse => '外部 PoW サーバーを使用';
+
+  @override
+  String get txPowServerSubtitle =>
+      'トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。';
+
+  @override
+  String get txPowServerSaved => 'PoW サーバーの設定を保存しました';
+
+  @override
+  String get txPowServerInvalid => '有効なホストとポートを入力してください';
 }

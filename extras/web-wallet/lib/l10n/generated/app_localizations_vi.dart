@@ -785,4 +785,20 @@ class SVi extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Kích thước vòng giảm xuống $actual (thông thường là $normal). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.';
   }
+
+  @override
+  String get txPowServerSection => 'Máy chủ PoW giao dịch';
+
+  @override
+  String get txPowServerUse => 'Dùng máy chủ PoW bên ngoài';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.';
+
+  @override
+  String get txPowServerSaved => 'Đã lưu cài đặt máy chủ PoW';
+
+  @override
+  String get txPowServerInvalid => 'Nhập host và cổng hợp lệ';
 }

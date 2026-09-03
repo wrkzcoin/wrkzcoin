@@ -794,4 +794,20 @@ class SEs extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transacciones';
+
+  @override
+  String get txPowServerUse => 'Usar un servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.';
+
+  @override
+  String get txPowServerSaved => 'Ajustes del servidor PoW guardados';
+
+  @override
+  String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
 }

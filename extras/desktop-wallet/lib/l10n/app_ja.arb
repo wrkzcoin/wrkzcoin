@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "ローカルノードはまだネットワークより {behind} ブロック遅れています。今ウォレットをここに向けると、追いつくまで同期が止まり、未到達分を欠いた残高が表示されます——しかも理由は画面に出ません。リモートノードのままでも損はなく、ノードの同期はどちらでも続きます。",
   "switchAnyway": "それでも切り替える",
   "switchToRemoteNode": "リモートノードに切り替える",
-  "nodeWillServeFromLabel": "今後提供するブロックの開始位置"
+  "nodeWillServeFromLabel": "今後提供するブロックの開始位置",
+  "txPowServerSection": "トランザクション PoW サーバー",
+  "txPowServerUse": "外部 PoW サーバーを使用",
+  "txPowServerSubtitle": "トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。",
+  "txPowServerSaved": "PoW サーバーの設定を保存しました",
+  "txPowServerInvalid": "有効なホストとポートを入力してください"
 }

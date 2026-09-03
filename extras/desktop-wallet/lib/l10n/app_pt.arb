@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "O nó local ainda está {behind} blocos atrás da rede. Apontar a carteira para ele agora faz a sincronização parar até ele alcançar, mostrando um saldo sem tudo o que ele ainda não alcançou — e sem nada na tela explicando. Ficar no nó remoto não custa nada; o nó continua sincronizando de qualquer forma.",
   "switchAnyway": "Trocar mesmo assim",
   "switchToRemoteNode": "Trocar para o nó remoto",
-  "nodeWillServeFromLabel": "Servirá blocos a partir de"
+  "nodeWillServeFromLabel": "Servirá blocos a partir de",
+  "txPowServerSection": "Servidor PoW de transações",
+  "txPowServerUse": "Usar um servidor PoW externo",
+  "txPowServerSubtitle": "Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.",
+  "txPowServerSaved": "Configurações do servidor PoW salvas",
+  "txPowServerInvalid": "Informe um host e uma porta válidos"
 }

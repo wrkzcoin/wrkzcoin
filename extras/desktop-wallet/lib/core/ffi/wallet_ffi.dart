@@ -255,6 +255,10 @@ typedef _FnPowStatusDart = void Function(
 typedef _FnSetScanCoinbaseNative = Void Function(Bool);
 typedef _FnSetScanCoinbaseDart = void Function(bool);
 
+// wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl)
+typedef _FnSetTxPowServerNative = Void Function(Pointer<Utf8>, Uint16, Bool);
+typedef _FnSetTxPowServerDart = void Function(Pointer<Utf8>, int, bool);
+
 // ─── error codes (match src/errors/Errors.h) ─────────────────────────────────
 
 /// `LITE_NODE_CANNOT_RESCAN_THAT_LOW` — returned by `wallet_reset` when the
@@ -334,6 +338,7 @@ class WalletCApi {
   late final _FnClearLogsDart _walletClearLogs;
   late final _FnPowStatusDart _walletGetPowStatus;
   _FnSetScanCoinbaseDart? _walletSetScanCoinbase;
+  _FnSetTxPowServerDart? _walletSetTxPowServer;
   _FnDeleteSubDart? _walletDeletePrepared;
 
   bool get isOpen => _handle != null && _handle!.address != 0;
@@ -476,6 +481,13 @@ class WalletCApi {
               'wallet_set_scan_coinbase');
     } catch (_) {
       _walletSetScanCoinbase = null;
+    }
+    try {
+      _walletSetTxPowServer =
+          _lib.lookupFunction<_FnSetTxPowServerNative, _FnSetTxPowServerDart>(
+              'wallet_set_tx_pow_server');
+    } catch (_) {
+      _walletSetTxPowServer = null; // symbol not in this build
     }
     try {
       _walletDeletePrepared =
@@ -1380,6 +1392,19 @@ class WalletCApi {
 
   void setScanCoinbase(bool scan) {
     _walletSetScanCoinbase?.call(scan);
+  }
+
+  // --- external tx PoW server ---
+
+  /// Routes transaction PoW through an external server first, falling back to
+  /// this device's CPU. An empty host turns it off. No-op on a wallet_capi
+  /// that predates the export.
+  void setTxPowServer(String host, int port, {bool ssl = false}) {
+    final fn = _walletSetTxPowServer;
+    if (fn == null) return;
+    using((arena) {
+      fn(host.toNativeUtf8(allocator: arena), port, ssl);
+    });
   }
 
   // --- prepared transactions ---

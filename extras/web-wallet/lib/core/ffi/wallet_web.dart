@@ -569,6 +569,14 @@ class WalletCApi {
     _call('setScanCoinbase', {'scan': scan});
   }
 
+  // --- external tx PoW server ---
+
+  /// Routes transaction PoW through an external server first, falling back to
+  /// computing it in the worker. An empty host turns it off.
+  void setTxPowServer(String host, int port, {bool ssl = false}) {
+    _call('setTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
+  }
+
   // --- error helpers ---
 
   String errorCodeToString(int code) {

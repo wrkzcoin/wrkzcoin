@@ -1042,4 +1042,20 @@ class SJa extends S {
 
   @override
   String get nodeWillServeFromLabel => '今後提供するブロックの開始位置';
+
+  @override
+  String get txPowServerSection => 'トランザクション PoW サーバー';
+
+  @override
+  String get txPowServerUse => '外部 PoW サーバーを使用';
+
+  @override
+  String get txPowServerSubtitle =>
+      'トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。';
+
+  @override
+  String get txPowServerSaved => 'PoW サーバーの設定を保存しました';
+
+  @override
+  String get txPowServerInvalid => '有効なホストとポートを入力してください';
 }

@@ -34,6 +34,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _nodeMsg;
   bool _nodeMsgIsError = false;
 
+  // Tx PoW server
+  final _powHostCtrl = TextEditingController();
+  final _powPortCtrl = TextEditingController(text: '17870');
+  bool _powEnabled = false;
+  bool _powSsl = false;
+  bool _powFormLoaded = false;
+  String? _powMsg;
+  bool _powMsgIsError = false;
+
   // Reset scan
   final _resetHeightCtrl = TextEditingController(text: '0');
 
@@ -47,8 +56,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _customHostCtrl.dispose();
     _customPortCtrl.dispose();
+    _powHostCtrl.dispose();
+    _powPortCtrl.dispose();
     _resetHeightCtrl.dispose();
     super.dispose();
+  }
+
+  /// Prefills the PoW server form once the stored setting has been read, and
+  /// leaves it alone afterwards so typing is not overwritten by rebuilds.
+  void _syncPowForm(TxPowServerSettings s) {
+    if (_powFormLoaded || !s.loaded) return;
+    _powFormLoaded = true;
+    _powEnabled = s.enabled;
+    _powSsl = s.ssl;
+    _powHostCtrl.text = s.host;
+    _powPortCtrl.text = '${s.port}';
+  }
+
+  Future<void> _applyPowServer() async {
+    final tr = S.of(context)!;
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (_powEnabled && (host.isEmpty || port <= 0 || port > 65535)) {
+      setState(() {
+        _powMsg = tr.txPowServerInvalid;
+        _powMsgIsError = true;
+      });
+      return;
+    }
+    final settings = TxPowServerSettings(
+      enabled: _powEnabled,
+      host: host,
+      port: port > 0 ? port : kDefaultTxPowServerPort,
+      ssl: _powSsl,
+    );
+    await ref.read(txPowServerProvider.notifier).set(settings);
+    settings.applyTo(ref.read(walletCApiProvider));
+    hapticMedium();
+    if (!mounted) return;
+    setState(() {
+      _powMsg = tr.txPowServerSaved;
+      _powMsgIsError = false;
+    });
   }
 
   void _loadCurrentNode() {
@@ -693,6 +742,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final autoLockIdx = ref.watch(autoLockIndexProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final status = ref.watch(statusProvider).valueOrNull;
+    _syncPowForm(ref.watch(txPowServerProvider));
     final walletCaption = () {
       final fn = ref.read(activeWalletFilenameProvider);
       if (fn == null) return 'Wallet';
@@ -831,6 +881,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               strokeWidth: 2, color: Colors.white),
                         )
                       : Text(tr.apply),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // ── Transaction PoW server ───────────────────────────────────────
+        _sectionTitle(tr.txPowServerSection),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SwitchListTile(
+                  title: Text(tr.txPowServerUse,
+                      style: Theme.of(context).textTheme.bodyMedium),
+                  subtitle: Text(tr.txPowServerSubtitle,
+                      style: Theme.of(context).textTheme.bodySmall),
+                  value: _powEnabled,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setState(() => _powEnabled = v),
+                ),
+                if (_powEnabled) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _powHostCtrl,
+                    decoration: InputDecoration(
+                        hintText: tr.hostHint, labelText: tr.host),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _powPortCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                              hintText: '17870', labelText: tr.port),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Row(
+                        children: [
+                          Checkbox(
+                            value: _powSsl,
+                            onChanged: (v) =>
+                                setState(() => _powSsl = v ?? false),
+                          ),
+                          Text(tr.ssl),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+                if (_powMsg != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_powMsg!,
+                      style: TextStyle(
+                        color: _powMsgIsError ? kError : kSuccess,
+                        fontSize: 13,
+                      )),
+                ],
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _applyPowServer,
+                  child: Text(tr.apply),
                 ),
               ],
             ),

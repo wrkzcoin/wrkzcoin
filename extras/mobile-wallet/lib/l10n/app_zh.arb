@@ -426,5 +426,10 @@
   "nodeFullChain": "完整链",
   "localNodeMobileFuture": "在手机上直接运行节点已在计划中，但尚不可用——节点需要数 GB 存储和数小时同步。在此之前，请将本钱包指向你自己运行的节点。",
   "syncStoppedTitle": "同步已停止",
-  "syncGapStalled": "同步在区块 {covered} 停止。所连接的节点只从区块 {servesFrom} 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。"
+  "syncGapStalled": "同步在区块 {covered} 停止。所连接的节点只从区块 {servesFrom} 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。",
+  "txPowServerSection": "交易 PoW 服务器",
+  "txPowServerUse": "使用外部 PoW 服务器",
+  "txPowServerSubtitle": "将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。",
+  "txPowServerSaved": "PoW 服务器设置已保存",
+  "txPowServerInvalid": "请输入有效的主机和端口"
 }

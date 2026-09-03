@@ -426,5 +426,10 @@
   "nodeFullChain": "Vollständige Blockchain",
   "localNodeMobileFuture": "Den Node direkt auf dem Telefon zu betreiben ist geplant, aber noch nicht verfügbar — ein Node braucht mehrere GB Speicher und Stunden zum Synchronisieren. Richte diese Wallet bis dahin auf einen selbst betriebenen Node.",
   "syncStoppedTitle": "Synchronisierung gestoppt",
-  "syncGapStalled": "Synchronisierung bei Block {covered} gestoppt. Der befragte Node antwortet erst ab Block {servesFrom}, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden."
+  "syncGapStalled": "Synchronisierung bei Block {covered} gestoppt. Der befragte Node antwortet erst ab Block {servesFrom}, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.",
+  "txPowServerSection": "Transaktions-PoW-Server",
+  "txPowServerUse": "Externen PoW-Server verwenden",
+  "txPowServerSubtitle": "Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.",
+  "txPowServerSaved": "PoW-Server-Einstellungen gespeichert",
+  "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben"
 }

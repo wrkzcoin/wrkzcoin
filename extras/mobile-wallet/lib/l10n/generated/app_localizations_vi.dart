@@ -825,4 +825,20 @@ class SVi extends S {
   String syncGapStalled(int covered, int servesFrom) {
     return 'Đồng bộ dừng ở khối $covered. Nút đang kết nối chỉ trả lời từ khối $servesFrom trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.';
   }
+
+  @override
+  String get txPowServerSection => 'Máy chủ PoW giao dịch';
+
+  @override
+  String get txPowServerUse => 'Dùng máy chủ PoW bên ngoài';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.';
+
+  @override
+  String get txPowServerSaved => 'Đã lưu cài đặt máy chủ PoW';
+
+  @override
+  String get txPowServerInvalid => 'Nhập host và cổng hợp lệ';
 }

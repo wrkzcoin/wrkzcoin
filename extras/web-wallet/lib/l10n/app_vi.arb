@@ -278,5 +278,10 @@
   "languagePt": "Portugu\u00eas",
   "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
   "ringSize": "Kích thước vòng",
-  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường."
+  "ringSizeReduced": "Kích thước vòng giảm xuống {actual} (thông thường là {normal}). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.",
+  "txPowServerSection": "Máy chủ PoW giao dịch",
+  "txPowServerUse": "Dùng máy chủ PoW bên ngoài",
+  "txPowServerSubtitle": "Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.",
+  "txPowServerSaved": "Đã lưu cài đặt máy chủ PoW",
+  "txPowServerInvalid": "Nhập host và cổng hợp lệ"
 }

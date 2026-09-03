@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "Al nodo local aún le faltan {behind} bloques para alcanzar la red. Si apuntas el monedero ahí ahora, la sincronización se detendrá hasta que se ponga al día, mostrando un saldo al que le falta todo lo que no ha alcanzado, y sin nada en pantalla que lo explique. Quedarte en el nodo remoto no cuesta nada; el nodo sigue sincronizando igual.",
   "switchAnyway": "Cambiar de todos modos",
   "switchToRemoteNode": "Cambiar al nodo remoto",
-  "nodeWillServeFromLabel": "Servirá bloques desde"
+  "nodeWillServeFromLabel": "Servirá bloques desde",
+  "txPowServerSection": "Servidor PoW de transacciones",
+  "txPowServerUse": "Usar un servidor PoW externo",
+  "txPowServerSubtitle": "Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.",
+  "txPowServerSaved": "Ajustes del servidor PoW guardados",
+  "txPowServerInvalid": "Introduce un host y un puerto válidos"
 }

@@ -278,5 +278,10 @@
   "languagePt": "Portugu\u00eas",
   "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
   "ringSize": "リングサイズ",
-  "ringSizeReduced": "リングサイズが {actual} に縮小されました（通常は {normal}）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。"
+  "ringSizeReduced": "リングサイズが {actual} に縮小されました（通常は {normal}）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。",
+  "txPowServerSection": "トランザクション PoW サーバー",
+  "txPowServerUse": "外部 PoW サーバーを使用",
+  "txPowServerSubtitle": "トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。",
+  "txPowServerSaved": "PoW サーバーの設定を保存しました",
+  "txPowServerInvalid": "有効なホストとポートを入力してください"
 }

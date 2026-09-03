@@ -529,5 +529,10 @@
   "localNodeNotReadyBody": "Nút cục bộ vẫn còn chậm hơn mạng {behind} khối. Chuyển ví sang nó ngay bây giờ sẽ khiến việc đồng bộ dừng lại cho đến khi nó bắt kịp, hiển thị số dư thiếu mọi thứ nó chưa tới — và không có gì trên màn hình giải thích. Ở lại nút từ xa không mất gì cả; nút vẫn tiếp tục đồng bộ.",
   "switchAnyway": "Vẫn chuyển",
   "switchToRemoteNode": "Chuyển sang nút từ xa",
-  "nodeWillServeFromLabel": "Sẽ phục vụ khối từ"
+  "nodeWillServeFromLabel": "Sẽ phục vụ khối từ",
+  "txPowServerSection": "Máy chủ PoW giao dịch",
+  "txPowServerUse": "Dùng máy chủ PoW bên ngoài",
+  "txPowServerSubtitle": "Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.",
+  "txPowServerSaved": "Đã lưu cài đặt máy chủ PoW",
+  "txPowServerInvalid": "Nhập host và cổng hợp lệ"
 }

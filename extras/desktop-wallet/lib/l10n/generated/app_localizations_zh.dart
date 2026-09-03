@@ -1031,4 +1031,20 @@ class SZh extends S {
 
   @override
   String get nodeWillServeFromLabel => '将从此高度提供区块';
+
+  @override
+  String get txPowServerSection => '交易 PoW 服务器';
+
+  @override
+  String get txPowServerUse => '使用外部 PoW 服务器';
+
+  @override
+  String get txPowServerSubtitle =>
+      '将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。';
+
+  @override
+  String get txPowServerSaved => 'PoW 服务器设置已保存';
+
+  @override
+  String get txPowServerInvalid => '请输入有效的主机和端口';
 }
