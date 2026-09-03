@@ -244,6 +244,9 @@ Wrkzd --lite --lite-height 4000000 --import-lite-snapshot <file>
 Wrkzd --lite --lite-height 4000000
 ```
 
+`Wrkzd --snapshot-info <file>` prints what a file carries, as JSON, and exits. It is the
+quick way to check a copy before spending an import on it.
+
 **Why it exits rather than carrying straight on.** The import runs after the core has
 loaded, because the genesis block is written in full by that load - raw block, base
 transaction and all - and a snapshot carries none of it. Importing before that would leave
