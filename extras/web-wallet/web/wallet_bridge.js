@@ -76,7 +76,13 @@ export class WalletBridge {
     }
 
     const resultStr = this._module.UTF8ToString(resultPtr);
-    console.log(`[WalletBridge] ${method} →`, resultStr.length > 300 ? resultStr.substring(0, 300) + '…' : resultStr);
+
+    // syncStep is called back to back for as long as the daemon has blocks to
+    // give, so logging it would flood the console and cost more than the call.
+    if (method !== 'syncStep') {
+      console.log(`[WalletBridge] ${method} →`, resultStr.length > 300 ? resultStr.substring(0, 300) + '…' : resultStr);
+    }
+
     this._module._free(resultPtr);
 
     const response = JSON.parse(resultStr);

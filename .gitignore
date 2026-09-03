@@ -20,6 +20,11 @@ extras/mobile-wallet/android/.gradle/**
 extras/web-wallet/.dart_tool/**
 extras/web-wallet/build/**
 extras/web-wallet/.flutter-plugins-dependencies
+# Copied in from build-wasm/wasm/ before every flutter build web; build output,
+# not source. The canonical sources are extras/web-wallet-wasm/wasm/.
+extras/web-wallet/web/wallet_wasm.js
+extras/web-wallet/web/wallet_wasm.wasm
+extras/web-wallet/web/wallet_wasm.worker.js
 
 # Daemon log written into whatever directory it is started from
 Wrkzd.log
