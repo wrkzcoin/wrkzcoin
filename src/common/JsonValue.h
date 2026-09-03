@@ -74,7 +74,11 @@ namespace Common
 
         JsonValue(String &&value);
 
-        template<uint64_t size> JsonValue(const char (&value)[size])
+        /* size_t, not uint64_t: an array bound is a size_t, and on a 32-bit
+           target (wasm32, 32-bit ARM) a uint64_t parameter never deduces, so
+           this constructor is silently dead and a literal goes through the
+           String overload instead. */
+        template<size_t size> JsonValue(const char (&value)[size])
         {
             new (valueString) String(value, size - 1);
             type = STRING;
@@ -105,7 +109,7 @@ namespace Common
 
         JsonValue &operator=(String &&value);
 
-        template<uint64_t size> JsonValue &operator=(const char (&value)[size])
+        template<size_t size> JsonValue &operator=(const char (&value)[size])
         {
             if (type != STRING)
             {
