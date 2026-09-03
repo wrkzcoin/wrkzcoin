@@ -64,6 +64,12 @@ external JSObject get _jsBridge;
 @JS('walletBridgeReady')
 external JSBoolean? get _walletBridgeReadyFlag;
 
+/// Set by index.html when walletBridge.init() rejects. Holds the reason the
+/// wallet engine could not start - a missing wallet_wasm.* file, a server that
+/// is not sending COOP/COEP, or a pthread worker that failed to load.
+@JS('walletBridgeError')
+external JSString? get _walletBridgeErrorMessage;
+
 /// Extract a readable message from a JS exception (Error or plain value).
 @JS('_extractJsError')
 external JSString _extractJsError(JSAny? err);
@@ -80,12 +86,41 @@ Never _throwJsError(Object e) {
   throw WalletCApiException(-1, msg);
 }
 
+/// How long to wait for the wallet engine before giving up on it. Loading the
+/// module is a few hundred milliseconds of network and compile on a cold cache;
+/// a minute means it is never arriving, not that it is slow.
+const Duration _bridgeStartupTimeout = Duration(seconds: 60);
+
 /// Waits until the WASM wallet module is fully loaded in the worker.
 /// Resolves immediately if already ready; polls at 100 ms intervals otherwise.
+///
+/// Reports failure instead of waiting forever. init() rejecting - a missing
+/// wallet_wasm.* file, absent COOP/COEP headers, a pthread worker that never
+/// loads - used to leave every caller awaiting a flag that would never be set,
+/// which reached the user as a button that spun for the rest of the session
+/// with the real reason sitting in the browser console.
 Future<void> _waitForBridge() async {
+  final deadline = DateTime.now().add(_bridgeStartupTimeout);
+
   for (;;) {
     final ready = _walletBridgeReadyFlag;
     if (ready != null && ready.toDart) return;
+
+    final error = _walletBridgeErrorMessage;
+    if (error != null) {
+      throw WalletCApiException(-1, 'Wallet engine failed to start: ${error.toDart}');
+    }
+
+    if (DateTime.now().isAfter(deadline)) {
+      throw WalletCApiException(
+        -1,
+        'Wallet engine did not start within ${_bridgeStartupTimeout.inSeconds}s. '
+        'Check the browser console: the usual causes are wallet_wasm.js or '
+        'wallet_wasm.wasm missing from the server, or the server not sending the '
+        'Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.',
+      );
+    }
+
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 }

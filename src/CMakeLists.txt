@@ -438,7 +438,20 @@ if (WRKZ_BUILD_WALLET_WASM)
         target_link_options(wallet_wasm PRIVATE
             -pthread
             -sUSE_PTHREADS=1
-            -sPTHREAD_POOL_SIZE=4
+            ## The pool must cover every thread the wallet can hold at once, or
+            ## the wallet deadlocks on startup. wallet_wasm_request runs as a
+            ## synchronous ccall inside the worker's onmessage handler, so once
+            ## the pool is empty a pthread_create has to spawn a fresh Worker -
+            ## and that needs the very event loop the blocked call is sitting on.
+            ## It does not fail, it hangs: the engine reports ready and then
+            ## create/open never returns.
+            ##
+            ## Opening a wallet takes 1 WalletSynchronizer::mainLoop, 1
+            ## BlockDownloader::downloader, and up to 4 blockProcessingThread
+            ## (resolve_sync_threads caps at 4) = 6, plus short-lived detached
+            ## EventHandler threads. 12 leaves room for those without the count
+            ## having to be exact.
+            -sPTHREAD_POOL_SIZE=12
         )
     endif ()
 endif ()
