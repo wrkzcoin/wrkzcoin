@@ -11,6 +11,7 @@
 
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
+#include <common/PlatformCaCerts.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
@@ -86,6 +87,13 @@ inline std::shared_ptr<httplib::Client> getClient(
     if (useIpc)
     {
         Common::Ipc::configureClient(*client);
+    }
+    else if (useSsl)
+    {
+        /* Android's trust store is not on any path cpp-httplib probes, and the
+           miss is silent - see PlatformCaCerts.h. Without this an https daemon
+           is unreachable from the mobile wallet while http works fine. */
+        Common::applySystemCaCertificates(*client);
     }
 
     client->set_connection_timeout(timeout);

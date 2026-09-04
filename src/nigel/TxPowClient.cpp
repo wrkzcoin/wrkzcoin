@@ -7,6 +7,7 @@
 #include "httplib.h"
 #include "json.hpp"
 
+#include <common/PlatformCaCerts.h>
 #include <common/StringTools.h>
 #include <logger/Logger.h>
 
@@ -112,6 +113,11 @@ namespace
         }
 #else
         httplib::Client client(originUrl(s));
+
+        /* Android has no trust store where cpp-httplib looks, and the miss is
+           silent - see PlatformCaCerts.h. Without this, an https PoW server
+           fails to verify while the same server on http works. */
+        Common::applySystemCaCertificates(client);
 
         client.set_connection_timeout(CONNECT_TIMEOUT_SECONDS, 0);
         client.set_read_timeout(readTimeoutSeconds, 0);
