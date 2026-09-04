@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
 import '../ffi/wallet_web.dart';
+import 'providers.dart';
 
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
@@ -75,11 +76,27 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
       (l) => l.value == n,
       orElse: () => WalletLogLevel.info,
     );
+    _applyToNative(state);
   }
 
   Future<void> set(WalletLogLevel level) async {
     state = level;
+    _applyToNative(level);
     await _storage.write(key: _kLogLevelKey, value: level.value.toString());
+  }
+
+  /// The wallet library's logger defaults to DISABLED every time the WASM
+  /// module loads, so the stored preference has to be pushed across on load as
+  /// well as on change. Without this the dropdown restores to "debug" from
+  /// browser storage while the library is still silent, and the log viewer
+  /// tells you to set a level above Disabled - which you appear to have
+  /// already done. Desktop has always done this; the web port dropped it.
+  void _applyToNative(WalletLogLevel level) {
+    try {
+      ref.read(walletCApiProvider).setLogLevel(level.name);
+    } catch (_) {
+      // Bridge not up yet, or not loadable at all - logging is best effort.
+    }
   }
 }
 

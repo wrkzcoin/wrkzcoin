@@ -571,7 +571,12 @@ class WalletCApi {
       'disabled': 0, 'fatal': 1, 'warning': 2, 'info': 3, 'debug': 4, 'trace': 5,
     };
     final numericLevel = nameToLevel[levelName.toLowerCase()] ?? 3;
-    _call('setLogLevel', {'level': numericLevel});
+    // Deliberately not awaited: this is called from a Notifier during app
+    // startup, before the WASM module has finished loading, and _call waits
+    // for the bridge on its own. The catch matters though - an unawaited
+    // Future that throws is an unhandled error, and losing a log level is
+    // never worth taking the app down.
+    _call('setLogLevel', {'level': numericLevel}).catchError((Object _) => null);
   }
 
   Future<Map<String, dynamic>> takeLogsAsync() => _callMap('takeLogsJson');
