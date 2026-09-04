@@ -72,6 +72,16 @@ While the node is still synchronizing it refuses to hand out work, saying how
 far behind it is. Mining on a chain the network has moved past would only
 produce orphans.
 
+## Writing your own pool
+
+If you are driving `getblocktemplate` yourself rather than using the stratum
+server, note that the template is not ready to hash as returned: the node leaves
+the parent block's merge-mining tag as a placeholder and expects the miner to
+seal it. Skip that and every block you submit is rejected as "Proof of work is
+too weak", however good the work was. The daemon RPC docs cover it under
+[JSON-RPC methods](docs/docs/daemon-rpc/json-rpc.md#before-you-mine-the-template),
+and `adjustMergeMiningTag()` in `src/miner/MinerManager.cpp` is the reference.
+
 ## The bundled miner
 
 `miner` still works and needs no stratum port, but it is a plain reference
