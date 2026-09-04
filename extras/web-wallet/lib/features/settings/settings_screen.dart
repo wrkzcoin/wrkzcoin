@@ -43,6 +43,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _savingNode = false;
+  bool _testingNode = false;
   String? _nodeError;
   String? _nodeSuccess;
 
@@ -152,6 +153,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() => _powError = tr?.txPowServerTestFailed(e.toString()) ?? 'Server not reachable: $e');
     } finally {
       if (mounted) setState(() => _powTesting = false);
+    }
+  }
+
+  /// Probes the node in the form without switching the wallet onto it.
+  /// Applying a bad node leaves the wallet unable to sync with nothing on
+  /// screen to explain it, so it is worth being able to ask first.
+  Future<void> _testNode() async {
+    final tr = S.of(context);
+    final host = _nodeHostCtrl.text.trim();
+    final port = int.tryParse(_nodePortCtrl.text.trim()) ?? 0;
+
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _nodeError = tr?.nodeInvalid ?? 'Enter a valid host and port';
+        _nodeSuccess = null;
+      });
+      return;
+    }
+
+    setState(() { _testingNode = true; _nodeError = null; _nodeSuccess = null; });
+
+    try {
+      final r = await ref.read(walletCApiProvider).testNode(host, port, ssl: _nodeSSL);
+      if (!mounted) return;
+
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final height = (r['height'] as num?)?.toInt() ?? 0;
+        final networkHeight = (r['networkHeight'] as num?)?.toInt() ?? 0;
+        final peers = (r['peerCount'] as num?)?.toInt() ?? 0;
+        final synced = r['synced'] == true;
+
+        // A node that answers but is behind will "work" and then sync the
+        // wallet to the wrong height, so say so rather than just "reachable".
+        setState(() => _nodeSuccess = synced
+            ? (tr?.nodeTestOk(ms, height, peers)
+                ?? 'Reachable in $ms ms: height $height, $peers peers')
+            : (tr?.nodeTestSyncing(ms, height, networkHeight)
+                ?? 'Reachable in $ms ms, but the node is still syncing: '
+                   'height $height of $networkHeight'));
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _nodeError = tr?.nodeTestFailed(error) ?? 'Node not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _nodeError = tr?.nodeTestFailed(e.toString()) ?? 'Node not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _testingNode = false);
     }
   }
 
@@ -468,11 +518,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      FilledButton(
-                        onPressed: _savingNode ? null : _saveNode,
-                        child: _savingNode
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text(tr?.apply ?? 'Apply'),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_testingNode || _savingNode) ? null : _testNode,
+                            child: _testingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.nodeTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: (_savingNode || _testingNode) ? null : _saveNode,
+                            child: _savingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

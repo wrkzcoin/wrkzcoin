@@ -446,12 +446,21 @@ if (WRKZ_BUILD_WALLET_WASM)
             ## It does not fail, it hangs: the engine reports ready and then
             ## create/open never returns.
             ##
-            ## Opening a wallet takes 1 WalletSynchronizer::mainLoop, 1
-            ## BlockDownloader::downloader, and up to 4 blockProcessingThread
-            ## (resolve_sync_threads caps at 4) = 6, plus short-lived detached
-            ## EventHandler threads. 12 leaves room for those without the count
-            ## having to be exact.
-            -sPTHREAD_POOL_SIZE=12
+            ## Must exceed the peak live thread count, or a wallet hangs rather
+            ## than fails. Syncing runs: WalletSynchronizer::mainLoop,
+            ## BlockDownloader::downloader, Nigel's background refresh, up to
+            ## SYNC_THREADS_MAX blockProcessingThread (resolve_sync_threads()
+            ## in wallet_wasm_exports.cpp scales that with
+            ## navigator.hardwareConcurrency, cap 6), the
+            ## WalletConfig::syncRequestConcurrency = 4 std::async windows that
+            ## downloadBlocksInParallel() launches and then blocks on, and a
+            ## few short-lived EventHandler threads. That peaks around 15.
+            ##
+            ## The std::async windows are the ones to remember: nothing at that
+            ## call site looks like it starts a thread, and leaving them out of
+            ## this sum is how the pool ends up one short and sync stops moving
+            ## with no error anywhere. Raise this and SYNC_THREADS_MAX together.
+            -sPTHREAD_POOL_SIZE=24
         )
     endif ()
 endif ()

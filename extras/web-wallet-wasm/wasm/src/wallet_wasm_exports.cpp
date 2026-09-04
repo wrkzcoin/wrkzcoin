@@ -27,6 +27,7 @@
 #include <string>
 #include <thread>
 
+#include "nigel/Nigel.h"
 #include "walletcapi/wallet_capi.h"
 #include "wasm_fs_bridge.h"
 #include "logger/Logger.h"
@@ -121,8 +122,37 @@ static uint32_t resolve_sync_threads(const json &p)
 #ifdef __EMSCRIPTEN_PTHREADS__
     if (requested == 0)
     {
-        uint32_t hw = static_cast<uint32_t>(std::thread::hardware_concurrency());
-        requested = std::max(1u, std::min(hw, 4u)); // 1–4 threads
+        /* hardware_concurrency() is navigator.hardwareConcurrency here, so this
+           follows the machine the browser is actually on. It reports 0 when the
+           browser refuses to say, hence the floor.
+
+           The ceiling is not about diminishing returns, it is a hard
+           constraint: every one of these threads has to come out of the
+           prewarmed pool set by -sPTHREAD_POOL_SIZE. Once that pool is empty a
+           pthread_create has to have a Worker built for it, and that work is
+           serviced by the main thread's event loop - which this wallet keeps
+           leaving, because every call from JS is a blocking ccall. A thread
+           that blocks waiting on threads which cannot be created does not
+           fail, it hangs.
+
+           Count the peak, not the obvious part:
+             1  WalletSynchronizer::mainLoop
+             1  BlockDownloader::downloader
+             1  Nigel's background refresh
+             N  blockProcessingThread            <- this cap
+             4  WalletConfig::syncRequestConcurrency, the std::async windows
+                in downloadBlocksInParallel(), which the downloader then
+                blocks on in future::get()
+             +  short-lived detached EventHandler threads
+
+           That is N + 7 or so. -sPTHREAD_POOL_SIZE must stay comfortably
+           above it; raise the two together or not at all. The std::async
+           windows are the easy ones to forget - they are not created by any
+           code that looks like it starts a thread. */
+        constexpr uint32_t SYNC_THREADS_MAX = 6;
+
+        const uint32_t hw = static_cast<uint32_t>(std::thread::hardware_concurrency());
+        requested = std::max(1u, std::min(hw, SYNC_THREADS_MAX));
     }
 #endif
     return requested;
@@ -885,6 +915,78 @@ static char *dispatch(const std::string &method, const json &p)
         size_t len = 0;
         wallet_status_t st = wallet_test_tx_pow_server(host.c_str(), port, ssl, &out, &len);
         return json_result(st, out, len);
+    }
+
+    /*
+     * testNode — probe a daemon without switching the wallet onto it.
+     *   params: { "host": "...", "port": 443, "ssl": true }
+     *   result: { "ok": bool, "url", "latency_ms", "height", "networkHeight",
+     *             "peerCount", "synced" | "error" }
+     *
+     * Switching nodes is the one setting that can leave a wallet unable to
+     * sync, and until now the only way to find out was to Apply and watch it
+     * fail. This runs the same /info request the wallet uses, against a
+     * throwaway Nigel, so nothing about the open wallet changes.
+     */
+    if (method == "testNode")
+    {
+        const auto host = str_param(p, "host");
+        const auto port = u16_param(p, "port");
+        const auto ssl = bool_param(p, "ssl");
+
+        json r;
+        r["url"] = std::string(ssl ? "https://" : "http://") + host + ":" + std::to_string(port);
+
+        if (host.empty() || port == 0)
+        {
+            r["ok"] = false;
+            r["error"] = "host and port are required";
+            return ok_json(r);
+        }
+
+        const auto started = std::chrono::steady_clock::now();
+
+        try
+        {
+            /* Short timeout: this is a person waiting on a button, not a sync. */
+            Nigel probe(host, port, ssl, std::chrono::seconds(10));
+
+            /* init(false) fetches /info once and returns; the argument keeps it
+               from starting a background refresh thread we would immediately
+               throw away. getDaemonInfo() itself is private. */
+            probe.init(false);
+
+            const bool reached = probe.isOnline();
+
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now() - started)
+                                     .count();
+
+            r["latency_ms"] = static_cast<uint64_t>(elapsed);
+
+            if (!reached)
+            {
+                r["ok"] = false;
+                r["error"] = "no response from /info";
+                return ok_json(r);
+            }
+
+            const uint64_t local = probe.localDaemonBlockCount();
+            const uint64_t network = probe.networkBlockCount();
+
+            r["ok"] = true;
+            r["height"] = local;
+            r["networkHeight"] = network;
+            r["peerCount"] = probe.peerCount();
+            r["synced"] = network > 0 && local + 1 >= network;
+        }
+        catch (const std::exception &e)
+        {
+            r["ok"] = false;
+            r["error"] = e.what();
+        }
+
+        return ok_json(r);
     }
 
     /* -------- browser storage bridge -------- */

@@ -824,4 +824,25 @@ class SPt extends S {
   String txPowServerTestFailed(String error) {
     return 'Servidor inacessível: $error';
   }
+
+  @override
+  String get nodeTest => 'Test';
+
+  @override
+  String get nodeInvalid => 'Enter a valid host and port';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Reachable in $ms ms: height $height, $peers peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Node not reachable: $error';
+  }
 }

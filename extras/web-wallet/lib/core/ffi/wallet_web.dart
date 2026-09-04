@@ -625,6 +625,14 @@ class WalletCApi {
     return _callMap('testTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
   }
 
+  /// Probes a daemon without switching the wallet onto it. Returns
+  /// {ok, url, latency_ms, height, networkHeight, peerCount, synced} or
+  /// {ok: false, url, error}.
+  Future<Map<String, dynamic>> testNode(String host, int port,
+      {bool ssl = false}) {
+    return _callMap('testNode', {'host': host, 'port': port, 'ssl': ssl});
+  }
+
   // --- error helpers ---
 
   String errorCodeToString(int code) {
