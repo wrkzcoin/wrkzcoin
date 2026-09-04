@@ -12,6 +12,7 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <common/IpcSocket.h>
 #include <nigel/Nigel.h>
 #include <nigel/TxPowClient.h>
 #include <walletbackend/WalletBackend.h>
@@ -1815,13 +1816,27 @@ wallet_status_t wallet_test_node(
 
     const std::string daemonHost = host == nullptr ? std::string() : std::string(host);
 
-    nlohmann::json r;
-    r["url"] = std::string(ssl ? "https://" : "http://") + daemonHost + ":" + std::to_string(port);
+    /* A local socket is addressed by path: there is no port to demand and no
+       URL to build, and Nigel switches the client to AF_UNIX off the address
+       alone. Without this a daemon reached over IPC could never be tested from
+       the settings screen, because the port it does not have reads as unset. */
+    const bool ipc = Utilities::isIpcDaemonAddress(daemonHost);
 
-    if (daemonHost.empty() || port == 0)
+    nlohmann::json r;
+    r["url"] = ipc ? Common::Ipc::describe(Utilities::ipcDaemonPath(daemonHost))
+                   : std::string(ssl ? "https://" : "http://") + daemonHost + ":" + std::to_string(port);
+
+    if (daemonHost.empty() || (!ipc && port == 0))
     {
         r["ok"] = false;
         r["error"] = "host and port are required";
+        return alloc_out_string(r.dump(), out_json, out_len);
+    }
+
+    if (ipc && !Common::Ipc::supported())
+    {
+        r["ok"] = false;
+        r["error"] = Common::Ipc::unsupportedReason();
         return alloc_out_string(r.dump(), out_json, out_len);
     }
 
