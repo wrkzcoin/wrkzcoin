@@ -79,28 +79,64 @@ namespace Miner
         isRunning = true;
 
         startBlockchainMonitoring();
+
         std::thread reporter(std::bind(&MinerManager ::printHashRate, this));
+
+        /* The reporter has to be stopped and joined on every way out of here,
+           including an exception from the event loop. Destroying a std::thread
+           that is still joinable calls std::terminate(), which is what --limit
+           used to do to the process on its way out. */
+        struct ReporterGuard
+        {
+            std::atomic<bool> &running;
+
+            std::thread &thread;
+
+            ~ReporterGuard()
+            {
+                running = false;
+
+                if (thread.joinable())
+                {
+                    thread.join();
+                }
+            }
+        } reporterGuard {isRunning, reporter};
+
         startMining(params);
 
         eventLoop();
-        isRunning = false;
     }
 
     void MinerManager::printHashRate()
     {
-        uint64_t last_hash_count = m_miner.getHashCount();
+        const auto reportEvery = std::chrono::seconds(60);
+
+        uint64_t lastHashCount = m_miner.getHashCount();
+        auto lastReport = std::chrono::steady_clock::now();
 
         while (isRunning)
         {
-            std::this_thread::sleep_for(std::chrono::seconds(60));
+            /* Woken once a second rather than once a minute, so shutting down
+               does not have to wait out a whole reporting interval. */
+            std::this_thread::sleep_for(std::chrono::seconds(1));
 
-            uint64_t current_hash_count = m_miner.getHashCount();
+            const auto now = std::chrono::steady_clock::now();
 
-            double hashes = static_cast<double>((current_hash_count - last_hash_count) / 60);
+            if (!isRunning || now - lastReport < reportEvery)
+            {
+                continue;
+            }
 
-            last_hash_count = current_hash_count;
+            const uint64_t currentHashCount = m_miner.getHashCount();
+            const double elapsed = std::chrono::duration<double>(now - lastReport).count();
+            const double hashes = static_cast<double>(currentHashCount - lastHashCount) / elapsed;
 
-            std::cout << SuccessMsg("\nMining at ") << SuccessMsg(Utilities::get_mining_speed(hashes)) << "\n\n";
+            lastHashCount = currentHashCount;
+            lastReport = now;
+
+            std::cout << SuccessMsg("\nMining at ")
+                      << SuccessMsg(Utilities::get_mining_speed(static_cast<uint64_t>(hashes))) << "\n\n";
         }
     }
 
@@ -216,17 +252,47 @@ namespace Miner
 
         auto res = m_httpClient->Post("/json_rpc", j.dump(), "application/json");
 
-        if (!res || res->status == 200)
+        if (!res)
         {
-            std::cout << SuccessMsg("\nBlock found! Hash: ") << SuccessMsg(getBlockHash(minedBlock)) << "\n\n";
-
-            return true;
+            std::cout << WarningMsg("Failed to submit block - the daemon did not answer. Is it still running?\n");
+            return false;
         }
-        else
+
+        if (res->status != 200)
         {
             std::cout << WarningMsg("Failed to submit block, possibly daemon offline or syncing?\n");
             return false;
         }
+
+        /* A 200 still carries a JSON-RPC error when the daemon would not take
+           the block, so the status alone does not mean it was accepted. */
+        try
+        {
+            const json response = json::parse(res->body);
+
+            if (response.contains("error") && !response.at("error").is_null())
+            {
+                std::stringstream stream;
+
+                stream << "Block was not accepted by the daemon: " << response.at("error").dump() << std::endl;
+
+                std::cout << WarningMsg(stream.str());
+                return false;
+            }
+        }
+        catch (const json::exception &e)
+        {
+            std::stringstream stream;
+
+            stream << "Could not read the daemon's reply to our block: " << e.what() << std::endl;
+
+            std::cout << WarningMsg(stream.str());
+            return false;
+        }
+
+        std::cout << SuccessMsg("\nBlock found! Hash: ") << SuccessMsg(getBlockHash(minedBlock)) << "\n\n";
+
+        return true;
     }
 
     CryptoNote::BlockMiningParameters MinerManager::requestMiningParameters()

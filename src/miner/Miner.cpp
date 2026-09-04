@@ -85,8 +85,6 @@ namespace CryptoNote
 
                 blockMiningParameters.blockTemplate.nonce++;
             }
-
-            m_workers.clear();
         }
         catch (const std::exception &e)
         {
@@ -94,6 +92,11 @@ namespace CryptoNote
 
             m_state = MiningState::MINING_STOPPED;
         }
+
+        /* Destroying the contexts is what waits for the worker threads, so this
+           has to happen on the error path too - otherwise the workers of a
+           failed job are still in the vector when the next one starts. */
+        m_workers.clear();
 
         m_miningStopped.set();
     }

@@ -32,7 +32,10 @@ namespace CryptoNote
 {
     namespace
     {
-        const size_t CONCURRENCY_LEVEL = std::thread::hardware_concurrency();
+        /* hardware_concurrency() is allowed to answer 0 when it cannot work the
+           count out. Taken literally that made the --threads default "0", which
+           the validator below then rejected with "must be 1..0". */
+        const size_t CONCURRENCY_LEVEL = std::max<size_t>(1, std::thread::hardware_concurrency());
     }
 
     MiningConfig::MiningConfig(): help(false), version(false) {}

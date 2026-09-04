@@ -13,6 +13,7 @@
 #include "MiningConfig.h"
 #include "logging/LoggerRef.h"
 
+#include <atomic>
 #include <queue>
 #include <system/ContextGroup.h>
 #include <system/Event.h>
@@ -47,7 +48,8 @@ namespace Miner
 
         std::queue<MinerEvent> m_events;
 
-        bool isRunning;
+        /* Written by the mining thread, read by the hash rate reporter. */
+        std::atomic<bool> isRunning {false};
 
         CryptoNote::BlockTemplate m_minedBlock;
 
