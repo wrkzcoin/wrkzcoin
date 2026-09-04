@@ -434,5 +434,9 @@
   "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben",
   "txPowServerTest": "Testen",
   "txPowServerTestOk": "Server in {ms} ms erreichbar: {threads} Threads, {queue} von {capacity} Warteschlangenplätzen belegt",
-  "txPowServerTestFailed": "Server nicht erreichbar: {error}"
+  "txPowServerTestFailed": "Server nicht erreichbar: {error}",
+  "nodeTest": "Testen",
+  "nodeTestOk": "In {ms} ms erreichbar: Höhe {height}, {peers} Peers",
+  "nodeTestSyncing": "In {ms} ms erreichbar, aber der Knoten synchronisiert noch: Höhe {height} von {networkHeight}",
+  "nodeTestFailed": "Knoten nicht erreichbar: {error}"
 }

@@ -286,5 +286,10 @@
   "txPowServerInvalid": "有効なホストとポートを入力してください",
   "txPowServerTest": "テスト",
   "txPowServerTestOk": "サーバーに {ms} ms で接続できました: {threads} スレッド、キュー {queue}/{capacity} 使用中",
-  "txPowServerTestFailed": "サーバーに接続できません: {error}"
+  "txPowServerTestFailed": "サーバーに接続できません: {error}",
+  "nodeTest": "テスト",
+  "nodeInvalid": "有効なホストとポートを入力してください",
+  "nodeTestOk": "{ms} ms で接続できました: 高さ {height}、ピア {peers}",
+  "nodeTestSyncing": "{ms} ms で接続できましたが、ノードはまだ同期中です: 高さ {height}/{networkHeight}",
+  "nodeTestFailed": "ノードに接続できません: {error}"
 }

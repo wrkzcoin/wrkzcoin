@@ -798,23 +798,23 @@ class SZh extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => '测试';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => '请输入有效的主机和端口';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return '可达，耗时 $ms ms：高度 $height，$peers 个节点连接';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return '可达，耗时 $ms ms，但节点仍在同步：高度 $height/$networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return '无法连接节点：$error';
   }
 }

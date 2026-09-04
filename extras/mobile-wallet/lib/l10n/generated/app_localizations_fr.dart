@@ -867,4 +867,22 @@ class SFr extends S {
   String txPowServerTestFailed(String error) {
     return 'Serveur injoignable : $error';
   }
+
+  @override
+  String get nodeTest => 'Tester';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Joignable en $ms ms : hauteur $height, $peers pairs';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Joignable en $ms ms, mais le nœud se synchronise encore : hauteur $height sur $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nœud injoignable : $error';
+  }
 }

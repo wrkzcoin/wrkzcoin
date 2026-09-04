@@ -1098,4 +1098,25 @@ class SEs extends S {
   String txPowServerTestFailed(String error) {
     return 'Servidor no accesible: $error';
   }
+
+  @override
+  String get nodeTest => 'Probar';
+
+  @override
+  String get nodeInvalid => 'Introduce un host y un puerto válidos';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Accesible en $ms ms: altura $height, $peers pares';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Accesible en $ms ms, pero el nodo aún se está sincronizando: altura $height de $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nodo no accesible: $error';
+  }
 }

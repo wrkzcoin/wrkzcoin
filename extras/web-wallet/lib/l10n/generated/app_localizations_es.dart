@@ -825,23 +825,23 @@ class SEs extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'Probar';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => 'Introduce un host y un puerto válidos';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return 'Accesible en $ms ms: altura $height, $peers pares';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return 'Accesible en $ms ms, pero el nodo aún se está sincronizando: altura $height de $networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'Nodo no accesible: $error';
   }
 }

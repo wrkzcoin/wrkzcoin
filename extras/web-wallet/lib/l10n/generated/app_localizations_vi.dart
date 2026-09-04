@@ -816,23 +816,23 @@ class SVi extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'Kiểm tra';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => 'Nhập host và cổng hợp lệ';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return 'Kết nối được trong $ms ms: chiều cao $height, $peers peer';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return 'Kết nối được trong $ms ms, nhưng nút vẫn đang đồng bộ: chiều cao $height/$networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'Không kết nối được nút: $error';
   }
 }

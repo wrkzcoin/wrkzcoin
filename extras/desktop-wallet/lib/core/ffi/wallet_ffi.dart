@@ -265,6 +265,12 @@ typedef _FnTestTxPowServerNative = Int32 Function(
 typedef _FnTestTxPowServerDart = int Function(
     Pointer<Utf8>, int, bool, Pointer<Pointer<Utf8>>, Pointer<Size>);
 
+// wallet_test_node(host, port, ssl, char **out_json, size_t *out_len)
+typedef _FnTestNodeNative = Int32 Function(
+    Pointer<Utf8>, Uint16, Bool, Pointer<Pointer<Utf8>>, Pointer<Size>);
+typedef _FnTestNodeDart = int Function(
+    Pointer<Utf8>, int, bool, Pointer<Pointer<Utf8>>, Pointer<Size>);
+
 // ─── error codes (match src/errors/Errors.h) ─────────────────────────────────
 
 /// `LITE_NODE_CANNOT_RESCAN_THAT_LOW` — returned by `wallet_reset` when the
@@ -1428,6 +1434,44 @@ class WalletCApi {
                 _FnTestTxPowServerDart>('wallet_test_tx_pow_server');
           } on ArgumentError {
             return '{"ok":false,"url":"","error":"this wallet build cannot test servers"}';
+          }
+          final free = lib.lookupFunction<_FnStringFreeNative,
+              _FnStringFreeDart>('wallet_string_free');
+          return using((arena) {
+            final outStr = arena<Pointer<Utf8>>();
+            final outLen = arena<Size>();
+            final s = fn(host.toNativeUtf8(allocator: arena), port, ssl,
+                outStr, outLen);
+            if (s != 0 || outStr.value == nullptr) {
+              return '{"ok":false,"url":"","error":"test call failed ($s)"}';
+            }
+            final json = outStr.value.toDartString();
+            free(outStr.value);
+            return json;
+          });
+        }));
+    return jsonDecode(text) as Map<String, dynamic>;
+  }
+
+  // --- daemon probe ---
+
+  /// Probes a daemon without switching the wallet onto it: the same /info
+  /// request the sync uses, against a throwaway connection, so the open
+  /// wallet keeps talking to whatever it is already on. Runs off-thread
+  /// because an unreachable host blocks for the socket timeout. Resolves to
+  /// {ok, url, latency_ms, height, networkHeight, peerCount, synced} or
+  /// {ok: false, url, error}; never throws for a node problem, only for a
+  /// broken binding.
+  Future<Map<String, dynamic>> testNode(String host, int port,
+      {bool ssl = false}) async {
+    final text = await _guarded(() => Isolate.run(() {
+          final lib = _openLibrary();
+          final _FnTestNodeDart fn;
+          try {
+            fn = lib.lookupFunction<_FnTestNodeNative, _FnTestNodeDart>(
+                'wallet_test_node');
+          } on ArgumentError {
+            return '{"ok":false,"url":"","error":"this wallet build cannot test nodes"}';
           }
           final free = lib.lookupFunction<_FnStringFreeNative,
               _FnStringFreeDart>('wallet_string_free');

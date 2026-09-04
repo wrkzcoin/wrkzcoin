@@ -12,6 +12,7 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <nigel/Nigel.h>
 #include <nigel/TxPowClient.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
@@ -1798,5 +1799,74 @@ wallet_status_t wallet_test_tx_pow_server(
     }
 
     return alloc_out_string(result, out_json, out_len);
+}
+
+wallet_status_t wallet_test_node(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len)
+{
+    if (out_json == nullptr || out_len == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    const std::string daemonHost = host == nullptr ? std::string() : std::string(host);
+
+    nlohmann::json r;
+    r["url"] = std::string(ssl ? "https://" : "http://") + daemonHost + ":" + std::to_string(port);
+
+    if (daemonHost.empty() || port == 0)
+    {
+        r["ok"] = false;
+        r["error"] = "host and port are required";
+        return alloc_out_string(r.dump(), out_json, out_len);
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+
+    try
+    {
+        /* Short timeout: this is a person waiting on a button, not a sync. */
+        Nigel probe(daemonHost, port, ssl, std::chrono::seconds(10));
+
+        /* init(false) fetches /info once and returns; the argument keeps it
+           from starting a background refresh thread we would immediately
+           throw away. getDaemonInfo() itself is private. */
+        probe.init(false);
+
+        const bool reached = probe.isOnline();
+
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
+                .count();
+
+        r["latency_ms"] = static_cast<uint64_t>(elapsed);
+
+        if (!reached)
+        {
+            r["ok"] = false;
+            r["error"] = "no response from /info";
+            return alloc_out_string(r.dump(), out_json, out_len);
+        }
+
+        const uint64_t local = probe.localDaemonBlockCount();
+        const uint64_t network = probe.networkBlockCount();
+
+        r["ok"] = true;
+        r["height"] = local;
+        r["networkHeight"] = network;
+        r["peerCount"] = probe.peerCount();
+        r["synced"] = network > 0 && local + 1 >= network;
+    }
+    catch (const std::exception &e)
+    {
+        r["ok"] = false;
+        r["error"] = e.what();
+    }
+
+    return alloc_out_string(r.dump(), out_json, out_len);
 }
 

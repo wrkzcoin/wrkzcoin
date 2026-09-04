@@ -865,4 +865,22 @@ class SDe extends S {
   String txPowServerTestFailed(String error) {
     return 'Server nicht erreichbar: $error';
   }
+
+  @override
+  String get nodeTest => 'Testen';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'In $ms ms erreichbar: Höhe $height, $peers Peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'In $ms ms erreichbar, aber der Knoten synchronisiert noch: Höhe $height von $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Knoten nicht erreichbar: $error';
+  }
 }

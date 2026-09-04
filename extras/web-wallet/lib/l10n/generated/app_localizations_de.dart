@@ -825,23 +825,23 @@ class SDe extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'Testen';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => 'Bitte einen gültigen Host und Port eingeben';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return 'In $ms ms erreichbar: Höhe $height, $peers Peers';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return 'In $ms ms erreichbar, aber der Knoten synchronisiert noch: Höhe $height von $networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'Knoten nicht erreichbar: $error';
   }
 }

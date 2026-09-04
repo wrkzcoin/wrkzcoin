@@ -828,23 +828,23 @@ class SFr extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'Tester';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => 'Saisissez un hôte et un port valides';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return 'Joignable en $ms ms : hauteur $height, $peers pairs';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return 'Joignable en $ms ms, mais le nœud se synchronise encore : hauteur $height sur $networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'Nœud injoignable : $error';
   }
 }

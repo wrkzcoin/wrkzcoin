@@ -1658,6 +1658,30 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Server not reachable: {error}'**
   String txPowServerTestFailed(String error);
+
+  /// No description provided for @nodeTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get nodeTest;
+
+  /// No description provided for @nodeTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms: height {height}, {peers} peers'**
+  String nodeTestOk(int ms, int height, int peers);
+
+  /// No description provided for @nodeTestSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms, but the node is still syncing: height {height} of {networkHeight}'**
+  String nodeTestSyncing(int ms, int height, int networkHeight);
+
+  /// No description provided for @nodeTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Node not reachable: {error}'**
+  String nodeTestFailed(String error);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

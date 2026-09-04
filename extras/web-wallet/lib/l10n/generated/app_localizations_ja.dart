@@ -802,23 +802,23 @@ class SJa extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'テスト';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => '有効なホストとポートを入力してください';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return '$ms ms で接続できました: 高さ $height、ピア $peers';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return '$ms ms で接続できましたが、ノードはまだ同期中です: 高さ $height/$networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'ノードに接続できません: $error';
   }
 }

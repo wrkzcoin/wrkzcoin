@@ -286,5 +286,10 @@
   "txPowServerInvalid": "请输入有效的主机和端口",
   "txPowServerTest": "测试",
   "txPowServerTestOk": "服务器可达，耗时 {ms} ms：{threads} 个线程，队列已用 {queue}/{capacity}",
-  "txPowServerTestFailed": "无法连接服务器：{error}"
+  "txPowServerTestFailed": "无法连接服务器：{error}",
+  "nodeTest": "测试",
+  "nodeInvalid": "请输入有效的主机和端口",
+  "nodeTestOk": "可达，耗时 {ms} ms：高度 {height}，{peers} 个节点连接",
+  "nodeTestSyncing": "可达，耗时 {ms} ms，但节点仍在同步：高度 {height}/{networkHeight}",
+  "nodeTestFailed": "无法连接节点：{error}"
 }

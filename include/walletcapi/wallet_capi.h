@@ -349,6 +349,24 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_test_tx_pow_server(
     char **out_json,
     size_t *out_len);
 
+/* Checks a daemon without pointing the wallet at it: one /info request over
+   the same client path the sync uses, against a throwaway connection, so
+   nothing about the open wallet changes. Switching nodes is the one setting
+   that can leave a wallet unable to sync with nothing on screen to explain
+   it, and a daemon that answers but is behind is just as bad as one that does
+   not answer at all - hence the heights. Blocks for up to ~10 seconds when
+   the host does not answer; call it off the UI thread. Always returns SUCCESS
+   with a JSON object in out_json: {"ok": true, "url": ..., "latency_ms": N,
+   "height": N, "networkHeight": N, "peerCount": N, "synced": bool} or
+   {"ok": false, "url": ..., "error": "..."}. Free out_json with
+   wallet_string_free. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_test_node(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

@@ -286,5 +286,10 @@
   "txPowServerInvalid": "Введите корректный хост и порт",
   "txPowServerTest": "Проверить",
   "txPowServerTestOk": "Сервер доступен за {ms} мс: потоков {threads}, занято {queue} из {capacity} мест в очереди",
-  "txPowServerTestFailed": "Сервер недоступен: {error}"
+  "txPowServerTestFailed": "Сервер недоступен: {error}",
+  "nodeTest": "Проверить",
+  "nodeInvalid": "Введите корректный хост и порт",
+  "nodeTestOk": "Доступна за {ms} мс: высота {height}, пиров {peers}",
+  "nodeTestSyncing": "Доступна за {ms} мс, но нода ещё синхронизируется: высота {height} из {networkHeight}",
+  "nodeTestFailed": "Нода недоступна: {error}"
 }

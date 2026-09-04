@@ -286,5 +286,10 @@
   "txPowServerInvalid": "Saisissez un hôte et un port valides",
   "txPowServerTest": "Tester",
   "txPowServerTestOk": "Serveur joignable en {ms} ms : {threads} threads, {queue} sur {capacity} places de file utilisées",
-  "txPowServerTestFailed": "Serveur injoignable : {error}"
+  "txPowServerTestFailed": "Serveur injoignable : {error}",
+  "nodeTest": "Tester",
+  "nodeInvalid": "Saisissez un hôte et un port valides",
+  "nodeTestOk": "Joignable en {ms} ms : hauteur {height}, {peers} pairs",
+  "nodeTestSyncing": "Joignable en {ms} ms, mais le nœud se synchronise encore : hauteur {height} sur {networkHeight}",
+  "nodeTestFailed": "Nœud injoignable : {error}"
 }

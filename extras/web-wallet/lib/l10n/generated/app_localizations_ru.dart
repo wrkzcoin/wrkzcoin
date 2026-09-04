@@ -824,23 +824,23 @@ class SRu extends S {
   }
 
   @override
-  String get nodeTest => 'Test';
+  String get nodeTest => 'Проверить';
 
   @override
-  String get nodeInvalid => 'Enter a valid host and port';
+  String get nodeInvalid => 'Введите корректный хост и порт';
 
   @override
   String nodeTestOk(int ms, int height, int peers) {
-    return 'Reachable in $ms ms: height $height, $peers peers';
+    return 'Доступна за $ms мс: высота $height, пиров $peers';
   }
 
   @override
   String nodeTestSyncing(int ms, int height, int networkHeight) {
-    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+    return 'Доступна за $ms мс, но нода ещё синхронизируется: высота $height из $networkHeight';
   }
 
   @override
   String nodeTestFailed(String error) {
-    return 'Node not reachable: $error';
+    return 'Нода недоступна: $error';
   }
 }

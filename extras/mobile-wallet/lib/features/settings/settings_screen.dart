@@ -31,6 +31,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _customPortCtrl = TextEditingController(text: '17856');
   bool _customSsl = false;
   bool _nodeLoading = false;
+  bool _nodeTesting = false;
   String? _nodeMsg;
   bool _nodeMsgIsError = false;
 
@@ -172,29 +173,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _applyNode() async {
+  /// The node the form currently names — the chosen preset, or the custom
+  /// fields. Returns null and puts the reason on screen when the custom
+  /// fields do not describe a node, so Apply and Test reject the same input.
+  ({String host, int port, bool ssl})? _formNode() {
     final tr = S.of(context)!;
-    String host;
-    int port;
-    bool ssl;
 
-    if (_customNode) {
-      host = _customHostCtrl.text.trim();
-      port = int.tryParse(_customPortCtrl.text) ?? 17856;
-      ssl = _customSsl;
-      if (host.isEmpty) {
+    if (!_customNode) {
+      final preset = AppConfig.nodePresets[_nodePresetIndex];
+      return (host: preset.host, port: preset.port, ssl: preset.ssl);
+    }
+
+    final host = _customHostCtrl.text.trim();
+    if (host.isEmpty) {
+      setState(() {
+        _nodeMsg = tr.hostRequired;
+        _nodeMsgIsError = true;
+      });
+      return null;
+    }
+    return (
+      host: host,
+      port: int.tryParse(_customPortCtrl.text) ?? 17856,
+      ssl: _customSsl,
+    );
+  }
+
+  /// Probes the node the form names without switching the wallet onto it.
+  ///
+  /// Applying a bad node leaves the wallet unable to sync with nothing on
+  /// screen to explain it, and on a phone that looks like the app is broken.
+  /// A node that answers but is behind is just as bad, so say which it is.
+  Future<void> _testNode() async {
+    final tr = S.of(context)!;
+    final node = _formNode();
+    if (node == null) return;
+
+    setState(() {
+      _nodeTesting = true;
+      _nodeMsg = null;
+    });
+
+    try {
+      final r = await ref
+          .read(walletCApiProvider)
+          .testNode(node.host, node.port, ssl: node.ssl);
+      if (!mounted) return;
+
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final height = (r['height'] as num?)?.toInt() ?? 0;
+        final networkHeight = (r['networkHeight'] as num?)?.toInt() ?? 0;
+        final peers = (r['peerCount'] as num?)?.toInt() ?? 0;
+        final synced = r['synced'] == true;
         setState(() {
-          _nodeMsg = tr.hostRequired;
+          _nodeMsg = synced
+              ? tr.nodeTestOk(ms, height, peers)
+              : tr.nodeTestSyncing(ms, height, networkHeight);
+          _nodeMsgIsError = false;
+        });
+        hapticMedium();
+      } else {
+        setState(() {
+          _nodeMsg = tr.nodeTestFailed('${r['error'] ?? 'unknown error'}');
           _nodeMsgIsError = true;
         });
-        return;
+        hapticError();
       }
-    } else {
-      final preset = AppConfig.nodePresets[_nodePresetIndex];
-      host = preset.host;
-      port = preset.port;
-      ssl = preset.ssl;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _nodeMsg = tr.nodeTestFailed(e.toString());
+        _nodeMsgIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _nodeTesting = false);
     }
+  }
+
+  Future<void> _applyNode() async {
+    final tr = S.of(context)!;
+    final node = _formNode();
+    if (node == null) return;
+
+    final host = node.host;
+    final port = node.port;
+    final ssl = node.ssl;
 
     setState(() {
       _nodeLoading = true;
@@ -923,16 +987,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       )),
                 ],
                 const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: _nodeLoading ? null : _applyNode,
-                  child: _nodeLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(tr.apply),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            (_nodeLoading || _nodeTesting) ? null : _testNode,
+                        child: _nodeTesting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(tr.nodeTest),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed:
+                            (_nodeLoading || _nodeTesting) ? null : _applyNode,
+                        child: _nodeLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : Text(tr.apply),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -1088,4 +1088,25 @@ class SVi extends S {
   String txPowServerTestFailed(String error) {
     return 'Không kết nối được máy chủ: $error';
   }
+
+  @override
+  String get nodeTest => 'Kiểm tra';
+
+  @override
+  String get nodeInvalid => 'Nhập host và cổng hợp lệ';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Kết nối được trong $ms ms: chiều cao $height, $peers peer';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Kết nối được trong $ms ms, nhưng nút vẫn đang đồng bộ: chiều cao $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Không kết nối được nút: $error';
+  }
 }

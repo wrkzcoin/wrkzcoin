@@ -862,4 +862,22 @@ class SRu extends S {
   String txPowServerTestFailed(String error) {
     return 'Сервер недоступен: $error';
   }
+
+  @override
+  String get nodeTest => 'Проверить';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Доступна за $ms мс: высота $height, пиров $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Доступна за $ms мс, но нода ещё синхронизируется: высота $height из $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Нода недоступна: $error';
+  }
 }

@@ -927,68 +927,18 @@ static char *dispatch(const std::string &method, const json &p)
      *
      * Switching nodes is the one setting that can leave a wallet unable to
      * sync, and until now the only way to find out was to Apply and watch it
-     * fail. This runs the same /info request the wallet uses, against a
-     * throwaway Nigel, so nothing about the open wallet changes.
+     * fail. The probe itself lives in the C API so the desktop and mobile
+     * wallets run the same check against the same throwaway connection.
      */
     if (method == "testNode")
     {
         const auto host = str_param(p, "host");
         const auto port = u16_param(p, "port");
         const auto ssl = bool_param(p, "ssl");
-
-        json r;
-        r["url"] = std::string(ssl ? "https://" : "http://") + host + ":" + std::to_string(port);
-
-        if (host.empty() || port == 0)
-        {
-            r["ok"] = false;
-            r["error"] = "host and port are required";
-            return ok_json(r);
-        }
-
-        const auto started = std::chrono::steady_clock::now();
-
-        try
-        {
-            /* Short timeout: this is a person waiting on a button, not a sync. */
-            Nigel probe(host, port, ssl, std::chrono::seconds(10));
-
-            /* init(false) fetches /info once and returns; the argument keeps it
-               from starting a background refresh thread we would immediately
-               throw away. getDaemonInfo() itself is private. */
-            probe.init(false);
-
-            const bool reached = probe.isOnline();
-
-            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                     std::chrono::steady_clock::now() - started)
-                                     .count();
-
-            r["latency_ms"] = static_cast<uint64_t>(elapsed);
-
-            if (!reached)
-            {
-                r["ok"] = false;
-                r["error"] = "no response from /info";
-                return ok_json(r);
-            }
-
-            const uint64_t local = probe.localDaemonBlockCount();
-            const uint64_t network = probe.networkBlockCount();
-
-            r["ok"] = true;
-            r["height"] = local;
-            r["networkHeight"] = network;
-            r["peerCount"] = probe.peerCount();
-            r["synced"] = network > 0 && local + 1 >= network;
-        }
-        catch (const std::exception &e)
-        {
-            r["ok"] = false;
-            r["error"] = e.what();
-        }
-
-        return ok_json(r);
+        char *out = nullptr;
+        size_t len = 0;
+        wallet_status_t st = wallet_test_node(host.c_str(), port, ssl, &out, &len);
+        return json_result(st, out, len);
     }
 
     /* -------- browser storage bridge -------- */

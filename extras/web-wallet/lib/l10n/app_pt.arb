@@ -286,5 +286,10 @@
   "txPowServerInvalid": "Informe um host e uma porta válidos",
   "txPowServerTest": "Testar",
   "txPowServerTestOk": "Servidor acessível em {ms} ms: {threads} threads, {queue} de {capacity} vagas da fila em uso",
-  "txPowServerTestFailed": "Servidor inacessível: {error}"
+  "txPowServerTestFailed": "Servidor inacessível: {error}",
+  "nodeTest": "Testar",
+  "nodeInvalid": "Informe um host e uma porta válidos",
+  "nodeTestOk": "Acessível em {ms} ms: altura {height}, {peers} pares",
+  "nodeTestSyncing": "Acessível em {ms} ms, mas o nó ainda está sincronizando: altura {height} de {networkHeight}",
+  "nodeTestFailed": "Nó inacessível: {error}"
 }

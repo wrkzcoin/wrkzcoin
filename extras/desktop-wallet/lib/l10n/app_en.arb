@@ -679,5 +679,29 @@
     "placeholders": {
       "error": {"type": "String"}
     }
+  },
+  "nodeTest": "Test",
+  "nodeInvalid": "Enter a valid host and port",
+  "nodeTestOk": "Reachable in {ms} ms: height {height}, {peers} peers",
+  "@nodeTestOk": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "height": {"type": "int"},
+      "peers": {"type": "int"}
+    }
+  },
+  "nodeTestSyncing": "Reachable in {ms} ms, but the node is still syncing: height {height} of {networkHeight}",
+  "@nodeTestSyncing": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "height": {"type": "int"},
+      "networkHeight": {"type": "int"}
+    }
+  },
+  "nodeTestFailed": "Node not reachable: {error}",
+  "@nodeTestFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
   }
 }

@@ -1060,4 +1060,25 @@ class SZh extends S {
   String txPowServerTestFailed(String error) {
     return '无法连接服务器：$error';
   }
+
+  @override
+  String get nodeTest => '测试';
+
+  @override
+  String get nodeInvalid => '请输入有效的主机和端口';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '可达，耗时 $ms ms：高度 $height，$peers 个节点连接';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '可达，耗时 $ms ms，但节点仍在同步：高度 $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return '无法连接节点：$error';
+  }
 }

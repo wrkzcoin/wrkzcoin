@@ -1071,4 +1071,25 @@ class SJa extends S {
   String txPowServerTestFailed(String error) {
     return 'サーバーに接続できません: $error';
   }
+
+  @override
+  String get nodeTest => 'テスト';
+
+  @override
+  String get nodeInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '$ms ms で接続できました: 高さ $height、ピア $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '$ms ms で接続できましたが、ノードはまだ同期中です: 高さ $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'ノードに接続できません: $error';
+  }
 }
