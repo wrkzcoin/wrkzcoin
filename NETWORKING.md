@@ -123,6 +123,10 @@ zedwallet++ --remote-daemon /run/wrkz/wrkzd.sock
 wrkz-service --daemon-address /run/wrkz/wrkzd.sock --container-file w --container-password p
 ```
 
+A relative path has to be written as `ipc://./wrkzd.sock`, and is resolved against the
+client's working directory. Without the prefix it is indistinguishable from a hostname and
+is dialled as one.
+
 The daemon's own console uses the IPC socket automatically whenever one is bound, so
 `status`, `print_cn` and friends stop making loopback TCP connections to their own process.
 
