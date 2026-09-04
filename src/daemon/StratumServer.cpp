@@ -8,6 +8,7 @@
 
 #include <common/CheckDifficulty.h>
 #include <common/StringTools.h>
+#include <common/TransactionExtra.h>
 #include <cryptonotecore/AddBlockErrorCondition.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cstring>
@@ -667,6 +668,47 @@ namespace Daemon
         {
             error = "The chain reported a zero difficulty";
             return false;
+        }
+
+        /* getBlockTemplate leaves the parent block's merge-mining tag as a
+           placeholder and expects whoever mines it to fill in the commitment -
+           the bundled miner does this in adjustMergeMiningTag() before it
+           starts hashing. Skip it and checkProofOfWorkV2 recomputes the aux
+           root, finds it does not match the zeroed tag, and throws the block
+           out as "Proof of work is too weak", which is a thoroughly misleading
+           way to say the commitment was never written. The work itself was
+           perfectly good.
+
+           This has to happen before the hashing blob is built: the tag lives
+           in the parent coinbase, and the parent's own merkle root is part of
+           what gets hashed. The aux hash covers only the outer header, miner
+           transaction and transaction hashes, so writing the tag cannot change
+           what the tag commits to. */
+        if (blockTemplate.majorVersion >= CryptoNote::BLOCK_MAJOR_VERSION_2)
+        {
+            try
+            {
+                CryptoNote::TransactionExtraMergeMiningTag mmTag;
+                mmTag.depth = 0;
+
+                {
+                    const CryptoNote::CachedBlock unsealed(blockTemplate);
+                    mmTag.merkleRoot = unsealed.getAuxiliaryBlockHeaderHash();
+                }
+
+                blockTemplate.parentBlock.baseTransaction.extra.clear();
+
+                if (!CryptoNote::appendMergeMiningTagToExtra(blockTemplate.parentBlock.baseTransaction.extra, mmTag))
+                {
+                    error = "Could not write the merge mining tag";
+                    return false;
+                }
+            }
+            catch (const std::exception &e)
+            {
+                error = std::string("Could not write the merge mining tag: ") + e.what();
+                return false;
+            }
         }
 
         Job job;
