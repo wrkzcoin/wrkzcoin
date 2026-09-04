@@ -256,6 +256,23 @@ namespace DaemonConfig
             "no-zmq",
             "Disable ZMQ publisher even if zmq-pub is set",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "stratum-bind-ip",
+            "Interface for the built-in stratum server to listen on",
+            cxxopts::value<std::string>()->default_value(config.stratumBindIp),
+            "<ip>")(
+            "stratum-bind-port",
+            "Port for the built-in stratum server, so a miner can mine straight to this node. 0 disables it",
+            cxxopts::value<uint16_t>()->default_value(std::to_string(config.stratumBindPort)),
+            "#")(
+            "stratum-share-difficulty",
+            "Difficulty stratum miners are given. 0 uses the network difficulty, so a miner only reports when it has "
+            "found a block; a lower value makes it report progress as well",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.stratumShareDifficulty)),
+            "#")(
+            "stratum-max-connections",
+            "Maximum number of miners allowed on the stratum server at once",
+            cxxopts::value<size_t>()->default_value(std::to_string(config.stratumMaxConnections)),
+            "#")(
             "block-notify",
             "Run a command or POST to an http(s):// URL for each new main-chain block. "
             "Command placeholders: %s block hash, %h height (no shell; quotes group arguments)",
@@ -822,6 +839,26 @@ namespace DaemonConfig
             if (cli.count("no-zmq") > 0)
             {
                 config.noZmq = cli["no-zmq"].as<bool>();
+            }
+
+            if (cli.count("stratum-bind-ip") > 0)
+            {
+                config.stratumBindIp = cli["stratum-bind-ip"].as<std::string>();
+            }
+
+            if (cli.count("stratum-bind-port") > 0)
+            {
+                config.stratumBindPort = cli["stratum-bind-port"].as<uint16_t>();
+            }
+
+            if (cli.count("stratum-share-difficulty") > 0)
+            {
+                config.stratumShareDifficulty = cli["stratum-share-difficulty"].as<uint64_t>();
+            }
+
+            if (cli.count("stratum-max-connections") > 0)
+            {
+                config.stratumMaxConnections = cli["stratum-max-connections"].as<size_t>();
             }
 
             if (cli.count("block-notify") > 0)
@@ -1850,6 +1887,26 @@ namespace DaemonConfig
             config.noZmq = j["no-zmq"].get<bool>();
         }
 
+        if (j.contains("stratum-bind-ip"))
+        {
+            config.stratumBindIp = j["stratum-bind-ip"].get<std::string>();
+        }
+
+        if (j.contains("stratum-bind-port"))
+        {
+            config.stratumBindPort = j["stratum-bind-port"].get<uint16_t>();
+        }
+
+        if (j.contains("stratum-share-difficulty"))
+        {
+            config.stratumShareDifficulty = j["stratum-share-difficulty"].get<uint64_t>();
+        }
+
+        if (j.contains("stratum-max-connections"))
+        {
+            config.stratumMaxConnections = j["stratum-max-connections"].get<size_t>();
+        }
+
         if (j.contains("block-notify"))
         {
             config.blockNotify = j["block-notify"].get<std::string>();
@@ -1993,6 +2050,10 @@ namespace DaemonConfig
         j["rpc-ipc-require-token"] = config.rpcIpcRequireToken;
         j["zmq-pub"] = config.zmqPub;
         j["no-zmq"] = config.noZmq;
+        j["stratum-bind-ip"] = config.stratumBindIp;
+        j["stratum-bind-port"] = config.stratumBindPort;
+        j["stratum-share-difficulty"] = config.stratumShareDifficulty;
+        j["stratum-max-connections"] = config.stratumMaxConnections;
         j["block-notify"] = config.blockNotify;
         j["reorg-notify"] = config.reorgNotify;
         j["tx-notify"] = config.txNotify;

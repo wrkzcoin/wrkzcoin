@@ -97,6 +97,10 @@ namespace DaemonConfig
             rpcIpcRequireToken = false;
             zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT);
             noZmq = false;
+            stratumBindIp = "127.0.0.1";
+            stratumBindPort = 0;
+            stratumShareDifficulty = 0;
+            stratumMaxConnections = 32;
             blockNotify = "";
             reorgNotify = "";
             txNotify = "";
@@ -256,6 +260,18 @@ namespace DaemonConfig
         std::string zmqPub;
 
         bool noZmq;
+
+        /* Built-in stratum server, so a stock miner can point at this node
+           without a pool in between. Port 0 leaves it off. */
+        std::string stratumBindIp;
+
+        uint16_t stratumBindPort;
+
+        /* 0 means shares are only reported when they are blocks, which is what
+           solo mining wants. */
+        uint64_t stratumShareDifficulty;
+
+        size_t stratumMaxConnections;
 
         /* Monero-style notification hooks: an http(s):// URL (JSON POST) or a
            command template (%s hash, %h height, ...). Empty = disabled. */

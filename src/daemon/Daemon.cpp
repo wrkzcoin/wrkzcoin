@@ -31,6 +31,7 @@
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
 #include "rpc/RpcServer.h"
+#include "StratumServer.h"
 #include "serialization/BinaryInputStreamSerializer.h"
 #include "serialization/BinaryOutputStreamSerializer.h"
 
@@ -1090,6 +1091,29 @@ int main(int argc, char *argv[])
         }
 #endif
 
+        /* The stratum server lets a stock miner hash for this node directly.
+           Off unless a port is given, and bound to loopback by default. */
+        std::unique_ptr<Daemon::StratumServer> stratumServer;
+
+        if (config.stratumBindPort != 0)
+        {
+            stratumServer = std::make_unique<Daemon::StratumServer>(
+                dispatcher,
+                *ccore,
+                *cprotocol,
+                logManager,
+                config.stratumBindIp,
+                config.stratumBindPort,
+                config.stratumShareDifficulty,
+                config.stratumMaxConnections);
+
+            if (!stratumServer->start())
+            {
+                logger(WARNING) << "Failed to start the stratum server. Continuing without it.";
+                stratumServer.reset();
+            }
+        }
+
         /* Monero-style --block-notify / --reorg-notify / --tx-notify hooks.
            Delivery runs on its own worker threads; the dispatcher only enqueues. */
         std::unique_ptr<Daemon::ChainNotifier> chainNotifier;
@@ -1173,6 +1197,12 @@ int main(int argc, char *argv[])
         dch.wait_for_background_compaction();
 
         // stop components
+        if (stratumServer)
+        {
+            logger(INFO) << "Stopping stratum server...";
+            stratumServer->stop();
+        }
+
         if (chainNotifier)
         {
             logger(INFO) << "Stopping chain notifier...";
