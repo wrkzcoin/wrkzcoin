@@ -273,6 +273,14 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
        .Get("/height", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
        .Get("/peers", router(&RpcServer::peers, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
+       /* Monero-lineage solo miners - xmrig among them - poll /getheight and
+          fall back to /getinfo when the answer carries no "hash" member, which
+          is how they tell a CryptoNote daemon from a Monero one. Ours answers
+          without it, so serving the same two handlers under their spelling is
+          the whole of what those miners need to drive this daemon directly. */
+       .Get("/getinfo", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/getheight", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+
        .Post("/json_rpc", jsonRpc)
        .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
        .Post("/getrandom_outs", router(&RpcServer::getRandomOuts, RpcMode::Standard, bodyRequired, syncNotRequired))
@@ -918,6 +926,9 @@ std::tuple<Error, uint16_t> RpcServer::info(
 
         nlohmann::json j;
         j["height"] = height;
+        /* A solo miner watches this to notice someone else found the block it
+           is working on; height alone misses a same-height reorg. */
+        j["top_block_hash"] = Common::podToHex(m_core->getTopBlockHash());
         j["difficulty"] = difficulty;
         /* Transaction count without coinbase transactions - one per block, so subtract height */
         j["tx_count"] = m_core->getBlockchainTransactionCount() - height;
@@ -1529,18 +1540,57 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
 {
     const auto params = getObjectFromJSON(body, "params");
 
-    const uint64_t reserveSize = getUint64FromJSON(params, "reserve_size");
+    /* A pool asks for room it will fill in later and sends "reserve_size". A
+       Monero-lineage solo miner has nothing to fill in later, so it sends the
+       extra nonce it wants embedded and no size at all. Take either, and let a
+       caller that names neither have a template with no reserved bytes. */
+    std::vector<uint8_t> blobReserve;
 
-    if (reserveSize > 255)
+    if (hasMember(params, "extra_nonce"))
     {
-        failJsonRpcRequest(
-            -3,
-            "Too big reserved size, maximum allowed is 255",
-            res
-        );
+        const std::string extraNonce = getStringFromJSON(params, "extra_nonce");
 
-        return {SUCCESS, 200};
+        if (extraNonce.size() > 255 * 2)
+        {
+            failJsonRpcRequest(
+                -3,
+                "Too big extra nonce, maximum allowed is 255 bytes",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+
+        if (!Common::fromHex(extraNonce, blobReserve))
+        {
+            failJsonRpcRequest(
+                -3,
+                "Given extra nonce is not hex!",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
     }
+    else if (hasMember(params, "reserve_size"))
+    {
+        const uint64_t requestedReserveSize = getUint64FromJSON(params, "reserve_size");
+
+        if (requestedReserveSize > 255)
+        {
+            failJsonRpcRequest(
+                -3,
+                "Too big reserved size, maximum allowed is 255",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+
+        blobReserve.resize(requestedReserveSize, 0);
+    }
+
+    const size_t reserveSize = blobReserve.size();
 
     const std::string address = getStringFromJSON(params, "wallet_address");
 
@@ -1560,9 +1610,6 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
     const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
 
     CryptoNote::BlockTemplate blockTemplate;
-
-    std::vector<uint8_t> blobReserve;
-    blobReserve.resize(reserveSize, 0);
 
     uint64_t difficulty;
     uint32_t height;
