@@ -192,5 +192,9 @@ namespace Daemon
         uint64_t m_idCounter = 0;
 
         bool m_running = false;
+
+        /* Set once the connection cap has been reported, so a rig retrying in
+           a loop does not fill the log with it. */
+        bool m_reportedConnectionLimit = false;
     };
 } // namespace Daemon

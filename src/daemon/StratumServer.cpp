@@ -38,6 +38,12 @@ namespace Daemon
 
         constexpr size_t READ_CHUNK_BYTES = 4096;
 
+        /* A connection that stops reading still gets a job pushed at it on
+           every block. Without a ceiling those queue up for as long as the
+           socket stays half open, so past this many the connection is treated
+           as gone rather than grown forever. */
+        constexpr size_t MAX_QUEUED_MESSAGES = 64;
+
         /* The extra nonce handed to each connection, so two rigs pointed at
            the same node never grind identical nonce space. */
         constexpr size_t EXTRA_NONCE_BYTES = 8;
@@ -193,13 +199,21 @@ namespace Daemon
 
                 if (m_clients.size() >= m_maxConnections)
                 {
-                    /* Letting it fall out of scope closes it. Saying so once
-                       per refusal is what tells an operator the cap is the
-                       reason their rig cannot get in. */
-                    m_logger(WARNING) << "Refused a stratum connection: already at the " << m_maxConnections
-                                      << " connection limit";
+                    /* Letting it fall out of scope closes it. An operator needs
+                       to be told the cap is why a rig cannot get in, but a rig
+                       retrying every few seconds would otherwise fill the log
+                       with it, so say it once until a slot frees up. */
+                    if (!m_reportedConnectionLimit)
+                    {
+                        m_reportedConnectionLimit = true;
+                        m_logger(WARNING) << "Refused a stratum connection: already at the " << m_maxConnections
+                                          << " connection limit";
+                    }
+
                     continue;
                 }
+
+                m_reportedConnectionLimit = false;
 
                 auto client = std::make_shared<Client>(m_dispatcher, std::move(connection));
 
@@ -469,6 +483,17 @@ namespace Daemon
         if (!chainReady())
         {
             replyError(client, request, "Node is still synchronizing");
+            return;
+        }
+
+        /* Building a template is not cheap - it constructs the miner
+           transaction and sizes it in a loop - and a miner that polls getjob
+           would have the node do that every time it asked. The job it already
+           has is still the right one until the tip moves, and one job carries
+           four billion nonces, so hand the same one back. */
+        if (!client->jobs.empty() && client->jobs.back().height == m_core.getTopBlockIndex() + 1)
+        {
+            replyResult(client, request, describeJob(*client));
             return;
         }
 
@@ -811,6 +836,14 @@ namespace Daemon
     {
         if (client->closing)
         {
+            return;
+        }
+
+        if (client->outbox.size() >= MAX_QUEUED_MESSAGES)
+        {
+            m_logger(WARNING) << "Stratum client " << client->peer << " has stopped reading; closing it";
+            client->closing = true;
+            client->outboxReady.set();
             return;
         }
 
