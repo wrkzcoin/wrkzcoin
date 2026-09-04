@@ -19,6 +19,7 @@
 #include <sstream>
 #include <system/InterruptedException.h>
 #include <system/IpAddress.h>
+#include <system/RemoteContext.h>
 #include <utilities/Addresses.h>
 
 using namespace Logging;
@@ -561,12 +562,33 @@ namespace Daemon
         CryptoNote::BlockTemplate candidate = job->blockTemplate;
         candidate.nonce = nonce;
 
+        /* Everything else still needed from the job is taken now. Hashing
+           below yields the dispatcher, and a block arriving in the meantime
+           re-jobs this client and can push this job off the end of its
+           history, leaving the pointer dangling. */
+        const uint64_t jobDifficulty = job->difficulty;
+        const uint32_t jobHeight = job->height;
+        job = nullptr;
+
         Crypto::Hash longHash;
 
         try
         {
-            const CryptoNote::CachedBlock cached(candidate);
-            longHash = cached.getBlockLongHash();
+            /* One cn_upx is around a millisecond, and the dispatcher runs one
+               fiber at a time - hashing inline would stall block relay, RPC
+               and every other connected miner for the length of every share.
+               A client submits its shares one at a time, so this is at most
+               one hashing thread per connection. */
+            System::RemoteContext<Crypto::Hash> hasher(m_dispatcher, [&candidate]() -> Crypto::Hash {
+                const CryptoNote::CachedBlock cached(candidate);
+                return cached.getBlockLongHash();
+            });
+
+            longHash = hasher.get();
+        }
+        catch (const System::InterruptedException &)
+        {
+            throw;
         }
         catch (const std::exception &e)
         {
@@ -588,7 +610,7 @@ namespace Daemon
             return;
         }
 
-        const uint64_t shareDifficulty = m_shareDifficulty == 0 ? job->difficulty : m_shareDifficulty;
+        const uint64_t shareDifficulty = m_shareDifficulty == 0 ? jobDifficulty : m_shareDifficulty;
 
         if (!CryptoNote::check_hash(longHash, shareDifficulty))
         {
@@ -598,7 +620,7 @@ namespace Daemon
 
         client->acceptedShares++;
 
-        if (!CryptoNote::check_hash(longHash, job->difficulty))
+        if (!CryptoNote::check_hash(longHash, jobDifficulty))
         {
             /* Counted, but not a block. Only reachable when the operator set
                a share difficulty below the network's. */
@@ -620,7 +642,7 @@ namespace Daemon
 
         if (submitResult != CryptoNote::error::AddBlockErrorCondition::BLOCK_ADDED)
         {
-            m_logger(WARNING) << "Stratum block from " << client->peer << " at height " << job->height
+            m_logger(WARNING) << "Stratum block from " << client->peer << " at height " << jobHeight
                               << " was rejected: " << submitResult.message();
             replyError(client, request, "Block not accepted");
             return;
@@ -629,7 +651,7 @@ namespace Daemon
         client->foundBlocks++;
 
         m_logger(INFO, BRIGHT_GREEN) << "Stratum miner " << client->peer << " found block " << Common::podToHex(longHash)
-                                     << " at height " << job->height;
+                                     << " at height " << jobHeight;
 
         nlohmann::json result;
         result["status"] = "OK";
