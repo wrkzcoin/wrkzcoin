@@ -4,7 +4,6 @@ import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web/web.dart' as web;
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
@@ -15,22 +14,10 @@ import '../../core/providers/wallet_notifiers.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../l10n/generated/app_localizations.dart';
 
-const _storage = FlutterSecureStorage();
-const _kLastWalletKey = 'pluton_last_wallet_name';
-
-// -- Last-opened wallet persistence -------------------------------------------
-
-final lastWalletPathProvider = FutureProvider<String?>((ref) async {
-  return _storage.read(key: _kLastWalletKey);
-});
-
-Future<void> saveLastWalletPath(String name) async {
-  await _storage.write(key: _kLastWalletKey, value: name);
-}
-
-Future<void> clearLastWalletPath() async {
-  await _storage.delete(key: _kLastWalletKey);
-}
+// Last-opened wallet persistence (lastWalletPathProvider, saveLastWalletPath,
+// clearLastWalletPath) now lives in core/providers/app_providers.dart, next to
+// the other persisted preferences and reachable from the setup and lock
+// screens — which are the screens that actually know which wallet is open.
 
 // -- Screen -------------------------------------------------------------------
 
@@ -401,7 +388,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      final walletName = await _storage.read(key: _kLastWalletKey);
+      // The in-memory name is the reliable one; the stored one is the fallback
+      // for a session that opened its wallet before this build.
+      final walletName = ref.read(openWalletNameProvider) ??
+          await ref.read(lastWalletPathProvider.future);
 
       // Close BEFORE deleting. close() saves, and saving exports the open
       // wallet straight back into IndexedDB - so deleting first only got the
@@ -417,6 +407,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
       await clearLastWalletPath();
       await clearWalletPassword();
+      ref.invalidate(lastWalletPathProvider);
+      beginWalletSession(ref);
       ref.read(walletOpenProvider.notifier).state = false;
     } catch (e) {
       if (mounted) {

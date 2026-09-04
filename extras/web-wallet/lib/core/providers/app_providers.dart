@@ -11,6 +11,30 @@ const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
 const _kLogLevelKey = 'pluton_log_level';
 const _kNotificationsKey = 'pluton_notifications_enabled';
+const _kLastWalletKey = 'pluton_last_wallet_name';
+
+// ── Last-opened wallet ───────────────────────────────────────────────────────
+
+// These used to live in settings_screen.dart, where the only caller was the
+// "Delete Wallet Data" button reading the key. Nothing ever wrote it, so the
+// name was always null and that button deleted nothing. Keeping them next to
+// the other persisted preferences puts them where the setup and lock screens
+// can write them too.
+
+/// The name of the wallet file that was last opened, or null if none.
+final lastWalletPathProvider = FutureProvider<String?>((ref) async {
+  return _storage.read(key: _kLastWalletKey);
+});
+
+/// Records which wallet is open. Call on every successful open/create/restore.
+Future<void> saveLastWalletPath(String name) async {
+  await _storage.write(key: _kLastWalletKey, value: name);
+}
+
+/// Forgets the open wallet. Call on close.
+Future<void> clearLastWalletPath() async {
+  await _storage.delete(key: _kLastWalletKey);
+}
 
 // ── Theme mode ────────────────────────────────────────────────────────────────
 

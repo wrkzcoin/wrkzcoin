@@ -321,10 +321,14 @@ class WalletCApi {
   }
 
   Future<void> close() async {
-    if (_open) {
-      await _callLifecycle('close', {});
-      _open = false;
-    }
+    if (!_open) return;
+    // Clear the flag before awaiting, not after. The close round trip goes
+    // through IndexedDB, and if an open or restore completes while it is in
+    // flight, setting _open = false afterwards would mark the *new* wallet
+    // closed - every screen then reports "Wallet not connected" against a
+    // wallet that is perfectly open.
+    _open = false;
+    await _callLifecycle('close', {});
   }
 
   Future<void> save() async {

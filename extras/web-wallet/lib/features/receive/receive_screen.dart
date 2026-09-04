@@ -8,11 +8,9 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
 
-final _primaryAddressProvider = FutureProvider<String>((ref) async {
-  final ffi = ref.watch(walletCApiProvider);
-  if (!ffi.isOpen) throw Exception('Wallet not connected');
-  return ffi.getPrimaryAddress();
-});
+// The address provider lives in core/providers so it can be keyed on the
+// wallet session. Held here it cached the first wallet's address for the life
+// of the page, and every wallet opened afterwards was shown that address.
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,7 +85,7 @@ class _ReceiveScreenState extends ConsumerState<ReceiveScreen> {
   @override
   Widget build(BuildContext context) {
     final tr = S.of(context);
-    final addrAsync = ref.watch(_primaryAddressProvider);
+    final addrAsync = ref.watch(primaryAddressProvider);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),

@@ -21,6 +21,22 @@
 
 import { WalletStorage } from './wallet_storage.js';
 
+/**
+ * Accept either a bare filename or a { filename } wrapper.
+ *
+ * The Dart layer sends every lifecycle call as one params object, so
+ * bridge.deleteFile() arrives as deleteFile({filename}) while the method
+ * signature takes a string. Wrapping that object a second time produced
+ * {filename: {filename}}: the current-file comparison never matched, the
+ * WASM call saw an empty name, and IndexedDB threw DataError on an object
+ * key - so "Delete wallet" reliably did nothing at all.
+ */
+function asFilename(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value.filename === 'string') return value.filename;
+  return '';
+}
+
 export class WalletBridge {
   constructor() {
     this._module = null;
@@ -97,19 +113,49 @@ export class WalletBridge {
   // ====== Lifecycle ======
 
   /**
+   * Refuse to write a new wallet over a name IndexedDB already holds, and
+   * return the trimmed name to use.
+   *
+   * The WASM side has its own duplicate check (checkNewWalletFilename), but
+   * under Emscripten it only consults the in-memory store, which holds a
+   * wallet only for as long as this page has had it open. On a fresh page
+   * load that store is empty, so creating or restoring under an existing
+   * wallet's name sailed straight through - and _persistToIndexedDB() then
+   * overwrote that wallet's file with the new one. IndexedDB is the copy that
+   * outlives the page, so IndexedDB is what has to be checked.
+   */
+  async _reserveNewFilename(filename) {
+    const name = (filename || '').trim();
+    if (!name) {
+      const err = new Error('A wallet name is required.');
+      err.code = -3;
+      throw err;
+    }
+    if (await this._storage.loadFile(name) !== null) {
+      const err = new Error(
+        `A wallet named "${name}" already exists in this browser. Choose a ` +
+        'different name, or open the existing wallet instead.');
+      err.code = -1;
+      throw err;
+    }
+    return name;
+  }
+
+  /**
    * Create a new wallet.
    * Also persists the (initially empty) wallet to IndexedDB after creation.
    */
   async create(opts) {
+    const filename = await this._reserveNewFilename(opts.filename || 'wallet');
     const result = this.call('create', {
-      filename: opts.filename || 'wallet',
+      filename,
       password: opts.password || '',
       daemonHost: opts.daemonHost || '',
       daemonPort: opts.daemonPort || 0,
       daemonSsl: opts.daemonSsl || false,
       syncThreads: opts.syncThreads || 0,
     });
-    this._currentFilename = opts.filename || 'wallet';
+    this._currentFilename = filename;
     // Save initial wallet state to WASM store, then persist to IndexedDB
     await this._persistToIndexedDB();
     return result;
@@ -145,9 +191,10 @@ export class WalletBridge {
    * Restore wallet from mnemonic seed.
    */
   async restoreFromSeed(opts) {
+    const filename = await this._reserveNewFilename(opts.filename || 'wallet');
     const result = this.call('restoreFromSeed', {
       mnemonicSeed: opts.mnemonicSeed,
-      filename: opts.filename || 'wallet',
+      filename,
       password: opts.password || '',
       scanHeight: opts.scanHeight || 0,
       daemonHost: opts.daemonHost || '',
@@ -155,7 +202,7 @@ export class WalletBridge {
       daemonSsl: opts.daemonSsl || false,
       syncThreads: opts.syncThreads || 0,
     });
-    this._currentFilename = opts.filename || 'wallet';
+    this._currentFilename = filename;
     await this._persistToIndexedDB();
     return result;
   }
@@ -164,10 +211,11 @@ export class WalletBridge {
    * Restore wallet from private keys.
    */
   async restoreFromKeys(opts) {
+    const filename = await this._reserveNewFilename(opts.filename || 'wallet');
     const result = this.call('restoreFromKeys', {
       privateSpendKey: opts.privateSpendKey,
       privateViewKey: opts.privateViewKey,
-      filename: opts.filename || 'wallet',
+      filename,
       password: opts.password || '',
       scanHeight: opts.scanHeight || 0,
       daemonHost: opts.daemonHost || '',
@@ -175,7 +223,7 @@ export class WalletBridge {
       daemonSsl: opts.daemonSsl || false,
       syncThreads: opts.syncThreads || 0,
     });
-    this._currentFilename = opts.filename || 'wallet';
+    this._currentFilename = filename;
     await this._persistToIndexedDB();
     return result;
   }
@@ -184,10 +232,11 @@ export class WalletBridge {
    * Restore view-only wallet.
    */
   async restoreViewWallet(opts) {
+    const filename = await this._reserveNewFilename(opts.filename || 'wallet');
     const result = this.call('restoreViewWallet', {
       privateViewKey: opts.privateViewKey,
       address: opts.address,
-      filename: opts.filename || 'wallet',
+      filename,
       password: opts.password || '',
       scanHeight: opts.scanHeight || 0,
       daemonHost: opts.daemonHost || '',
@@ -195,7 +244,7 @@ export class WalletBridge {
       daemonSsl: opts.daemonSsl || false,
       syncThreads: opts.syncThreads || 0,
     });
-    this._currentFilename = opts.filename || 'wallet';
+    this._currentFilename = filename;
     await this._persistToIndexedDB();
     return result;
   }
@@ -222,7 +271,11 @@ export class WalletBridge {
   /**
    * Delete a wallet file from both WASM store and IndexedDB.
    */
-  async deleteFile(filename) {
+  async deleteFile(rawFilename) {
+    const filename = asFilename(rawFilename);
+    if (!filename) {
+      throw new Error('deleteFile requires a wallet name');
+    }
     // Forget the file first if it is the one currently open. save() and close()
     // both export the open wallet back into IndexedDB, so any autosave landing
     // after this point would recreate exactly what we are deleting - the delete
@@ -629,7 +682,11 @@ export class WalletBridgeWorker {
   restoreViewWallet(opts) { return this._async('restoreViewWallet', opts); }
   close() { return this._async('close'); }
   save() { return this._async('save'); }
-  deleteFile(filename) { return this._async('deleteFile', { filename }); }
+  // Takes a bare name or a { filename } object — the Dart layer sends the
+  // latter for every lifecycle call.
+  deleteFile(filename) {
+    return this._async('deleteFile', { filename: asFilename(filename) });
+  }
   listWallets() { return this._async('listWallets'); }
 
   // ====== Sync & Node (sync WASM via worker) ======
