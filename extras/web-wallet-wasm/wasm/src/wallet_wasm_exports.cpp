@@ -185,43 +185,42 @@ static char *json_result(wallet_status_t st, char *out, size_t /*len*/)
 static wallet_handle_t *g_wallet = nullptr;
 
 /* ------------------------------------------------------------------ */
-/*  In-memory log ring buffer                                          */
+/*  Logging                                                            */
 /* ------------------------------------------------------------------ */
 
-static std::mutex g_logMutex;
-static std::deque<json> g_logBuffer;
-static constexpr size_t LOG_BUFFER_MAX = 500;
+/* Logging goes through the C API's own bridge (wallet_set_log_level,
+   wallet_take_logs_json, wallet_clear_logs), exactly as the desktop and
+   mobile wallets use it. This file used to keep a private ring buffer, fed by
+   a callback installed from a static initialiser, and it was empty in the
+   browser no matter what level was set. Two reasons, either sufficient:
 
-/* Register the log callback once at static-init time so logs are
-   captured as soon as the WASM module loads (before any JS call). */
-struct LogCallbackInstaller
+   - Logger::logger has one callback slot, and the C API installs its own
+     through ensure_log_bridge() - reached from get_wallet(), which every
+     handle-based call goes through, so the first status poll after a wallet
+     opens replaced ours. From then on every line went to the C API's buffer,
+     which takeLogsJson here never read.
+
+   - The static installer raced Logger::logger's own constructor across
+     translation units. Logger holds a std::function, so it is dynamically
+     initialised, and if our installer ran first the constructor wiped the
+     callback it had just set.
+
+   One registration, made at runtime, owned by the layer that also owns the
+   wallet: no slot to fight over and no initialisation order to get right. */
+
+/* The C API takes a level by name; the JS side sends the numeric enum. */
+static const char *log_level_name(uint32_t level)
 {
-    LogCallbackInstaller()
+    switch (level)
     {
-        Logger::logger.setLogCallback([](
-            const std::string prettyMessage,
-            const std::string /*rawMessage*/,
-            const Logger::LogLevel level,
-            const std::vector<Logger::LogCategory> /*categories*/)
-        {
-            /* Build a lowercase level tag to match Flutter _levelColors */
-            std::string levelStr = Logger::logLevelToString(level);
-            std::transform(levelStr.begin(), levelStr.end(), levelStr.begin(), ::tolower);
-
-            json entry = {
-                {"pretty", prettyMessage},
-                {"level",  levelStr},
-                {"ts",     static_cast<int64_t>(std::time(nullptr))}
-            };
-
-            std::lock_guard<std::mutex> lock(g_logMutex);
-            if (g_logBuffer.size() >= LOG_BUFFER_MAX)
-                g_logBuffer.pop_front();
-            g_logBuffer.push_back(std::move(entry));
-        });
+        case 0: return "disabled";
+        case 1: return "fatal";
+        case 2: return "warning";
+        case 3: return "info";
+        case 4: return "debug";
+        default: return "trace";
     }
-};
-static LogCallbackInstaller g_logCallbackInstaller;
+}
 
 /*  Dispatch table                                                     */
 /* ------------------------------------------------------------------ */
@@ -254,29 +253,32 @@ static char *dispatch(const std::string &method, const json &p)
 
     if (method == "setLogLevel")
     {
-        /* Accept numeric level: DISABLED=0 FATAL=1 WARNING=2 INFO=3 DEBUG=4 TRACE=5 */
-        int levelInt = static_cast<int>(u32_param(p, "level", 3 /* INFO */));
-        /* Clamp to valid range */
-        if (levelInt < 0) levelInt = 0;
-        if (levelInt > 5) levelInt = 5;
-        Logger::logger.setLogLevel(static_cast<Logger::LogLevel>(levelInt));
+        /* Accept numeric level: DISABLED=0 FATAL=1 WARNING=2 INFO=3 DEBUG=4 TRACE=5.
+           Routed through the C API so the level lands on the same bridge that
+           owns the callback - setting Logger::logger directly used to work
+           right up until the first handle call re-initialised it to DISABLED. */
+        const uint32_t levelInt = std::min(u32_param(p, "level", 3 /* INFO */), 5u);
+        const wallet_status_t st = wallet_set_log_level(log_level_name(levelInt));
+        if (st != 0)
+            return err_json(st);
         return ok_json(true);
     }
 
     if (method == "takeLogsJson")
     {
-        std::lock_guard<std::mutex> lock(g_logMutex);
-        json entries = json::array();
-        for (const auto &e : g_logBuffer)
-            entries.push_back(e);
-        g_logBuffer.clear();
-        return ok_json(json{{"entries", entries}});
+        /* Same {"entries": [...]} shape the viewer already reads; the C API
+           adds "message" and "categories", which it ignores. */
+        char *out = nullptr;
+        size_t len = 0;
+        const wallet_status_t st = wallet_take_logs_json(&out, &len);
+        return json_result(st, out, len);
     }
 
     if (method == "clearLogs")
     {
-        std::lock_guard<std::mutex> lock(g_logMutex);
-        g_logBuffer.clear();
+        const wallet_status_t st = wallet_clear_logs();
+        if (st != 0)
+            return err_json(st);
         return ok_json(true);
     }
 
