@@ -780,8 +780,40 @@ void WalletBackend::init()
         {
             const uint64_t createdHeight = m_daemon->networkBlockCount();
             const uint64_t timestampHeight = Utilities::timestampToScanHeight(startTimestamp);
-            startHeight = std::min(createdHeight, timestampHeight);
-            startTimestamp = 0;
+
+            /* std::min() over a zero is not a lower bound, it is a wrong
+               answer. networkBlockCount() reads 0 until the first /info has
+               landed, and taking the minimum against it hands a brand new
+               wallet a scan height of 0 - the whole chain - while the line
+               that used to follow threw away the timestamp that was the only
+               other way to work the height out. The wallet then reports block
+               0 against a network of millions and grinds through blocks it
+               has no reason to look at.
+
+               It shows up on the web build first: there the initial /info is
+               an XHR issued from inside a blocking call, on a cold DNS and TLS
+               path, so it is the request most likely to be slow or to fail. A
+               native wallet usually wins that race and never notices. */
+            uint64_t candidate = 0;
+
+            if (createdHeight != 0 && timestampHeight != 0)
+            {
+                candidate = std::min(createdHeight, timestampHeight);
+            }
+            else
+            {
+                candidate = createdHeight != 0 ? createdHeight : timestampHeight;
+            }
+
+            if (candidate != 0)
+            {
+                startHeight = candidate;
+                startTimestamp = 0;
+            }
+
+            /* Neither was usable: keep the timestamp so the synchronizer can
+               resolve a height once the daemon answers. Scanning from a
+               timestamp is slow; scanning from genesis is worse. */
         }
 
         m_walletSynchronizer = std::make_shared<WalletSynchronizer>(
