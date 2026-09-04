@@ -184,7 +184,21 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
                 xhr.setRequestHeader('Accept', 'application/json');
             }
             if (body_len > 0) {
-                xhr.send(new TextDecoder('utf-8').decode(h8.subarray(body, body + body_len)));
+                // slice(), not subarray(). In a pthreads build h8 is a view over
+                // the SharedArrayBuffer that backs wasm memory, and
+                // TextDecoder.decode() throws a TypeError on any shared-backed
+                // view - the spec forbids it. subarray() hands it exactly that;
+                // slice() copies the bytes into a fresh, unshared buffer first.
+                //
+                // This is why every POST failed on the web while every GET
+                // worked: a GET has no body and never reaches this line, and the
+                // response path below encodes into a fresh array and set()s it
+                // into the shared view, which is allowed. The throw landed in
+                // the catch, came back as status 0, survived the retry without
+                // a Content-Type (same line, same throw), and surfaced as
+                // "failed to open socket" - instantly, on a daemon that was
+                // answering the identical request with 200 and CORS headers.
+                xhr.send(new TextDecoder('utf-8').decode(h8.slice(body, body + body_len)));
             } else {
                 xhr.send(null);
             }
