@@ -265,6 +265,23 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
         {
             res.status = 404;
         }
+
+        /* JSON-RPC 2.0 says the answer carries the request's id back, and we
+           never did. Most callers here never looked, but a client that follows
+           the spec has no way to tell whose answer this is, so it throws the
+           response away - xmrig's solo miner drops it and retries, forever,
+           without printing anything. Fill it in centrally so every method and
+           every error answers correctly. */
+        if (res.status == 200 && !res.body.empty() && hasMember(*body, "id"))
+        {
+            auto response = nlohmann::json::parse(res.body, nullptr, false);
+
+            if (!response.is_discarded() && response.is_object() && !hasMember(response, "id"))
+            {
+                response["id"] = body->at("id");
+                res.body = response.dump();
+            }
+        }
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
