@@ -32,3 +32,4 @@ Wrkzd.log
 # mkdocs build output
 docs/site/
 docs/hooks/__pycache__/
+.builds/
