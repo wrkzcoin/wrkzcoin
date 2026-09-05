@@ -139,6 +139,68 @@ server {
 }
 ```
 
+## Building the docs for a release
+
+The model is: **the root is always the current docs, and `/vX.Y.Z/` is a
+snapshot frozen at release time.** Between releases the root drifts ahead of
+the newest archive, which is what you want — someone reading the live site sees
+the latest corrections, and someone who needs the release they are running
+picks it from the selector.
+
+### The first time
+
+0.4.8 is live but has never been snapshotted. Capture it once, so there is
+something to switch to:
+
+```bash
+git pull
+source .venv-docs/bin/activate
+scripts/docs/publish.sh --archive
+```
+
+The version selector appears from this point on; before it, `versions.json`
+does not exist and Material renders no selector at all.
+
+### At each release afterwards
+
+Archive **after** the version bump has landed, from the tagged tree, so the
+snapshot and the version it is named for are the same thing:
+
+```bash
+git checkout wrkzcoin_v0.4.9.290      # the release tag
+source .venv-docs/bin/activate
+scripts/docs/publish.sh --archive
+```
+
+That writes `/v0.4.9/` and refreshes the root, and `versions.json` picks up the
+new release as latest automatically.
+
+Then go back to the branch you publish from:
+
+```bash
+git checkout development
+scripts/docs/publish.sh
+```
+
+### The ordering trap
+
+`publish.sh` reads the version from `src/config/version.h.in` **in the tree you
+run it from**. Bump the version to 0.4.9 first and then archive, and you get
+`/v0.4.9/` containing 0.4.9's docs — with 0.4.8 never snapshotted, and its docs
+gone, because they only ever existed at the root that just got overwritten.
+
+If that happens, it is recoverable — check out the missed tag and snapshot it
+without touching the live site:
+
+```bash
+git checkout wrkzcoin_v0.4.8.280
+scripts/docs/publish.sh --archive-only
+```
+
+`--archive-only` writes `/v0.4.8/` and leaves the root alone. `versions.json`
+is rebuilt from the directories on disk, so the newest archive stays latest and
+the recovered one slots into place.
+
 ## When to archive
 
 **Start at 0.4.8.** Older tags do carry a `docs/` tree, so an archive for 0.4.7

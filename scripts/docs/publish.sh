@@ -16,6 +16,9 @@
 # Usage:
 #   ./publish.sh                      build and sync the live docs
 #   ./publish.sh --archive            also snapshot this build as v<version>
+#   ./publish.sh --archive-only       write v<version> only, leave the live
+#                                     docs alone. For snapshotting a release
+#                                     from its tag after the fact
 #   ./publish.sh --dry-run            show what would change, touch nothing
 #   ./publish.sh --root /path/to/web  override the web root
 #
@@ -29,15 +32,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WEB_ROOT="${DOCS_WEB_ROOT:-/var/www/docs.wrkz.work}"
 BASE_URL="${DOCS_BASE_URL:-https://docs.wrkz.work}"
 ARCHIVE=0
+LIVE=1
 DRY_RUN=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --archive)  ARCHIVE=1 ;;
-        --dry-run)  DRY_RUN=1 ;;
-        --root)     WEB_ROOT="$2"; shift ;;
-        -h|--help)  sed -n '2,25p' "$0"; exit 0 ;;
-        *)          echo "unknown option: $1" >&2; exit 2 ;;
+        --archive)      ARCHIVE=1 ;;
+        --archive-only) ARCHIVE=1; LIVE=0 ;;
+        --dry-run)      DRY_RUN=1 ;;
+        --root)         WEB_ROOT="$2"; shift ;;
+        -h|--help)      sed -n '2,29p' "$0"; exit 0 ;;
+        *)              echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
@@ -101,8 +106,10 @@ EOF
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-echo "==> building live docs"
-build_docs "$BASE_URL/" "$STAGE/live"
+if [ "$LIVE" = 1 ]; then
+    echo "==> building live docs"
+    build_docs "$BASE_URL/" "$STAGE/live"
+fi
 
 if [ "$ARCHIVE" = 1 ]; then
     echo "==> building archive copy for v$VERSION"
@@ -112,13 +119,17 @@ fi
 RSYNC_OPTS=(-a --delete)
 [ "$DRY_RUN" = 1 ] && RSYNC_OPTS+=(--dry-run --itemize-changes)
 
-# --delete would remove the archive directories and versions.json, which are
-# not part of any single build. Protect them explicitly.
-echo "==> syncing live docs"
-rsync "${RSYNC_OPTS[@]}" \
-    --exclude '/v[0-9]*/' \
-    --exclude '/versions.json' \
-    "$STAGE/live/" "$WEB_ROOT/"
+if [ "$LIVE" = 1 ]; then
+    # --delete would remove the archive directories and versions.json, which
+    # are not part of any single build. Protect them explicitly.
+    echo "==> syncing live docs"
+    rsync "${RSYNC_OPTS[@]}" \
+        --exclude '/v[0-9]*/' \
+        --exclude '/versions.json' \
+        "$STAGE/live/" "$WEB_ROOT/"
+else
+    echo "==> leaving the live docs untouched (--archive-only)"
+fi
 
 if [ "$ARCHIVE" = 1 ]; then
     echo "==> syncing archive v$VERSION"
@@ -128,18 +139,20 @@ fi
 # versions.json is rebuilt from what is actually on disk rather than kept by
 # hand, so it can never advertise a version that is not served.
 echo "==> regenerating versions.json"
-DRY_RUN="$DRY_RUN" WEB_ROOT="$WEB_ROOT" VERSION="$VERSION" python3 <<'PY'
+DRY_RUN="$DRY_RUN" WEB_ROOT="$WEB_ROOT" python3 <<'PY'
 import json, os, re
 
 web_root = os.environ["WEB_ROOT"]
-current = os.environ["VERSION"]
 dry_run = os.environ["DRY_RUN"] == "1"
+target = os.path.join(web_root, "versions.json")
 
 
 def sort_key(name):
     return [int(part) for part in re.findall(r"\d+", name)]
 
 
+# Derived entirely from what is on disk. Every entry the selector offers is
+# therefore a directory that is actually served, whichever mode produced it.
 archives = sorted(
     (d[1:] for d in os.listdir(web_root)
      if re.fullmatch(r"v\d+(\.\d+)*", d)
@@ -148,28 +161,36 @@ archives = sorted(
     reverse=True,
 ) if os.path.isdir(web_root) else []
 
-# The live site sits at the root, which has no path segment for the version
-# selector to match, so Material falls back to entry zero. The current release
-# must therefore come first.
+if not archives:
+    # Nothing to switch between yet. Material fetches versions.json and simply
+    # renders no selector when it 404s, which is the honest state before the
+    # first release is archived.
+    print("no archived versions on disk yet - leaving versions.json absent")
+    if os.path.exists(target) and not dry_run:
+        os.remove(target)
+    raise SystemExit(0)
+
+# The live site sits at the root, which has no path segment for the selector to
+# match against, so Material falls back to entry zero. The newest archive must
+# therefore come first: that is what the root is showing, give or take doc
+# fixes made since that release.
+newest, rest = archives[0], archives[1:]
+
 entries = [{
-    "version": "v%s" % current,
-    "title": "%s (latest)" % current,
+    "version": "v%s" % newest,
+    "title": "%s (latest)" % newest,
     "aliases": ["latest"],
 }]
-entries += [
-    {"version": "v%s" % v, "title": v, "aliases": []}
-    for v in archives if v != current
-]
+entries += [{"version": "v%s" % v, "title": v, "aliases": []} for v in rest]
 
 payload = json.dumps(entries, indent=2) + "\n"
-target = os.path.join(web_root, "versions.json")
 
 if dry_run:
     print("would write %s:\n%s" % (target, payload))
 else:
     with open(target, "w", encoding="utf-8") as handle:
         handle.write(payload)
-    print("wrote %s (%d entries)" % (target, len(entries)))
+    print("wrote %s (%d entries, latest %s)" % (target, len(entries), newest))
 PY
 
 echo "==> done"
