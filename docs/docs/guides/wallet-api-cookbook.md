@@ -1,9 +1,12 @@
 # Wallet API Cookbook
 
+A complete working sequence against the wallet API, from creating a wallet to
+sending from it and closing it again.
+
 Set shared vars:
 
 ```bash
-export WALLET_API_URL="http://127.0.0.1:8070"
+export WALLET_API_URL="http://127.0.0.1:7856"
 export WALLET_API_KEY="strong-password"
 ```
 

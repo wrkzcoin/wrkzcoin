@@ -1,5 +1,8 @@
 # Daemon HTTP Endpoints
 
+Every non-JSON-RPC route the daemon serves, including the wallet sync endpoints
+and their optional fields.
+
 Implementation mapping: route registrations in `src/rpc/RpcServer.cpp`.
 
 ## GET

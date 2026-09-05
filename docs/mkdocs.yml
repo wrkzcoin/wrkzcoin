@@ -1,8 +1,27 @@
-site_name: WrkzCoin Wiki
-site_description: Daemon RPC, wallet-api RPC, and operator guides
+site_name: WrkzCoin Documentation
+site_url: https://docs.wrkz.work/
+site_description: Daemon RPC, wallet RPC, and operator guides for WrkzCoin
+site_author: The WrkzCoin Developers
+copyright: Copyright &copy; 2018-2026 The WrkzCoin Developers
+
+repo_url: https://github.com/wrkzcoin/wrkzcoin
+repo_name: wrkzcoin/wrkzcoin
+edit_uri: edit/development/docs/docs/
+
 docs_dir: docs
+
 theme:
   name: material
+  features:
+    - navigation.instant
+    - navigation.top
+    - navigation.sections
+    - navigation.indexes
+    - toc.follow
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.suggest
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -14,31 +33,91 @@ theme:
       toggle:
         icon: material/weather-night
         name: Switch to light mode
+
 plugins:
   - search
   - minify:
       minify_html: true
+
+# Emits llms.txt, llms-full.txt and a raw .md mirror of every page into the
+# built site, so an AI agent can read the docs without scraping HTML.
+hooks:
+  - hooks/llms_txt.py
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/discord
+      link: https://discord.com/invite/KN8PjyuvG4
+      name: WrkzCoin on Discord
+    - icon: fontawesome/brands/x-twitter
+      link: https://x.com/wrkzcoin
+      name: WrkzCoin on X
+    - icon: fontawesome/brands/github
+      link: https://github.com/wrkzcoin
+      name: WrkzCoin on GitHub
+
 nav:
   - Home: index.md
+  - Node Operator:
+      - Running a Node: guides/running-daemon.md
+      - Configuration Reference: guides/daemon-configuration.md
+      - Console Commands: guides/console-commands.md
+      - Networking: guides/networking.md
+      - Local IPC and Console: guides/ipc-and-console.md
+      - Notification Hooks: guides/notify-hooks.md
+      - Lite Nodes: guides/lite-node.md
+      - Lite Node Snapshots: guides/lite-snapshots.md
+      - Solo Mining: guides/solo-mining.md
+      - Security Hardening: guides/security-hardening.md
+      - Rate Limits and Performance: guides/rate-limits-and-performance.md
   - Daemon RPC:
       - Overview: daemon-rpc/overview.md
       - Auth and Security: daemon-rpc/auth-and-security.md
       - JSON-RPC Methods: daemon-rpc/json-rpc.md
       - HTTP Endpoints: daemon-rpc/http-endpoints.md
+      - Cookbook: guides/daemon-rpc-cookbook.md
   - Wallet API RPC:
       - Overview: wallet-api/overview.md
+      - Running Wallet API: guides/running-wallet-api.md
       - Auth and Security: wallet-api/auth-and-security.md
       - Endpoints: wallet-api/endpoints.md
+      - Cookbook: guides/wallet-api-cookbook.md
   - Wallet Service JSON-RPC:
       - Overview: wallet-service-json-rpc/overview.md
       - Methods: wallet-service-json-rpc/methods.md
-  - Guides:
-      - Running Daemon RPC: guides/running-daemon.md
-      - Running Wallet API: guides/running-wallet-api.md
-      - Using Wallet CLI: guides/wallet-cli.md
-      - Security Hardening: guides/security-hardening.md
-      - Wallet API Cookbook: guides/wallet-api-cookbook.md
-      - Daemon RPC Cookbook: guides/daemon-rpc-cookbook.md
-      - Rate Limits and Performance: guides/rate-limits-and-performance.md
+  - Wallets:
+      - Wallet CLI: guides/wallet-cli.md
       - Wallet CLI Command Reference: guides/cli-command-reference.md
+      - Desktop, Mobile and Web Wallets: guides/wallet-apps.md
       - Encrypted Payment IDs: guides/encrypted-payment-ids.md
+      - Transaction PoW Server: guides/txpow-server.md
+  - Building and Tools:
+      - Building from Source: guides/building.md
+      - Building the Wallet Apps: guides/building-wallet-apps.md
+      - The Miner App: guides/miner.md
+      - Other Tools: guides/other-tools.md
+  - Reference:
+      - Network Parameters: guides/network-parameters.md
+      - Wallet Error Codes: guides/error-codes.md
+  - Changelog:
+      - Daemon: changelog/daemon.md
+      - Wallet API: changelog/wallet-api.md
+  - Community: community.md

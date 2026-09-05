@@ -1,5 +1,7 @@
 # Wallet API Endpoints
 
+Every route `wrkz-wallet-api` serves, by method, with a worked request for each.
+
 Implementation mapping: route registrations in `src/walletapi/ApiDispatcher.cpp`.
 
 Route placeholders:
@@ -25,8 +27,8 @@ Route placeholders:
 - `/transactions/send/basic`
 - `/transactions/prepare/advanced`
 - `/transactions/send/advanced`
-- `/transactions/send/fusion/basic`
-- `/transactions/send/fusion/advanced`
+- `/transactions/send/sweep`
+- `/transactions/send/sweep/all`
 - `/export/json`
 
 ## DELETE
@@ -75,6 +77,10 @@ Route placeholders:
 
 - `/transactions/paymentid/{hash}` currently uses `hashRegex` in route registration.
 - Some endpoints require a full wallet (not view-only); enforced in middleware.
+- Failures carry a numeric `errorCode`; see [Wallet Error Codes](../guides/error-codes.md).
+- **Fusion endpoints were removed in 0.4.7.** `/transactions/send/fusion/basic`
+  and `/transactions/send/fusion/advanced` no longer exist and return `404`. Use
+  the sweep endpoints instead — see the [changelog](../changelog/wallet-api.md).
 
 ## Example Requests
 
@@ -236,17 +242,41 @@ curl -s -X POST "$WALLET_API_URL/transactions/send/advanced" \
   -d '{"destinations":[{"address":"<address>","amount":1000000}],"mixin":7,"feePerByte":1.25,"sourceAddresses":["<address>"]}'
 ```
 
-Fusion send:
+### Sweeping
+
+A sweep sends across **as many transactions as it takes**, so it is the way to
+move a balance made of many small inputs, and it replaced the fusion/optimize
+transactions removed in 0.4.7.
+
+Sweep a specific amount (omit `amount`, or send `0`, to sweep everything):
 
 ```bash
-curl -s -X POST "$WALLET_API_URL/transactions/send/fusion/basic" \
+curl -s -X POST "$WALLET_API_URL/transactions/send/sweep" \
   -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"destination":"<address>"}'
-
-curl -s -X POST "$WALLET_API_URL/transactions/send/fusion/advanced" \
-  -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
-  -d '{"destination":"<address>","mixin":7,"sourceAddresses":["<address>"],"extra":"<optional-extra-hex>","optimizeTarget":100000}'
+  -d '{"destination":"<address>","amount":1000000,"paymentID":"<optional-payment-id>"}'
 ```
+
+Sweep the whole balance:
+
+```bash
+curl -s -X POST "$WALLET_API_URL/transactions/send/sweep/all" \
+  -H "X-API-KEY: $WALLET_API_KEY" -H "Content-Type: application/json" \
+  -d '{"destination":"<address>","paymentID":"<optional-payment-id>"}'
+```
+
+Both answer `200` with one entry per transaction attempted:
+
+```json
+{
+  "transactions": [
+    { "success": true, "transactionHash": "<hash>" },
+    { "success": false, "errorCode": 12, "errorMessage": "..." }
+  ]
+}
+```
+
+A sweep that partly fails still returns `200` — check every entry, not just the
+status code.
 
 ### Transaction queries
 

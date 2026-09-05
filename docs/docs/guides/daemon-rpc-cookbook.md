@@ -1,5 +1,8 @@
 # Daemon RPC Cookbook
 
+Working curl recipes for the daemon RPC, in the order an integration usually
+needs them. Every call is documented in full under Daemon RPC.
+
 Set shared vars:
 
 ```bash
@@ -19,8 +22,14 @@ AUTH_HEADER=(-H "X-API-Key: $DAEMON_RPC_TOKEN")
 curl -s "${AUTH_HEADER[@]}" "$DAEMON_RPC_URL/info"
 curl -s "${AUTH_HEADER[@]}" "$DAEMON_RPC_URL/height"
 curl -s "${AUTH_HEADER[@]}" "$DAEMON_RPC_URL/peers"
-curl -s "${AUTH_HEADER[@]}" "$DAEMON_RPC_URL/fee"
 ```
+
+There is **no `/fee` route** on the daemon. Node fees are not implemented on
+this network: the wallet backend hard-codes the node fee address to empty and
+the amount to zero, so `getFeeInfo` and `getNodeFeeInfo` on
+[wallet-service JSON-RPC](../wallet-service-json-rpc/methods.md) always answer
+with an empty address and `0`. `/info` carries the node's own state — see
+[HTTP Endpoints](../daemon-rpc/http-endpoints.md).
 
 ## 2) Basic JSON-RPC calls
 
@@ -52,7 +61,7 @@ curl -s "${AUTH_HEADER[@]}" -H "Content-Type: application/json" \
   "$DAEMON_RPC_URL/queryblockslite"
 ```
 
-Detailed chain query (requires `AllMethodsEnabled`):
+Detailed chain query (requires `--daemon-mode explorer`):
 
 ```bash
 curl -s "${AUTH_HEADER[@]}" -H "Content-Type: application/json" \

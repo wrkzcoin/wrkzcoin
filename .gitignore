@@ -28,3 +28,7 @@ extras/web-wallet/web/wallet_wasm.worker.js
 
 # Daemon log written into whatever directory it is started from
 Wrkzd.log
+
+# mkdocs build output
+docs/site/
+docs/hooks/__pycache__/

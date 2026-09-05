@@ -36,6 +36,11 @@ Useful startup options:
 - `--log-file <file>`
 - `--ssl` (when SSL support is compiled)
 
+`--remote-daemon` also accepts an IPv6 address in brackets
+(`[2001:db8::1]:17856`) and, on POSIX, a local IPC socket — an absolute path, an
+`@name` in the abstract namespace, or an `ipc://path`. See
+[Local IPC and Console](ipc-and-console.md).
+
 ## Startup menu actions
 
 When no wallet is preselected, common startup choices include:
@@ -70,6 +75,8 @@ Transactions:
 
 - `transfer`
 - `send_all`
+- `sweep`
+- `sweep_all`
 - `incoming_transfers`
 - `outgoing_transfers`
 - `list_transfers`
@@ -96,7 +103,6 @@ Security and maintenance:
 - `change_password`
 - `save`
 - `save_csv`
-- `optimize`
 - `reset`
 - `set_log_level`
 

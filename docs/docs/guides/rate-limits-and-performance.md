@@ -1,5 +1,9 @@
 # Rate Limits and Performance
 
+The knobs that decide how much work one client can ask a node for, and how much
+of that work the node has to redo. Most matter only on a node serving wallets it
+does not own.
+
 ## Daemon RPC controls
 
 Primary knobs (daemon config/CLI):
@@ -51,7 +55,10 @@ node that only serves one.
 - Prefer incremental sync calls over very large batch requests.
 - Use checkpoint-based sync (`blockHashCheckpoints`) for wallet sync.
 - Implement retry with backoff on `429`.
-- Cache static-ish responses where possible (`/fee`, some metadata).
+- Read `sync_features` from `/info` once and use the optional sync fields the
+  daemon advertises — `skipEmptyBlocks`, `encoding: "base64"` and `endHeight` —
+  rather than sending them blind. See
+  [HTTP Endpoints](../daemon-rpc/http-endpoints.md#optional-sync-fields).
 
 ## Example: pagination instead of huge blockCount
 

@@ -1,5 +1,8 @@
 # Wallet CLI Command Reference
 
+Every command `wrkz-wallet` accepts, grouped by the menu it appears in. For a
+walkthrough rather than a list, see Using Wallet CLI.
+
 Source: `src/zedwallet++/Commands.cpp`
 
 ## Startup menu commands
@@ -46,9 +49,16 @@ Source: `src/zedwallet++/Commands.cpp`
 - `transfer`
 - `ab_send`
 - `send_all`
+- `sweep`
+- `sweep_all`
 - `get_tx_private_key`
 - `check_tx <hash>`
 - `decode_integrated`
+
+`sweep` and `sweep_all` send across as many transactions as it takes, and print
+the estimated transaction count and total fee before asking to confirm. They
+replaced the `optimize` command, removed in 0.4.7 along with fusion
+transactions.
 
 ## Address book
 
@@ -66,7 +76,6 @@ Source: `src/zedwallet++/Commands.cpp`
 - `change_password`
 - `save`
 - `save_csv`
-- `optimize`
 - `reset`
 - `set_log_level`
 

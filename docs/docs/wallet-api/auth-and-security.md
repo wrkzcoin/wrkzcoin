@@ -1,5 +1,8 @@
 # Wallet API Auth and Security
 
+How `wrkz-wallet-api` authenticates callers, and the wallet-state and view-only
+rules the middleware enforces before a handler runs.
+
 Implementation: `src/walletapi/ApiDispatcher.cpp`, `src/walletapi/ParseArguments.cpp`
 
 ## Authentication

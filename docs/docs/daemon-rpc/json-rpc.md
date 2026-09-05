@@ -1,5 +1,8 @@
 # Daemon JSON-RPC Methods
 
+Every method the daemon answers on `/json_rpc`, with the RPC mode each needs and
+a worked example.
+
 Implementation mapping: `src/rpc/RpcServer.cpp` method switch in `/json_rpc` dispatcher.
 
 `/json_rpc` accepts JSON with a `method` field. Current methods:

@@ -1,0 +1,5 @@
+# mkdocs >= 1.4 is required: the llms.txt generator is wired in through the
+# `hooks:` key, which older versions ignore silently.
+mkdocs>=1.4
+mkdocs-material>=9.5
+mkdocs-minify-plugin>=0.8

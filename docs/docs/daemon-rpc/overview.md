@@ -1,14 +1,19 @@
 # Daemon RPC Overview
 
+What the daemon serves, on which listeners, and which options control them.
+
 Implementation: `src/rpc/RpcServer.cpp`, `src/rpc/RpcServer.h`
 
 The daemon exposes:
 
 - JSON-RPC at `/json_rpc` (GET and POST)
 - HTTP-style endpoints (`/info`, `/height`, and others)
+- The same surface over a local AF_UNIX socket when `--rpc-ipc-path` is given,
+  plus `/console`, which is served **only** there. See
+  [Local IPC and Console](../guides/ipc-and-console.md)
 - A stratum server for miners, off unless `--stratum-bind-port` is given. It is
-  a separate TCP listener, not part of the RPC surface, and is documented in
-  `MINING.md` in the repository root.
+  a separate TCP listener, not part of the RPC surface. See
+  [Solo Mining](../guides/solo-mining.md)
 
 RPC availability depends on the daemon RPC mode, chosen with
 `--daemon-mode <standard|explorer>` (`RpcMode` in `src/rpc/RpcServer.h`):
@@ -32,10 +37,21 @@ Defined in `src/daemon/DaemonConfiguration.h` and parsed in `src/daemon/DaemonCo
 - `rpc-max-rpm`
 - `rpc-max-global-index-range`
 - `rpc-max-block-count`
+- `rpc-sync-cache-size`
 - `rpc-trust-proxy`
+- `rpc-ipc-path`
 - `daemon-mode`
 
-See the other daemon RPC pages for auth, limits, and method lists.
+The full option list, with every default, is in the
+[Configuration Reference](../guides/daemon-configuration.md). See the other
+daemon RPC pages for auth, limits, and method lists.
+
+## On a lite node
+
+A [lite node](../guides/lite-node.md) answers `/info` with `lite` and
+`lite_start_height`, clamps `/getwalletsyncdata` and `/getrawblocks` requests up
+to that height, and **refuses** `/get_global_indexes_for_range` below it. Lite
+mode and explorer mode cannot be combined.
 
 ## Quick Examples
 

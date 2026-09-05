@@ -1,5 +1,7 @@
 # Wallet Service JSON-RPC Methods
 
+Every method `wrkz-service` answers, with an example payload for each.
+
 Method registrations are in `src/walletservice/PaymentServiceJsonRpcServer.cpp`.
 
 Current methods:
@@ -29,6 +31,19 @@ Current methods:
 - `createIntegratedAddress`
 - `getFeeInfo`
 - `getNodeFeeInfo`
+
+## Node fees are not implemented
+
+`getFeeInfo` and `getNodeFeeInfo` succeed but always answer with an empty
+address and an amount of `0`. The wallet backend does not read a node fee from
+the daemon (`NodeRpcProxy::getFeeInfo` clears both fields), and the daemon's
+`--fee-address` / `--fee-amount` options are not served over RPC. Do not build a
+fee-splitting integration on these two methods.
+
+## Error codes
+
+Failures carry a numeric code from the shared wallet error table; see
+[Wallet Error Codes](../guides/error-codes.md).
 
 ## Authentication behavior
 

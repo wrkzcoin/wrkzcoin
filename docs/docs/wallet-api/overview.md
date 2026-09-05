@@ -1,14 +1,20 @@
 # Wallet API RPC Overview
 
+What `wrkz-wallet-api` exposes and how a client is expected to drive it.
+
 Implementation: `src/walletapi/ApiDispatcher.cpp`, `src/walletapi/ApiDispatcher.h`
 
 Wallet API is an HTTP API (not JSON-RPC) with routes for:
 
 - Wallet lifecycle (`/wallet/*`, `/save`, `/reset`)
 - Address management (`/addresses/*`)
-- Transaction creation/sending/query
+- Transaction creation, sending, sweeping and query
 - Key operations (`/keys/*`)
 - Balance and node status (`/balance`, `/balances`, `/node`, `/status`)
+
+Fusion / optimize endpoints were **removed in 0.4.7**; consolidate inputs with
+`/transactions/send/sweep` and `/transactions/send/sweep/all` instead. See the
+[changelog](../changelog/wallet-api.md).
 
 Request handling goes through middleware with:
 
@@ -29,7 +35,7 @@ Defined in `src/walletapi/Constants.h`.
 Set environment variables:
 
 ```bash
-export WALLET_API_URL="http://127.0.0.1:8070"
+export WALLET_API_URL="http://127.0.0.1:7856"
 export WALLET_API_KEY="replace-me"
 ```
 

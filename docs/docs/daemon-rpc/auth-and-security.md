@@ -1,5 +1,8 @@
 # Daemon RPC Auth and Security
 
+How the daemon authenticates an RPC caller and what it does to one that asks for
+too much.
+
 Implementation: `src/rpc/RpcServer.cpp`, `src/daemon/DaemonConfiguration.cpp`
 
 ## Authentication
@@ -12,6 +15,15 @@ If `rpc-access-token` is set, every request must provide:
 Otherwise daemon returns `401 Unauthorized`.
 
 If `rpc-access-token` is empty, token auth is disabled.
+
+### On the local IPC socket
+
+When RPC is also served on an AF_UNIX socket (`--rpc-ipc-path`), the token is
+**not** required there and rate limiting is skipped. The mode on the socket file
+already decided who may connect and the kernel enforced it. Set
+`--rpc-ipc-require-token` to demand both. The `/console` route is registered on
+that socket only, never on a TCP listener, token or no token. See
+[Local IPC and Console](../guides/ipc-and-console.md).
 
 ## Request limits and protection
 
