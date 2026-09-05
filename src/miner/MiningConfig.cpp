@@ -70,10 +70,27 @@ namespace CryptoNote
             "scan-time",
             "Blockchain polling interval (seconds). How often miner will check the Blockchain for updates",
             cxxopts::value<size_t>(scanPeriod)->default_value("1"),
+            "#")(
+            "daemon-timeout",
+            "How long to wait on a daemon request (seconds) before giving up on it",
+            cxxopts::value<size_t>(daemonTimeout)->default_value("10"),
+            "#")(
+            "retry-interval",
+            "How long to wait (seconds) before asking again after a failed daemon request",
+            cxxopts::value<size_t>(retryInterval)->default_value("1"),
             "#");
 
         options.add_options("Mining")(
             "address", "The valid CryptoNote miner's address", cxxopts::value<std::string>(miningAddress), "<address>")(
+            "benchmark",
+            "Hash for this many seconds and report the rate, then exit. Needs no daemon and no address, and measures "
+            "the proof of work alone. 0 means mine normally",
+            cxxopts::value<size_t>(benchmarkSeconds)->default_value("0"),
+            "#")(
+            "hash-rate-interval",
+            "How often to report the hash rate (seconds). 0 turns the report off",
+            cxxopts::value<size_t>(hashRateInterval)->default_value("60"),
+            "#")(
             "block-timestamp-interval",
             "Timestamp incremental step for each subsequent block. May be set only if --first-block-timestamp has been "
             "set.",
@@ -88,7 +105,8 @@ namespace CryptoNote
             cxxopts::value<size_t>(blocksLimit)->default_value("0"),
             "#")(
             "threads",
-            "The mining threads count. Must not exceed hardware capabilities.",
+            "The mining threads count. Going above what the hardware reports is allowed but warned about - the best "
+            "count for CryptoNight is usually set by cache, not by cores.",
             cxxopts::value<size_t>(threadCount)->default_value(std::to_string(CONCURRENCY_LEVEL)),
             "#");
 
@@ -115,6 +133,50 @@ namespace CryptoNote
             exit(0);
         }
 
+        if (threadCount == 0)
+        {
+            throw std::runtime_error("--threads must be at least 1");
+        }
+
+        /* Not an error: the best thread count for CryptoNight is set by how
+           many scratchpads fit in cache, not by the core count, so both
+           over- and under-subscribing are legitimate things to try. */
+        if (threadCount > CONCURRENCY_LEVEL)
+        {
+            std::cout << WarningMsg("--threads is ") << WarningMsg(threadCount)
+                      << WarningMsg(", above the ") << WarningMsg(CONCURRENCY_LEVEL)
+                      << WarningMsg(" this machine reports. Expect them to fight over the CPU.\n");
+        }
+
+        if (scanPeriod == 0)
+        {
+            throw std::runtime_error("--scan-time must not be zero");
+        }
+
+        if (daemonTimeout == 0)
+        {
+            throw std::runtime_error("--daemon-timeout must not be zero");
+        }
+
+        if (retryInterval == 0)
+        {
+            throw std::runtime_error("--retry-interval must not be zero");
+        }
+
+        if (firstBlockTimestamp == 0 && blockTimestampInterval != 0)
+        {
+            throw std::runtime_error(
+                "If you specify --block-timestamp-interval you must also specify --first-block-timestamp");
+        }
+
+        /* A benchmark talks to nothing and mines to nobody, so everything
+           below - the daemon address and the mining address it would
+           otherwise stop and ask for - is not its business. */
+        if (benchmarkSeconds != 0)
+        {
+            return;
+        }
+
         /* Checked before the interactive address prompt below, so a build that
            cannot do IPC says so straight away instead of asking for a mining
            address first. Reported here rather than thrown, because main()
@@ -124,6 +186,14 @@ namespace CryptoNote
             std::cout << WarningMsg("--daemon-address names an IPC socket, but ")
                       << WarningMsg(Common::Ipc::unsupportedReason()) << WarningMsg(".") << std::endl;
             exit(1);
+        }
+
+        if (!daemonAddress.empty())
+        {
+            if (!Utilities::parseDaemonAddressFromString(daemonHost, daemonPort, daemonAddress))
+            {
+                throw std::runtime_error("Could not parse --daemon-address option");
+            }
         }
 
         const bool integratedAddressesAllowed = false;
@@ -144,30 +214,6 @@ namespace CryptoNote
             Utilities::trim(miningAddress);
 
             error = validateAddresses({miningAddress}, integratedAddressesAllowed);
-        }
-
-        if (!daemonAddress.empty())
-        {
-            if (!Utilities::parseDaemonAddressFromString(daemonHost, daemonPort, daemonAddress))
-            {
-                throw std::runtime_error("Could not parse --daemon-address option");
-            }
-        }
-
-        if (threadCount == 0 || threadCount > CONCURRENCY_LEVEL)
-        {
-            throw std::runtime_error("--threads option must be 1.." + std::to_string(CONCURRENCY_LEVEL));
-        }
-
-        if (scanPeriod == 0)
-        {
-            throw std::runtime_error("--scan-time must not be zero");
-        }
-
-        if (firstBlockTimestamp == 0 && blockTimestampInterval != 0)
-        {
-            throw std::runtime_error(
-                "If you specify --block-timestamp-interval you must also specify --first-block-timestamp");
         }
     }
 

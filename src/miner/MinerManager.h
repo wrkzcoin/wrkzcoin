@@ -14,6 +14,7 @@
 #include "logging/LoggerRef.h"
 
 #include <atomic>
+#include <optional>
 #include <queue>
 #include <system/ContextGroup.h>
 #include <system/Event.h>
@@ -35,7 +36,14 @@ namespace Miner
 
         void start();
 
+        /* Safe to call from a signal handler thread: it only hands the work
+           over to the dispatcher, which is the only thread allowed to touch
+           the miner and the event queue. */
+        void requestShutdown();
+
       private:
+        System::Dispatcher &m_dispatcher;
+
         System::ContextGroup m_contextGroup;
 
         CryptoNote::MiningConfig m_config;
@@ -51,6 +59,10 @@ namespace Miner
         /* Written by the mining thread, read by the hash rate reporter. */
         std::atomic<bool> isRunning {false};
 
+        /* Set from whichever thread the signal arrived on, so the retry loops
+           can give up instead of holding a Ctrl+C until the daemon answers. */
+        std::atomic<bool> m_shutdownRequested {false};
+
         CryptoNote::BlockTemplate m_minedBlock;
 
         uint64_t m_lastBlockTimestamp;
@@ -65,6 +77,13 @@ namespace Miner
 
         void printHashRate();
 
+        void printStartupSummary() const;
+
+        /* Sleeps on the dispatcher rather than on the thread, so the fibers
+           behind the miner and the blockchain monitor keep running while a
+           retry or a poll is waiting. */
+        void sleepSeconds(const size_t seconds);
+
         void startMining(const CryptoNote::BlockMiningParameters &params);
 
         void stopMining();
@@ -75,7 +94,8 @@ namespace Miner
 
         bool submitBlock(const CryptoNote::BlockTemplate &minedBlock);
 
-        CryptoNote::BlockMiningParameters requestMiningParameters();
+        /* Empty when a shutdown was asked for while it was retrying. */
+        std::optional<CryptoNote::BlockMiningParameters> requestMiningParameters();
 
         void adjustBlockTemplate(CryptoNote::BlockTemplate &blockTemplate) const;
     };

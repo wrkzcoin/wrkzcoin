@@ -15,8 +15,10 @@
 #include <common/TransactionExtra.h>
 #include <config/CryptoNoteConfig.h>
 #include <miner/BlockUtilities.h>
+#include <system/Timer.h>
 #include <utilities/ColouredMsg.h>
 #include <utilities/FormatTools.h>
+#include <utilities/Utilities.h>
 
 using json = nlohmann::json;
 
@@ -35,6 +37,13 @@ namespace Miner
         {
             MinerEvent event;
             event.type = MinerEventType::BLOCKCHAIN_UPDATED;
+            return event;
+        }
+
+        MinerEvent ShutdownEvent()
+        {
+            MinerEvent event;
+            event.type = MinerEventType::SHUTDOWN;
             return event;
         }
 
@@ -61,6 +70,7 @@ namespace Miner
         const CryptoNote::MiningConfig &config,
         const std::shared_ptr<httplib::Client> httpClient):
 
+        m_dispatcher(dispatcher),
         m_contextGroup(dispatcher),
         m_config(config),
         m_miner(dispatcher),
@@ -73,8 +83,16 @@ namespace Miner
 
     void MinerManager::start()
     {
-        CryptoNote::BlockMiningParameters params = requestMiningParameters();
-        adjustBlockTemplate(params.blockTemplate);
+        printStartupSummary();
+
+        auto params = requestMiningParameters();
+
+        if (!params)
+        {
+            return;
+        }
+
+        adjustBlockTemplate(params->blockTemplate);
 
         isRunning = true;
 
@@ -103,22 +121,48 @@ namespace Miner
             }
         } reporterGuard {isRunning, reporter};
 
-        startMining(params);
+        startMining(*params);
 
         eventLoop();
     }
 
+    void MinerManager::printStartupSummary() const
+    {
+        const std::string daemon = Utilities::isIpcDaemonAddress(m_config.daemonHost)
+                                       ? Utilities::ipcDaemonPath(m_config.daemonHost)
+                                       : m_config.daemonHost + ":" + std::to_string(m_config.daemonPort);
+
+        std::cout << InformationMsg("Mining to ") << InformationMsg(m_config.miningAddress) << "\n"
+                  << InformationMsg("Daemon:    ") << InformationMsg(daemon) << "\n"
+                  << InformationMsg("Threads:   ") << InformationMsg(m_config.threadCount) << "\n\n";
+    }
+
+    void MinerManager::sleepSeconds(const size_t seconds)
+    {
+        System::Timer timer(m_dispatcher);
+
+        timer.sleep(std::chrono::seconds(seconds));
+    }
+
     void MinerManager::printHashRate()
     {
-        const auto reportEvery = std::chrono::seconds(60);
+        if (m_config.hashRateInterval == 0)
+        {
+            return;
+        }
+
+        const auto reportEvery = std::chrono::seconds(m_config.hashRateInterval);
 
         uint64_t lastHashCount = m_miner.getHashCount();
+        uint64_t lastActiveNanoseconds = m_miner.getActiveMiningNanoseconds();
         auto lastReport = std::chrono::steady_clock::now();
 
         while (isRunning)
         {
-            /* Woken once a second rather than once a minute, so shutting down
-               does not have to wait out a whole reporting interval. */
+            /* Woken once a second rather than once an interval, so shutting
+               down does not have to wait out a whole reporting period. This
+               is its own OS thread, so it sleeps on the thread - sleeping on
+               the dispatcher from here would be touching it off-thread. */
             std::this_thread::sleep_for(std::chrono::seconds(1));
 
             const auto now = std::chrono::steady_clock::now();
@@ -129,15 +173,45 @@ namespace Miner
             }
 
             const uint64_t currentHashCount = m_miner.getHashCount();
-            const double elapsed = std::chrono::duration<double>(now - lastReport).count();
-            const double hashes = static_cast<double>(currentHashCount - lastHashCount) / elapsed;
+            const uint64_t currentActiveNanoseconds = m_miner.getActiveMiningNanoseconds();
 
-            lastHashCount = currentHashCount;
             lastReport = now;
 
-            std::cout << SuccessMsg("\nMining at ")
-                      << SuccessMsg(Utilities::get_mining_speed(static_cast<uint64_t>(hashes))) << "\n\n";
+            /* Measured against the time the workers were actually running,
+               not against wall clock: the seconds spent fetching a template,
+               submitting a block or waiting on a daemon that is down are not
+               seconds the hardware was given anything to hash. */
+            const double elapsed = (currentActiveNanoseconds - lastActiveNanoseconds) / 1e9;
+
+            const uint64_t hashes = currentHashCount - lastHashCount;
+
+            lastHashCount = currentHashCount;
+            lastActiveNanoseconds = currentActiveNanoseconds;
+
+            if (elapsed <= 0)
+            {
+                std::cout << WarningMsg("\nNot mining - waiting on the daemon.\n\n");
+                continue;
+            }
+
+            std::cout << SuccessMsg("\nMining at ") << SuccessMsg(Utilities::get_mining_speed(hashes / elapsed))
+                      << "\n\n";
         }
+    }
+
+    void MinerManager::requestShutdown()
+    {
+        if (m_shutdownRequested.exchange(true))
+        {
+            std::cout << WarningMsg("\nStill shutting down. Leaving now.\n");
+            std::exit(1);
+        }
+
+        std::cout << InformationMsg("\nShutting down, finishing the block in progress first...\n");
+
+        /* The dispatcher owns the miner, the monitor and the event queue, so
+           the signal thread only asks it to push the event. */
+        m_dispatcher.remoteSpawn([this]() { pushEvent(ShutdownEvent()); });
     }
 
     void MinerManager::eventLoop()
@@ -166,22 +240,42 @@ namespace Miner
                         }
                     }
 
-                    CryptoNote::BlockMiningParameters params = requestMiningParameters();
-                    adjustBlockTemplate(params.blockTemplate);
+                    auto params = requestMiningParameters();
+
+                    if (!params)
+                    {
+                        return;
+                    }
+
+                    adjustBlockTemplate(params->blockTemplate);
 
                     startBlockchainMonitoring();
-                    startMining(params);
+                    startMining(*params);
                     break;
                 }
                 case MinerEventType::BLOCKCHAIN_UPDATED:
                 {
                     stopMining();
                     stopBlockchainMonitoring();
-                    CryptoNote::BlockMiningParameters params = requestMiningParameters();
-                    adjustBlockTemplate(params.blockTemplate);
+
+                    auto params = requestMiningParameters();
+
+                    if (!params)
+                    {
+                        return;
+                    }
+
+                    adjustBlockTemplate(params->blockTemplate);
+
                     startBlockchainMonitoring();
-                    startMining(params);
+                    startMining(*params);
                     break;
+                }
+                case MinerEventType::SHUTDOWN:
+                {
+                    stopMining();
+                    stopBlockchainMonitoring();
+                    return;
                 }
             }
         }
@@ -295,9 +389,9 @@ namespace Miner
         return true;
     }
 
-    CryptoNote::BlockMiningParameters MinerManager::requestMiningParameters()
+    std::optional<CryptoNote::BlockMiningParameters> MinerManager::requestMiningParameters()
     {
-        while (true)
+        while (!m_shutdownRequested)
         {
             json j = {{"jsonrpc", "2.0"},
                       {"method", "getblocktemplate"},
@@ -309,7 +403,7 @@ namespace Miner
             {
                 std::cout << WarningMsg("Failed to get block template - Is your daemon open?\n");
 
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                sleepSeconds(m_config.retryInterval);
                 continue;
             }
 
@@ -322,7 +416,7 @@ namespace Miner
 
                 std::cout << WarningMsg(stream.str()) << std::endl;
 
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                sleepSeconds(m_config.retryInterval);
                 continue;
             }
 
@@ -340,12 +434,13 @@ namespace Miner
 
                     std::cout << WarningMsg(stream.str());
 
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    sleepSeconds(m_config.retryInterval);
                     continue;
                 }
 
                 CryptoNote::BlockMiningParameters params;
                 params.difficulty = j.at("result").at("difficulty").get<uint64_t>();
+                params.height = j.at("result").at("height").get<uint32_t>();
 
                 std::vector<uint8_t> blob = Common::fromHex(j.at("result").at("blocktemplate_blob").get<std::string>());
 
@@ -353,7 +448,7 @@ namespace Miner
                 {
                     std::cout << WarningMsg("Couldn't parse block template from daemon.") << std::endl;
 
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    sleepSeconds(m_config.retryInterval);
                     continue;
                 }
 
@@ -368,10 +463,14 @@ namespace Miner
 
                 std::cout << WarningMsg(stream.str());
 
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                sleepSeconds(m_config.retryInterval);
                 continue;
             }
         }
+
+        /* Only reachable by the loop condition failing, which means a
+           shutdown was asked for while it was retrying. */
+        return std::nullopt;
     }
 
     void MinerManager::adjustBlockTemplate(CryptoNote::BlockTemplate &blockTemplate) const
