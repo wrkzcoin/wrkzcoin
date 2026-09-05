@@ -9,7 +9,7 @@
 #include <cryptonotecore/BlockchainMessages.h>
 #include <cryptonotecore/Core.h>
 #include <cryptonotecore/MessageQueue.h>
-#include <cryptonoteprotocol/ICryptoNoteProtocolQuery.h>
+#include <cryptonoteprotocol/CryptoNoteProtocolHandlerCommon.h>
 #include <cstdint>
 #include <deque>
 #include <list>
@@ -44,7 +44,7 @@ namespace Daemon
         StratumServer(
             System::Dispatcher &dispatcher,
             CryptoNote::Core &core,
-            const CryptoNote::ICryptoNoteProtocolQuery &protocol,
+            CryptoNote::ICryptoNoteProtocolHandler &protocol,
             std::shared_ptr<Logging::ILogger> logger,
             const std::string &bindAddress,
             uint16_t port,
@@ -160,11 +160,18 @@ namespace Daemon
 
         void dropClient(const ClientPtr &client);
 
+        /* Push a block this server just added to every peer. */
+        void announce(
+            const CryptoNote::BlockTemplate &block,
+            const CryptoNote::BinaryArray &blockBlob,
+            const std::error_code &submitResult);
+
         System::Dispatcher &m_dispatcher;
 
         CryptoNote::Core &m_core;
 
-        const CryptoNote::ICryptoNoteProtocolQuery &m_protocol;
+        /* Sync state for chainReady(), and the relay for blocks we find. */
+        CryptoNote::ICryptoNoteProtocolHandler &m_protocol;
 
         Logging::LoggerRef m_logger;
 

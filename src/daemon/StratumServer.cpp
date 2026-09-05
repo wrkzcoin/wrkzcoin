@@ -11,6 +11,7 @@
 #include <common/TransactionExtra.h>
 #include <cryptonotecore/AddBlockErrorCondition.h>
 #include <cryptonotecore/CachedBlock.h>
+#include <cryptonoteprotocol/CryptoNoteProtocolDefinitions.h>
 #include <cstring>
 #include <errors/ValidateParameters.h>
 #include <iomanip>
@@ -103,7 +104,7 @@ namespace Daemon
     StratumServer::StratumServer(
         System::Dispatcher &dispatcher,
         CryptoNote::Core &core,
-        const CryptoNote::ICryptoNoteProtocolQuery &protocol,
+        CryptoNote::ICryptoNoteProtocolHandler &protocol,
         std::shared_ptr<Logging::ILogger> logger,
         const std::string &bindAddress,
         const uint16_t port,
@@ -653,6 +654,8 @@ namespace Daemon
         m_logger(INFO, BRIGHT_GREEN) << "Stratum miner " << client->peer << " found block " << Common::podToHex(longHash)
                                      << " at height " << jobHeight;
 
+        announce(candidate, blockBlob, submitResult);
+
         nlohmann::json result;
         result["status"] = "OK";
         replyResult(client, request, result);
@@ -660,6 +663,58 @@ namespace Daemon
         /* The chain message will follow and re-job everyone, but the rig that
            found it should not spend that round trip on a dead template. */
         sendJob(client);
+    }
+
+    void StratumServer::announce(
+        const CryptoNote::BlockTemplate &block,
+        const CryptoNote::BinaryArray &blockBlob,
+        const std::error_code &submitResult)
+    {
+        /* submitBlock only stores the block. The protocol handler relays
+           blocks it receives from peers, not ones added locally, so without
+           this the network learns of our block only when a peer's next timed
+           sync (once a minute) notices our top hash changed. That is long
+           enough for someone else to find the same height and orphan ours. */
+        if (submitResult != CryptoNote::error::AddBlockErrorCode::ADDED_TO_MAIN
+            && submitResult != CryptoNote::error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE_AND_SWITCHED)
+        {
+            return;
+        }
+
+        std::vector<CryptoNote::BinaryArray> transactions;
+        std::vector<Crypto::Hash> missed;
+
+        if (!block.transactionHashes.empty())
+        {
+            m_core.getTransactions(block.transactionHashes, transactions, missed);
+        }
+
+        if (!missed.empty())
+        {
+            /* Cannot happen for a block that was just accepted, and a block
+               announced without its transactions gets rejected by peers that
+               do not take lite blocks. Leave it to the timed sync. */
+            m_logger(WARNING) << "Not announcing block at height " << m_core.getTopBlockIndex() << ": "
+                              << missed.size() << " of its transactions could not be loaded";
+            return;
+        }
+
+        CryptoNote::NOTIFY_NEW_BLOCK::request announcement;
+        announcement.block = CryptoNote::RawBlockLegacy(blockBlob, transactions);
+        announcement.hop = 0;
+        announcement.current_blockchain_height = m_core.getTopBlockIndex() + 1;
+
+        try
+        {
+            m_protocol.relayBlock(announcement);
+        }
+        catch (const std::exception &e)
+        {
+            /* The block is in, and the miner still needs its reply and a new
+               job. The timed sync will carry the block if the relay did not. */
+            m_logger(WARNING) << "Could not announce block at height " << m_core.getTopBlockIndex() << ": "
+                              << e.what();
+        }
     }
 
     bool StratumServer::chainReady() const
