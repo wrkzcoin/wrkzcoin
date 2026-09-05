@@ -12,6 +12,7 @@
 #include "common/StringView.h"
 #include "cryptonotecore/UpgradeManager.h"
 
+#include <algorithm>
 #include <functional>
 #include <list>
 #include <map>

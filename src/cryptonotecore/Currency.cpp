@@ -9,6 +9,7 @@
 #include "Currency.h"
 /////////////////////
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <common/Base58.h>

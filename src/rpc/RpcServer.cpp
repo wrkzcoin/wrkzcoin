@@ -9,6 +9,7 @@
 //////////////////////////
 
 #include <algorithm>
+#include <numeric>
 #include <iostream>
 #include <ctime>
 #include <thread>

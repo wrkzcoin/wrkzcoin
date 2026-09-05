@@ -7,6 +7,7 @@
 #include "CryptoTypes.h"
 #include "common/StringTools.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <string>

@@ -14,6 +14,7 @@
 #include "serialization/BinaryInputStreamSerializer.h"
 #include "serialization/BinaryOutputStreamSerializer.h"
 
+#include <algorithm>
 #include <utility>
 
 using namespace Common;

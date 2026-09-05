@@ -5,6 +5,7 @@
 // Please see the included LICENSE file for more information.
 #include "ConsoleHandler.h"
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <sstream>

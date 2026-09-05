@@ -6,6 +6,7 @@
 // Please see the included LICENSE file for more information.
 
 ////////////////////////////////////////
+#include <algorithm>
 #include <iomanip>
 #include <walletservice/WalletService.h>
 ////////////////////////////////////////

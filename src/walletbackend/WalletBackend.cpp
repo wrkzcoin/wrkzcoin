@@ -9,6 +9,7 @@
 
 #include "JsonHelper.h"
 
+#include <algorithm>
 #include <common/Base58.h>
 #include <common/FileSystemShim.h>
 #if defined(__EMSCRIPTEN__)

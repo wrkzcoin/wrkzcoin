@@ -7,6 +7,7 @@
 #include <errors/ValidateParameters.h>
 //////////////////////////////////////
 
+#include <algorithm>
 #include <common/Base58.h>
 #include <config/CryptoNoteConfig.h>
 #include <config/WalletConfig.h>

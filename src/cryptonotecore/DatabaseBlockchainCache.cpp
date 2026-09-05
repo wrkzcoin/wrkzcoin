@@ -10,6 +10,7 @@
 #include "crypto/hash.h"
 #include "serialization/KVBinaryCommon.h"
 
+#include <algorithm>
 #include <common/CryptoNoteTools.h>
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>

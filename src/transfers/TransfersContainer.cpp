@@ -14,6 +14,7 @@
 #include "serialization/BinaryOutputStreamSerializer.h"
 #include "serialization/SerializationOverloads.h"
 
+#include <algorithm>
 #include <config/Constants.h>
 #include <exception>
 #include <functional>

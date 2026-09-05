@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <iostream>
 #include <utilities/ColouredMsg.h>
 #include <walletbackend/WalletBackend.h>

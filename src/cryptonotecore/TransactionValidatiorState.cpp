@@ -7,6 +7,7 @@
 
 #include "TransactionValidatiorState.h"
 
+#include <algorithm>
 #include <cassert>
 #include <variant>
 
