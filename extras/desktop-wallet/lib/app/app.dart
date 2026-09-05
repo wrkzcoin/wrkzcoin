@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/providers/app_providers.dart';
+import '../features/shell/app_lifecycle.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../shared/theme/app_theme.dart';
 import 'router.dart';
@@ -34,6 +35,15 @@ class PlutonApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       routerConfig: router,
+      // The shutdown overlay goes over the router rather than inside it, so
+      // quitting from the tray covers whatever screen happens to be up — and
+      // so a save that stalls has somewhere to say so.
+      builder: (context, child) => Stack(
+        children: [
+          ?child,
+          const ShutdownOverlay(),
+        ],
+      ),
     );
   }
 }

@@ -23,6 +23,7 @@ namespace CryptoNote
         s(transactionHash, "transaction_hash");
         s(unlockTime, "unlock_time");
         s(outputIndex, "output_index");
+        s(blockIndex, "block_index");
     }
 
 } // namespace CryptoNote

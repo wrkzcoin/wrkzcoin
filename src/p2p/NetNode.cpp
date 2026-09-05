@@ -28,6 +28,7 @@
 #include <fstream>
 #include <future>
 #include <iomanip>
+#include <iterator>
 #include <miniupnpc.h>
 #include <upnpcommands.h>
 #include <system/Context.h>
@@ -268,10 +269,23 @@ namespace CryptoNote
         m_enableIPv6(false),
         m_port_ipv6(0),
         // intervals
-        // m_peer_handshake_idle_maker_interval(CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL),
         m_connections_maker_interval(1),
-        m_peerlist_store_interval(60 * 30, false)
+        m_peerlist_store_interval(60 * 30, false),
+        m_seed_retry_interval(CryptoNote::P2P_SEED_RETRY_INTERVAL_SECONDS),
+        m_gray_housekeeping_interval(CryptoNote::P2P_GRAY_PEERLIST_HOUSEKEEPING_INTERVAL, false),
+        m_seed_nodes_count(0),
+        m_last_seed_bootstrap(0),
+        m_seed_resolve_due(0),
+        m_seed_resolve_in_flight(false),
+        m_seedResolveReady(false),
+        m_last_time_with_peers(time(nullptr)),
+        m_last_no_peers_warning(0)
     {
+    }
+
+    NodeServer::~NodeServer()
+    {
+        join_seed_resolve_thread();
     }
 
     void NodeServer::serialize(ISerializer &s)
@@ -390,8 +404,6 @@ namespace CryptoNote
             m_config.m_net_config.connection_timeout = CryptoNote::P2P_DEFAULT_CONNECTION_TIMEOUT;
             m_config.m_net_config.ping_connection_timeout = CryptoNote::P2P_DEFAULT_PING_CONNECTION_TIMEOUT;
             m_config.m_net_config.send_peerlist_sz = CryptoNote::P2P_DEFAULT_PEERS_IN_HANDSHAKE;
-
-            m_first_connection_maker_call = true;
         }
         catch (const std::exception &e)
         {
@@ -474,11 +486,9 @@ namespace CryptoNote
         auto priorityNodes = config.getPriorityNodes();
         std::copy(priorityNodes.begin(), priorityNodes.end(), std::back_inserter(m_priority_peers));
 
-        auto seedNodeAddresses = config.getSeedNodeAddresses();
-        for (const auto &seed : seedNodeAddresses)
-        {
-            append_net_address(m_seed_nodes, seed);
-        }
+        /* Resolved together with the built-in seeds in init(), and again by
+           every later lookup. */
+        m_seed_node_hosts = config.getSeedNodeAddresses();
 
         m_hide_my_port = config.getHideMyPort();
         m_bind_ipv6 = config.getBindIpv6Address();
@@ -487,92 +497,179 @@ namespace CryptoNote
         return true;
     }
 
-    bool NodeServer::append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr)
+    void NodeServer::resolve_seed_nodes(
+        const std::vector<std::string> &extraHosts,
+        std::vector<NetworkAddress> &nodes4,
+        std::vector<NetworkAddress6> &nodes6)
     {
-        std::string host;
-        uint32_t port = 0;
-        if (!Common::parseHostAndPort(addr, host, port))
-        {
-            logger(ERROR, BRIGHT_RED) << "Failed to parse seed address from string: '" << addr << '\'';
-            return false;
-        }
+        /* No dispatcher: this runs on the helper thread as well as in init(). */
+        System::IpResolver resolver;
 
-        try
-        {
-            System::IpResolver resolver(m_dispatcher);
-            auto resolved = resolver.resolveAll(host);
-            if (resolved.empty())
+        const auto addAddress = [&](const System::IpAddress &a, uint32_t port, const std::string &host) {
+            if (a.isV4())
             {
-                logger(ERROR, BRIGHT_YELLOW) << "No addresses resolved for host '" << host << "'";
-                return false;
-            }
-
-            for (const auto &a : resolved)
-            {
-                if (a.isV4())
+                NetworkAddress na {hostToNetwork(a.toV4()), port};
+                if (std::find(nodes4.begin(), nodes4.end(), na) == nodes4.end())
                 {
-                    NetworkAddress na {hostToNetwork(a.toV4()), port};
-                    nodes.push_back(na);
+                    nodes4.push_back(na);
                     logger(TRACE) << "Added seed node: " << na << " (" << host << ")";
                 }
-                else
+            }
+            else
+            {
+                NetworkAddress6 na6 {};
+                memcpy(na6.ip, a.getBytes(), 16);
+                na6.port = port;
+                if (std::find(nodes6.begin(), nodes6.end(), na6) == nodes6.end())
                 {
-                    NetworkAddress6 na6 {};
-                    memcpy(na6.ip, a.getBytes(), 16);
-                    na6.port = port;
-                    m_seed_nodes6.push_back(na6);
+                    nodes6.push_back(na6);
                     logger(TRACE) << "Added IPv6 seed node: " << a.toString() << ":" << port << " (" << host << ")";
                 }
             }
-        }
-        catch (const std::exception &e)
-        {
-            logger(ERROR, BRIGHT_YELLOW) << "Failed to resolve host name '" << host << "': " << e.what();
-            return false;
-        }
+        };
 
-        return true;
-    }
-
-
-    //-----------------------------------------------------------------------------------
-
-    void NodeServer::append_dns_seed_nodes()
-    {
-        for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
-        {
+        const auto resolveHost = [&](const std::string &host, uint32_t port, const char *kind) {
             try
             {
-                System::IpResolver resolver(m_dispatcher);
-                auto addresses = resolver.resolveAll(dnsHost);
+                const auto addresses = resolver.resolveAll(host);
                 if (addresses.empty())
                 {
-                    logger(WARNING) << "DNS seed '" << dnsHost << "' returned no addresses";
-                    continue;
+                    logger(WARNING) << "The " << kind << " '" << host << "' returned no addresses";
+                    return;
                 }
+
                 for (const auto &a : addresses)
                 {
-                    if (a.isV4())
-                    {
-                        NetworkAddress na {hostToNetwork(a.toV4()), CryptoNote::P2P_DEFAULT_PORT};
-                        m_seed_nodes.push_back(na);
-                        logger(TRACE) << "Added DNS seed node: " << na << " (from " << dnsHost << ")";
-                    }
-                    else
-                    {
-                        NetworkAddress6 na6 {};
-                        memcpy(na6.ip, a.getBytes(), 16);
-                        na6.port = CryptoNote::P2P_DEFAULT_PORT;
-                        m_seed_nodes6.push_back(na6);
-                        logger(TRACE) << "Added IPv6 DNS seed node: " << a.toString()
-                                      << ":" << CryptoNote::P2P_DEFAULT_PORT << " (from " << dnsHost << ")";
-                    }
+                    addAddress(a, port, host);
                 }
             }
             catch (const std::exception &e)
             {
-                logger(WARNING) << "Failed to resolve DNS seed '" << dnsHost << "': " << e.what();
+                logger(WARNING) << "Failed to resolve the " << kind << " '" << host << "': " << e.what();
             }
+        };
+
+        const auto resolveHostAndPort = [&](const std::string &addr) {
+            std::string host;
+            uint32_t port = 0;
+            if (!Common::parseHostAndPort(addr, host, port))
+            {
+                logger(ERROR, BRIGHT_RED) << "Failed to parse seed address from string: '" << addr << '\'';
+                return;
+            }
+
+            resolveHost(host, port, "seed node");
+        };
+
+        /* A configured seed list - the --network profile, or --seed-node - stands in
+           for the built-in mainnet seeds rather than adding to them. */
+        if (extraHosts.empty())
+        {
+            for (const auto &seed : CryptoNote::SEED_NODES)
+            {
+                resolveHostAndPort(seed);
+            }
+        }
+
+        /* DNS seeds carry no port: every address they return runs on the default one. */
+        for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
+        {
+            resolveHost(dnsHost, CryptoNote::P2P_DEFAULT_PORT, "DNS seed");
+        }
+
+        for (const auto &seed : extraHosts)
+        {
+            resolveHostAndPort(seed);
+        }
+    }
+
+    //-----------------------------------------------------------------------------------
+
+    void NodeServer::start_seed_resolve()
+    {
+        if (m_seed_resolve_in_flight)
+        {
+            return;
+        }
+
+        /* The previous lookup has finished; reap it before starting another. */
+        join_seed_resolve_thread();
+
+        m_seed_resolve_in_flight = true;
+        logger(DEBUGGING) << "Looking up the seed node hostnames again";
+
+        m_seedResolveThread = std::thread([this, hosts = m_seed_node_hosts] {
+            std::vector<NetworkAddress> nodes4;
+            std::vector<NetworkAddress6> nodes6;
+            resolve_seed_nodes(hosts, nodes4, nodes6);
+
+            {
+                std::lock_guard<std::mutex> lock(m_seedResolveMutex);
+                m_seedResolveResult = std::move(nodes4);
+                m_seedResolveResult6 = std::move(nodes6);
+                m_seedResolveReady = true;
+            }
+
+            m_seed_resolve_in_flight = false;
+        });
+    }
+
+    //-----------------------------------------------------------------------------------
+
+    void NodeServer::collect_seed_resolve_result()
+    {
+        std::vector<NetworkAddress> nodes4;
+        std::vector<NetworkAddress6> nodes6;
+
+        {
+            std::lock_guard<std::mutex> lock(m_seedResolveMutex);
+            if (!m_seedResolveReady)
+            {
+                return;
+            }
+
+            m_seedResolveReady = false;
+            nodes4.swap(m_seedResolveResult);
+            nodes6.swap(m_seedResolveResult6);
+        }
+
+        const time_t now = time(nullptr);
+
+        if (nodes4.empty() && nodes6.empty())
+        {
+            /* Keep what we had: a lookup that fails now may work at the next seed round. */
+            logger(WARNING) << "Seed node lookup returned no addresses, will retry in "
+                            << CryptoNote::P2P_SEED_RETRY_INTERVAL_SECONDS / 60 << " minutes";
+            m_seed_resolve_due = now + CryptoNote::P2P_SEED_RETRY_INTERVAL_SECONDS;
+            return;
+        }
+
+        const bool hadNone = m_seed_nodes.empty() && m_seed_nodes6.empty();
+
+        m_seed_nodes.swap(nodes4);
+        m_seed_nodes6.swap(nodes6);
+        m_seed_nodes_count = m_seed_nodes.size() + m_seed_nodes6.size();
+        m_seed_resolve_due = now + CryptoNote::P2P_SEED_RERESOLVE_INTERVAL_SECONDS;
+
+        logger(INFO) << "Resolved " << m_seed_nodes.size() << " IPv4 and " << m_seed_nodes6.size()
+                     << " IPv6 seed node addresses";
+
+        if (hadNone)
+        {
+            /* This is what the seed rounds have been waiting for: dial at the next one. */
+            m_seed_retry_interval.reset();
+        }
+    }
+
+    //-----------------------------------------------------------------------------------
+
+    void NodeServer::join_seed_resolve_thread()
+    {
+        /* getaddrinfo cannot be cancelled, so at shutdown this may wait for one
+           lookup to time out. */
+        if (m_seedResolveThread.joinable())
+        {
+            m_seedResolveThread.join();
         }
     }
 
@@ -585,14 +682,25 @@ namespace CryptoNote
             logger(ERROR, BRIGHT_RED) << "Failed to handle command line";
             return false;
         }
-        if (m_seed_nodes.empty())
+
+        /* Nothing else runs yet, so this first lookup may block. Later ones go
+           through start_seed_resolve() on a helper thread. */
+        resolve_seed_nodes(m_seed_node_hosts, m_seed_nodes, m_seed_nodes6);
+        m_seed_nodes_count = m_seed_nodes.size() + m_seed_nodes6.size();
+
+        const time_t now = time(nullptr);
+        m_last_time_with_peers = now;
+
+        if (m_seed_nodes_count > 0)
         {
-            for (const auto &seed : CryptoNote::SEED_NODES)
-            {
-                append_net_address(m_seed_nodes, seed);
-            }
+            m_seed_resolve_due = now + CryptoNote::P2P_SEED_RERESOLVE_INTERVAL_SECONDS;
         }
-        append_dns_seed_nodes();
+        else
+        {
+            /* DNS down at boot, most likely: look again as soon as a seed round wants it. */
+            m_seed_resolve_due = now;
+            logger(WARNING) << "No seed node address could be resolved; will keep trying in the background";
+        }
         m_config_folder = config.getConfigFolder();
         m_p2p_state_filename = config.getP2pStateFilename();
         m_p2p_state_reset = config.getP2pStateReset();
@@ -701,6 +809,7 @@ namespace CryptoNote
 
     bool NodeServer::deinit()
     {
+        join_seed_resolve_thread();
         return store_config();
     }
 
@@ -804,7 +913,7 @@ namespace CryptoNote
 
         if (rsp.node_data.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION && !rsp.local_peerlist6.empty())
         {
-            m_peerlist.merge_peerlist6(rsp.local_peerlist6);
+            handle_remote_peerlist6(rsp.local_peerlist6, context);
         }
 
         if (just_take_peerlist)
@@ -868,7 +977,7 @@ namespace CryptoNote
 
         if (context.version >= CryptoNote::P2P_IPV6_CAPABILITY_VERSION && !rsp.local_peerlist6.empty())
         {
-            m_peerlist.merge_peerlist6(rsp.local_peerlist6);
+            handle_remote_peerlist6(rsp.local_peerlist6, context);
         }
 
         if (!context.m_is_income)
@@ -1256,6 +1365,11 @@ namespace CryptoNote
                 return false;
             }
 
+            if (is_addr_recently_failed6(pe.adr))
+            {
+                continue;
+            }
+
             ++try_count;
 
             if (is_peer_used6(pe))
@@ -1270,6 +1384,7 @@ namespace CryptoNote
 
             if (!try_to_connect_and_handshake_with_new_peer6(pe.adr, false, pe.last_seen, use_white_list))
             {
+                mark_addr_failed6(pe.adr);
                 continue;
             }
 
@@ -1319,6 +1434,12 @@ namespace CryptoNote
                 return false;
             }
 
+            /* Skipping a peer that failed lately costs nothing, so it is not a try. */
+            if (is_addr_recently_failed(pe.adr))
+            {
+                continue;
+            }
+
             ++try_count;
 
             if (is_peer_used(pe))
@@ -1332,6 +1453,7 @@ namespace CryptoNote
 
             if (!try_to_connect_and_handshake_with_new_peer(pe.adr, false, pe.last_seen, use_white_list))
             {
+                mark_addr_failed(pe.adr);
                 continue;
             }
 
@@ -1341,27 +1463,37 @@ namespace CryptoNote
     }
     //-----------------------------------------------------------------------------------
 
-    bool NodeServer::connections_maker()
+    /* Take a peer list from one IPv4 seed and one IPv6 seed, tried in random
+       order, and close again. A seed we already hold a normal connection to
+       counts as reached: its list comes in through timed sync anyway. Also
+       where the seed hostnames get looked up again once that is due. Returns
+       false only when the node is stopping. */
+    bool NodeServer::connect_to_seeds()
     {
-        if (!connect_to_peerlist(m_exclusive_peers))
+        if (!m_seed_resolve_in_flight && time(nullptr) >= m_seed_resolve_due)
         {
-            return false;
+            start_seed_resolve();
         }
 
-        if (!m_exclusive_peers.empty())
+        if (m_seed_nodes.empty() && m_seed_nodes6.empty())
         {
+            logger(DEBUGGING) << "No seed node address resolved yet, nothing to bootstrap from";
             return true;
         }
 
-        if (!m_peerlist.get_white_peers_count() && m_seed_nodes.size())
+        bool reached = false;
+
+        if (!m_seed_nodes.empty())
         {
             size_t try_count = 0;
             size_t current_index = Random::randomValue<size_t>() % m_seed_nodes.size();
 
-            while (true)
+            while (!m_stop)
             {
-                if (try_to_connect_and_handshake_with_new_peer(m_seed_nodes[current_index], true))
+                const NetworkAddress seed = m_seed_nodes[current_index];
+                if (is_addr_connected(seed) || try_to_connect_and_handshake_with_new_peer(seed, true))
                 {
+                    reached = true;
                     break;
                 }
 
@@ -1377,17 +1509,17 @@ namespace CryptoNote
             }
         }
 
-        // Bootstrap from IPv6 seeds if no white peers (IPv4 or IPv6) and IPv6 seeds are available
-        if (!m_peerlist.get_white_peers_count() && !m_peerlist.get_white6_peers_count()
-            && m_seed_nodes6.size())
+        if (!m_seed_nodes6.empty())
         {
             size_t try_count = 0;
             size_t current_index = Random::randomValue<size_t>() % m_seed_nodes6.size();
 
-            while (true)
+            while (!m_stop)
             {
-                if (try_to_connect_and_handshake_with_new_peer6(m_seed_nodes6[current_index], true))
+                const NetworkAddress6 seed = m_seed_nodes6[current_index];
+                if (try_to_connect_and_handshake_with_new_peer6(seed, true))
                 {
+                    reached = true;
                     break;
                 }
 
@@ -1400,6 +1532,42 @@ namespace CryptoNote
                 {
                     current_index = 0;
                 }
+            }
+        }
+
+        if (reached)
+        {
+            m_last_seed_bootstrap = static_cast<uint64_t>(time(nullptr));
+        }
+
+        return !m_stop;
+    }
+    //-----------------------------------------------------------------------------------
+
+    bool NodeServer::connections_maker()
+    {
+        collect_seed_resolve_result();
+
+        if (!connect_to_peerlist(m_exclusive_peers))
+        {
+            return false;
+        }
+
+        if (!m_exclusive_peers.empty())
+        {
+            return true;
+        }
+
+        const size_t start_conn_count = get_outgoing_connections_count();
+
+        /* Nothing known yet (first start, or --p2p-reset-peerstate): bootstrap
+           from the seeds. Rate limited like every other seed round, so seeds
+           that are down get one walk per interval instead of one per round. */
+        if (!m_peerlist.get_white_peers_count() && !m_peerlist.get_white6_peers_count())
+        {
+            if (!m_seed_retry_interval.call([this] { return connect_to_seeds(); }))
+            {
+                return false;
             }
         }
 
@@ -1484,6 +1652,25 @@ namespace CryptoNote
             }
         }
 
+        /* Nobody new could be dialled and we are (nearly) alone, so the lists
+           we hold are stale: ask the seeds again. The interval keeps this to
+           one walk per P2P_SEED_RETRY_INTERVAL_SECONDS, they serve everyone. */
+        const size_t end_conn_count = get_outgoing_connections_count();
+        const size_t seed_retry_floor =
+            std::min<size_t>(m_config.m_net_config.connections_count, CryptoNote::P2P_SEED_RETRY_OUT_PEERS_FLOOR);
+
+        if (end_conn_count <= start_conn_count && end_conn_count < seed_retry_floor)
+        {
+            m_seed_retry_interval.call([this, end_conn_count] {
+                logger(INFO) << "Only " << end_conn_count << " outgoing connection(s) and no new peer reachable"
+                             << " (known peers: white "
+                             << m_peerlist.get_white_peers_count() + m_peerlist.get_white6_peers_count()
+                             << ", gray " << m_peerlist.get_gray_peers_count() + m_peerlist.get_gray6_peers_count()
+                             << "); asking the seed nodes for a fresh peer list";
+                return connect_to_seeds();
+            });
+        }
+
         return true;
     }
     //-----------------------------------------------------------------------------------
@@ -1529,13 +1716,184 @@ namespace CryptoNote
         try
         {
             m_connections_maker_interval.call(std::bind(&NodeServer::connections_maker, this));
+            m_gray_housekeeping_interval.call(std::bind(&NodeServer::gray_peerlist_housekeeping, this));
             m_peerlist_store_interval.call(std::bind(&NodeServer::store_config, this));
+            warn_if_isolated();
         }
         catch (std::exception &e)
         {
             logger(DEBUGGING) << "exception in idle_worker: " << e.what();
         }
         return true;
+    }
+
+    //-----------------------------------------------------------------------------------
+    bool NodeServer::is_addr_recently_failed(const NetworkAddress &addr)
+    {
+        const auto it = m_recentlyFailedPeers.find(addr);
+        if (it == m_recentlyFailedPeers.end())
+        {
+            return false;
+        }
+
+        if (time(nullptr) - it->second >= static_cast<time_t>(CryptoNote::P2P_FAILED_PEER_FORGET_SECONDS))
+        {
+            m_recentlyFailedPeers.erase(it);
+            return false;
+        }
+
+        return true;
+    }
+
+    bool NodeServer::is_addr_recently_failed6(const NetworkAddress6 &addr)
+    {
+        const auto it = m_recentlyFailedPeers6.find(addr);
+        if (it == m_recentlyFailedPeers6.end())
+        {
+            return false;
+        }
+
+        if (time(nullptr) - it->second >= static_cast<time_t>(CryptoNote::P2P_FAILED_PEER_FORGET_SECONDS))
+        {
+            m_recentlyFailedPeers6.erase(it);
+            return false;
+        }
+
+        return true;
+    }
+
+    void NodeServer::mark_addr_failed(const NetworkAddress &addr)
+    {
+        const time_t now = time(nullptr);
+        m_recentlyFailedPeers[addr] = now;
+
+        /* Entries expire lazily on lookup; sweep once the map outgrows the gray
+           list so address churn cannot make it grow without bound. */
+        if (m_recentlyFailedPeers.size() > CryptoNote::P2P_LOCAL_GRAY_PEERLIST_LIMIT)
+        {
+            for (auto it = m_recentlyFailedPeers.begin(); it != m_recentlyFailedPeers.end();)
+            {
+                it = now - it->second >= static_cast<time_t>(CryptoNote::P2P_FAILED_PEER_FORGET_SECONDS)
+                    ? m_recentlyFailedPeers.erase(it)
+                    : std::next(it);
+            }
+        }
+    }
+
+    void NodeServer::mark_addr_failed6(const NetworkAddress6 &addr)
+    {
+        const time_t now = time(nullptr);
+        m_recentlyFailedPeers6[addr] = now;
+
+        if (m_recentlyFailedPeers6.size() > CryptoNote::P2P_LOCAL_GRAY_PEERLIST_LIMIT)
+        {
+            for (auto it = m_recentlyFailedPeers6.begin(); it != m_recentlyFailedPeers6.end();)
+            {
+                it = now - it->second >= static_cast<time_t>(CryptoNote::P2P_FAILED_PEER_FORGET_SECONDS)
+                    ? m_recentlyFailedPeers6.erase(it)
+                    : std::next(it);
+            }
+        }
+    }
+
+    //-----------------------------------------------------------------------------------
+    /* Once per interval dial one random gray peer, take its peer list and close.
+       Reachable peers move to the white list, dead ones leave the gray list, so
+       the addresses peers keep relaying to each other get verified instead of
+       circulating forever. The connection maker already does this for the
+       peers it dials to fill our slots; this covers the rest of the list. */
+    bool NodeServer::gray_peerlist_housekeeping()
+    {
+        if (!m_exclusive_peers.empty())
+        {
+            return true;
+        }
+
+        const size_t count4 = m_peerlist.get_gray_peers_count();
+        const size_t count6 = m_peerlist.get_gray6_peers_count();
+        if (count4 + count6 == 0)
+        {
+            return true;
+        }
+
+        const size_t pick = Random::randomValue<size_t>() % (count4 + count6);
+
+        if (pick < count4)
+        {
+            PeerlistEntry pe {};
+            if (!m_peerlist.get_gray_peer_by_index(pe, pick) || is_peer_used(pe) || is_addr_recently_failed(pe.adr))
+            {
+                return true;
+            }
+
+            if (try_to_connect_and_handshake_with_new_peer(pe.adr, true, pe.last_seen, false))
+            {
+                m_peerlist.set_peer_just_seen(pe.id, pe.adr);
+                logger(DEBUGGING) << "Gray peer " << pe.adr << " answered, moved to the white list";
+            }
+            else
+            {
+                m_peerlist.remove_from_gray(pe.adr);
+                mark_addr_failed(pe.adr);
+                logger(DEBUGGING) << "Gray peer " << pe.adr << " did not answer, dropped";
+            }
+
+            return true;
+        }
+
+        PeerlistEntry6 pe6 {};
+        if (!m_peerlist.get_gray6_peer_by_index(pe6, pick - count4) || is_peer_used6(pe6)
+            || is_addr_recently_failed6(pe6.adr))
+        {
+            return true;
+        }
+
+        const std::string addr6 = System::IpAddress(pe6.adr.ip).toString() + ":" + std::to_string(pe6.adr.port);
+
+        if (try_to_connect_and_handshake_with_new_peer6(pe6.adr, true, pe6.last_seen, false))
+        {
+            pe6.last_seen = time(nullptr);
+            m_peerlist.append_with_peer_white6(pe6);
+            logger(DEBUGGING) << "Gray IPv6 peer " << addr6 << " answered, moved to the white list";
+        }
+        else
+        {
+            m_peerlist.remove_from_gray6(pe6.adr);
+            mark_addr_failed6(pe6.adr);
+            logger(DEBUGGING) << "Gray IPv6 peer " << addr6 << " did not answer, dropped";
+        }
+
+        return true;
+    }
+
+    //-----------------------------------------------------------------------------------
+    /* Runs every idle tick. Incoming connections count too: a node behind NAT
+       that only ever gets dialled is still on the network. */
+    void NodeServer::warn_if_isolated()
+    {
+        const time_t now = time(nullptr);
+
+        if (get_connections_count() > 0)
+        {
+            m_last_time_with_peers = now;
+            return;
+        }
+
+        const time_t alone_for = now - m_last_time_with_peers;
+        if (alone_for < static_cast<time_t>(CryptoNote::P2P_NO_PEERS_WARNING_SECONDS)
+            || now - m_last_no_peers_warning < static_cast<time_t>(CryptoNote::P2P_SEED_RETRY_INTERVAL_SECONDS))
+        {
+            return;
+        }
+
+        m_last_no_peers_warning = now;
+        logger(WARNING, BRIGHT_YELLOW)
+            << "No P2P connections for " << Common::timeIntervalToString(alone_for) << " (known peers: white "
+            << m_peerlist.get_white_peers_count() + m_peerlist.get_white6_peers_count() << ", gray "
+            << m_peerlist.get_gray_peers_count() + m_peerlist.get_gray6_peers_count()
+            << "; seed addresses: " << m_seed_nodes_count.load()
+            << "). Check connectivity, DNS and the firewall; the seed nodes are retried every "
+            << CryptoNote::P2P_SEED_RETRY_INTERVAL_SECONDS / 60 << " minutes.";
     }
 
     //-----------------------------------------------------------------------------------
@@ -1566,14 +1924,39 @@ namespace CryptoNote
         time_t local_time,
         const CryptoNoteConnectionContext &context)
     {
+        /* A peer may send at most what we send. Every entry costs a scan of both
+           lists and, past the limit, a sort of the gray list, while the packet
+           limit alone would allow millions of them. */
+        const size_t limit = CryptoNote::P2P_DEFAULT_PEERS_IN_HANDSHAKE;
+        const size_t received = peerlist.size();
+        if (received > limit)
+        {
+            logger(DEBUGGING) << context << "Peer sent " << received << " peer list entries, keeping " << limit;
+        }
+
         int64_t delta = 0;
-        std::list<PeerlistEntry> peerlist_ = peerlist;
+        std::list<PeerlistEntry> peerlist_(peerlist.begin(), std::next(peerlist.begin(), std::min(received, limit)));
         if (!fix_time_delta(peerlist_, local_time, delta))
         {
             return false;
         }
 
         return m_peerlist.merge_peerlist(peerlist_);
+    }
+
+    bool NodeServer::handle_remote_peerlist6(
+        const std::list<PeerlistEntry6> &peerlist,
+        const CryptoNoteConnectionContext &context)
+    {
+        const size_t limit = CryptoNote::P2P_DEFAULT_PEERS_IN_HANDSHAKE;
+        const size_t received = peerlist.size();
+        if (received > limit)
+        {
+            logger(DEBUGGING) << context << "Peer sent " << received << " IPv6 peer list entries, keeping " << limit;
+        }
+
+        std::list<PeerlistEntry6> peerlist_(peerlist.begin(), std::next(peerlist.begin(), std::min(received, limit)));
+        return m_peerlist.merge_peerlist6(peerlist_);
     }
     //-----------------------------------------------------------------------------------
 
@@ -1984,7 +2367,7 @@ namespace CryptoNote
     }
     //-----------------------------------------------------------------------------------
 
-    bool NodeServer::log_peerlist()
+    std::string NodeServer::peerlist_to_string()
     {
         std::list<PeerlistEntry> pl_wite;
         std::list<PeerlistEntry> pl_gray;
@@ -1994,11 +2377,17 @@ namespace CryptoNote
         std::list<PeerlistEntry6> pl_gray6;
         m_peerlist.get_peerlist6_full(pl_gray6, pl_wite6);
 
-        logger(INFO) << ENDL
-                     << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
-                     << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
-                     << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
-                     << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
+        std::stringstream ss;
+        ss << "Peerlist white:" << ENDL << print_peerlist_to_string(pl_wite)
+           << "Peerlist gray:" << ENDL << print_peerlist_to_string(pl_gray)
+           << "Peerlist white (IPv6):" << ENDL << print_peerlist6_to_string(pl_wite6)
+           << "Peerlist gray (IPv6):" << ENDL << print_peerlist6_to_string(pl_gray6);
+        return ss.str();
+    }
+
+    bool NodeServer::log_peerlist()
+    {
+        logger(INFO) << ENDL << peerlist_to_string();
         return true;
     }
     //-----------------------------------------------------------------------------------

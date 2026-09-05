@@ -32,6 +32,10 @@ namespace CryptoNote
 
         virtual uint32_t getPrunedNodeDepth() const = 0;
 
+        /* 0 for a full node; otherwise the height this node stores full blocks
+           from. See LITENODE.md. */
+        virtual uint32_t getLiteNodeHeight() const = 0;
+
         virtual bool isPruneCapabilityActive() const = 0;
 
         virtual uint32_t getSyncActivePeers() const = 0;

@@ -33,6 +33,12 @@ namespace CryptoNote
             return true;
         }
 
+        /* Let the next call() run immediately, whatever the interval. */
+        void reset()
+        {
+            m_lastCalled = 0;
+        }
+
       private:
         time_t m_lastCalled;
 

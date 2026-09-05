@@ -4,7 +4,6 @@ import 'dart:js_interop';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:web/web.dart' as web;
 import '../../core/auth/wallet_auth.dart';
 import '../../core/config/app_config.dart';
@@ -15,22 +14,10 @@ import '../../core/providers/wallet_notifiers.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../l10n/generated/app_localizations.dart';
 
-const _storage = FlutterSecureStorage();
-const _kLastWalletKey = 'pluton_last_wallet_name';
-
-// -- Last-opened wallet persistence -------------------------------------------
-
-final lastWalletPathProvider = FutureProvider<String?>((ref) async {
-  return _storage.read(key: _kLastWalletKey);
-});
-
-Future<void> saveLastWalletPath(String name) async {
-  await _storage.write(key: _kLastWalletKey, value: name);
-}
-
-Future<void> clearLastWalletPath() async {
-  await _storage.delete(key: _kLastWalletKey);
-}
+// Last-opened wallet persistence (lastWalletPathProvider, saveLastWalletPath,
+// clearLastWalletPath) now lives in core/providers/app_providers.dart, next to
+// the other persisted preferences and reachable from the setup and lock
+// screens — which are the screens that actually know which wallet is open.
 
 // -- Screen -------------------------------------------------------------------
 
@@ -43,6 +30,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _savingNode = false;
+  bool _testingNode = false;
   String? _nodeError;
   String? _nodeSuccess;
 
@@ -50,6 +38,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _nodeHostCtrl = TextEditingController();
   final _nodePortCtrl = TextEditingController();
   bool _nodeSSL = false;
+
+  // Tx PoW server form
+  final _powHostCtrl = TextEditingController();
+  final _powPortCtrl = TextEditingController();
+  bool _powEnabled = false;
+  bool _powSSL = false;
+  bool _powFormLoaded = false;
+  bool _powTesting = false;
+  String? _powError;
+  String? _powSuccess;
 
   @override
   void initState() {
@@ -68,7 +66,130 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _nodeHostCtrl.dispose();
     _nodePortCtrl.dispose();
+    _powHostCtrl.dispose();
+    _powPortCtrl.dispose();
     super.dispose();
+  }
+
+  /// Prefills the PoW server form once the stored setting has been read, and
+  /// leaves it alone afterwards so typing is not overwritten by rebuilds.
+  void _syncPowForm(TxPowServerSettings s) {
+    if (_powFormLoaded || !s.loaded) return;
+    _powFormLoaded = true;
+    _powEnabled = s.enabled;
+    _powSSL = s.ssl;
+    _powHostCtrl.text = s.host;
+    _powPortCtrl.text = '${s.port}';
+  }
+
+  Future<void> _savePowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (_powEnabled && (host.isEmpty || port <= 0 || port > 65535)) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    final settings = TxPowServerSettings(
+      enabled: _powEnabled,
+      host: host,
+      port: port > 0 ? port : kDefaultTxPowServerPort,
+      ssl: _powSSL,
+    );
+    await ref.read(txPowServerProvider.notifier).set(settings);
+    settings.applyTo(ref.read(walletCApiProvider));
+    if (!mounted) return;
+    setState(() {
+      _powError = null;
+      _powSuccess = tr?.txPowServerSaved ?? 'PoW server settings saved';
+    });
+  }
+
+  /// Probes the server named in the form, without saving anything.
+  Future<void> _testPowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    setState(() { _powTesting = true; _powError = null; _powSuccess = null; });
+    try {
+      final r = await ref.read(walletCApiProvider).testTxPowServer(host, port, ssl: _powSSL);
+      if (!mounted) return;
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final threads = (r['threads'] as num?)?.toInt() ?? 0;
+        final queue = (r['queue'] as num?)?.toInt() ?? 0;
+        final capacity = (r['capacity'] as num?)?.toInt() ?? 0;
+        setState(() => _powSuccess = tr?.txPowServerTestOk(ms, threads, queue, capacity)
+            ?? 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use');
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _powError = tr?.txPowServerTestFailed(error) ?? 'Server not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _powError = tr?.txPowServerTestFailed(e.toString()) ?? 'Server not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _powTesting = false);
+    }
+  }
+
+  /// Probes the node in the form without switching the wallet onto it.
+  /// Applying a bad node leaves the wallet unable to sync with nothing on
+  /// screen to explain it, so it is worth being able to ask first.
+  Future<void> _testNode() async {
+    final tr = S.of(context);
+    final host = _nodeHostCtrl.text.trim();
+    final port = int.tryParse(_nodePortCtrl.text.trim()) ?? 0;
+
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _nodeError = tr?.nodeInvalid ?? 'Enter a valid host and port';
+        _nodeSuccess = null;
+      });
+      return;
+    }
+
+    setState(() { _testingNode = true; _nodeError = null; _nodeSuccess = null; });
+
+    try {
+      final r = await ref.read(walletCApiProvider).testNode(host, port, ssl: _nodeSSL);
+      if (!mounted) return;
+
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final height = (r['height'] as num?)?.toInt() ?? 0;
+        final networkHeight = (r['networkHeight'] as num?)?.toInt() ?? 0;
+        final peers = (r['peerCount'] as num?)?.toInt() ?? 0;
+        final synced = r['synced'] == true;
+
+        // A node that answers but is behind will "work" and then sync the
+        // wallet to the wrong height, so say so rather than just "reachable".
+        setState(() => _nodeSuccess = synced
+            ? (tr?.nodeTestOk(ms, height, peers)
+                ?? 'Reachable in $ms ms: height $height, $peers peers')
+            : (tr?.nodeTestSyncing(ms, height, networkHeight)
+                ?? 'Reachable in $ms ms, but the node is still syncing: '
+                   'height $height of $networkHeight'));
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _nodeError = tr?.nodeTestFailed(error) ?? 'Node not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _nodeError = tr?.nodeTestFailed(e.toString()) ?? 'Node not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _testingNode = false);
+    }
   }
 
   Future<void> _saveNode() async {
@@ -267,18 +388,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final ffi = ref.read(walletCApiProvider);
-      // Save before closing so the data is in a clean state before we delete it
-      try { await ffi.save(); } catch (_) {}
+      // The in-memory name is the reliable one; the stored one is the fallback
+      // for a session that opened its wallet before this build.
+      final walletName = ref.read(openWalletNameProvider) ??
+          await ref.read(lastWalletPathProvider.future);
+
+      // Close BEFORE deleting. close() saves, and saving exports the open
+      // wallet straight back into IndexedDB - so deleting first only got the
+      // file rewritten a moment later, which is why Delete Wallet Data left
+      // the wallet sitting in the Open Wallet list. Desktop already does it
+      // in this order.
+      try { await ffi.close(); } catch (_) {}
 
       // Delete via WASM bridge (removes from IndexedDB)
-      final walletName = await _storage.read(key: _kLastWalletKey);
-      if (walletName != null) {
+      if (walletName != null && walletName.isNotEmpty) {
         await ffi.deleteFile(walletName);
       }
 
-      ffi.close();
       await clearLastWalletPath();
       await clearWalletPassword();
+      ref.invalidate(lastWalletPathProvider);
+      beginWalletSession(ref);
       ref.read(walletOpenProvider.notifier).state = false;
     } catch (e) {
       if (mounted) {
@@ -298,6 +428,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
+    _syncPowForm(ref.watch(txPowServerProvider));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -379,11 +510,114 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      FilledButton(
-                        onPressed: _savingNode ? null : _saveNode,
-                        child: _savingNode
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text(tr?.apply ?? 'Apply'),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_testingNode || _savingNode) ? null : _testNode,
+                            child: _testingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.nodeTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: (_savingNode || _testingNode) ? null : _saveNode,
+                            child: _savingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // -- Transaction PoW server section ------------------------------
+              _SectionHeader(title: tr?.txPowServerSection ?? 'Transaction PoW Server', icon: Icons.memory_outlined),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(tr?.txPowServerUse ?? 'Use an external PoW server', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tr?.txPowServerSubtitle ?? "Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device's CPU is used.",
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Switch(
+                            value: _powEnabled,
+                            onChanged: (v) => setState(() => _powEnabled = v),
+                          ),
+                        ],
+                      ),
+                      if (_powEnabled) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: _powHostCtrl,
+                                decoration: InputDecoration(labelText: tr?.hostIpAddress ?? 'Host / IP address'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _powPortCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(labelText: tr?.port ?? 'Port'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              children: [
+                                Text(tr?.ssl ?? 'SSL', style: const TextStyle(color: kTextSecondary, fontSize: 12)),
+                                Switch(value: _powSSL, onChanged: (v) => setState(() => _powSSL = v)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_powError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powError!, style: const TextStyle(color: kError, fontSize: 13)),
+                      ],
+                      if (_powSuccess != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powSuccess!, style: const TextStyle(color: kSuccess, fontSize: 13)),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_powEnabled && !_powTesting) ? _testPowServer : null,
+                            child: _powTesting
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.txPowServerTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: _savePowServer,
+                            child: Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

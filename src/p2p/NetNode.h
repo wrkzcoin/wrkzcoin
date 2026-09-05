@@ -18,7 +18,9 @@
 #include "p2p/OnceInInterval.h"
 
 #include <array>
+#include <atomic>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <system/Context.h>
 #include <system/ContextGroup.h>
@@ -158,7 +160,7 @@ namespace CryptoNote
             CryptoNote::CryptoNoteProtocolHandler &payload_handler,
             std::shared_ptr<Logging::ILogger> log);
 
-        ~NodeServer() {};
+        ~NodeServer();
 
         bool run();
 
@@ -182,11 +184,27 @@ namespace CryptoNote
         // debug functions
         bool log_peerlist();
 
+        /* The text log_peerlist writes to the log, for a console that wants to
+           show it rather than log it. */
+        std::string peerlist_to_string();
+
         bool log_connections();
 
         virtual uint64_t get_connections_count() override;
 
         size_t get_outgoing_connections_count();
+
+        /* Resolved seed addresses (IPv4 + IPv6) and the unix time a seed last
+           gave us a peer list, 0 if never. Safe to read from any thread. */
+        size_t get_seed_nodes_count() const
+        {
+            return m_seed_nodes_count.load();
+        }
+
+        uint64_t get_last_seed_bootstrap_time() const
+        {
+            return m_last_seed_bootstrap.load();
+        }
 
         PeerlistManager &getPeerlistManager()
         {
@@ -307,9 +325,33 @@ namespace CryptoNote
         //-----------------------------------------------------------------------------------------------
         bool handleConfig(const NetNodeConfig &config);
 
-        bool append_net_address(std::vector<NetworkAddress> &nodes, const std::string &addr);
+        /* Seed handling. The first lookup runs synchronously in init(); later
+           ones run on m_seedResolveThread and are swapped in by
+           collect_seed_resolve_result() on the dispatcher thread. */
+        void resolve_seed_nodes(
+            const std::vector<std::string> &extraHosts,
+            std::vector<NetworkAddress> &nodes4,
+            std::vector<NetworkAddress6> &nodes6);
 
-        void append_dns_seed_nodes();
+        void start_seed_resolve();
+
+        void collect_seed_resolve_result();
+
+        void join_seed_resolve_thread();
+
+        bool connect_to_seeds();
+
+        bool gray_peerlist_housekeeping();
+
+        bool is_addr_recently_failed(const NetworkAddress &addr);
+
+        bool is_addr_recently_failed6(const NetworkAddress6 &addr);
+
+        void mark_addr_failed(const NetworkAddress &addr);
+
+        void mark_addr_failed6(const NetworkAddress6 &addr);
+
+        void warn_if_isolated();
 
         bool idle_worker();
 
@@ -320,7 +362,9 @@ namespace CryptoNote
 
         bool get_local_node_data(basic_node_data &node_data);
 
-        bool merge_peerlist_with_local(const std::list<PeerlistEntry> &bs);
+        bool handle_remote_peerlist6(
+            const std::list<PeerlistEntry6> &peerlist,
+            const CryptoNoteConnectionContext &context);
 
         bool fix_time_delta(std::list<PeerlistEntry> &local_peerlist, time_t local_time, int64_t &delta);
 
@@ -418,8 +462,6 @@ namespace CryptoNote
 
         bool m_have_address;
 
-        bool m_first_connection_maker_call;
-
         uint32_t m_listeningPort;
 
         uint32_t m_external_port;
@@ -467,10 +509,13 @@ namespace CryptoNote
 
         PeerlistManager m_peerlist;
 
-        // OnceInInterval m_peer_handshake_idle_maker_interval;
         OnceInInterval m_connections_maker_interval;
 
         OnceInInterval m_peerlist_store_interval;
+
+        OnceInInterval m_seed_retry_interval;
+
+        OnceInInterval m_gray_housekeeping_interval;
 
         System::Timer m_timedSyncTimer;
 
@@ -490,9 +535,39 @@ namespace CryptoNote
 
         std::vector<NetworkAddress6> m_seed_nodes6;
 
-        std::list<PeerlistEntry> m_command_line_peers;
+        /* --seed-node entries as given, kept so a later lookup can redo them. */
+        std::vector<std::string> m_seed_node_hosts;
 
-        uint64_t m_peer_livetime;
+        std::atomic<size_t> m_seed_nodes_count;
+
+        std::atomic<uint64_t> m_last_seed_bootstrap;
+
+        /* When the next seed lookup is due; 0 forces one at the next seed round. */
+        time_t m_seed_resolve_due;
+
+        std::atomic<bool> m_seed_resolve_in_flight;
+
+        std::thread m_seedResolveThread;
+
+        /* Filled by m_seedResolveThread, drained on the dispatcher thread. */
+        std::mutex m_seedResolveMutex;
+
+        bool m_seedResolveReady;
+
+        std::vector<NetworkAddress> m_seedResolveResult;
+
+        std::vector<NetworkAddress6> m_seedResolveResult6;
+
+        /* Addresses that refused or timed out lately. Dispatcher thread only. */
+        std::map<NetworkAddress, time_t> m_recentlyFailedPeers;
+
+        std::map<NetworkAddress6, time_t> m_recentlyFailedPeers6;
+
+        time_t m_last_time_with_peers;
+
+        time_t m_last_no_peers_warning;
+
+        std::list<PeerlistEntry> m_command_line_peers;
 
         std::array<uint8_t, 16> m_network_id;
 

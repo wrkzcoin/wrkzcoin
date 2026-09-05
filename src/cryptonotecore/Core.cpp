@@ -612,7 +612,22 @@ namespace CryptoNote
                 uint32_t blockIndex = blockchainSegment->getBlockIndex(hash);
                 assert(blockIndex <= blockchainSegment->getTopBlockIndex());
 
-                blocks.push_back(blockchainSegment->getBlockByIndex(blockIndex));
+                /* A pruned node still indexes the hash and height of blocks
+                   whose body it has dropped, so findSegmentContainingBlock
+                   answers for heights we cannot actually serve. Report those
+                   as missed and let the peer ask elsewhere. Reading them
+                   unconditionally threw std::out_of_range, which unwound all
+                   the way to the connection handler and dropped the peer. */
+                RawBlock rawBlock;
+
+                if (blockchainSegment->tryGetBlockByIndex(blockIndex, rawBlock))
+                {
+                    blocks.push_back(std::move(rawBlock));
+                }
+                else
+                {
+                    missedHashes.push_back(hash);
+                }
             }
         }
     }
@@ -5278,12 +5293,41 @@ namespace CryptoNote
         return dbCache->pruneStoredRawBlocks(pruneDepth);
     }
 
+    std::map<std::string, StorageStats> Core::measureStorage() const
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            return {};
+        }
+
+        return dbCache->measureStorage();
+    }
+
+    SnapshotWalkStats Core::walkSnapshotRecords(
+        const uint32_t snapshotHeight,
+        const std::function<void(const std::string &key, const std::string &value)> &sink,
+        const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
+    {
+        IBlockchainCache *mainChain = chainsLeaves[0];
+        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+
+        if (dbCache == nullptr)
+        {
+            throw std::runtime_error("This node is not backed by a database, so it has nothing to export");
+        }
+
+        return dbCache->walkSnapshotRecords(snapshotHeight, sink, progress);
+    }
+
     std::error_code Core::compactDatabase()
     {
         return compactDatabaseDetailed().first;
     }
 
-    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed()
+    std::pair<std::error_code, std::string> Core::compactDatabaseDetailed(bool rewriteBottommost)
     {
         IBlockchainCache *mainChain = chainsLeaves[0];
         auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
@@ -5293,7 +5337,7 @@ namespace CryptoNote
             return {make_error_code(error::DataBaseErrorCodes::INTERNAL_ERROR), "No database-backed blockchain cache"};
         }
 
-        return dbCache->compactDatabaseDetailed();
+        return dbCache->compactDatabaseDetailed(rewriteBottommost);
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

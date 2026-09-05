@@ -278,5 +278,18 @@
   "languagePt": "Portugu\u00eas",
   "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
   "ringSize": "Tamanho do anel",
-  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual."
+  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.",
+  "txPowServerSection": "Servidor PoW de transações",
+  "txPowServerUse": "Usar um servidor PoW externo",
+  "txPowServerSubtitle": "Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.",
+  "txPowServerSaved": "Configurações do servidor PoW salvas",
+  "txPowServerInvalid": "Informe um host e uma porta válidos",
+  "txPowServerTest": "Testar",
+  "txPowServerTestOk": "Servidor acessível em {ms} ms: {threads} threads, {queue} de {capacity} vagas da fila em uso",
+  "txPowServerTestFailed": "Servidor inacessível: {error}",
+  "nodeTest": "Testar",
+  "nodeInvalid": "Informe um host e uma porta válidos",
+  "nodeTestOk": "Acessível em {ms} ms: altura {height}, {peers} pares",
+  "nodeTestSyncing": "Acessível em {ms} ms, mas o nó ainda está sincronizando: altura {height} de {networkHeight}",
+  "nodeTestFailed": "Nó inacessível: {error}"
 }

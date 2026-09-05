@@ -44,6 +44,44 @@ namespace CryptoNote
 
     const uint32_t INVALID_BLOCK_INDEX = std::numeric_limits<uint32_t>::max();
 
+    /* Record count and on disk byte total for one database table, measured by
+       walking it. Used to size a lite node snapshot before settling its format.
+       Lives here rather than on the database cache so Core can hand it back
+       without the caller needing the cache's definition. See LITENODE.md. */
+    struct StorageStats
+    {
+        uint64_t records = 0;
+
+        uint64_t keyBytes = 0;
+
+        uint64_t valueBytes = 0;
+
+        uint64_t totalBytes() const
+        {
+            return keyBytes + valueBytes;
+        }
+    };
+
+    /* What the index only region of a lite node snapshot turned out to
+       contain, filled in by the walk that produces it.
+
+       The two counters are chain wide totals as of the snapshot's top block.
+       An importer has to restore them and cannot derive them from the tables a
+       lite node carries, so they travel in the snapshot header. See
+       LITESNAPSHOT.md. */
+    struct SnapshotWalkStats
+    {
+        uint64_t blockInfoRecords = 0;
+
+        uint64_t keyImageRecords = 0;
+
+        uint64_t keyOutputRecords = 0;
+
+        uint64_t transactionsCount = 0;
+
+        uint64_t keyOutputAmountsCount = 0;
+    };
+
     struct CachedBlockInfo
     {
         Crypto::Hash blockHash;
@@ -101,6 +139,13 @@ namespace CryptoNote
 
         virtual RawBlock getBlockByIndex(uint32_t index) const = 0;
 
+        /* Reads a block only if its raw data is actually stored. A pruned node
+           keeps the hash and height of blocks whose body it has dropped, so a
+           height that resolves is not on its own a promise that the block can
+           be produced. Returns false instead of throwing when the body is gone,
+           so callers serving peers can report the block as missed. */
+        virtual bool tryGetBlockByIndex(uint32_t index, RawBlock &block) const = 0;
+
         virtual BinaryArray getRawTransaction(uint32_t blockIndex, uint32_t transactionIndex) const = 0;
 
         virtual std::unique_ptr<IBlockchainCache> split(uint32_t splitBlockIndex) = 0;
@@ -136,11 +181,6 @@ namespace CryptoNote
             uint32_t blockIndex,
             Common::ArrayView<uint32_t> globalIndexes,
             std::vector<Crypto::PublicKey> &publicKeys) const = 0;
-
-        virtual ExtractOutputKeysResult extractKeyOtputIndexes(
-            uint64_t amount,
-            Common::ArrayView<uint32_t> globalIndexes,
-            std::vector<PackedOutIndex> &outIndexes) const = 0;
 
         virtual ExtractOutputKeysResult extractKeyOtputReferences(
             uint64_t amount,

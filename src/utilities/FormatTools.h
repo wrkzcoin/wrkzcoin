@@ -32,7 +32,9 @@ namespace Utilities
 
     std::string get_fork_time(const uint64_t height, const std::vector<uint64_t> upgrade_heights);
 
-    std::string get_mining_speed(const uint64_t hashrate);
+    /* Takes a double so a measured rate keeps its fraction - truncating to a
+       whole hash per second before formatting lost everything below 1 H/s. */
+    std::string get_mining_speed(const double hashrate);
 
     std::string get_sync_percentage(uint64_t height, const uint64_t target_height);
 

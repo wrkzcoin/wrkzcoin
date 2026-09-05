@@ -14,8 +14,22 @@ Use the daemon binary (`Wrkzd`) with RPC-related flags such as:
 - `--rpc-max-global-index-range`
 - `--rpc-max-block-count`
 - `--rpc-trust-proxy`
+- `--daemon-mode` (`standard` or `explorer`)
 
 See definitions in `src/daemon/DaemonConfiguration.cpp`.
+
+## Mining
+
+The daemon can serve stratum directly, so a stock miner needs no pool:
+
+- `--stratum-bind-port` (`0`, off)
+- `--stratum-bind-ip` (`127.0.0.1`)
+- `--stratum-share-difficulty` (`0`, meaning the network difficulty)
+- `--stratum-max-connections` (`32`)
+
+This is a separate TCP listener with no authentication of its own, so it stays
+on loopback unless you change it. Full notes in `MINING.md` in the repository
+root.
 
 ## Recommended baseline
 

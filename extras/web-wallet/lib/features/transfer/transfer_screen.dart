@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/config/app_config.dart';
 import '../../core/ffi/wallet_web.dart';
+import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
@@ -79,11 +80,15 @@ class _TransferScreenState extends ConsumerState<TransferScreen> {
     try {
       final ffi = ref.read(walletCApiProvider);
       final paymentId = _paymentIdCtrl.text.trim();
-      // Use a fixed fee >= TRANSACTION_POW_PASS_WITH_FEE (10000 atomic = 100 WRKZ)
-      // to bypass the extremely slow tx PoW in single-threaded WASM.
+      // Without an external PoW server, use a fixed fee >= TRANSACTION_POW_PASS_WITH_FEE
+      // (10000 atomic = 100 WRKZ) to bypass the extremely slow tx PoW in
+      // single-threaded WASM. With one configured, pay the normal minimum fee
+      // and let the server do the work; the worker still computes it locally
+      // if the server does not answer.
+      final usePowServer = ref.read(txPowServerProvider).active;
       final requestJson = jsonEncode({
         'destinations': [{'address': dest, 'amount': atomic}],
-        'fee': 10000,
+        if (!usePowServer) 'fee': 10000,
         if (paymentId.isNotEmpty) 'paymentID': paymentId,
       });
       final result = await ffi.sendAdvanced(requestJson, broadcast: false);

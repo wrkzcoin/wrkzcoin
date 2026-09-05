@@ -6,12 +6,15 @@
 // Please see the included LICENSE file for more information.
 
 #include "BlockchainUtils.h"
+#include "DBUtils.h"
 #include "crypto/hash.h"
+#include "serialization/KVBinaryCommon.h"
 
 #include <common/CryptoNoteTools.h>
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
+#include <chrono>
 #include <cstdio>
 #include <deque>
 #include <iterator>
@@ -120,18 +123,19 @@ namespace CryptoNote
             return (now - blockTimestamp) <= BLOCK_WRITE_TIP_WINDOW_SECONDS;
         }
 
-        bool requestPackedOutputs(
+        // returns KeyOutputInfos in the same order as globalIndexes are
+        bool requestKeyOutputInfos(
             IBlockchainCache::Amount amount,
             Common::ArrayView<uint32_t> globalIndexes,
             IDataBase &database,
-            std::vector<PackedOutIndex> &result)
+            std::vector<KeyOutputInfo> &result)
         {
             BlockchainReadBatch readBatch;
             result.reserve(result.size() + globalIndexes.getSize());
 
             for (auto globalIndex : globalIndexes)
             {
-                readBatch.requestKeyOutputGlobalIndexForAmount(amount, globalIndex);
+                readBatch.requestKeyOutputInfo(amount, globalIndex);
             }
 
             auto dbResult = database.read(readBatch);
@@ -143,58 +147,15 @@ namespace CryptoNote
             try
             {
                 auto readResult = readBatch.extractResult();
-                const auto &packedOutsMap = readResult.getKeyOutputGlobalIndexesForAmounts();
+                const auto &keyOutputInfoMap = readResult.getKeyOutputInfo();
                 for (auto globalIndex : globalIndexes)
                 {
-                    result.push_back(packedOutsMap.at(std::make_pair(amount, globalIndex)));
+                    result.push_back(keyOutputInfoMap.at(std::make_pair(amount, globalIndex)));
                 }
             }
             catch (std::exception &)
             {
                 return false;
-            }
-
-            return true;
-        }
-
-        bool requestTransactionHashesForGlobalOutputIndexes(
-            const std::vector<PackedOutIndex> &packedOuts,
-            IDataBase &database,
-            std::vector<Crypto::Hash> &transactionHashes)
-        {
-            BlockchainReadBatch readHashesBatch;
-
-            std::set<uint32_t> blockIndexes;
-            std::for_each(packedOuts.begin(), packedOuts.end(), [&blockIndexes](PackedOutIndex out) {
-                blockIndexes.insert(out.blockIndex);
-            });
-            std::for_each(blockIndexes.begin(), blockIndexes.end(), [&readHashesBatch](uint32_t blockIndex) {
-                readHashesBatch.requestTransactionHashesByBlock(blockIndex);
-            });
-
-            auto dbResult = database.read(readHashesBatch);
-            if (dbResult)
-            {
-                return false;
-            }
-
-            auto readResult = readHashesBatch.extractResult();
-            const auto &transactionHashesMap = readResult.getTransactionHashesByBlocks();
-
-            if (transactionHashesMap.size() != blockIndexes.size())
-            {
-                return false;
-            }
-
-            transactionHashes.reserve(transactionHashes.size() + packedOuts.size());
-            for (const auto &output : packedOuts)
-            {
-                if (output.transactionIndex >= transactionHashesMap.at(output.blockIndex).size())
-                {
-                    return false;
-                }
-
-                transactionHashes.push_back(transactionHashesMap.at(output.blockIndex)[output.transactionIndex]);
             }
 
             return true;
@@ -233,17 +194,6 @@ namespace CryptoNote
             return true;
         }
 
-        // returns CachedTransactionInfos in the same or as packedOuts are
-        /*
-        bool requestCachedTransactionInfos(const std::vector<PackedOutIndex>& packedOuts, IDataBase& database,
-        std::vector<CachedTransactionInfo>& result) { std::vector<Crypto::Hash> transactionHashes; if
-        (!requestTransactionHashesForGlobalOutputIndexes(packedOuts, database, transactionHashes)) { return false;
-          }
-
-          return requestCachedTransactionInfos(transactionHashes, database, result);
-        }
-        */
-
         bool requestExtendedTransactionInfos(
             const std::vector<Crypto::Hash> &transactionHashes,
             IDataBase &database,
@@ -278,21 +228,6 @@ namespace CryptoNote
             }
 
             return true;
-        }
-
-        // returns ExtendedTransactionInfos in the same order as packedOuts are
-        bool requestExtendedTransactionInfos(
-            const std::vector<PackedOutIndex> &packedOuts,
-            IDataBase &database,
-            std::vector<ExtendedTransactionInfo> &result)
-        {
-            std::vector<Crypto::Hash> transactionHashes;
-            if (!requestTransactionHashesForGlobalOutputIndexes(packedOuts, database, transactionHashes))
-            {
-                return false;
-            }
-
-            return requestExtendedTransactionInfos(transactionHashes, database, result);
         }
 
         uint64_t roundToMidnight(uint64_t timestamp)
@@ -514,16 +449,16 @@ namespace CryptoNote
           public:
             using iterator_category = std::random_access_iterator_tag;
 
-            using value_type = PackedOutIndex;
+            using value_type = uint32_t;
 
             using difference_type = std::ptrdiff_t;
 
-            using pointer = const PackedOutIndex *;
+            using pointer = const uint32_t *;
 
-            using reference = const PackedOutIndex &;
+            using reference = const uint32_t &;
 
             DbOutputConstIterator(
-                std::function<PackedOutIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever_,
+                std::function<uint32_t(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever_,
                 IBlockchainCache::Amount amount_,
                 uint32_t globalOutputIndex_):
                 retriever(retriever_),
@@ -638,20 +573,23 @@ namespace CryptoNote
             }
 
           private:
-            std::function<PackedOutIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever;
+            std::function<uint32_t(IBlockchainCache::Amount amount, uint32_t globalOutputIndex)> retriever;
 
             IBlockchainCache::Amount amount;
 
             uint32_t globalOutputIndex;
 
-            mutable PackedOutIndex cachedValue;
+            mutable uint32_t cachedValue;
         };
 
-        PackedOutIndex
-            retrieveKeyOutput(IBlockchainCache::Amount amount, uint32_t globalOutputIndex, IDataBase &database)
+        /* The block a key output was created in, by its global index. Used to
+           binary search the outputs of one amount by height; see
+           getKeyOutputsCountForAmount. */
+        uint32_t
+            retrieveKeyOutputBlockIndex(IBlockchainCache::Amount amount, uint32_t globalOutputIndex, IDataBase &database)
         {
             BlockchainReadBatch batch;
-            auto dbError = database.read(batch.requestKeyOutputGlobalIndexForAmount(amount, globalOutputIndex));
+            auto dbError = database.read(batch.requestKeyOutputInfo(amount, globalOutputIndex));
             if (dbError)
             {
                 throw std::system_error(dbError, "Error during retrieving key output by global output index");
@@ -661,7 +599,7 @@ namespace CryptoNote
 
             try
             {
-                return result.getKeyOutputGlobalIndexesForAmounts().at(std::make_pair(amount, globalOutputIndex));
+                return result.getKeyOutputInfo().at(std::make_pair(amount, globalOutputIndex)).blockIndex;
             }
             catch (std::exception &)
             {
@@ -776,7 +714,7 @@ namespace CryptoNote
             uint32_t schemeVersion;
         };
 
-        const uint32_t CURRENT_DB_SCHEME_VERSION = 3;
+        const uint32_t CURRENT_DB_SCHEME_VERSION = 4;
 
     } // namespace
 
@@ -790,11 +728,13 @@ namespace CryptoNote
         const Currency &curr,
         IDataBase &dataBase,
         IBlockchainCacheFactory &blockchainCacheFactory,
-        std::shared_ptr<Logging::ILogger> _logger):
+        std::shared_ptr<Logging::ILogger> _logger,
+        uint32_t liteHeight):
         currency(curr),
         database(dataBase),
         blockchainCacheFactory(blockchainCacheFactory),
-        logger(_logger, "DatabaseBlockchainCache")
+        logger(_logger, "DatabaseBlockchainCache"),
+        liteHeight(liteHeight)
     {
         DatabaseVersionReadBatch readBatch;
         auto ec = database.read(readBatch);
@@ -846,9 +786,10 @@ namespace CryptoNote
         }
         else if (*version < CURRENT_DB_SCHEME_VERSION)
         {
+            /* Reports only. What to do about it is the caller's decision, and the
+               answer is not to delete anything on its own initiative. */
             logger(Logging::WARNING) << "DB scheme version is less than expected. Expected version "
-                                     << CURRENT_DB_SCHEME_VERSION << ". Actual version " << *version
-                                     << ". DB will be destroyed and recreated from blocks.bin file.";
+                                     << CURRENT_DB_SCHEME_VERSION << ". Actual version " << *version << ".";
             return false;
         }
         else if (*version > CURRENT_DB_SCHEME_VERSION)
@@ -914,6 +855,21 @@ namespace CryptoNote
     std::unique_ptr<IBlockchainCache> DatabaseBlockchainCache::split(uint32_t splitBlockIndex)
     {
         assert(splitBlockIndex <= getTopBlockIndex());
+
+        /* Splitting means undoing blocks, which needs the transaction records and
+           spent key image lists that index-only heights never stored. The lite
+           height is kept far enough below the top (MIN_LITE_FULL_BLOCK_DEPTH) that
+           no honest reorg reaches here, so this is a corrupt or hostile chain
+           rather than something to attempt and half finish. */
+        if (isLiteIndexOnlyHeight(splitBlockIndex))
+        {
+            logger(Logging::ERROR) << "Refusing to split at index " << splitBlockIndex
+                                   << ", below this lite node's full block height " << liteHeight
+                                   << ". The data needed to undo those blocks was never stored.";
+
+            throw std::runtime_error("Cannot split below the lite node height");
+        }
+
         logger(Logging::DEBUGGING) << "split at index " << splitBlockIndex
                                    << " started, top block index: " << getTopBlockIndex();
 
@@ -995,6 +951,19 @@ namespace CryptoNote
 
     void DatabaseBlockchainCache::rewind(const uint64_t height)
     {
+        /* Same reasoning as split(): the blocks below the lite height cannot be
+           undone because what undoing them needs was never written. Checked
+           before the height <= 1 shortcut, so a lite node cannot quietly wipe
+           itself back to genesis either. */
+        if (isLiteIndexOnlyHeight(static_cast<uint32_t>(height)))
+        {
+            logger(Logging::ERROR) << "Refusing to rewind to " << height
+                                   << ", below this lite node's full block height " << liteHeight
+                                   << ". The data needed to undo those blocks was never stored.";
+
+            throw std::runtime_error("Cannot rewind below the lite node height");
+        }
+
         /* 0 height, much much faster to just remove DB and recreate it than
          * remove everything. */
         if (height <= 1)
@@ -1283,7 +1252,7 @@ namespace CryptoNote
         logger(Logging::DEBUGGING) << "Requesting delete for key output amount " << amount
                                    << " starting from global index " << boundary << " to " << (outputsCount - 1);
 
-        writeBatch.removeKeyOutputGlobalIndexes(amount, outputsCount - boundary, boundary);
+        writeBatch.insertKeyOutputCountForAmount(amount, boundary);
         for (GlobalOutputIndex index = boundary; index < outputsCount; ++index)
         {
             writeBatch.removeKeyOutputInfo(amount, index);
@@ -1344,9 +1313,30 @@ namespace CryptoNote
         transactionCacheInfo.outputAmounts.reserve(tx.outputs.size());
         transactionCacheInfo.keyInputs.reserve(tx.inputs.size());
         auto outputCount = 0;
-        std::unordered_map<Amount, std::vector<PackedOutIndex>> keyIndexes;
+
+        /* Which amounts this transaction added outputs to. Their running counts
+           have to be rewritten; the outputs themselves went into the key output
+           info records above. */
+        std::set<Amount> touchedAmounts;
 
         std::set<Amount> newKeyAmounts;
+
+        /* KeyOutputInfo::transactionHash has exactly one consumer in the tree:
+           extractKeyOtputReferences, reached only from Core::getTransactionDetails
+           to answer which transaction a ring member came from. That is an explorer
+           answer, and explorer mode is refused on a lite node. Ring verification
+           (extractKeyOutputKeys) and decoy serving (getRandomOutsByAmount) read
+           publicKey and unlockTime and nothing else.
+
+           So below the lite height this is 32 bytes of high entropy per key output
+           that the node can never read - on a mainnet sized chain about a quarter
+           of the entire database, and the one part of it a compressor cannot help
+           with. Zeroed rather than removed: the record layout and the schema
+           version stay exactly as they are, no reader needs to know, and seventy
+           eight million identical zero hashes cost almost nothing once RocksDB has
+           compressed them. Above the lite height the real hash is kept, so the
+           region a lite node calls full really is. */
+        const bool dropOutputTransactionHash = isLiteIndexOnlyHeight(blockIndex);
 
         for (auto &output : tx.outputs)
         {
@@ -1360,7 +1350,7 @@ namespace CryptoNote
 
             if (std::holds_alternative<KeyOutput>(output.target))
             {
-                keyIndexes[output.amount].push_back(poi);
+                touchedAmounts.insert(output.amount);
                 auto outputCountForAmount = updateKeyOutputCount(output.amount, 1);
                 if (outputCountForAmount == 1)
                 {
@@ -1375,9 +1365,11 @@ namespace CryptoNote
 
                 KeyOutputInfo outputInfo;
                 outputInfo.publicKey = std::get<KeyOutput>(output.target).key;
-                outputInfo.transactionHash = transactionCacheInfo.transactionHash;
+                outputInfo.transactionHash =
+                    dropOutputTransactionHash ? Crypto::Hash {} : transactionCacheInfo.transactionHash;
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
+                outputInfo.blockIndex = blockIndex;
 
                 batch.insertKeyOutputInfo(output.amount, globalIndex, outputInfo);
             }
@@ -1391,18 +1383,33 @@ namespace CryptoNote
             }
         }
 
-        for (auto &amountToOutputs : keyIndexes)
+        for (const auto amount : touchedAmounts)
         {
-            batch.insertKeyOutputGlobalIndexes(
-                amountToOutputs.first,
-                amountToOutputs.second,
-                updateKeyOutputCount(amountToOutputs.first, 0)); // Size already updated.
+            batch.insertKeyOutputCountForAmount(amount, updateKeyOutputCount(amount, 0)); // Size already updated.
         }
 
         if (!newKeyAmounts.empty())
         {
             assert(keyOutputAmountsCount.has_value());
             batch.insertKeyOutputAmounts(newKeyAmounts, *keyOutputAmountsCount);
+        }
+
+        /* Below a lite node's lite height the transaction record and the payment
+           id index are dropped. Everything consensus needs from this transaction
+           has already gone into the batch above - the key output info, the per
+           amount global indexes and the amount list - and those are what ring
+           member resolution and decoy selection read. What is lost is the ability
+           to rescan or explore those heights. See LITENODE.md. */
+        if (isLiteIndexOnlyHeight(blockIndex))
+        {
+            /* Still count it, or the chain wide transaction total would only
+               cover the blocks stored in full. */
+            batch.insertTransactionCount(getCachedTransactionsCount() + 1);
+            transactionsCount = *transactionsCount + 1;
+
+            logger(Logging::DEBUGGING) << "push transaction with hash "
+                                       << cachedTransaction.getTransactionHash() << " completed (index only)";
+            return;
         }
 
         /* Persist payment ID text for wallet sync output (supports both short and long). */
@@ -1522,7 +1529,14 @@ namespace CryptoNote
         blockInfo.blockSize = static_cast<uint32_t>(blockSize);
         blockInfo.timestamp = cachedBlock.getBlock().timestamp;
 
-        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages);
+        /* Below a lite node's lite height only the indexes that later blocks
+           actually read are kept: the key image -> block index entries, the key
+           output info and per amount counts written by pushTransaction, and the
+           block info itself. The block body, its transaction hash list and the
+           rewind index all go. See LITENODE.md. */
+        const bool indexOnly = isLiteIndexOnlyHeight(getTopBlockIndex() + 1);
+
+        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages, !indexOnly);
 
         auto txHashes = cachedBlock.getBlock().transactionHashes;
         auto baseTransaction = cachedBlock.getBlock().baseTransaction;
@@ -1531,8 +1545,13 @@ namespace CryptoNote
         // base transaction's hash is always the first one in index for this block
         txHashes.insert(txHashes.begin(), cachedBaseTransaction.getTransactionHash());
 
-        batch.insertCachedBlock(blockInfo, getTopBlockIndex() + 1, txHashes);
-        batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
+        batch.insertCachedBlock(
+            blockInfo, getTopBlockIndex() + 1, indexOnly ? std::vector<Crypto::Hash> {} : txHashes);
+
+        if (!indexOnly)
+        {
+            batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
+        }
 
         auto transactionIndex = 0;
         pushTransaction(cachedBaseTransaction, getTopBlockIndex() + 1, transactionIndex++, batch);
@@ -1548,7 +1567,11 @@ namespace CryptoNote
            this day is present every further block of that day can skip the
            lookup. Blocks arrive in time order during a sync, which makes this
            roughly one read per day instead of one per block. */
-        if (knownClosestTimestampMidnight != blockMidnight)
+        /* The timestamp indexes exist to answer "which height was this date",
+           which is how a wallet starts a scan from a date. A lite node cannot
+           serve a scan that starts below its lite height at all, so these are
+           dead weight down there. */
+        if (!indexOnly && knownClosestTimestampMidnight != blockMidnight)
         {
             auto closestBlockIndexDb = requestClosestBlockIndexByTimestamp(blockMidnight, database);
             if (!closestBlockIndexDb.second)
@@ -1564,7 +1587,10 @@ namespace CryptoNote
             }
         }
 
-        insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
+        if (!indexOnly)
+        {
+            insertBlockTimestamp(batch, cachedBlock.getBlock().timestamp, cachedBlock.getBlockHash());
+        }
 
         const bool durable = shouldSyncBlockWrite(getTopBlockIndex() + 1, cachedBlock.getBlock().timestamp);
 
@@ -1586,8 +1612,15 @@ namespace CryptoNote
         }
 
         /* Set only now the write has gone through, so a failed push cannot
-           leave us believing in an entry that was never committed. */
-        knownClosestTimestampMidnight = blockMidnight;
+           leave us believing in an entry that was never committed. Index only
+           heights never wrote one, so they must not claim the day is covered
+           either: the lite height can fall mid day, and the first full block
+           after it would otherwise skip the lookup and leave that day with no
+           closest timestamp entry at all. */
+        if (!indexOnly)
+        {
+            knownClosestTimestampMidnight = blockMidnight;
+        }
     }
 
     PushedBlockInfo DatabaseBlockchainCache::getPushedBlockInfo(uint32_t blockIndex) const
@@ -1678,20 +1711,6 @@ namespace CryptoNote
 
                 return ExtractOutputKeysResult::SUCCESS;
             });
-    }
-
-    ExtractOutputKeysResult DatabaseBlockchainCache::extractKeyOtputIndexes(
-        uint64_t amount,
-        Common::ArrayView<uint32_t> globalIndexes,
-        std::vector<PackedOutIndex> &outIndexes) const
-    {
-        if (!requestPackedOutputs(amount, globalIndexes, database, outIndexes))
-        {
-            logger(Logging::ERROR) << "extractKeyOtputIndexes failed: failed to read database";
-            return ExtractOutputKeysResult::INVALID_GLOBAL_INDEX;
-        }
-
-        return ExtractOutputKeysResult::SUCCESS;
     }
 
     ExtractOutputKeysResult DatabaseBlockchainCache::extractKeyOtputReferences(
@@ -2139,12 +2158,13 @@ namespace CryptoNote
     {
         uint32_t outputsCount = requestKeyOutputGlobalIndexesCountForAmount(amount, database);
 
-        auto getOutput = std::bind(retrieveKeyOutput, std::placeholders::_1, std::placeholders::_2, std::ref(database));
+        auto getOutput =
+            std::bind(retrieveKeyOutputBlockIndex, std::placeholders::_1, std::placeholders::_2, std::ref(database));
         auto begin = DbOutputConstIterator(getOutput, amount, 0);
         auto end = DbOutputConstIterator(getOutput, amount, outputsCount);
 
-        auto it = std::lower_bound(begin, end, blockIndex, [](const PackedOutIndex &output, uint32_t blockIndex) {
-            return output.blockIndex < blockIndex;
+        auto it = std::lower_bound(begin, end, blockIndex, [](uint32_t outputBlockIndex, uint32_t blockIndex) {
+            return outputBlockIndex < blockIndex;
         });
 
         size_t result = static_cast<size_t>(std::distance(begin, it));
@@ -2328,6 +2348,27 @@ namespace CryptoNote
         return std::move(res.getRawBlocks().at(index));
     }
 
+    bool DatabaseBlockchainCache::tryGetBlockByIndex(uint32_t index, RawBlock &block) const
+    {
+        auto batch = BlockchainReadBatch().requestRawBlock(index);
+        auto res = readDatabase(batch);
+
+        const auto &rawBlocks = res.getRawBlocks();
+        const auto it = rawBlocks.find(index);
+
+        if (it == rawBlocks.end())
+        {
+            /* Pruned away. The block info and hash indexes still name this
+               height, so this is an expected answer on a pruned node, not a
+               database fault - readDatabase has already thrown for those. */
+            return false;
+        }
+
+        block = it->second;
+
+        return true;
+    }
+
     BinaryArray DatabaseBlockchainCache::getRawTransaction(uint32_t blockIndex, uint32_t transactionIndex) const
     {
         return getBlockByIndex(blockIndex).transactions.at(transactionIndex);
@@ -2369,23 +2410,24 @@ namespace CryptoNote
                 return resultOuts;
             }
 
-            std::vector<PackedOutIndex> outputs;
-            if (extractKeyOtputIndexes(
-                    amount, Common::ArrayView<uint32_t>(globalIndexes.data(), globalIndexes.size()), outputs)
-                != ExtractOutputKeysResult::SUCCESS)
+            /* Deciding whether a candidate decoy is mature needs two things: the
+               output's unlock time and the height it was created at. Both are in
+               KeyOutputInfo, so this is one read of one table. It used to be two:
+               the unlock time here and the height from a parallel table keyed the
+               same way, which is what folding that table into this one removed.
+               Before that it was four, walking the transaction records. */
+            std::vector<KeyOutputInfo> outputInfos;
+            if (!requestKeyOutputInfos(
+                    amount,
+                    Common::ArrayView<uint32_t>(globalIndexes.data(), globalIndexes.size()),
+                    database,
+                    outputInfos))
             {
-                logger(Logging::DEBUGGING) << "getRandomOutsByAmount: failed to extract key output indexes";
-                throw std::runtime_error("Invalid output index"); // TODO: make error code
+                logger(Logging::TRACE) << "getRandomOutsByAmount: requestKeyOutputInfos failed";
+                throw std::runtime_error("Error while requesting key output info"); // TODO: make error code
             }
 
-            std::vector<ExtendedTransactionInfo> transactions;
-            if (!requestExtendedTransactionInfos(outputs, database, transactions))
-            {
-                logger(Logging::TRACE) << "getRandomOutsByAmount: requestExtendedTransactionInfos failed";
-                throw std::runtime_error("Error while requesting transactions"); // TODO: make error code
-            }
-
-            assert(globalIndexes.size() == transactions.size());
+            assert(globalIndexes.size() == outputInfos.size());
 
             uint32_t uppperBlockIndex = 0;
             if (blockIndex > currency.minedMoneyUnlockWindow())
@@ -2393,10 +2435,10 @@ namespace CryptoNote
                 uppperBlockIndex = blockIndex - currency.minedMoneyUnlockWindow();
             }
 
-            for (size_t i = 0; i < transactions.size(); ++i)
+            for (size_t i = 0; i < outputInfos.size(); ++i)
             {
-                if (!isTransactionSpendTimeUnlocked(transactions[i].unlockTime, blockIndex)
-                    || transactions[i].blockIndex > uppperBlockIndex)
+                if (!isTransactionSpendTimeUnlocked(outputInfos[i].unlockTime, blockIndex)
+                    || outputInfos[i].blockIndex > uppperBlockIndex)
                 {
                     continue;
                 }
@@ -2982,14 +3024,309 @@ namespace CryptoNote
         return removed;
     }
 
+    namespace
+    {
+        /* Keys are not stored as raw strings. DB::serializeKey wraps the
+           (prefix, key) pair in the KV binary format, so a stored key never
+           literally begins with its table prefix - it begins with the format
+           header. What every key of one table does share is the serialized
+           preamble: the 9 byte header, the field count, the field name length
+           and the field name, which is the prefix itself. RocksDB sorts
+           bytewise, so keys of one table are contiguous under that preamble and
+           a prefix scan works once you scan for the right bytes.
+
+           Derived from the serializer rather than hardcoded, and the layout is
+           checked rather than assumed: getting this wrong reports every table as
+           empty, which reads exactly like a database that legitimately has
+           nothing in it. */
+        std::string tableKeyPrefix(const std::string &tablePrefix)
+        {
+            /* The key's own type does not matter here - the preamble ends before
+               the value begins - so any probe key gives the same bytes. */
+            const std::string probe = DB::serializeKey(tablePrefix, uint32_t {0});
+
+            const size_t nameOffset = sizeof(KVBinaryStorageBlockHeader) + 1 /* field count */ + 1 /* name length */;
+            const size_t end = nameOffset + tablePrefix.size();
+
+            if (probe.size() < end || probe.compare(nameOffset, tablePrefix.size(), tablePrefix) != 0)
+            {
+                throw std::runtime_error(
+                    "Database key layout is not what measureStorage expects; the prefix scan would silently report "
+                    "every table as empty");
+            }
+
+            return probe.substr(0, end);
+        }
+    } // namespace
+
+    std::map<std::string, StorageStats> DatabaseBlockchainCache::measureStorage() const
+    {
+        /* Named for what they hold rather than by prefix letter, so the report
+           reads as something you can act on. Kept in the order a snapshot would
+           carry them: the three that a snapshot must serialise first, then the
+           tables a lite node drops or an importer rebuilds. */
+        const std::vector<std::pair<std::string, std::string>> tables = {
+            {"key output info (snapshot)", DB::KEY_OUTPUT_KEY_PREFIX},
+            {"key output indexes (snapshot)", DB::KEY_OUTPUT_AMOUNT_PREFIX},
+            {"spent key images (snapshot)", DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX},
+            {"block info (snapshot)", DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX},
+            {"block hash to index (derived)", DB::BLOCK_HASH_TO_BLOCK_INDEX_PREFIX},
+            {"key output amounts (derived)", DB::KEY_OUTPUT_AMOUNTS_COUNT_PREFIX},
+            {"raw blocks (lite drops)", DB::BLOCK_INDEX_TO_RAW_BLOCK_PREFIX},
+            {"transaction info (lite drops)", DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX},
+            {"block tx hashes (lite drops)", DB::BLOCK_INDEX_TO_TX_HASHES_PREFIX},
+            {"block key images (lite drops)", DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX},
+            {"payment ids (lite drops)", DB::PAYMENT_ID_TO_TX_HASH_PREFIX},
+            {"timestamp to hashes (lite drops)", DB::TIMESTAMP_TO_BLOCKHASHES_PREFIX},
+            {"closest timestamp (lite drops)", DB::CLOSEST_TIMESTAMP_BLOCK_INDEX_PREFIX},
+        };
+
+        std::map<std::string, StorageStats> result;
+
+        /* The scans run in the order above and the biggest table comes first, so
+           without a line per table this is many silent minutes on a synced chain
+           - and four times that on a full node. Report each one as it lands. */
+        size_t tableNumber = 0;
+
+        for (const auto &[name, prefix] : tables)
+        {
+            StorageStats stats;
+
+            const auto started = std::chrono::steady_clock::now();
+
+            logger(Logging::INFO) << "measureStorage: walking " << name << " (" << ++tableNumber << "/"
+                                  << tables.size() << ")...";
+
+            const auto error =
+                database.iterate(tableKeyPrefix(prefix), [&stats](const std::string &key, const std::string &value) {
+                stats.records++;
+                stats.keyBytes += key.size();
+                stats.valueBytes += value.size();
+                return true;
+            });
+
+            if (error)
+            {
+                logger(Logging::ERROR) << "measureStorage: failed walking " << name << ": " << error.message();
+                throw std::system_error(error);
+            }
+
+            const auto seconds =
+                std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started).count();
+
+            logger(Logging::INFO) << "measureStorage: " << name << ": " << stats.records << " records, "
+                                  << (stats.totalBytes() / (1024 * 1024)) << " MB logical, " << seconds << "s";
+
+            result.emplace(name, stats);
+        }
+
+        return result;
+    }
+
+    SnapshotWalkStats DatabaseBlockchainCache::walkSnapshotRecords(
+        const uint32_t snapshotHeight,
+        const std::function<void(const std::string &key, const std::string &value)> &sink,
+        const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
+    {
+        if (snapshotHeight == 0)
+        {
+            throw std::runtime_error("A lite snapshot describes the chain below a height, so that height cannot be 0");
+        }
+
+        SnapshotWalkStats stats;
+
+        /* iterate() has no way to report why a callback stopped, so the reason
+           is carried out by hand: a throw from inside the callback would cross
+           the RocksDB iterator, and cancellation is not an error to log. */
+        std::string failure;
+
+        bool cancelled = false;
+
+        uint64_t scanned = 0;
+
+        /* Tables are walked in ascending prefix order - "6" then "7" then "j" -
+           which is also the order their keys sort in, because every key of these
+           tables shares an identical preamble ending in the one byte prefix. The
+           payload is therefore globally sorted and the importer can build SST
+           files straight from it. Writer::add re-checks rather than trusting
+           this reasoning. */
+        const auto walk =
+            [&](const std::string &tablePrefix,
+                const std::string &name,
+                uint64_t &keptCounter,
+                const std::function<bool(const std::string &, const std::string &, std::string &)> &keep) {
+                scanned = 0;
+                keptCounter = 0;
+
+                const auto error = database.iterate(
+                    tableKeyPrefix(tablePrefix), [&](const std::string &key, const std::string &value) {
+                        scanned++;
+
+                        try
+                        {
+                            std::string normalised;
+
+                            if (keep(key, value, normalised))
+                            {
+                                sink(key, normalised);
+                                keptCounter++;
+                            }
+                        }
+                        catch (const std::exception &e)
+                        {
+                            failure = "while walking " + name + ": " + e.what();
+
+                            return false;
+                        }
+
+                        /* Checked often enough that a console command can be
+                           cancelled, rarely enough that the check is free. */
+                        if ((scanned & 0xffff) == 0 && !progress(name, scanned, keptCounter))
+                        {
+                            cancelled = true;
+
+                            return false;
+                        }
+
+                        return true;
+                    });
+
+                if (error)
+                {
+                    throw std::runtime_error("Failed reading " + name + ": " + error.message());
+                }
+
+                if (!failure.empty())
+                {
+                    throw std::runtime_error(failure);
+                }
+
+                if (cancelled)
+                {
+                    throw std::runtime_error("Lite snapshot export cancelled");
+                }
+
+                progress(name, scanned, keptCounter);
+            };
+
+        /* Block info. The key carries the height, so this is also where the
+           transaction counter as of the snapshot top block comes from -
+           CachedBlockInfo maintains it for skipped transactions precisely so it
+           stays a chain wide total on a lite node. */
+        bool sawTopBlock = false;
+
+        walk(
+            DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX,
+            "block info",
+            stats.blockInfoRecords,
+            [&](const std::string &key, const std::string &value, std::string &out) {
+                std::pair<std::string, uint32_t> decodedKey;
+                DB::deserialize(key, decodedKey, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
+
+                if (decodedKey.second >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                if (decodedKey.second == snapshotHeight - 1)
+                {
+                    CachedBlockInfo info;
+                    DB::deserialize(value, info, DB::BLOCK_INDEX_TO_BLOCK_INFO_PREFIX);
+
+                    stats.transactionsCount = info.alreadyGeneratedTransactions;
+                    sawTopBlock = true;
+                }
+
+                out = value;
+
+                return true;
+            });
+
+        if (stats.blockInfoRecords != snapshotHeight || !sawTopBlock)
+        {
+            throw std::runtime_error(
+                "This node holds " + std::to_string(stats.blockInfoRecords) + " blocks below height "
+                + std::to_string(snapshotHeight) + ", and a snapshot needs all " + std::to_string(snapshotHeight)
+                + " of them. Let it finish syncing first.");
+        }
+
+        /* Spent key images. The value is the block the image was spent in, which
+           is what decides whether it belongs in this snapshot. */
+        walk(
+            DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX,
+            "spent key images",
+            stats.keyImageRecords,
+            [&](const std::string &, const std::string &value, std::string &out) {
+                uint32_t spentAt = 0;
+                DB::deserialize(value, spentAt, DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX);
+
+                if (spentAt >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                out = value;
+
+                return true;
+            });
+
+        /* Key output info, the bulk of the file.
+
+           Two things happen per record. The value is normalised to the form a
+           lite node writes - transactionHash zeroed, because below the lite
+           height its only consumer is an explorer answer a lite node cannot
+           give - so that a full node and a lite node exporting at the same
+           height produce the same digest. And the amount is read out of the key
+           to count distinct amounts, which the importer derives independently
+           and checks against the header. */
+        std::optional<IBlockchainCache::Amount> lastAmount;
+
+        walk(
+            DB::KEY_OUTPUT_KEY_PREFIX,
+            "key output info",
+            stats.keyOutputRecords,
+            [&](const std::string &key, const std::string &value, std::string &out) {
+                KeyOutputInfo info;
+                DB::deserialize(value, info, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                if (info.blockIndex >= snapshotHeight)
+                {
+                    return false;
+                }
+
+                std::pair<std::string, std::pair<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex>>
+                    decodedKey;
+                DB::deserialize(key, decodedKey, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                const auto amount = decodedKey.second.first;
+
+                /* Keys sort by amount before global index, so every record of
+                   one amount is contiguous and a change of amount is a new one.
+                   No set, on a table this size. */
+                if (!lastAmount || *lastAmount != amount)
+                {
+                    stats.keyOutputAmountsCount++;
+                    lastAmount = amount;
+                }
+
+                info.transactionHash = Crypto::Hash {};
+
+                out = DB::serialize(info, DB::KEY_OUTPUT_KEY_PREFIX);
+
+                return true;
+            });
+
+        return stats;
+    }
+
     std::error_code DatabaseBlockchainCache::compactDatabase()
     {
         return database.compact();
     }
 
-    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed()
+    std::pair<std::error_code, std::string> DatabaseBlockchainCache::compactDatabaseDetailed(bool rewriteBottommost)
     {
-        return database.compactDetailed();
+        return database.compactDetailed(rewriteBottommost);
     }
 
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>

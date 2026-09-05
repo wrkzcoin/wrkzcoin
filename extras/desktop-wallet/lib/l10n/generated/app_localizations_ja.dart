@@ -417,7 +417,7 @@ class SJa extends S {
   String get continueButton => '続行';
 
   @override
-  String get browse => '参照';
+  String get browse => '参照…';
 
   @override
   String get backupWarning => '続行する前にウォレットをバックアップしてください。\nこれらの鍵は紛失すると復元できません。';
@@ -792,5 +792,304 @@ class SJa extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return 'リングサイズが $actual に縮小されました（通常は $normal）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。';
+  }
+
+  @override
+  String get liteNodeTitle => 'ライトノード';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'このノードはブロック $height 以降しか保持していません。それより前の取引はこのノードでは見つけられません。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'このノードはブロック $nodeHeight から始まりますが、このウォレットはブロック $walletHeight から始まります。その間に受け取った分はここでは見えないため、表示される残高が実際より少ない可能性があります。チェーン全体を保持するノードに接続してください。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'ブロック $wallet で同期を停止しました。このノードはブロック $node より下を保持していないため、その間のブロックを取得できません。チェーン全体を保持するノードに接続するまで残高は不完全です。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => 'このノードではそこまで遡って再スキャンできません';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '接続中のノードはライトノードで、$height より下のブロックデータを持っていません。それより低い位置から再スキャンすると、すでに見つかっている取引が失われ、ここでは二度と見つけられません。何も変更していません。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '代わりに $height から再スキャン';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '接続中のノードはブロック $height 以降からしか再スキャンできません。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供ブロック開始位置';
+
+  @override
+  String get nodeFullChain => 'チェーン全体';
+
+  @override
+  String get sectionLocalNode => 'ローカルライトノード';
+
+  @override
+  String get localNodeDescription =>
+      'このコンピューターでノードを動かし、リモートサーバーの代わりにそれと同期します。ライトノードはウォレットに必要なものだけを保存しますが、チェーン全体を一度はダウンロードします。';
+
+  @override
+  String get localNodeSetUp => 'ローカルノードを設定';
+
+  @override
+  String get localNodeStart => '開始';
+
+  @override
+  String get localNodeStop => '停止';
+
+  @override
+  String get localNodeUse => 'このノードを使う';
+
+  @override
+  String get localNodeDelete => 'ノードデータを削除';
+
+  @override
+  String get localNodeStateStopped => '停止中';
+
+  @override
+  String get localNodeStateStarting => '起動中';
+
+  @override
+  String get localNodeStateSyncing => '同期中';
+
+  @override
+  String get localNodeStateReady => '同期済み';
+
+  @override
+  String get localNodeStateFailed => '失敗';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'ブロック $height / $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count ピア';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'ローカルノードはまだ追いついておらず、ウォレットに応答できません。バックグラウンドで同期を続けます。準備できるまでリモートノードを使い、その後で切り替えてください。';
+
+  @override
+  String get localNodeInUse => 'ウォレットはこのノードに接続しています。';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name が見つかりません。デーモンの実行ファイルをウォレット実行ファイルの隣、または隣接する「sidecar」フォルダーに置いて、もう一度お試しください。';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'ローカルライトノードを設定';
+
+  @override
+  String get localNodeSetupCost =>
+      '始める前に:\n• 約 6 GB のディスク容量が必要で、チェーン全体を一度ダウンロードします。\n• 初回同期には数時間かかります。バックグラウンドで続行し、その間はリモートノードを使えます。\n• 下の開始ブロック高は変更できません。後で変えるにはノードを削除し、最初から同期し直す必要があります。';
+
+  @override
+  String get localNodeStartHeightLabel => '開始ブロック高';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'この高さより下のブロックはダウンロードして検証したうえで、後続ブロックに必要なインデックスだけを残します。このウォレットの開始ブロック高 ($height) 以下にしてください。';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'このウォレットの開始ブロック高 ($height) より高い値です。このノードでは古い取引を表示できなくなります。';
+  }
+
+  @override
+  String get localNodeCreate => 'ノードを作成';
+
+  @override
+  String get localNodeDeleteTitle => 'ローカルノードのデータを削除しますか？';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'ノードを停止し、そのブロックチェーンデータベースをディスクから完全に削除します。ウォレット、シード、資金には影響しませんが、新しいローカルノードは一からの同期になり数時間かかります。';
+
+  @override
+  String get localNodeDeleted => 'ローカルノードを削除しました。';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return 'ディスク使用量 $size';
+  }
+
+  @override
+  String get nodePresetRemote => 'リモートノード';
+
+  @override
+  String get nodePresetLocal => 'ローカルライトノード';
+
+  @override
+  String get savingWallet => 'ウォレットを保存しています…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON がウォレットをディスクに書き込んでいます。大きなウォレットでは少し時間がかかることがあります。';
+
+  @override
+  String get shutdownTakingLong =>
+      '予想より時間がかかっています。ここで終了すると今回の保存は失われます。ディスク上のウォレットファイルはそのままなので破損はしませんが、前回の保存以降の内容はなくなります。';
+
+  @override
+  String get quitAnyway => '強制終了';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON は通知領域で実行中です。アイコンをクリックすると再表示できます。終了するにはアイコンを右クリックして「終了」を選択してください。';
+
+  @override
+  String get localNodeDataFolder => 'データフォルダ';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'ここに約 6 GB が書き込まれます。空き容量のあるドライブを選んでください。';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'そのフォルダにはすでに他のファイルがあります。空のフォルダか新しいフォルダを選んでください。';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      '完全なブロックを保持し始める高さを入力してください。0 より大きい必要があります。ライトノードはジェネシスブロックからは始められません。';
+
+  @override
+  String get nodeExitTitle => 'ローカルノードはまだ実行中です';
+
+  @override
+  String get nodeExitBodySyncing =>
+      '初回同期がまだ終わっていません。数時間かかり、ノードが動いている間だけ進みます。ただし実行したままにすると、PLUTON を閉じた後もディスクとネットワークを使い続けます。';
+
+  @override
+  String get nodeExitBodySynced =>
+      'ネットワークに追いついています。実行したままにすればその状態を保てますが、PLUTON を閉じても CPU・帯域・ディスクを使います。停止すると次回に短い追いつきが必要です。';
+
+  @override
+  String get nodeExitKeep => '実行したままにする';
+
+  @override
+  String get nodeExitStop => '停止する';
+
+  @override
+  String get nodeExitChangeLater => '後から設定の「ローカルライトノード」で変更できます。';
+
+  @override
+  String get rememberMyChoice => 'この選択を覚えておく';
+
+  @override
+  String get shutdownStoppingNode => 'ローカルノードを停止しています…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'データベースを書き出させています。次回起動時に先行書き込みログを再生しなくて済みます。';
+
+  @override
+  String get nodeExitPolicyLabel => 'ウォレットを閉じるとき';
+
+  @override
+  String get nodeExitPolicyAsk => '毎回尋ねる';
+
+  @override
+  String get nodeExitPolicyKeep => 'ノードを実行したままにする';
+
+  @override
+  String get nodeExitPolicyStop => 'ノードを停止する';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'ローカルライトノードはバックグラウンドで実行中です。停止するには PLUTON を開いてください。';
+
+  @override
+  String get syncStoppedTitle => '同期を停止しました';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'ブロック $covered で同期が停止しました。接続先のノードはブロック $servesFrom 以降しか応答しないため、その間のブロックを取得できません。全チェーンを保持するノードに接続するまで、残高は不完全です。';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => 'このノードはまだ使えません';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'ローカルノードはまだネットワークより $behind ブロック遅れています。今ウォレットをここに向けると、追いつくまで同期が止まり、未到達分を欠いた残高が表示されます——しかも理由は画面に出ません。リモートノードのままでも損はなく、ノードの同期はどちらでも続きます。';
+  }
+
+  @override
+  String get switchAnyway => 'それでも切り替える';
+
+  @override
+  String get switchToRemoteNode => 'リモートノードに切り替える';
+
+  @override
+  String get nodeWillServeFromLabel => '今後提供するブロックの開始位置';
+
+  @override
+  String get txPowServerSection => 'トランザクション PoW サーバー';
+
+  @override
+  String get txPowServerUse => '外部 PoW サーバーを使用';
+
+  @override
+  String get txPowServerSubtitle =>
+      'トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。';
+
+  @override
+  String get txPowServerSaved => 'PoW サーバーの設定を保存しました';
+
+  @override
+  String get txPowServerInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String get txPowServerTest => 'テスト';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'サーバーに $ms ms で接続できました: $threads スレッド、キュー $queue/$capacity 使用中';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'サーバーに接続できません: $error';
+  }
+
+  @override
+  String get nodeTest => 'テスト';
+
+  @override
+  String get nodeInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '$ms ms で接続できました: 高さ $height、ピア $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '$ms ms で接続できましたが、ノードはまだ同期中です: 高さ $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'ノードに接続できません: $error';
   }
 }

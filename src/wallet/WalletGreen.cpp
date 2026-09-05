@@ -3689,7 +3689,7 @@ namespace CryptoNote
 
     void WalletGreen::onTransactionDeleteBegin(const Crypto::PublicKey &viewPublicKey, Crypto::Hash transactionHash)
     {
-        m_dispatcher.remoteSpawn([=]() { transactionDeleteBegin(transactionHash); });
+        m_dispatcher.remoteSpawn([this, transactionHash]() { transactionDeleteBegin(transactionHash); });
     }
 
     // TODO remove
@@ -3700,7 +3700,7 @@ namespace CryptoNote
 
     void WalletGreen::onTransactionDeleteEnd(const Crypto::PublicKey &viewPublicKey, Crypto::Hash transactionHash)
     {
-        m_dispatcher.remoteSpawn([=]() { transactionDeleteEnd(transactionHash); });
+        m_dispatcher.remoteSpawn([this, transactionHash]() { transactionDeleteEnd(transactionHash); });
     }
 
     // TODO remove
@@ -4807,7 +4807,7 @@ namespace CryptoNote
 
         auto &walletsIndex = m_walletsContainer;
 
-        for (const auto subWallet : walletsIndex)
+        for (const auto &subWallet : walletsIndex)
         {
             if (static_cast<uint64_t>(subWallet.creationTimestamp) < minTimestamp)
             {
@@ -4824,7 +4824,7 @@ namespace CryptoNote
 
         auto &walletsIndex = m_walletsContainer;
 
-        for (const auto subWallet : walletsIndex)
+        for (const auto &subWallet : walletsIndex)
         {
             result.push_back(subWallet.spendPublicKey);
         }
@@ -4840,7 +4840,7 @@ namespace CryptoNote
 
         auto &walletsIndex = m_walletsContainer;
 
-        for (const auto subWallet : walletsIndex)
+        for (const auto &subWallet : walletsIndex)
         {
             Crypto::SecretKey derivedPrivateViewKey;
 
@@ -5000,7 +5000,7 @@ namespace CryptoNote
         auto &walletsIndex = m_walletsContainer;
 
         nlohmann::json subWalletArr = nlohmann::json::array();
-        for (const auto subWallet : walletsIndex)
+        for (const auto &subWallet : walletsIndex)
         {
             const std::string address =
                 m_currency.accountAddressAsString({subWallet.spendPublicKey, m_viewPublicKey});
@@ -5058,7 +5058,7 @@ namespace CryptoNote
 
                 WalletTypes::Transaction newTX;
 
-                for (const auto [amount, publicSpendKey] : transfers[tx.hash])
+                for (const auto &[amount, publicSpendKey] : transfers[tx.hash])
                 {
                     newTX.transfers[publicSpendKey] += amount;
                 }

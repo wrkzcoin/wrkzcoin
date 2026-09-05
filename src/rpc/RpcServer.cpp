@@ -180,7 +180,7 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
     /* Route the request through our middleware function, before forwarding
        to the specified function */
     const auto router = [this, isIpc](const auto function, const RpcMode routePermissions, const bool isBodyRequired, const bool syncRequired) {
-        return [=](const httplib::Request &req, httplib::Response &res) {
+        return [=, this](const httplib::Request &req, httplib::Response &res) {
             /* Pass the inputted function with the arguments passed through
                to middleware */
             middleware(
@@ -265,6 +265,23 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
         {
             res.status = 404;
         }
+
+        /* JSON-RPC 2.0 says the answer carries the request's id back, and we
+           never did. Most callers here never looked, but a client that follows
+           the spec has no way to tell whose answer this is, so it throws the
+           response away - xmrig's solo miner drops it and retries, forever,
+           without printing anything. Fill it in centrally so every method and
+           every error answers correctly. */
+        if (res.status == 200 && !res.body.empty() && hasMember(*body, "id"))
+        {
+            auto response = nlohmann::json::parse(res.body, nullptr, false);
+
+            if (!response.is_discarded() && response.is_object() && !hasMember(response, "id"))
+            {
+                response["id"] = body->at("id");
+                res.body = response.dump();
+            }
+        }
     };
 
     /* Note: /json_rpc is exposed on both GET and POST */
@@ -277,6 +294,14 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
             .Get("/masternode/:id", router(&RpcServer::masternode, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/chainlock/:height", router(&RpcServer::chainlock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
             .Get("/instantsend/:txhash", router(&RpcServer::instantSendLock, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+
+       /* Monero-lineage solo miners - xmrig among them - poll /getheight and
+          fall back to /getinfo when the answer carries no "hash" member, which
+          is how they tell a CryptoNote daemon from a Monero one. Ours answers
+          without it, so serving the same two handlers under their spelling is
+          the whole of what those miners need to drive this daemon directly. */
+       .Get("/getinfo", router(&RpcServer::info, RpcMode::Standard, bodyNotRequired, syncNotRequired))
+       .Get("/getheight", router(&RpcServer::height, RpcMode::Standard, bodyNotRequired, syncNotRequired))
 
        .Post("/json_rpc", jsonRpc)
        .Post("/sendrawtransaction", router(&RpcServer::sendTransaction, RpcMode::Standard, bodyRequired, syncRequired))
@@ -293,6 +318,16 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
        /* Matches everything */
        /* NOTE: Not passing through middleware */
        .Options(".*", [this](auto &req, auto &res) { handleOptions(req, res); });
+
+    /* Console commands change log levels, ban peers, start compactions and
+       stop the node. They are served on the local socket only, where the mode
+       on the socket file decides who may connect - the same people who could
+       type at the daemon's own console - and never on a TCP listener, token
+       or no token. */
+    if (isIpc)
+    {
+        srv.Post("/console", router(&RpcServer::console, RpcMode::Standard, bodyRequired, syncNotRequired));
+    }
 }
 
 RpcServer::~RpcServer()
@@ -426,6 +461,12 @@ std::string RpcServer::getIpcPath() const
        itself over IPC never ends up pointed at a socket that was never
        created. */
     return m_ipcBound ? m_ipcPath : std::string();
+}
+
+void RpcServer::setConsoleExecutor(ConsoleExecutor executor)
+{
+    std::lock_guard<std::mutex> lock(m_consoleExecutorMutex);
+    m_consoleExecutor = std::move(executor);
 }
 
 std::optional<nlohmann::json> RpcServer::getJsonBody(
@@ -871,7 +912,29 @@ std::tuple<Error, uint16_t> RpcServer::info(
     {
         const uint64_t height = m_core->getTopBlockIndex() + 1;
         const uint64_t networkHeight = std::max(1u, m_syncManager->getBlockchainHeight());
-        const auto blockDetails = m_core->getBlockDetails(m_core->getTopBlockIndex());
+
+        /* Only the block version is wanted from this, but getBlockDetails builds
+           the whole block including details for every transaction in it, which
+           needs the transaction records a lite node does not keep below its lite
+           height. While such a node is still catching up its own top block sits
+           down there, so this threw and took the entire endpoint down with it -
+           /info answered BUSY, and the status console command with it, for the
+           whole of a very long sync. The version is worth losing; everything
+           else here is not. */
+        uint8_t topMajorVersion = 0;
+        uint8_t topMinorVersion = 0;
+
+        try
+        {
+            const auto blockDetails = m_core->getBlockDetails(m_core->getTopBlockIndex());
+            topMajorVersion = blockDetails.majorVersion;
+            topMinorVersion = blockDetails.minorVersion;
+        }
+        catch (const std::exception &)
+        {
+            /* Left at zero, which reads as "not known from here". */
+        }
+
         const uint64_t difficulty = m_core->getDifficultyForNextBlock();
 
         uint64_t total_conn = m_p2p->get_connections_count();
@@ -885,6 +948,9 @@ std::tuple<Error, uint16_t> RpcServer::info(
 
         nlohmann::json j;
         j["height"] = height;
+        /* A solo miner watches this to notice someone else found the block it
+           is working on; height alone misses a same-height reorg. */
+        j["top_block_hash"] = Common::podToHex(m_core->getTopBlockHash());
         j["difficulty"] = difficulty;
         /* Transaction count without coinbase transactions - one per block, so subtract height */
         j["tx_count"] = m_core->getBlockchainTransactionCount() - height;
@@ -894,6 +960,8 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["incoming_connections_count"] = total_conn - outgoing_connections_count;
         j["white_peerlist_size"] = m_p2p->getPeerlistManager().get_white_peers_count();
         j["grey_peerlist_size"] = m_p2p->getPeerlistManager().get_gray_peers_count();
+        j["seed_nodes_count"] = m_p2p->get_seed_nodes_count();
+        j["last_seed_bootstrap"] = m_p2p->get_last_seed_bootstrap_time();
         j["last_known_block_index"] = std::max(1u, m_syncManager->getObservedHeight()) - 1;
         j["network_height"] = networkHeight;
         j["upgrade_heights"] = upgradeHeights;
@@ -905,11 +973,15 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["pruned"] = m_syncManager->isPrunedNode();
         j["prune_depth"] = m_syncManager->getPrunedNodeDepth();
         j["prune_capability_active"] = m_syncManager->isPruneCapabilityActive();
+        /* Wallets read these to floor their scan height: nothing below
+           lite_start_height can be found on this daemon. See LITENODE.md. */
+        j["lite"] = m_syncManager->getLiteNodeHeight() != 0;
+        j["lite_start_height"] = m_syncManager->getLiteNodeHeight();
         j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
         j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
         j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
-        j["major_version"] = blockDetails.majorVersion;
-        j["minor_version"] = blockDetails.minorVersion;
+        j["major_version"] = topMajorVersion;
+        j["minor_version"] = topMinorVersion;
         j["version"] = PROJECT_VERSION;
         j["status"] = "OK";
         j["start_time"] = m_core->getStartTime();
@@ -1238,6 +1310,33 @@ std::tuple<Error, uint16_t> RpcServer::instantSendLock(
     return {SUCCESS, 200};
 }
 
+std::tuple<Error, uint16_t> RpcServer::console(
+    const httplib::Request &req,
+    httplib::Response &res,
+    const nlohmann::json &body)
+{
+    const std::string commandLine = getStringFromJSON(body, "command");
+
+    ConsoleExecutor executor;
+
+    {
+        std::lock_guard<std::mutex> lock(m_consoleExecutorMutex);
+        executor = m_consoleExecutor;
+    }
+
+    if (!executor)
+    {
+        failRequest(503, "The daemon console is not available yet, please retry in a moment", res);
+        return {SUCCESS, 503};
+    }
+
+    nlohmann::json j;
+    j["output"] = executor(commandLine);
+    j["status"] = "OK";
+    res.body = j.dump();
+    return {SUCCESS, 200};
+}
+
 std::tuple<Error, uint16_t> RpcServer::sendTransaction(
     const httplib::Request &req,
     httplib::Response &res,
@@ -1382,13 +1481,26 @@ std::tuple<Error, uint16_t> RpcServer::getWalletSyncData(
         }
     }
 
-    const uint64_t startHeight = hasMember(body, "startHeight")
+    uint64_t startHeight = hasMember(body, "startHeight")
         ? getUint64FromJSON(body, "startHeight")
         : 0;
 
-    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+    uint64_t startTimestamp = hasMember(body, "startTimestamp")
         ? getUint64FromJSON(body, "startTimestamp")
         : 0;
+
+    /* On a lite node nothing below the lite height was ever stored, so a wallet
+       asking to start below it is served from the lite height rather than fed an
+       empty response forever. The wallet learns where that floor is from
+       lite_start_height in /info. A timestamp start is dropped at the same time:
+       the timestamp indexes do not reach down there either, so leaving it set
+       would only resolve the start back below the floor. See LITENODE.md. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        startHeight = liteStartHeight;
+        startTimestamp = 0;
+    }
 
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")
@@ -1640,6 +1752,21 @@ std::tuple<Error, uint16_t> RpcServer::getGlobalIndexes(
         return {SUCCESS, 400};
     }
 
+    /* Unlike the sync endpoints there is nothing sensible to clamp to here - the
+       caller asked about specific heights and a silently narrowed range would
+       read as "these heights hold no transactions", which is a different and
+       wrong answer. Say plainly that this node cannot know. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        failRequest(
+            400,
+            "This node is a lite node and stores no transaction data below height "
+                + std::to_string(liteStartHeight),
+            res);
+        return {SUCCESS, 400};
+    }
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>> indexes;
 
     const bool success = m_core->getGlobalIndexesForRange(startHeight, endHeight, indexes);
@@ -1681,18 +1808,57 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
 {
     const auto params = getObjectFromJSON(body, "params");
 
-    const uint64_t reserveSize = getUint64FromJSON(params, "reserve_size");
+    /* A pool asks for room it will fill in later and sends "reserve_size". A
+       Monero-lineage solo miner has nothing to fill in later, so it sends the
+       extra nonce it wants embedded and no size at all. Take either, and let a
+       caller that names neither have a template with no reserved bytes. */
+    std::vector<uint8_t> blobReserve;
 
-    if (reserveSize > 255)
+    if (hasMember(params, "extra_nonce"))
     {
-        failJsonRpcRequest(
-            -3,
-            "Too big reserved size, maximum allowed is 255",
-            res
-        );
+        const std::string extraNonce = getStringFromJSON(params, "extra_nonce");
 
-        return {SUCCESS, 200};
+        if (extraNonce.size() > 255 * 2)
+        {
+            failJsonRpcRequest(
+                -3,
+                "Too big extra nonce, maximum allowed is 255 bytes",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+
+        if (!Common::fromHex(extraNonce, blobReserve))
+        {
+            failJsonRpcRequest(
+                -3,
+                "Given extra nonce is not hex!",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
     }
+    else if (hasMember(params, "reserve_size"))
+    {
+        const uint64_t requestedReserveSize = getUint64FromJSON(params, "reserve_size");
+
+        if (requestedReserveSize > 255)
+        {
+            failJsonRpcRequest(
+                -3,
+                "Too big reserved size, maximum allowed is 255",
+                res
+            );
+
+            return {SUCCESS, 200};
+        }
+
+        blobReserve.resize(requestedReserveSize, 0);
+    }
+
+    const size_t reserveSize = blobReserve.size();
 
     const std::string address = getStringFromJSON(params, "wallet_address");
     std::string expectedMasternodeSetHash;
@@ -1717,9 +1883,6 @@ std::tuple<Error, uint16_t> RpcServer::getBlockTemplate(
     const auto [publicSpendKey, publicViewKey] = Utilities::addressToKeys(address);
 
     CryptoNote::BlockTemplate blockTemplate;
-
-    std::vector<uint8_t> blobReserve;
-    blobReserve.resize(reserveSize, 0);
 
     uint64_t difficulty;
     uint32_t height;
@@ -3099,13 +3262,26 @@ std::tuple<Error, uint16_t> RpcServer::getRawBlocks(
         }
     }
 
-    const uint64_t startHeight = hasMember(body, "startHeight")
+    uint64_t startHeight = hasMember(body, "startHeight")
         ? getUint64FromJSON(body, "startHeight")
         : 0;
 
-    const uint64_t startTimestamp = hasMember(body, "startTimestamp")
+    uint64_t startTimestamp = hasMember(body, "startTimestamp")
         ? getUint64FromJSON(body, "startTimestamp")
         : 0;
+
+    /* On a lite node nothing below the lite height was ever stored, so a wallet
+       asking to start below it is served from the lite height rather than fed an
+       empty response forever. The wallet learns where that floor is from
+       lite_start_height in /info. A timestamp start is dropped at the same time:
+       the timestamp indexes do not reach down there either, so leaving it set
+       would only resolve the start back below the floor. See LITENODE.md. */
+    if (const uint64_t liteStartHeight = m_syncManager->getLiteNodeHeight();
+        liteStartHeight != 0 && startHeight < liteStartHeight)
+    {
+        startHeight = liteStartHeight;
+        startTimestamp = 0;
+    }
 
     const uint64_t blockCount = hasMember(body, "blockCount")
         ? getUint64FromJSON(body, "blockCount")

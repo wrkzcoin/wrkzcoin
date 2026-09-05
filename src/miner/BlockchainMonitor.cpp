@@ -30,6 +30,19 @@ BlockchainMonitor::BlockchainMonitor(
 {
 }
 
+void BlockchainMonitor::sleepPollingInterval()
+{
+    /* Sleeping the thread here would stall the dispatcher this runs on, and
+       would ignore stop() until it woke up again. Going through the sleeping
+       context means an interrupt lands straight away. */
+    m_sleepingContext.spawn([this]() {
+        System::Timer timer(m_dispatcher);
+        timer.sleep(std::chrono::seconds(m_pollingInterval));
+    });
+
+    m_sleepingContext.wait();
+}
+
 void BlockchainMonitor::waitBlockchainUpdate()
 {
     m_stopped = false;
@@ -38,25 +51,44 @@ void BlockchainMonitor::waitBlockchainUpdate()
 
     while (!lastBlockHash && !m_stopped)
     {
-        std::this_thread::sleep_for(std::chrono::seconds(m_pollingInterval));
+        sleepPollingInterval();
+
+        if (m_stopped)
+        {
+            break;
+        }
+
         lastBlockHash = requestLastBlockHash();
     }
 
     while (!m_stopped)
     {
-        m_sleepingContext.spawn([this]() {
-            System::Timer timer(m_dispatcher);
-            timer.sleep(std::chrono::seconds(m_pollingInterval));
-        });
+        sleepPollingInterval();
 
-        m_sleepingContext.wait();
+        if (m_stopped)
+        {
+            break;
+        }
 
         auto nextBlockHash = requestLastBlockHash();
 
         while (!nextBlockHash && !m_stopped)
         {
-            std::this_thread::sleep_for(std::chrono::seconds(m_pollingInterval));
+            sleepPollingInterval();
+
+            if (m_stopped)
+            {
+                break;
+            }
+
             nextBlockHash = requestLastBlockHash();
+        }
+
+        /* Either of them can still be empty if the loops above gave up
+           because a stop was asked for. */
+        if (!lastBlockHash || !nextBlockHash)
+        {
+            break;
         }
 
         if (*lastBlockHash != *nextBlockHash)

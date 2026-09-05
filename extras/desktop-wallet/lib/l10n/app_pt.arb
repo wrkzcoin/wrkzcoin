@@ -366,5 +366,181 @@
   "exportJsonWarningBody": "O ficheiro exportado contém a sua chave de visualização privada e as chaves de gasto privadas em texto simples. Quem o ler pode gastar os seus fundos.\n\nGuarde-o apenas em armazenamento que controla e elimine-o assim que terminar.",
   "passwordTooShort": "A senha deve ter pelo menos {count} caracteres",
   "ringSize": "Tamanho do anel",
-  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual."
+  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.",
+  "liteNodeTitle": "Nó leve",
+  "liteNodeServesFrom": "Este nó só guarda blocos a partir de {height}. Transações anteriores a esse bloco não podem ser encontradas através dele.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Este nó começa no bloco {nodeHeight}, mas esta carteira começa no bloco {walletHeight}. Tudo o que foi recebido entre os dois é invisível aqui, por isso o saldo apresentado pode estar baixo demais. Ligue-se a um nó com a cadeia completa para o ver.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Sincronização parada no bloco {wallet}. Este nó não guarda nada abaixo do bloco {node}, por isso os blocos intermédios não podem ser transferidos dele. O saldo fica incompleto até ligar um nó com a cadeia completa.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Este nó não consegue reanalisar tão atrás",
+  "liteNodeRescanRefused": "O nó ligado é um nó leve sem dados de bloco abaixo de {height}. Reanalisar a partir de um ponto mais baixo descartaria transações que esta carteira já encontrou, sem forma de as recuperar aqui. Nada foi alterado.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Reanalisar a partir de {height}",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "O nó ligado só pode reanalisar a partir do bloco {height} ou acima.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Fornece blocos a partir de",
+  "nodeFullChain": "Cadeia completa",
+  "sectionLocalNode": "Nó leve local",
+  "localNodeDescription": "Execute um nó neste computador e sincronize com ele em vez de um servidor remoto. Um nó leve guarda apenas o que uma carteira precisa, mas ainda assim transfere a cadeia inteira uma vez.",
+  "localNodeSetUp": "Configurar nó local",
+  "localNodeStart": "Iniciar",
+  "localNodeStop": "Parar",
+  "localNodeUse": "Usar este nó",
+  "localNodeDelete": "Eliminar dados do nó",
+  "localNodeStateStopped": "Parado",
+  "localNodeStateStarting": "A iniciar",
+  "localNodeStateSyncing": "A sincronizar",
+  "localNodeStateReady": "Sincronizado",
+  "localNodeStateFailed": "Falhou",
+  "localNodeProgress": "Bloco {height} de {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} pares",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "O nó local ainda está a recuperar e não consegue servir a carteira. Continua a sincronizar em segundo plano — fique num nó remoto até estar pronto e depois mude.",
+  "localNodeInUse": "A carteira está ligada a este nó.",
+  "localNodeBinaryMissing": "{name} não foi encontrado. Coloque o binário do daemon junto ao executável da carteira, ou numa pasta \"sidecar\" ao lado, e tente novamente.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Configurar um nó leve local",
+  "localNodeSetupCost": "Antes de começar:\n• Cerca de 6 GB de espaço em disco, e a cadeia inteira é transferida uma vez.\n• A primeira sincronização demora horas. Continua em segundo plano e pode usar um nó remoto entretanto.\n• A altura inicial abaixo é permanente. Alterá-la mais tarde implica eliminar o nó e sincronizar tudo de novo.",
+  "localNodeStartHeightLabel": "Altura inicial",
+  "localNodeStartHeightHelp": "Os blocos abaixo desta altura são transferidos e verificados, e só é guardado o índice de que os blocos seguintes precisam. Mantenha-a igual ou inferior à altura inicial desta carteira ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Superior à altura inicial desta carteira ({height}). O nó nunca conseguiria mostrar as transações mais antigas desta carteira.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Criar nó",
+  "localNodeDeleteTitle": "Eliminar os dados do nó local?",
+  "localNodeDeleteWarning": "Isto para o nó e elimina permanentemente a sua base de dados da cadeia do disco. A carteira, a sua seed e os seus fundos não são afetados — mas um novo nó local voltará a sincronizar do zero, o que demora horas.",
+  "localNodeDeleted": "Nó local eliminado.",
+  "localNodeDiskUsage": "{size} em disco",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Nó remoto",
+  "nodePresetLocal": "Nó leve local",
+  "savingWallet": "Salvando sua carteira…",
+  "savingWalletBody": "O PLUTON está gravando sua carteira no disco. Isso pode demorar um pouco em uma carteira grande.",
+  "shutdownTakingLong": "Está demorando mais do que o esperado. Sair agora perde este salvamento — o arquivo da carteira no disco fica como estava, então nada é danificado, mas tudo desde o último salvamento se perde.",
+  "quitAnyway": "Sair mesmo assim",
+  "stillRunningInTray": "O PLUTON continua rodando na bandeja do sistema. Clique no ícone para trazê-lo de volta, ou clique com o botão direito e escolha Sair.",
+  "browse": "Procurar…",
+  "localNodeDataFolder": "Pasta de dados",
+  "localNodeDataFolderHelp": "Cerca de 6 GB serão gravados aqui. Escolha um disco com espaço.",
+  "localNodeDataFolderInUse": "Essa pasta já contém outros arquivos. Escolha uma pasta vazia ou uma nova.",
+  "localNodeStartHeightRequired": "Informe a altura a partir da qual manter blocos completos. Precisa ser maior que zero — um nó lite não pode começar no bloco gênese.",
+  "nodeExitTitle": "O nó local ainda está rodando",
+  "nodeExitBodySyncing": "A primeira sincronização dele não terminou. Isso leva horas e só avança enquanto o nó está rodando — mas um nó deixado rodando continua usando o disco e a rede depois que o PLUTON fecha.",
+  "nodeExitBodySynced": "Ele está em dia com a rede. Deixá-lo rodando o mantém assim e continua usando CPU, banda e disco enquanto o PLUTON está fechado; pará-lo custa uma breve atualização na próxima vez.",
+  "nodeExitKeep": "Deixar rodando",
+  "nodeExitStop": "Parar",
+  "nodeExitChangeLater": "Pode ser alterado depois em Configurações, em Nó lite local.",
+  "rememberMyChoice": "Lembrar minha escolha",
+  "shutdownStoppingNode": "Parando o nó local…",
+  "shutdownStoppingNodeBody": "Deixando-o gravar o banco de dados, para o próximo início não ter de repetir o log de escrita.",
+  "nodeExitPolicyLabel": "Ao fechar a carteira",
+  "nodeExitPolicyAsk": "Perguntar",
+  "nodeExitPolicyKeep": "Deixar o nó rodando",
+  "nodeExitPolicyStop": "Parar o nó",
+  "localNodeStillRunningBody": "O nó lite local continua rodando em segundo plano. Abra o PLUTON para pará-lo.",
+  "syncStoppedTitle": "Sincronização parada",
+  "syncGapStalled": "Sincronização parada no bloco {covered}. O nó com que falava só responde a partir do bloco {servesFrom}, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.",
+  "localNodeNotReadyTitle": "Este nó não está pronto",
+  "localNodeNotReadyBody": "O nó local ainda está {behind} blocos atrás da rede. Apontar a carteira para ele agora faz a sincronização parar até ele alcançar, mostrando um saldo sem tudo o que ele ainda não alcançou — e sem nada na tela explicando. Ficar no nó remoto não custa nada; o nó continua sincronizando de qualquer forma.",
+  "switchAnyway": "Trocar mesmo assim",
+  "switchToRemoteNode": "Trocar para o nó remoto",
+  "nodeWillServeFromLabel": "Servirá blocos a partir de",
+  "txPowServerSection": "Servidor PoW de transações",
+  "txPowServerUse": "Usar um servidor PoW externo",
+  "txPowServerSubtitle": "Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.",
+  "txPowServerSaved": "Configurações do servidor PoW salvas",
+  "txPowServerInvalid": "Informe um host e uma porta válidos",
+  "txPowServerTest": "Testar",
+  "txPowServerTestOk": "Servidor acessível em {ms} ms: {threads} threads, {queue} de {capacity} vagas da fila em uso",
+  "txPowServerTestFailed": "Servidor inacessível: {error}",
+  "nodeTest": "Testar",
+  "nodeInvalid": "Informe um host e uma porta válidos",
+  "nodeTestOk": "Acessível em {ms} ms: altura {height}, {peers} pares",
+  "nodeTestSyncing": "Acessível em {ms} ms, mas o nó ainda está sincronizando: altura {height} de {networkHeight}",
+  "nodeTestFailed": "Nó inacessível: {error}"
 }

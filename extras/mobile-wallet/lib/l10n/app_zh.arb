@@ -365,5 +365,78 @@
   "retry": "重试",
   "youReceivedAmount": "您收到了 {amount}",
   "ringSize": "环签名大小",
-  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。"
+  "ringSizeReduced": "环签名大小已降至 {actual}（通常为 {normal}）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。",
+  "liteNodeTitle": "轻节点",
+  "liteNodeServesFrom": "此节点仅保存从 {height} 起的区块。该区块之前的交易无法通过它找到。",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "此节点从区块 {nodeHeight} 开始，而此钱包从区块 {walletHeight} 开始。两者之间收到的款项在这里不可见，因此显示的余额可能偏低。请连接保存完整链的节点以查看。",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "同步已在区块 {wallet} 停止。此节点不保存区块 {node} 以下的任何数据，因此无法从它下载中间的区块。在连接保存完整链的节点之前，余额并不完整。",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "此节点无法回溯到那么早重新扫描",
+  "liteNodeRescanRefused": "当前连接的是轻节点，不保存 {height} 以下的区块数据。从更低处重新扫描会丢弃钱包已找到的交易，且在此无法再次找回。未做任何更改。",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "改为从 {height} 重新扫描",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "当前连接的节点只能从区块 {height} 或更高处重新扫描。",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "提供区块起始于",
+  "nodeFullChain": "完整链",
+  "localNodeMobileFuture": "在手机上直接运行节点已在计划中，但尚不可用——节点需要数 GB 存储和数小时同步。在此之前，请将本钱包指向你自己运行的节点。",
+  "syncStoppedTitle": "同步已停止",
+  "syncGapStalled": "同步在区块 {covered} 停止。所连接的节点只从区块 {servesFrom} 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。",
+  "txPowServerSection": "交易 PoW 服务器",
+  "txPowServerUse": "使用外部 PoW 服务器",
+  "txPowServerSubtitle": "将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。",
+  "txPowServerSaved": "PoW 服务器设置已保存",
+  "txPowServerInvalid": "请输入有效的主机和端口",
+  "txPowServerTest": "测试",
+  "txPowServerTestOk": "服务器可达，耗时 {ms} ms：{threads} 个线程，队列已用 {queue}/{capacity}",
+  "txPowServerTestFailed": "无法连接服务器：{error}",
+  "nodeTest": "测试",
+  "nodeTestOk": "可达，耗时 {ms} ms：高度 {height}，{peers} 个节点连接",
+  "nodeTestSyncing": "可达，耗时 {ms} ms，但节点仍在同步：高度 {height}/{networkHeight}",
+  "nodeTestFailed": "无法连接节点：{error}"
 }

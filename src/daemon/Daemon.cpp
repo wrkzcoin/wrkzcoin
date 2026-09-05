@@ -6,7 +6,9 @@
 //
 // Please see the included LICENSE file for more information.
 
+#include "AttachConsole.h"
 #include "DaemonCommandsHandler.h"
+#include "daemon/LiteSnapshotImporter.h"
 #include "DaemonConfiguration.h"
 #include "ChainNotifier.h"
 #include "MasternodeSigner.h"
@@ -30,6 +32,7 @@
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
 #include "rpc/RpcServer.h"
+#include "StratumServer.h"
 #include "serialization/BinaryInputStreamSerializer.h"
 #include "serialization/BinaryOutputStreamSerializer.h"
 
@@ -40,8 +43,10 @@
 #include <logging/LoggerManager.h>
 #include <logger/Logger.h>
 #include <atomic>
+#include <iomanip>
 #include <memory>
 #include <optional>
+#include <sstream>
 
 #if defined(WIN32)
 
@@ -62,14 +67,67 @@ namespace
 {
     const std::string DAEMON_MODE_PROFILE_KEY = "daemon_mode_profile";
 
+    /* Records how this database was built, so a later run cannot silently treat
+       an index-only chain as a complete one. Value is "full", or "lite:<height>".
+       See LITENODE.md. */
+    const std::string LITE_PROFILE_KEY = "lite_node_profile";
+
+    /* Written by DatabaseBlockchainCache the first time a database is opened.
+       Its absence is what tells us a database is brand new, which is the only
+       point at which lite mode may be chosen. Must match DB_VERSION_KEY in
+       DatabaseBlockchainCache.cpp. */
+    const std::string DB_SCHEME_VERSION_KEY = "db_scheme_version";
+
+    /* Sum of the SST and log files a database directory occupies. Zero if the
+       directory cannot be walked, which the caller treats as "do not report it"
+       rather than as a size. */
+    uint64_t directorySize(const fs::path &directory)
+    {
+        std::error_code ec;
+        uint64_t bytes = 0;
+
+        fs::recursive_directory_iterator it(directory, ec), end;
+
+        if (ec)
+        {
+            return 0;
+        }
+
+        for (; it != end; it.increment(ec))
+        {
+            if (ec)
+            {
+                break;
+            }
+
+            std::error_code entryEc;
+
+            if (!it->is_regular_file(entryEc) || entryEc)
+            {
+                continue;
+            }
+
+            const auto size = it->file_size(entryEc);
+
+            if (!entryEc)
+            {
+                bytes += size;
+            }
+        }
+
+        return bytes;
+    }
+
     class DaemonModeProfileReadBatch : public IReadBatch
     {
       public:
+        explicit DaemonModeProfileReadBatch(std::string key = DAEMON_MODE_PROFILE_KEY): key(std::move(key)) {}
+
         virtual ~DaemonModeProfileReadBatch() {}
 
         virtual std::vector<std::string> getRawKeys() const override
         {
-            return {DAEMON_MODE_PROFILE_KEY};
+            return {key};
         }
 
         virtual void submitRawResult(const std::vector<std::string> &values, const std::vector<bool> &resultStates) override
@@ -88,19 +146,25 @@ namespace
         }
 
       private:
+        std::string key;
+
         std::optional<std::string> storedMode;
     };
 
     class DaemonModeProfileWriteBatch : public IWriteBatch
     {
       public:
-        explicit DaemonModeProfileWriteBatch(std::string mode): daemonMode(std::move(mode)) {}
+        explicit DaemonModeProfileWriteBatch(std::string mode, std::string key = DAEMON_MODE_PROFILE_KEY):
+            key(std::move(key)),
+            daemonMode(std::move(mode))
+        {
+        }
 
         virtual ~DaemonModeProfileWriteBatch() {}
 
         virtual std::vector<std::pair<std::string, std::string>> extractRawDataToInsert() override
         {
-            return {std::make_pair(DAEMON_MODE_PROFILE_KEY, daemonMode)};
+            return {std::make_pair(key, daemonMode)};
         }
 
         virtual std::vector<std::string> extractRawKeysToRemove() override
@@ -109,12 +173,14 @@ namespace
         }
 
       private:
+        std::string key;
+
         std::string daemonMode;
     };
 
-    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    std::optional<std::string> readStringSetting(IDataBase &database, const std::string &key)
     {
-        DaemonModeProfileReadBatch readBatch;
+        DaemonModeProfileReadBatch readBatch(key);
         const auto error = database.read(readBatch);
         if (error)
         {
@@ -124,14 +190,140 @@ namespace
         return readBatch.getStoredMode();
     }
 
-    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    void writeStringSetting(IDataBase &database, const std::string &key, const std::string &value)
     {
-        DaemonModeProfileWriteBatch writeBatch(mode);
+        DaemonModeProfileWriteBatch writeBatch(value, key);
         const auto error = database.write(writeBatch);
         if (error)
         {
             throw std::system_error(error);
         }
+    }
+
+    std::optional<std::string> readDaemonModeProfile(IDataBase &database)
+    {
+        return readStringSetting(database, DAEMON_MODE_PROFILE_KEY);
+    }
+
+    void writeDaemonModeProfile(IDataBase &database, const std::string &mode)
+    {
+        writeStringSetting(database, DAEMON_MODE_PROFILE_KEY, mode);
+    }
+
+    /* Settles what lite height this database runs at, and refuses to run at all
+       when the flags and the database disagree. Whether a chain is stored in full
+       or index-only is baked in the moment the first block is written, so it can
+       never be changed later - only rebuilt from scratch.
+
+       Every disagreement here exits rather than recreating the database. Dropping
+       a chain because an operator forgot a flag would be the worst possible
+       reading of their intent, so the removal is always left to them.
+
+       Returns the lite height to build the cache with; 0 means full storage. */
+    uint32_t resolveLiteProfile(
+        IDataBase &database,
+        const DaemonConfiguration &config,
+        Logging::LoggerRef &logger)
+    {
+        const auto storedProfile = readStringSetting(database, LITE_PROFILE_KEY);
+
+        /* No scheme version yet means DatabaseBlockchainCache has never opened
+           this database, so there is nothing in it to contradict. */
+        const bool databaseIsNew = !readStringSetting(database, DB_SCHEME_VERSION_KEY).has_value();
+
+        std::optional<uint32_t> storedLiteHeight;
+
+        if (storedProfile && storedProfile->rfind("lite:", 0) == 0)
+        {
+            try
+            {
+                storedLiteHeight = static_cast<uint32_t>(std::stoul(storedProfile->substr(5)));
+            }
+            catch (const std::exception &)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "The lite-node marker in this database is unreadable ('" << *storedProfile
+                    << "'). Refusing to start rather than guess how it was built. Remove the data directory to "
+                       "rebuild.";
+                exit(1);
+            }
+        }
+
+        if (!config.lite)
+        {
+            if (storedLiteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "This database was built as a lite node from height " << *storedLiteHeight
+                    << ", so it does not hold the block data a full node serves. Restart with --lite --lite-height "
+                    << *storedLiteHeight << ", or delete the data directory to sync a full node from scratch.";
+                exit(1);
+            }
+
+            return 0;
+        }
+
+        /* --lite from here down. */
+        if (config.liteHeight == 0)
+        {
+            logger(ERROR, BRIGHT_RED) << "--lite requires --lite-height, the height from which full block data is "
+                                         "kept. There is no sensible default: it decides what this node can never "
+                                         "serve or rescan again.";
+            exit(1);
+        }
+
+        if (config.prune)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite and --prune cannot be combined. Pruning below the lite height would remove nothing, and "
+                   "above it would break the promise a lite node makes to serve every block from its lite height up.";
+            exit(1);
+        }
+
+        /* Every explorer endpoint reads the transaction records a lite node drops,
+           so below the lite height they answer with nothing or fail outright. That
+           is a node that looks like it works and quietly reports an incomplete
+           chain, which is worse than one that refuses to start. */
+        if (config.daemonMode == DaemonConfiguration::DAEMON_MODE_EXPLORER)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite and --daemon-mode explorer cannot be combined. Block and transaction lookups below the "
+                   "lite height need the transaction records a lite node never stores, so the explorer endpoints "
+                   "would return nothing for those heights rather than report an error.";
+            exit(1);
+        }
+
+        if (storedLiteHeight)
+        {
+            if (*storedLiteHeight != config.liteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "This database was built as a lite node from height " << *storedLiteHeight << ", not "
+                    << config.liteHeight
+                    << ". The stored height cannot be changed - blocks below it were never written. Restart with "
+                       "--lite-height "
+                    << *storedLiteHeight << ", or delete the data directory to rebuild at a different height.";
+                exit(1);
+            }
+
+            return *storedLiteHeight;
+        }
+
+        if (!databaseIsNew)
+        {
+            logger(ERROR, BRIGHT_RED)
+                << "--lite can only be chosen for a new database. This one already holds a chain that was synced in "
+                   "full, and nothing here will delete it for you. Point --data-dir at an empty directory, or remove "
+                   "this one yourself, to build a lite node.";
+            exit(1);
+        }
+
+        writeStringSetting(database, LITE_PROFILE_KEY, "lite:" + std::to_string(config.liteHeight));
+
+        logger(INFO, BRIGHT_GREEN) << "Lite node mode enabled from height " << config.liteHeight
+                                   << ". This is permanent for this database.";
+
+        return config.liteHeight;
     }
 } // namespace
 
@@ -186,6 +378,20 @@ int main(int argc, char *argv[])
     const auto logManager = std::make_shared<LoggerManager>();
     LoggerRef logger(logManager, "daemon");
 
+    /* `Wrkzd attach <socket>` is the spelling geth made familiar. It means the
+       same as --attach, and is picked off here so the option parser never sees
+       a bare word it does not know. */
+    if (argc >= 2 && std::string(argv[1]) == "attach")
+    {
+        if (argc != 3)
+        {
+            std::cout << "Usage: " << temp.string() << " attach <rpc ipc socket path>" << std::endl;
+            return 1;
+        }
+
+        return Daemon::runAttachConsole(argv[2]);
+    }
+
     // Initial loading of CLI parameters
     handleSettings(argc, argv, config);
 
@@ -193,6 +399,13 @@ int main(int argc, char *argv[])
     {
         print_genesis_tx_hex(false, logManager);
         exit(0);
+    }
+
+    /* Attaching needs no data directory, no database and no core: it is a
+       client of a daemon that already has all of those. */
+    if (!config.attach.empty())
+    {
+        return Daemon::runAttachConsole(config.attach);
     }
 
     // If the user passed in the --config-file option, we need to handle that first
@@ -238,6 +451,16 @@ int main(int argc, char *argv[])
     // Load in the CLI specified parameters again to overwrite anything from the config file
     handleSettings(argc, argv, config);
     const auto &network = CryptoNote::getNetworkParameters(config.networkType);
+
+    /* Describing a snapshot needs the file and nothing else - no data
+       directory, no database, no core - so it answers here, before any of that
+       is built. A caller deciding whether to spend half an hour importing can
+       ask what it is first, and a GUI can fill in the height field from the
+       file the user picked rather than making them retype it. */
+    if (!config.snapshotInfo.empty())
+    {
+        exit(CryptoNote::LiteSnapshotImport::describeSnapshot(config.snapshotInfo) ? 0 : 1);
+    }
 
     if (config.dumpConfig)
     {
@@ -396,6 +619,12 @@ int main(int argc, char *argv[])
             config.enableDbCompression
         );
 
+        dbConfig.compressionDictBytes = config.dbCompressionDictBytes;
+        dbConfig.blockSize = std::max<uint64_t>(config.dbBlockSizeKB, 1) * 1024;
+        dbConfig.compressionLevel = config.dbCompressionLevel;
+        dbConfig.rowCachePercent = config.dbRowCachePercent;
+        dbConfig.bottommostFilters = config.dbBottommostFilters;
+
         bool use_checkpoints = !config.checkPoints.empty();
         CryptoNote::Checkpoints checkpoints(logManager);
 
@@ -450,16 +679,37 @@ int main(int argc, char *argv[])
         database->init();
         Tools::ScopeExit dbShutdownOnExit([&database]() { database->shutdown(); });
 
+        /* An older scheme cannot be read, and there is no in-place migration, so
+           the chain does have to be downloaded again. This used to destroy the
+           database and start over without asking - which meant that pointing a
+           newer build at a data directory, once, by accident, silently threw away
+           a chain that took hours to build and could not be got back.
+
+           So it refuses instead, and names the flag that does the deletion. That
+           is the same rule the lite profile and daemon mode checks follow: the
+           daemon never removes a synced chain on its own reading of the operator's
+           intent, only on an explicit instruction to do so. */
         if (!DatabaseBlockchainCache::checkDBSchemeVersion(*database, logManager))
         {
-            dbShutdownOnExit.cancel();
+            logger(ERROR, BRIGHT_RED)
+                << "This database was built by an older version of the daemon and its storage format has since "
+                   "changed. There is no way to convert it in place - the chain has to be downloaded again.";
+            logger(ERROR, BRIGHT_RED)
+                << "Nothing has been deleted. To rebuild, restart with --resync and the flags this node normally "
+                   "uses; --resync removes the chain and the peer state, then syncs from the network.";
+            logger(ERROR, BRIGHT_RED)
+                << "If you want a fallback first, stop the daemon and take a copy of the data directory.";
 
             database->shutdown();
-            database->destroy();
-            database->init();
+            dbShutdownOnExit.cancel();
 
-            dbShutdownOnExit.resume();
+            exit(1);
         }
+
+        /* Settled before the cache exists, because the lite height decides what
+           the very first block written stores. Exits on any disagreement between
+           the flags and what this database was built as. */
+        const uint32_t liteHeight = resolveLiteProfile(*database, config, logger);
 
         System::Dispatcher dispatcher;
         logger(INFO) << "Initializing core...";
@@ -469,7 +719,8 @@ int main(int argc, char *argv[])
             logManager,
             std::move(checkpoints),
             dispatcher,
-            std::unique_ptr<IBlockchainCacheFactory>(new DatabaseBlockchainCacheFactory(*database, logger.getLogger())),
+            std::unique_ptr<IBlockchainCacheFactory>(
+                new DatabaseBlockchainCacheFactory(*database, logger.getLogger(), liteHeight)),
             config.transactionValidationThreads,
             config.dataDirectory
         );
@@ -553,13 +804,150 @@ int main(int argc, char *argv[])
             }
         }
 
+        /* Loading a lite node snapshot replaces the days a lite node would
+           otherwise spend rebuilding its index only region from the chain.
+
+           It runs here, after the core has loaded, for one reason: the genesis
+           block is written in full by that load - raw block, base transaction
+           and all - and a snapshot carries none of that. Importing before it
+           would leave a half stored genesis, which too much code reads directly
+           for that to be safe.
+
+           And it exits afterwards rather than carrying on, because the core
+           above has already cached what it believes the chain's shape to be and
+           the import has just changed it underneath. Restarting is cheap, it is
+           what --import-blockchain already does, and it means a host application
+           driving the daemon gets one process that imports and one that runs. */
+        if (!config.importLiteSnapshot.empty())
+        {
+            if (liteHeight == 0)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "--import-lite-snapshot needs --lite and the --lite-height the snapshot was made at. A "
+                       "snapshot only describes the region below a lite height, so there is nothing to import it "
+                       "into without one.";
+
+                exit(1);
+            }
+
+            try
+            {
+                CryptoNote::LiteSnapshotImport::importSnapshot(
+                    *database,
+                    config.importLiteSnapshot,
+                    liteHeight,
+                    ccore->getBlockHashByIndex(0),
+                    dbConfig.dataDir,
+                    logger);
+            }
+            catch (const std::exception &e)
+            {
+                logger(ERROR, BRIGHT_RED) << "Could not import that snapshot: " << e.what();
+
+                database->shutdown();
+                dbShutdownOnExit.cancel();
+
+                exit(1);
+            }
+
+            logger(INFO, BRIGHT_GREEN)
+                << "Import finished. Start the daemon again with the same flags but without "
+                   "--import-lite-snapshot, and it will sync the rest of the chain from the network.";
+
+            database->shutdown();
+            dbShutdownOnExit.cancel();
+
+            exit(0);
+        }
+
         /* If we were told to rewind the blockchain to a certain height
            we will remove blocks until we're back at the height specified */
         if (config.rewindToHeight > 0)
         {
+            /* Rewinding into the index-only region would need block bodies that
+               were never stored, and would leave the chain unable to move
+               forward again. */
+            if (liteHeight != 0 && config.rewindToHeight < liteHeight)
+            {
+                logger(ERROR, BRIGHT_RED)
+                    << "Cannot rewind to " << config.rewindToHeight << " on a lite node whose full block data starts "
+                    << "at " << liteHeight << ". The blocks below that height were never stored.";
+                exit(1);
+            }
+
             logger(INFO) << "Rewinding blockchain to: " << config.rewindToHeight << std::endl;
 
             ccore->rewind(config.rewindToHeight);
+        }
+
+        if (config.snapshotStats)
+        {
+            logger(INFO) << "Measuring database storage. This walks every key and takes minutes on a synced chain...";
+
+            const auto stats = ccore->measureStorage();
+
+            uint64_t snapshotBytes = 0;
+            uint64_t snapshotRecords = 0;
+            uint64_t totalBytes = 0;
+
+            const auto mb = [](const uint64_t bytes) {
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(1) << (static_cast<double>(bytes) / (1024.0 * 1024.0)) << " MB";
+                return out.str();
+            };
+
+            std::cout << std::endl
+                      << "Storage by table, logical bytes (top block " << ccore->getTopBlockIndex() << ")" << std::endl
+                      << std::string(78, '-') << std::endl;
+
+            for (const auto &entry : stats)
+            {
+                totalBytes += entry.second.totalBytes();
+
+                if (entry.first.find("(snapshot)") != std::string::npos)
+                {
+                    snapshotBytes += entry.second.totalBytes();
+                    snapshotRecords += entry.second.records;
+                }
+
+                std::cout << std::left << std::setw(36) << entry.first << std::right << std::setw(14)
+                          << entry.second.records << std::setw(16) << mb(entry.second.totalBytes()) << std::endl;
+            }
+
+            std::cout << std::string(78, '-') << std::endl
+                      << std::left << std::setw(36) << "TOTAL measured (logical)" << std::right << std::setw(14) << ""
+                      << std::setw(16) << mb(totalBytes) << std::endl
+                      << std::left << std::setw(36) << "Snapshot payload (logical)" << std::right << std::setw(14)
+                      << snapshotRecords << std::setw(16) << mb(snapshotBytes) << std::endl;
+
+            /* Without this the totals read as a directory size and are wrong by
+               the compression ratio - which on a synced chain is about three.
+               Every decision about snapshot size was being made against the
+               logical number, so print what the thing actually occupies. */
+            const uint64_t onDiskBytes = directorySize(fs::path(dbConfig.dataDir) / "DB");
+
+            if (onDiskBytes > 0)
+            {
+                std::ostringstream ratio;
+                ratio << std::fixed << std::setprecision(2)
+                      << (static_cast<double>(totalBytes) / static_cast<double>(onDiskBytes)) << "x";
+
+                std::cout << std::left << std::setw(36) << "On disk (compressed)" << std::right << std::setw(14) << ""
+                          << std::setw(16) << mb(onDiskBytes) << std::endl
+                          << std::left << std::setw(36) << "Compression ratio" << std::right << std::setw(14) << ""
+                          << std::setw(16) << ratio.str() << std::endl;
+            }
+
+            std::cout << std::endl
+                      << "These are logical key and value bytes, not what the database occupies." << std::endl
+                      << "RocksDB compresses them on the way to disk, and what compresses best is" << std::endl
+                      << "the per-key field-name framing - the very thing a packed snapshot format" << std::endl
+                      << "would remove. So a packed dump saves far less than the logical totals" << std::endl
+                      << "suggest; the floor is the high-entropy payload. The (snapshot) rows are" << std::endl
+                      << "what a lite node snapshot must carry. See LITENODE.md." << std::endl
+                      << std::endl;
+
+            exit(0);
         }
 
         if (config.prune)
@@ -578,6 +966,7 @@ int main(int argc, char *argv[])
         );
 
         cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
+        cprotocol->setLiteNodeConfig(liteHeight);
         cprotocol->setSyncTuning(
             config.syncMaxPeers,
             config.syncPeerFailureThreshold,
@@ -699,7 +1088,8 @@ int main(int argc, char *argv[])
         }
         else if (!config.zmqPub.empty())
         {
-            zmqPublisher = std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub);
+            zmqPublisher =
+                std::make_unique<Daemon::ZmqPublisher>(dispatcher, *ccore, logManager, config.zmqPub, liteHeight);
             if (!zmqPublisher->start())
             {
                 logger(WARNING) << "Failed to start ZMQ publisher on " << config.zmqPub << ". Continuing without ZMQ.";
@@ -707,6 +1097,29 @@ int main(int argc, char *argv[])
             }
         }
 #endif
+
+        /* The stratum server lets a stock miner hash for this node directly.
+           Off unless a port is given, and bound to loopback by default. */
+        std::unique_ptr<Daemon::StratumServer> stratumServer;
+
+        if (config.stratumBindPort != 0)
+        {
+            stratumServer = std::make_unique<Daemon::StratumServer>(
+                dispatcher,
+                *ccore,
+                *cprotocol,
+                logManager,
+                config.stratumBindIp,
+                config.stratumBindPort,
+                config.stratumShareDifficulty,
+                config.stratumMaxConnections);
+
+            if (!stratumServer->start())
+            {
+                logger(WARNING) << "Failed to start the stratum server. Continuing without it.";
+                stratumServer.reset();
+            }
+        }
 
         /* Monero-style --block-notify / --reorg-notify / --tx-notify hooks.
            Delivery runs on its own worker threads; the dispatcher only enqueues. */
@@ -814,6 +1227,18 @@ int main(int argc, char *argv[])
         /* Empty unless the IPC listener actually came up, so the console never
            gets pointed at a socket that failed to bind */
         DaemonCommandsHandler dch(*ccore, *p2psrv, logManager, ip, port, config, rpcServer.getIpcPath());
+
+        /* A console attached over the IPC socket runs its commands through
+           the same handler as the local one. */
+        rpcServer.setConsoleExecutor(
+            [&dch](const std::string &commandLine) { return dch.run_remote_command(commandLine); });
+
+        if (!rpcServer.getIpcPath().empty())
+        {
+            logger(INFO) << "Console commands are available over " << Common::Ipc::describe(rpcServer.getIpcPath())
+                         << ": " << temp.string() << " attach " << rpcServer.getIpcPath();
+        }
+
         dch.start_boot_compaction_if_needed();
 
         if (!config.noConsole)
@@ -844,10 +1269,17 @@ int main(int argc, char *argv[])
         logger(INFO) << "p2p net loop stopped";
 
         dch.stop_handling();
+        rpcServer.setConsoleExecutor(nullptr);
         dch.stop_compaction_scheduler();
         dch.wait_for_background_compaction();
 
         // stop components
+        if (stratumServer)
+        {
+            logger(INFO) << "Stopping stratum server...";
+            stratumServer->stop();
+        }
+
         if (chainNotifier)
         {
             logger(INFO) << "Stopping chain notifier...";

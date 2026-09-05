@@ -159,12 +159,11 @@ bool PeerlistManager::get_peerlist_head(std::list<PeerlistEntry> &bs_head, uint3
 
         bs_head.push_back(peer);
 
-        if (i > depth)
+        /* Exactly depth entries: the receiver keeps no more than that. */
+        if (++i >= depth)
         {
             break;
         }
-
-        i++;
     }
 
     return true;
@@ -210,6 +209,34 @@ bool PeerlistManager::set_peer_just_seen(uint64_t peer, const NetworkAddress &ad
     }
 
     return false;
+}
+
+bool PeerlistManager::remove_from_gray(const NetworkAddress &addr)
+{
+    auto it = std::find_if(
+        m_peers_gray.begin(), m_peers_gray.end(), [&addr](const auto &peer) { return peer.adr == addr; });
+
+    if (it == m_peers_gray.end())
+    {
+        return false;
+    }
+
+    m_peers_gray.erase(it);
+    return true;
+}
+
+bool PeerlistManager::remove_from_gray6(const NetworkAddress6 &addr)
+{
+    auto it = std::find_if(
+        m_peers_gray6.begin(), m_peers_gray6.end(), [&addr](const auto &peer) { return peer.adr == addr; });
+
+    if (it == m_peers_gray6.end())
+    {
+        return false;
+    }
+
+    m_peers_gray6.erase(it);
+    return true;
 }
 
 bool PeerlistManager::append_with_peer_white(const PeerlistEntry &newPeer)
@@ -366,11 +393,10 @@ bool PeerlistManager::get_peerlist6_head(std::list<PeerlistEntry6> &bs_head, uin
             continue;
         }
         bs_head.push_back(peer);
-        if (i > depth)
+        if (++i >= depth)
         {
             break;
         }
-        i++;
     }
 
     return true;

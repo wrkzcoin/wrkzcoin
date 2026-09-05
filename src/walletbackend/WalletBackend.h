@@ -270,6 +270,17 @@ class WalletBackend
     /* Get sync heights, hashrate, peer count */
     WalletTypes::WalletStatus getStatus() const;
 
+    /* What resetting this wallet to scanHeight would cost against the daemon
+       it is currently connected to, as {liteStartHeight, transactionsLost}.
+
+       A lite daemon holds nothing below its lite start height, so a rescan
+       started below there is silently clamped up to it and every transaction
+       this wallet already knows about from underneath is dropped and can
+       never be found again through that daemon. {0, 0} means the reset is
+       safe: either the daemon holds the whole chain, or scanHeight is already
+       at or above what it can serve. See LITENODE.md. */
+    std::tuple<uint64_t, uint64_t> liteRescanImpact(const uint64_t scanHeight) const;
+
     /* Returns transactions in the range [startHeight, endHeight - 1] - so if
        we give 1, 100, it will return transactions from block 1 to block 99 */
     std::vector<WalletTypes::Transaction>

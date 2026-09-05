@@ -16,6 +16,13 @@ const String kDefaultDaemonHost = 'nodes.wrkz.work';
 const int kDefaultDaemonPort = 17856;
 const bool kDefaultDaemonSSL = false;
 
+/// Public transaction PoW server prefilled in Settings. Off by default; the
+/// wallet computes the proof of work on this machine until the user enables
+/// it. See TXPOWSERVER.md.
+const String kDefaultTxPowServerHost = 'txpow.wrkz.work';
+const int kDefaultTxPowServerPort = 443;
+const bool kDefaultTxPowServerSSL = true;
+
 /// How often to poll the wallet via FFI for live updates.
 const Duration kStatusPollInterval = Duration(seconds: 5);
 const Duration kBalancePollInterval = Duration(seconds: 10);

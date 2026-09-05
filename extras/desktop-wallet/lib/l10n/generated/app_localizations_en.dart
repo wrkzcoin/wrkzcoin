@@ -424,7 +424,7 @@ class SEn extends S {
   String get continueButton => 'Continue';
 
   @override
-  String get browse => 'Browse';
+  String get browse => 'Browse…';
 
   @override
   String get backupWarning =>
@@ -809,5 +809,306 @@ class SEn extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return 'Ring size reduced to $actual (normally $normal). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.';
+  }
+
+  @override
+  String get liteNodeTitle => 'Lite node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'This node only holds blocks from $height onward. Transactions before that block cannot be found through it.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'This node starts at block $nodeHeight, but this wallet starts at block $walletHeight. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Sync stopped at block $wallet. This node holds nothing below block $node, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'This node cannot rescan that far back';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'The connected node is a lite node holding no block data below $height. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Rescan from $height instead';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'The connected node can only rescan from block $height or above.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Serves blocks from';
+
+  @override
+  String get nodeFullChain => 'Full chain';
+
+  @override
+  String get sectionLocalNode => 'Local Lite Node';
+
+  @override
+  String get localNodeDescription =>
+      'Run a node on this computer and sync against it instead of a remote server. A lite node stores only what a wallet needs, but it still downloads the whole chain once.';
+
+  @override
+  String get localNodeSetUp => 'Set up local node';
+
+  @override
+  String get localNodeStart => 'Start';
+
+  @override
+  String get localNodeStop => 'Stop';
+
+  @override
+  String get localNodeUse => 'Use this node';
+
+  @override
+  String get localNodeDelete => 'Delete node data';
+
+  @override
+  String get localNodeStateStopped => 'Stopped';
+
+  @override
+  String get localNodeStateStarting => 'Starting';
+
+  @override
+  String get localNodeStateSyncing => 'Syncing';
+
+  @override
+  String get localNodeStateReady => 'Synced';
+
+  @override
+  String get localNodeStateFailed => 'Failed';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Block $height of $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count peers';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'The local node is still catching up and cannot serve the wallet yet. It keeps syncing in the background — stay on a remote node until it is ready, then switch over.';
+
+  @override
+  String get localNodeInUse => 'The wallet is connected to this node.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name was not found. Place the daemon binary next to the wallet executable, or in a \'sidecar\' folder beside it, and try again.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Set up a local lite node';
+
+  @override
+  String get localNodeSetupCost =>
+      'Before you start:\n• Around 6 GB of disk space, and the whole chain is downloaded once.\n• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Start height';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Blocks below this height are downloaded and checked, then only the index later blocks need is kept. Keep it at or below this wallet\'s own start height ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Higher than this wallet\'s start height ($height). The node would never be able to show this wallet\'s older transactions.';
+  }
+
+  @override
+  String get localNodeCreate => 'Create node';
+
+  @override
+  String get localNodeDeleteTitle => 'Delete local node data?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'This stops the node and permanently deletes its blockchain database from disk. Your wallet, its seed and its funds are not touched — but a new local node starts syncing again from nothing, which takes hours.';
+
+  @override
+  String get localNodeDeleted => 'Local node deleted.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size on disk';
+  }
+
+  @override
+  String get nodePresetRemote => 'Remote node';
+
+  @override
+  String get nodePresetLocal => 'Local lite node';
+
+  @override
+  String get savingWallet => 'Saving your wallet…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON is writing your wallet to disk. This can take a moment on a large wallet.';
+
+  @override
+  String get shutdownTakingLong =>
+      'This is taking longer than expected. Quitting now loses this save — the wallet on disk stays as it was, so nothing is damaged, but anything since the last save is gone.';
+
+  @override
+  String get quitAnyway => 'Quit anyway';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.';
+
+  @override
+  String get localNodeDataFolder => 'Data folder';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Around 6 GB is written here. Pick a drive with room for it.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'That folder already holds other files. Choose an empty folder, or a new one.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.';
+
+  @override
+  String get nodeExitTitle => 'The local node is still running';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Its first sync has not finished. That takes hours, and it only makes progress while the node is running — but a node left running keeps using the disk and the network after PLUTON has closed.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'It is level with the network. Leaving it running keeps it that way and keeps using CPU, bandwidth and the disk while PLUTON is closed; stopping it costs a short catch-up next time.';
+
+  @override
+  String get nodeExitKeep => 'Leave it running';
+
+  @override
+  String get nodeExitStop => 'Stop it';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Changeable later in Settings, under Local Lite Node.';
+
+  @override
+  String get rememberMyChoice => 'Remember my choice';
+
+  @override
+  String get shutdownStoppingNode => 'Stopping the local node…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Letting it flush its database, so the next start does not have to replay the write-ahead log.';
+
+  @override
+  String get nodeExitPolicyLabel => 'When the wallet closes';
+
+  @override
+  String get nodeExitPolicyAsk => 'Ask me';
+
+  @override
+  String get nodeExitPolicyKeep => 'Leave the node running';
+
+  @override
+  String get nodeExitPolicyStop => 'Stop the node';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'The local lite node is still running in the background. Open PLUTON to stop it.';
+
+  @override
+  String get syncStoppedTitle => 'Sync stopped';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sync stopped at block $covered. The node it was talking to answers only from block $servesFrom upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => 'This node is not ready';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'The local node is still $behind blocks behind the network. Point the wallet at it now and the sync will park until it catches up, showing a balance that is missing anything it has not reached — with nothing on screen to say why. Staying on the remote node costs nothing; the node keeps syncing either way.';
+  }
+
+  @override
+  String get switchAnyway => 'Switch anyway';
+
+  @override
+  String get switchToRemoteNode => 'Switch to the remote node';
+
+  @override
+  String get nodeWillServeFromLabel => 'Will serve blocks from';
+
+  @override
+  String get txPowServerSection => 'Transaction PoW Server';
+
+  @override
+  String get txPowServerUse => 'Use an external PoW server';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.';
+
+  @override
+  String get txPowServerSaved => 'PoW server settings saved';
+
+  @override
+  String get txPowServerInvalid => 'Enter a valid host and port';
+
+  @override
+  String get txPowServerTest => 'Test';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server not reachable: $error';
+  }
+
+  @override
+  String get nodeTest => 'Test';
+
+  @override
+  String get nodeInvalid => 'Enter a valid host and port';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Reachable in $ms ms: height $height, $peers peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Node not reachable: $error';
   }
 }

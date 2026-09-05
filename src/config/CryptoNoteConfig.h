@@ -610,6 +610,13 @@ namespace CryptoNote
 
         /* Feature fork where prune capability signaling and sync policy enforcement activate. */
         const uint64_t PRUNE_CAPABILITY_FORK_HEIGHT = 4500000;
+
+        /* A lite node keeps full block data only from its lite height upward, and
+           below it keeps just the indexes needed to resolve ring members and catch
+           double spends. It must stay at least this far below the network top, so a
+           reorg can never reach into the region whose block bodies are gone. Well
+           clear of MAX_BLOCK_ALLOWED_TO_REWIND, which is three days. */
+        const uint32_t MIN_LITE_FULL_BLOCK_DEPTH = EXPECTED_NUMBER_OF_BLOCKS_PER_DAY * 14;
     } // namespace parameters
 
     const char CRYPTONOTE_NAME[] = "WRKZCoin";
@@ -717,12 +724,16 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 18;
+    const uint8_t P2P_CURRENT_VERSION = 19;
 
+    // Kept well behind P2P_CURRENT_VERSION on purpose: a node below this is refused
+    // the handshake outright, so raising it to the current version would cut us off
+    // from the whole live network on release day. Raise it only once the network has
+    // turned over.
     const uint8_t P2P_MINIMUM_VERSION = 16;
 
     // Peers advertising version >= P2P_IPV6_CAPABILITY_VERSION support IPv6 peer exchange
-    const uint8_t P2P_IPV6_CAPABILITY_VERSION = 18;
+    const uint8_t P2P_IPV6_CAPABILITY_VERSION = 19;
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
@@ -745,6 +756,24 @@ namespace CryptoNote
     const uint64_t P2P_DEFAULT_INVOKE_TIMEOUT = 60 * 2 * 1000; // 2 minutes
     const size_t P2P_DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5000; // 5 seconds
     const char P2P_STAT_TRUSTED_PUB_KEY[] = "";
+
+    /* Peer discovery. When a connection-maker round dials nobody new and we hold
+       fewer than P2P_SEED_RETRY_OUT_PEERS_FLOOR outgoing connections, the seed
+       nodes are asked for a fresh peer list again, at most once every
+       P2P_SEED_RETRY_INTERVAL_SECONDS (they are shared by the whole network).
+       Seed hostnames are looked up again after P2P_SEED_RERESOLVE_INTERVAL_SECONDS,
+       or after the retry interval while the lookup has produced nothing. A peer
+       that refused or timed out is left alone for P2P_FAILED_PEER_FORGET_SECONDS
+       so one dead address cannot eat every attempt of every round. */
+    const uint32_t P2P_SEED_RETRY_INTERVAL_SECONDS = 5 * 60;
+    const uint32_t P2P_SEED_RERESOLVE_INTERVAL_SECONDS = 60 * 60;
+    const uint32_t P2P_SEED_RETRY_OUT_PEERS_FLOOR = 3;
+    const uint32_t P2P_FAILED_PEER_FORGET_SECONDS = 10 * 60;
+    /* Once per interval one random gray peer is dialled: reachable ones move to
+       the white list, dead ones are dropped, so relayed addresses get verified. */
+    const uint32_t P2P_GRAY_PEERLIST_HOUSEKEEPING_INTERVAL = 60; // seconds
+    /* Warn when the node has had no connection at all for this long. */
+    const uint32_t P2P_NO_PEERS_WARNING_SECONDS = 2 * 60;
 
     const uint64_t ROCKSDB_WRITE_BUFFER_MB = 64; // 64 MB
     const uint64_t ROCKSDB_READ_BUFFER_MB = 256; // 256 MB

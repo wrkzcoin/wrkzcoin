@@ -122,6 +122,13 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_swap_node(
     uint16_t daemon_port,
     bool daemon_ssl);
 
+/* Rescans the wallet from scan_height. Returns
+   LITE_NODE_CANNOT_RESCAN_THAT_LOW (62) without touching the wallet when the
+   connected daemon holds no data that far back and the wallet already holds
+   transactions from below there - those would be lost with no way to find
+   them again through that daemon. Connect a daemon holding the whole chain,
+   or pass the daemon's lite start height (see daemonLiteStartHeight in
+   wallet_get_status_json). */
 WALLET_CAPI_EXPORT wallet_status_t wallet_reset(
     wallet_handle_t *wallet,
     uint64_t scan_height,
@@ -318,6 +325,47 @@ WALLET_CAPI_EXPORT wallet_status_t wallet_clear_logs(void);
    By default coinbase transactions are skipped.
    Set scan=true to include them (needed if the wallet mines). */
 WALLET_CAPI_EXPORT void wallet_set_scan_coinbase(bool scan);
+
+/* Route the transaction proof of work through an external PoW server
+   (wrkz-txpow-server) before falling back to this device's CPU. Applies to
+   every wallet opened in this process. An empty host or a zero port turns it
+   off again. The host may carry a scheme and a path ("https://node/txpow")
+   for a server behind a reverse proxy; the scheme then overrides `ssl`. The
+   wallet re-verifies every nonce the server returns, so a bad or slow server
+   only ever costs time. */
+WALLET_CAPI_EXPORT void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl);
+
+/* Checks a Tx PoW server without changing the configuration: one GET /health
+   over the same client path a transaction would use, so it also catches a
+   wallet build without SSL support. Blocks for up to ~15 seconds when the
+   host does not answer; call it off the UI thread. Always returns SUCCESS
+   with a JSON object in out_json: {"ok": true, "url": ..., "latency_ms": N,
+   "threads": N, "queue": N, "capacity": N} or {"ok": false, "url": ...,
+   "error": "..."}. Free out_json with wallet_string_free. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_test_tx_pow_server(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len);
+
+/* Checks a daemon without pointing the wallet at it: one /info request over
+   the same client path the sync uses, against a throwaway connection, so
+   nothing about the open wallet changes. Switching nodes is the one setting
+   that can leave a wallet unable to sync with nothing on screen to explain
+   it, and a daemon that answers but is behind is just as bad as one that does
+   not answer at all - hence the heights. Blocks for up to ~10 seconds when
+   the host does not answer; call it off the UI thread. Always returns SUCCESS
+   with a JSON object in out_json: {"ok": true, "url": ..., "latency_ms": N,
+   "height": N, "networkHeight": N, "peerCount": N, "synced": bool} or
+   {"ok": false, "url": ..., "error": "..."}. Free out_json with
+   wallet_string_free. */
+WALLET_CAPI_EXPORT wallet_status_t wallet_test_node(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len);
 
 #ifdef __cplusplus
 }

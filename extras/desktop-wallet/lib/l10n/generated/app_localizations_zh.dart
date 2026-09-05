@@ -416,7 +416,7 @@ class SZh extends S {
   String get continueButton => '继续';
 
   @override
-  String get browse => '浏览';
+  String get browse => '浏览…';
 
   @override
   String get backupWarning => '继续前请备份您的钱包。\n这些密钥丢失后无法恢复。';
@@ -787,5 +787,298 @@ class SZh extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return '环签名大小已降至 $actual（通常为 $normal）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。';
+  }
+
+  @override
+  String get liteNodeTitle => '轻节点';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return '此节点仅保存从 $height 起的区块。该区块之前的交易无法通过它找到。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return '此节点从区块 $nodeHeight 开始，而此钱包从区块 $walletHeight 开始。两者之间收到的款项在这里不可见，因此显示的余额可能偏低。请连接保存完整链的节点以查看。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return '同步已在区块 $wallet 停止。此节点不保存区块 $node 以下的任何数据，因此无法从它下载中间的区块。在连接保存完整链的节点之前，余额并不完整。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => '此节点无法回溯到那么早重新扫描';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '当前连接的是轻节点，不保存 $height 以下的区块数据。从更低处重新扫描会丢弃钱包已找到的交易，且在此无法再次找回。未做任何更改。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '改为从 $height 重新扫描';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '当前连接的节点只能从区块 $height 或更高处重新扫描。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供区块起始于';
+
+  @override
+  String get nodeFullChain => '完整链';
+
+  @override
+  String get sectionLocalNode => '本地轻节点';
+
+  @override
+  String get localNodeDescription =>
+      '在这台电脑上运行节点并与它同步，而不是使用远程服务器。轻节点只保存钱包需要的数据，但仍需完整下载一次全链。';
+
+  @override
+  String get localNodeSetUp => '设置本地节点';
+
+  @override
+  String get localNodeStart => '启动';
+
+  @override
+  String get localNodeStop => '停止';
+
+  @override
+  String get localNodeUse => '使用此节点';
+
+  @override
+  String get localNodeDelete => '删除节点数据';
+
+  @override
+  String get localNodeStateStopped => '已停止';
+
+  @override
+  String get localNodeStateStarting => '启动中';
+
+  @override
+  String get localNodeStateSyncing => '同步中';
+
+  @override
+  String get localNodeStateReady => '已同步';
+
+  @override
+  String get localNodeStateFailed => '失败';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return '区块 $height / $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count 个节点连接';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      '本地节点仍在追赶进度，尚不能为钱包提供服务。它会在后台继续同步——请先使用远程节点，就绪后再切换。';
+
+  @override
+  String get localNodeInUse => '钱包已连接到此节点。';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '未找到 $name。请将守护进程可执行文件放在钱包程序旁边，或放入旁边的“sidecar”文件夹，然后重试。';
+  }
+
+  @override
+  String get localNodeSetupTitle => '设置本地轻节点';
+
+  @override
+  String get localNodeSetupCost =>
+      '开始之前请注意：\n• 需要约 6 GB 磁盘空间，并会完整下载一次全链。\n• 首次同步需要数小时，会在后台继续，其间你仍可使用远程节点。\n• 下方的起始高度不可更改。以后要改，只能删除节点并从头重新同步。';
+
+  @override
+  String get localNodeStartHeightLabel => '起始高度';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return '低于此高度的区块仍会下载并校验，但只保留后续区块所需的索引。请设为不高于此钱包自身的起始高度（$height）。';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return '高于此钱包的起始高度（$height）。该节点将永远无法显示此钱包更早的交易。';
+  }
+
+  @override
+  String get localNodeCreate => '创建节点';
+
+  @override
+  String get localNodeDeleteTitle => '删除本地节点数据？';
+
+  @override
+  String get localNodeDeleteWarning =>
+      '这会停止节点并从磁盘上永久删除其区块链数据库。你的钱包、助记词和资金不受影响，但新的本地节点需要从零重新同步，耗时数小时。';
+
+  @override
+  String get localNodeDeleted => '已删除本地节点。';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '占用磁盘 $size';
+  }
+
+  @override
+  String get nodePresetRemote => '远程节点';
+
+  @override
+  String get nodePresetLocal => '本地轻节点';
+
+  @override
+  String get savingWallet => '正在保存钱包…';
+
+  @override
+  String get savingWalletBody => 'PLUTON 正在将钱包写入磁盘。钱包较大时可能需要一点时间。';
+
+  @override
+  String get shutdownTakingLong =>
+      '耗时超出预期。此时退出会丢失本次保存——磁盘上的钱包文件保持原样，不会损坏，但上次保存之后的改动会丢失。';
+
+  @override
+  String get quitAnyway => '仍要退出';
+
+  @override
+  String get stillRunningInTray => 'PLUTON 仍在系统托盘中运行。点击托盘图标可重新打开，或右键点击并选择“退出”。';
+
+  @override
+  String get localNodeDataFolder => '数据文件夹';
+
+  @override
+  String get localNodeDataFolderHelp => '这里将写入约 6 GB。请选择空间充足的磁盘。';
+
+  @override
+  String get localNodeDataFolderInUse => '该文件夹已有其他文件。请选择空文件夹或新建一个。';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      '请输入从哪个高度开始保留完整区块。必须大于零——轻节点无法从创世区块开始。';
+
+  @override
+  String get nodeExitTitle => '本地节点仍在运行';
+
+  @override
+  String get nodeExitBodySyncing =>
+      '它的首次同步尚未完成。这需要数小时，且只有节点运行时才会推进——但保持运行的节点在 PLUTON 关闭后仍会占用磁盘和网络。';
+
+  @override
+  String get nodeExitBodySynced =>
+      '它已与网络同步。保持运行可以维持这一状态，但在 PLUTON 关闭期间仍会占用 CPU、带宽和磁盘；停止它则下次需要短暂追赶。';
+
+  @override
+  String get nodeExitKeep => '保持运行';
+
+  @override
+  String get nodeExitStop => '停止';
+
+  @override
+  String get nodeExitChangeLater => '以后可在设置的“本地轻节点”中更改。';
+
+  @override
+  String get rememberMyChoice => '记住我的选择';
+
+  @override
+  String get shutdownStoppingNode => '正在停止本地节点…';
+
+  @override
+  String get shutdownStoppingNodeBody => '让它写完数据库，下次启动就不用重放预写日志。';
+
+  @override
+  String get nodeExitPolicyLabel => '关闭钱包时';
+
+  @override
+  String get nodeExitPolicyAsk => '询问我';
+
+  @override
+  String get nodeExitPolicyKeep => '保持节点运行';
+
+  @override
+  String get nodeExitPolicyStop => '停止节点';
+
+  @override
+  String get localNodeStillRunningBody => '本地轻节点仍在后台运行。打开 PLUTON 可以停止它。';
+
+  @override
+  String get syncStoppedTitle => '同步已停止';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => '该节点尚未就绪';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return '本地节点仍落后网络 $behind 个区块。现在将钱包指向它，同步会停止直到它追上，余额会缺少它尚未到达的部分——而且屏幕上没有任何说明。继续使用远程节点没有任何损失；无论如何节点都在继续同步。';
+  }
+
+  @override
+  String get switchAnyway => '仍要切换';
+
+  @override
+  String get switchToRemoteNode => '切换到远程节点';
+
+  @override
+  String get nodeWillServeFromLabel => '将从此高度提供区块';
+
+  @override
+  String get txPowServerSection => '交易 PoW 服务器';
+
+  @override
+  String get txPowServerUse => '使用外部 PoW 服务器';
+
+  @override
+  String get txPowServerSubtitle =>
+      '将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。';
+
+  @override
+  String get txPowServerSaved => 'PoW 服务器设置已保存';
+
+  @override
+  String get txPowServerInvalid => '请输入有效的主机和端口';
+
+  @override
+  String get txPowServerTest => '测试';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return '服务器可达，耗时 $ms ms：$threads 个线程，队列已用 $queue/$capacity';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return '无法连接服务器：$error';
+  }
+
+  @override
+  String get nodeTest => '测试';
+
+  @override
+  String get nodeInvalid => '请输入有效的主机和端口';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '可达，耗时 $ms ms：高度 $height，$peers 个节点连接';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '可达，耗时 $ms ms，但节点仍在同步：高度 $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return '无法连接节点：$error';
   }
 }

@@ -20,7 +20,7 @@
 
 namespace Utilities
 {
-    std::string get_mining_speed(const uint64_t hashrate)
+    std::string get_mining_speed(const double hashrate)
     {
         std::stringstream stream;
 

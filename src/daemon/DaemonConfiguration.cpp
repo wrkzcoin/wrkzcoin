@@ -159,6 +159,16 @@ namespace DaemonConfig
             "When prune mode is enabled, retain at least this many recent blocks locally",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.pruneDepth)),
             "#")(
+            "lite",
+            "Enable lite-node mode: store full blocks only from --lite-height upward. Permanent for this database",
+            cxxopts::value<bool>(config.lite)->default_value("false")->implicit_value("true"))(
+            "lite-height",
+            "Height at and above which a lite node stores full block data (required with --lite)",
+            cxxopts::value<uint32_t>()->default_value(std::to_string(config.liteHeight)),
+            "#")(
+            "snapshot-stats",
+            "Report per-table record counts and byte totals, then exit. Takes minutes on a synced chain",
+            cxxopts::value<bool>(config.snapshotStats)->default_value("false")->implicit_value("true"))(
             "rewind-to-height",
             "Rewinds the local blockchain cache to the specified height.",
             cxxopts::value<uint32_t>(),
@@ -177,7 +187,16 @@ namespace DaemonConfig
             "max-export-blocks",
             "Maximum number of blocks for export to dump file.",
             cxxopts::value<uint32_t>(),
-            "#");
+            "#")(
+            "snapshot-info",
+            "Print what a lite node snapshot file contains, as JSON, and exit",
+            cxxopts::value<std::string>()->default_value(config.snapshotInfo),
+            "<file>")(
+            "import-lite-snapshot",
+            "Load a lite node snapshot into an empty database, then exit. Needs --lite and the --lite-height the "
+            "snapshot was made at",
+            cxxopts::value<std::string>()->default_value(config.importLiteSnapshot),
+            "<file>");
 
         options.add_options("Genesis Block")(
             "print-genesis-tx",
@@ -213,6 +232,11 @@ namespace DaemonConfig
             "no-console",
             "Disable daemon console commands",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "attach",
+            "Attach a console to a daemon already running on this machine, over its RPC IPC socket "
+            "(an absolute path, @name or ipc://path), instead of starting a node",
+            cxxopts::value<std::string>(),
+            "<socket>")(
             "skip-boot-compaction",
             "Skip automatic DB compaction start/check at daemon boot",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
@@ -293,6 +317,23 @@ namespace DaemonConfig
             "no-zmq",
             "Disable ZMQ publisher even if zmq-pub is set",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "stratum-bind-ip",
+            "Interface for the built-in stratum server to listen on",
+            cxxopts::value<std::string>()->default_value(config.stratumBindIp),
+            "<ip>")(
+            "stratum-bind-port",
+            "Port for the built-in stratum server, so a miner can mine straight to this node. 0 disables it",
+            cxxopts::value<uint16_t>()->default_value(std::to_string(config.stratumBindPort)),
+            "#")(
+            "stratum-share-difficulty",
+            "Difficulty stratum miners are given. 0 uses the network difficulty, so a miner only reports when it has "
+            "found a block; a lower value makes it report progress as well",
+            cxxopts::value<uint64_t>()->default_value(std::to_string(config.stratumShareDifficulty)),
+            "#")(
+            "stratum-max-connections",
+            "Maximum number of miners allowed on the stratum server at once",
+            cxxopts::value<size_t>()->default_value(std::to_string(config.stratumMaxConnections)),
+            "#")(
             "block-notify",
             "Run a command or POST to an http(s):// URL for each new main-chain block. "
             "Command placeholders: %s block hash, %h height (no shell; quotes group arguments)",
@@ -405,6 +446,29 @@ namespace DaemonConfig
             ("db-enable-compression",
              "Enable database compression",
              cxxopts::value<bool>()->default_value("true")->implicit_value("true"))
+            ("db-compression-dict-bytes",
+             "Size of the per-SST ZSTD dictionary in bytes, 0 to disable. Trades compaction time for a "
+             "smaller database; only applies to newly written files, so run `compact_db force` after changing it",
+             cxxopts::value<uint64_t>()->default_value("0"),
+             "#")
+            ("db-block-size",
+             "Size of an uncompressed SST data block in kilobytes. Larger compresses better and reads slower",
+             cxxopts::value<uint64_t>()->default_value("4"),
+             "#")
+            ("db-compression-level",
+             "ZSTD level for the bottommost database level, 0 for RocksDB's default of 3. Higher compresses "
+             "harder for the same decompression speed, paying only in compaction time",
+             cxxopts::value<int>()->default_value("0"),
+             "#")
+            ("db-row-cache-percent",
+             "Percentage of the read buffer given to the row cache, 0 for the built-in eighth. A row cache hit "
+             "skips block decompression entirely",
+             cxxopts::value<uint64_t>()->default_value("0"),
+             "#")
+            ("db-bottom-filters",
+             "Keep bloom filters on the bottommost database level. Costs space, but spent key image checks are "
+             "lookups that are meant to miss, and without filters each one reads and decompresses a block",
+             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("db-max-open-files",
              "Number of files that can be used by the database at one time " + maxOpenFiles,
              cxxopts::value<int>(),
@@ -561,6 +625,31 @@ namespace DaemonConfig
                 config.pruneDepth = clampPruneDepth(cli["prune-depth"].as<uint32_t>(), "CLI");
             }
 
+            if (cli.count("lite") > 0)
+            {
+                config.lite = cli["lite"].as<bool>();
+            }
+
+            if (cli.count("lite-height") > 0)
+            {
+                config.liteHeight = cli["lite-height"].as<uint32_t>();
+            }
+
+            if (cli.count("snapshot-info") > 0)
+            {
+                config.snapshotInfo = cli["snapshot-info"].as<std::string>();
+            }
+
+            if (cli.count("import-lite-snapshot") > 0)
+            {
+                config.importLiteSnapshot = cli["import-lite-snapshot"].as<std::string>();
+            }
+
+            if (cli.count("snapshot-stats") > 0)
+            {
+                config.snapshotStats = cli["snapshot-stats"].as<bool>();
+            }
+
             if (cli.count("print-genesis-tx") > 0)
             {
                 config.printGenesisTx = cli["print-genesis-tx"].as<bool>();
@@ -591,6 +680,31 @@ namespace DaemonConfig
                 config.logLevel = cli["log-level"].as<int>();
             }
 
+            if (cli.count("db-compression-level") > 0)
+            {
+                config.dbCompressionLevel = cli["db-compression-level"].as<int>();
+            }
+
+            if (cli.count("db-row-cache-percent") > 0)
+            {
+                config.dbRowCachePercent = cli["db-row-cache-percent"].as<uint64_t>();
+            }
+
+            if (cli.count("db-bottom-filters") > 0)
+            {
+                config.dbBottommostFilters = cli["db-bottom-filters"].as<bool>();
+            }
+
+            if (cli.count("db-compression-dict-bytes") > 0)
+            {
+                config.dbCompressionDictBytes = cli["db-compression-dict-bytes"].as<uint64_t>();
+            }
+
+            if (cli.count("db-block-size") > 0)
+            {
+                config.dbBlockSizeKB = cli["db-block-size"].as<uint64_t>();
+            }
+
             if (cli.count("db-enable-compression") > 0)
             {
                 config.enableDbCompression = cli["db-enable-compression"].as<bool>();
@@ -599,6 +713,11 @@ namespace DaemonConfig
             if (cli.count("no-console") > 0)
             {
                 config.noConsole = cli["no-console"].as<bool>();
+            }
+
+            if (cli.count("attach") > 0)
+            {
+                config.attach = cli["attach"].as<std::string>();
             }
 
             if (cli.count("skip-boot-compaction") > 0)
@@ -822,6 +941,26 @@ namespace DaemonConfig
                 config.noZmq = cli["no-zmq"].as<bool>();
             }
 
+            if (cli.count("stratum-bind-ip") > 0)
+            {
+                config.stratumBindIp = cli["stratum-bind-ip"].as<std::string>();
+            }
+
+            if (cli.count("stratum-bind-port") > 0)
+            {
+                config.stratumBindPort = cli["stratum-bind-port"].as<uint16_t>();
+            }
+
+            if (cli.count("stratum-share-difficulty") > 0)
+            {
+                config.stratumShareDifficulty = cli["stratum-share-difficulty"].as<uint64_t>();
+            }
+
+            if (cli.count("stratum-max-connections") > 0)
+            {
+                config.stratumMaxConnections = cli["stratum-max-connections"].as<size_t>();
+            }
+
             if (cli.count("block-notify") > 0)
             {
                 config.blockNotify = cli["block-notify"].as<std::string>();
@@ -1011,6 +1150,26 @@ namespace DaemonConfig
                     {
                         throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
                     }
+                }
+                else if (cfgKey.compare("db-compression-level") == 0)
+                {
+                    config.dbCompressionLevel = std::stoi(cfgValue);
+                }
+                else if (cfgKey.compare("db-row-cache-percent") == 0)
+                {
+                    config.dbRowCachePercent = std::stoull(cfgValue);
+                }
+                else if (cfgKey.compare("db-bottom-filters") == 0)
+                {
+                    config.dbBottommostFilters = (cfgValue == "true" || cfgValue == "1");
+                }
+                else if (cfgKey.compare("db-compression-dict-bytes") == 0)
+                {
+                    config.dbCompressionDictBytes = std::stoull(cfgValue);
+                }
+                else if (cfgKey.compare("db-block-size") == 0)
+                {
+                    config.dbBlockSizeKB = std::stoull(cfgValue);
                 }
                 else if (cfgKey.compare("db-enable-compression") == 0)
                 {
@@ -1616,6 +1775,31 @@ namespace DaemonConfig
         config.dbWriteBufferSizeMB = CryptoNote::ROCKSDB_WRITE_BUFFER_MB;
         config.dbThreads = CryptoNote::ROCKSDB_BACKGROUND_THREADS;
 
+        if (j.contains("db-compression-level"))
+        {
+            config.dbCompressionLevel = j["db-compression-level"].get<int>();
+        }
+
+        if (j.contains("db-row-cache-percent"))
+        {
+            config.dbRowCachePercent = j["db-row-cache-percent"].get<uint64_t>();
+        }
+
+        if (j.contains("db-bottom-filters"))
+        {
+            config.dbBottommostFilters = j["db-bottom-filters"].get<bool>();
+        }
+
+        if (j.contains("db-compression-dict-bytes"))
+        {
+            config.dbCompressionDictBytes = j["db-compression-dict-bytes"].get<uint64_t>();
+        }
+
+        if (j.contains("db-block-size"))
+        {
+            config.dbBlockSizeKB = j["db-block-size"].get<uint64_t>();
+        }
+
         if (j.contains("db-enable-compression"))
         {
             config.enableDbCompression = j["db-enable-compression"].get<bool>();
@@ -1863,6 +2047,26 @@ namespace DaemonConfig
             config.noZmq = j["no-zmq"].get<bool>();
         }
 
+        if (j.contains("stratum-bind-ip"))
+        {
+            config.stratumBindIp = j["stratum-bind-ip"].get<std::string>();
+        }
+
+        if (j.contains("stratum-bind-port"))
+        {
+            config.stratumBindPort = j["stratum-bind-port"].get<uint16_t>();
+        }
+
+        if (j.contains("stratum-share-difficulty"))
+        {
+            config.stratumShareDifficulty = j["stratum-share-difficulty"].get<uint64_t>();
+        }
+
+        if (j.contains("stratum-max-connections"))
+        {
+            config.stratumMaxConnections = j["stratum-max-connections"].get<size_t>();
+        }
+
         if (j.contains("block-notify"))
         {
             config.blockNotify = j["block-notify"].get<std::string>();
@@ -1963,6 +2167,11 @@ namespace DaemonConfig
         j["no-console"] = config.noConsole;
         j["skip-boot-compaction"] = config.skipBootCompaction;
         j["db-enable-compression"] = config.enableDbCompression;
+        j["db-compression-dict-bytes"] = config.dbCompressionDictBytes;
+        j["db-compression-level"] = config.dbCompressionLevel;
+        j["db-row-cache-percent"] = config.dbRowCachePercent;
+        j["db-bottom-filters"] = config.dbBottommostFilters;
+        j["db-block-size"] = config.dbBlockSizeKB;
         j["db-max-open-files"] = config.dbMaxOpenFiles;
         j["db-read-buffer-size"] = config.dbReadCacheSizeMB;
         j["db-threads"] = config.dbThreads;
@@ -2004,6 +2213,10 @@ namespace DaemonConfig
         j["rpc-ipc-require-token"] = config.rpcIpcRequireToken;
         j["zmq-pub"] = config.zmqPub;
         j["no-zmq"] = config.noZmq;
+        j["stratum-bind-ip"] = config.stratumBindIp;
+        j["stratum-bind-port"] = config.stratumBindPort;
+        j["stratum-share-difficulty"] = config.stratumShareDifficulty;
+        j["stratum-max-connections"] = config.stratumMaxConnections;
         j["block-notify"] = config.blockNotify;
         j["reorg-notify"] = config.reorgNotify;
         j["tx-notify"] = config.txNotify;

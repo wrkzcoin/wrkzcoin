@@ -278,5 +278,18 @@
   "languagePt": "Português",
   "languageRu": "\u0420\u0443\u0441\u0441\u043a\u0438\u0439",
   "ringSize": "Taille de l'anneau",
-  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude.",
+  "txPowServerSection": "Serveur PoW des transactions",
+  "txPowServerUse": "Utiliser un serveur PoW externe",
+  "txPowServerSubtitle": "Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.",
+  "txPowServerSaved": "Paramètres du serveur PoW enregistrés",
+  "txPowServerInvalid": "Saisissez un hôte et un port valides",
+  "txPowServerTest": "Tester",
+  "txPowServerTestOk": "Serveur joignable en {ms} ms : {threads} threads, {queue} sur {capacity} places de file utilisées",
+  "txPowServerTestFailed": "Serveur injoignable : {error}",
+  "nodeTest": "Tester",
+  "nodeInvalid": "Saisissez un hôte et un port valides",
+  "nodeTestOk": "Joignable en {ms} ms : hauteur {height}, {peers} pairs",
+  "nodeTestSyncing": "Joignable en {ms} ms, mais le nœud se synchronise encore : hauteur {height} sur {networkHeight}",
+  "nodeTestFailed": "Nœud injoignable : {error}"
 }

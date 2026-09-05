@@ -795,4 +795,54 @@ class SPt extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transações';
+
+  @override
+  String get txPowServerUse => 'Usar um servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.';
+
+  @override
+  String get txPowServerSaved => 'Configurações do servidor PoW salvas';
+
+  @override
+  String get txPowServerInvalid => 'Informe um host e uma porta válidos';
+
+  @override
+  String get txPowServerTest => 'Testar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor acessível em $ms ms: $threads threads, $queue de $capacity vagas da fila em uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor inacessível: $error';
+  }
+
+  @override
+  String get nodeTest => 'Testar';
+
+  @override
+  String get nodeInvalid => 'Informe um host e uma porta válidos';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Acessível em $ms ms: altura $height, $peers pares';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Acessível em $ms ms, mas o nó ainda está sincronizando: altura $height de $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nó inacessível: $error';
+  }
 }

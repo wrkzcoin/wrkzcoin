@@ -770,4 +770,106 @@ class SVi extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Kích thước vòng giảm xuống $actual (thông thường là $normal). Các khoản tiền được gửi không có đủ đầu ra trên chuỗi để tạo thành một vòng đầy đủ, vì vậy giao dịch này kém riêng tư hơn bình thường.';
   }
+
+  @override
+  String get liteNodeTitle => 'Node rút gọn';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Node này chỉ lưu các khối từ $height trở đi. Không thể tìm thấy giao dịch trước khối đó qua node này.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Node này bắt đầu từ khối $nodeHeight, nhưng ví này bắt đầu từ khối $walletHeight. Mọi khoản nhận được ở khoảng giữa đều không hiển thị ở đây, nên số dư có thể thấp hơn thực tế. Hãy kết nối tới node giữ toàn bộ chuỗi để xem.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Đồng bộ đã dừng ở khối $wallet. Node này không giữ gì dưới khối $node, nên không thể tải các khối ở giữa từ nó. Số dư sẽ chưa đầy đủ cho tới khi bạn kết nối node giữ toàn bộ chuỗi.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Node này không thể quét lại từ mức đó';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Node đang kết nối là node rút gọn, không giữ dữ liệu khối dưới $height. Quét lại từ mức thấp hơn sẽ làm mất các giao dịch ví đã tìm thấy, và không thể tìm lại qua node này. Chưa có gì bị thay đổi.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Quét lại từ $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Node đang kết nối chỉ có thể quét lại từ khối $height trở lên.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Cung cấp khối từ';
+
+  @override
+  String get nodeFullChain => 'Toàn bộ chuỗi';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Chạy node ngay trên điện thoại đã có trong kế hoạch nhưng chưa khả dụng — một node cần vài GB dung lượng và nhiều giờ đồng bộ. Trong lúc đó, hãy trỏ ví này tới node do bạn tự chạy.';
+
+  @override
+  String get syncStoppedTitle => 'Đồng bộ đã dừng';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Đồng bộ dừng ở khối $covered. Nút đang kết nối chỉ trả lời từ khối $servesFrom trở đi, nên không thể tải các khối ở giữa từ nó. Số dư sẽ không đầy đủ cho đến khi bạn kết nối một nút giữ toàn bộ chuỗi.';
+  }
+
+  @override
+  String get txPowServerSection => 'Máy chủ PoW giao dịch';
+
+  @override
+  String get txPowServerUse => 'Dùng máy chủ PoW bên ngoài';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Gửi phần proof of work của giao dịch lên máy chủ thay vì tính trên thiết bị này. Nếu máy chủ không phản hồi, CPU của thiết bị này sẽ được dùng.';
+
+  @override
+  String get txPowServerSaved => 'Đã lưu cài đặt máy chủ PoW';
+
+  @override
+  String get txPowServerInvalid => 'Nhập host và cổng hợp lệ';
+
+  @override
+  String get txPowServerTest => 'Kiểm tra';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Kết nối máy chủ trong $ms ms: $threads luồng, đang dùng $queue/$capacity chỗ trong hàng đợi';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Không kết nối được máy chủ: $error';
+  }
+
+  @override
+  String get nodeTest => 'Kiểm tra';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Kết nối được trong $ms ms: chiều cao $height, $peers peer';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Kết nối được trong $ms ms, nhưng nút vẫn đang đồng bộ: chiều cao $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Không kết nối được nút: $error';
+  }
 }

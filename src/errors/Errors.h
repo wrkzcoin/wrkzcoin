@@ -248,6 +248,13 @@ enum ErrorCode
      * transaction given has a short payment ID but more than one destination
      * (excluding change), so there is no single receiver to encrypt to. */
     SHORT_PAYMENT_ID_NEEDS_SINGLE_DESTINATION = 61,
+
+    /* The daemon this wallet is connected to holds no block data below a
+     * certain height, so a rescan starting below there is served from that
+     * height instead - dropping every transaction the wallet already holds
+     * from underneath, with no way to find them again through this daemon.
+     * See LITENODE.md. */
+    LITE_NODE_CANNOT_RESCAN_THAT_LOW = 62,
 };
 
 class Error

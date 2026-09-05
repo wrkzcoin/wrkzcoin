@@ -1532,6 +1532,156 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.'**
   String ringSizeReduced(int actual, int normal);
+
+  /// No description provided for @liteNodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lite node'**
+  String get liteNodeTitle;
+
+  /// No description provided for @liteNodeServesFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'This node only holds blocks from {height} onward. Transactions before that block cannot be found through it.'**
+  String liteNodeServesFrom(int height);
+
+  /// No description provided for @liteNodeMissesHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'This node starts at block {nodeHeight}, but this wallet starts at block {walletHeight}. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.'**
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight);
+
+  /// No description provided for @liteNodeSyncStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped at block {wallet}. This node holds nothing below block {node}, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
+  String liteNodeSyncStalled(int wallet, int node);
+
+  /// No description provided for @liteNodeRescanRefusedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This node cannot rescan that far back'**
+  String get liteNodeRescanRefusedTitle;
+
+  /// No description provided for @liteNodeRescanRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node is a lite node holding no block data below {height}. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.'**
+  String liteNodeRescanRefused(int height);
+
+  /// No description provided for @liteNodeRescanFromInstead.
+  ///
+  /// In en, this message translates to:
+  /// **'Rescan from {height} instead'**
+  String liteNodeRescanFromInstead(int height);
+
+  /// No description provided for @liteNodeRescanHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The connected node can only rescan from block {height} or above.'**
+  String liteNodeRescanHint(int height);
+
+  /// No description provided for @nodeServesFromLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Serves blocks from'**
+  String get nodeServesFromLabel;
+
+  /// No description provided for @nodeFullChain.
+  ///
+  /// In en, this message translates to:
+  /// **'Full chain'**
+  String get nodeFullChain;
+
+  /// No description provided for @localNodeMobileFuture.
+  ///
+  /// In en, this message translates to:
+  /// **'Running the node on the phone itself is planned, but not available yet — a node needs several GB of storage and hours of syncing. Until then, point this wallet at a node you run yourself.'**
+  String get localNodeMobileFuture;
+
+  /// Banner label when sync has stopped over a range no daemon served
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped'**
+  String get syncStoppedTitle;
+
+  /// No description provided for @syncGapStalled.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.'**
+  String syncGapStalled(int covered, int servesFrom);
+
+  /// No description provided for @txPowServerSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Transaction PoW Server'**
+  String get txPowServerSection;
+
+  /// No description provided for @txPowServerUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use an external PoW server'**
+  String get txPowServerUse;
+
+  /// No description provided for @txPowServerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.'**
+  String get txPowServerSubtitle;
+
+  /// No description provided for @txPowServerSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'PoW server settings saved'**
+  String get txPowServerSaved;
+
+  /// No description provided for @txPowServerInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid host and port'**
+  String get txPowServerInvalid;
+
+  /// No description provided for @txPowServerTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get txPowServerTest;
+
+  /// No description provided for @txPowServerTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Server reachable in {ms} ms: {threads} threads, {queue} of {capacity} queue slots in use'**
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity);
+
+  /// No description provided for @txPowServerTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Server not reachable: {error}'**
+  String txPowServerTestFailed(String error);
+
+  /// No description provided for @nodeTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get nodeTest;
+
+  /// No description provided for @nodeTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms: height {height}, {peers} peers'**
+  String nodeTestOk(int ms, int height, int peers);
+
+  /// No description provided for @nodeTestSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms, but the node is still syncing: height {height} of {networkHeight}'**
+  String nodeTestSyncing(int ms, int height, int networkHeight);
+
+  /// No description provided for @nodeTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Node not reachable: {error}'**
+  String nodeTestFailed(String error);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

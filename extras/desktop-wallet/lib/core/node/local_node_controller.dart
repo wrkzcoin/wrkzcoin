@@ -1,0 +1,632 @@
+/// local_node_controller.dart
+///
+/// Owns the local lite node's child process: starting it, polling its RPC,
+/// stopping it, and deleting it. One instance for the app.
+library;
+
+import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'local_node.dart';
+
+/// How often the node's RPC is polled while it is up.
+const Duration _kPollInterval = Duration(seconds: 3);
+
+/// How long a graceful stop is given before the process is killed outright.
+///
+/// A clean shutdown flushes RocksDB and syncs its WAL. Killing instead is not
+/// dangerous — writes already in the WAL are in the OS's hands, so RocksDB
+/// replays them on the next open — it just costs recovery time at startup.
+const Duration _kStopGrace = Duration(seconds: 45);
+
+/// Lines of daemon output kept for the failure display.
+const int _kLogTailLines = 40;
+
+/// How long a node named by the pid file is given to answer its RPC before the
+/// app gives up on adopting it.
+///
+/// Generous on purpose: this covers RocksDB opening a database that can be
+/// several gigabytes, and the cost of guessing low is a second daemon started
+/// against the same directory.
+const Duration _kAdoptGrace = Duration(seconds: 90);
+
+class LocalNodeController extends Notifier<LocalNodeState> {
+  Process? _process;
+
+  /// Set when the running node was found on disk rather than started by this
+  /// app instance, in which case there is no [Process] to wait on and it can
+  /// only be signalled by pid.
+  int? _adoptedPid;
+
+  /// A stop this app asked for is in flight, so the process exiting is
+  /// expected rather than a crash to report.
+  bool _stopping = false;
+
+  Timer? _poll;
+
+  final Queue<String> _logTail = Queue<String>();
+
+  final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 3);
+
+  @override
+  LocalNodeState build() {
+    ref.onDispose(() {
+      _poll?.cancel();
+      _http.close(force: true);
+      // The process is deliberately left running: it is supervised across app
+      // restarts, and killing a half-synced node on every hot reload would be
+      // worse than leaving one to adopt.
+    });
+    unawaited(_init());
+    return const LocalNodeState();
+  }
+
+  Future<void> _init() async {
+    final config = await readLocalNodeConfig();
+    if (config == null) {
+      state = const LocalNodeState(phase: LocalNodePhase.unconfigured);
+      return;
+    }
+
+    // A node left behind by a crashed or force-quit app is still serving on
+    // the same port. Adopt it rather than starting a second daemon on the same
+    // database, which the first one holds a RocksDB lock on anyway.
+    //
+    // The port alone does not identify it — a stored port can be taken by
+    // anything after a reboot, including a full node the user runs themselves.
+    // Only a daemon reporting this config's own lite height is ours; anything
+    // else is left alone, and start() then fails honestly on the bind.
+    var alive = await _probeOurNode(config);
+
+    // Silence is not the same as absence. A daemon opening a multi-gigabyte
+    // RocksDB takes a while and its RPC only comes up afterwards, so a single
+    // probe misses one that is starting — and this app would then launch a
+    // second on the same directory, which dies on
+    // "Failed to create lock file: .../DB/LOCK". Observed with two app
+    // instances a few seconds apart. The pid file says whether there is
+    // anything to wait for.
+    final recordedPid = await _readPidFile();
+    if (alive == null &&
+        recordedPid != null &&
+        await processIsAlive(recordedPid)) {
+      alive = await _awaitOurNode(config, _kAdoptGrace);
+
+      if (alive == null && await processIsAlive(recordedPid)) {
+        // Ours by the pid file, up as a process, but not answering. Starting
+        // another one against the same database is worse than saying so.
+        state = LocalNodeState(
+          phase: LocalNodePhase.failed,
+          config: config,
+          error: 'A local node (pid $recordedPid) is running but has not '
+              'answered on port ${config.rpcPort} within '
+              '${_kAdoptGrace.inSeconds}s. It may still be opening its '
+              'database. Wait, or stop that process, then press Start.',
+        );
+        return;
+      }
+    }
+
+    if (alive != null) {
+      _adoptedPid = recordedPid;
+      state = LocalNodeState(
+        phase: LocalNodePhase.running,
+        config: config,
+      );
+      _applyInfo(alive);
+      _startPolling();
+      return;
+    }
+
+    await _clearPidFile();
+    state = LocalNodeState(phase: LocalNodePhase.stopped, config: config);
+    unawaited(_refreshDiskUsage());
+
+    // A first sync runs for hours, so a node the user left running comes back
+    // up on its own. One that was stopped on purpose stays stopped.
+    if (config.autoStart) {
+      await start();
+    }
+  }
+
+  // ── lifecycle ──────────────────────────────────────────────────────────
+
+  /// Creates the node: picks ports, records the start height, and starts it.
+  ///
+  /// The height cannot be changed afterwards without deleting the database —
+  /// the daemon refuses to start against a mismatch — so this is the one
+  /// decision the caller has to get right.
+  ///
+  /// With [snapshotPath] the index-only region below [liteHeight] is loaded
+  /// from a file instead of being rebuilt from the chain — twenty to forty
+  /// minutes rather than the better part of a day. The height must be the one
+  /// the snapshot was made at; the daemon refuses a mismatch, and the setup
+  /// dialog fills the field from the file for that reason.
+  Future<void> create({required int liteHeight, String? snapshotPath}) async {
+    if (liteHeight <= 0) {
+      throw ArgumentError.value(liteHeight, 'liteHeight', 'must be above zero');
+    }
+    if (state.isConfigured) {
+      throw StateError('a local node is already configured');
+    }
+
+    final config = LocalNodeConfig(
+      liteHeight: liteHeight,
+      rpcPort: await pickFreePort(),
+      p2pPort: await pickFreePort(),
+      createdAt: DateTime.now(),
+    );
+
+    await Directory(LocalNodePaths.dataDir).create(recursive: true);
+    await writeLocalNodeConfig(config);
+    // Remember where it went. The default is resolved fresh at every launch and
+    // can move — a portable copy relocated, a name that was free last time
+    // taken since — and an unremembered node is one the next launch offers to
+    // sync again from nothing.
+    await writeNodeDataDirPref(LocalNodePaths.dataDir);
+
+    state = LocalNodeState(phase: LocalNodePhase.stopped, config: config);
+
+    if (snapshotPath != null) {
+      final imported = await _import(config, snapshotPath);
+      // A refused or broken import leaves a part-written database that the
+      // daemon will not import into again, so there is nothing to start and
+      // the failure has to stay on screen rather than being replaced by a
+      // node coming up on an incomplete chain.
+      if (!imported) return;
+    }
+
+    await start();
+  }
+
+  /// Asks the daemon what a snapshot file holds, without importing it.
+  ///
+  /// Header only, so it is instant on a 5 GB file. Returns null when the daemon
+  /// cannot be found, and a map with an `error` key when the file is not a
+  /// snapshot this build can read. The `accepted` key is the one that decides
+  /// whether importing is worth starting: an unrecognised digest is refused,
+  /// and finding that out after half an hour is the wrong time.
+  Future<Map<String, dynamic>?> describeSnapshot(String path) async {
+    final daemon = LocalNodePaths.findDaemon();
+    if (daemon == null) return null;
+
+    try {
+      final result =
+          await Process.run(daemon.path, ['--snapshot-info', path]);
+
+      for (final line in const LineSplitter().convert(result.stdout as String)) {
+        final trimmed = line.trim();
+        if (trimmed.startsWith('{')) {
+          return jsonDecode(trimmed) as Map<String, dynamic>;
+        }
+      }
+
+      return {'error': 'The daemon said nothing about that file.'};
+    } catch (e) {
+      return {'error': e.toString()};
+    }
+  }
+
+  /// Runs the one-shot import and returns whether it succeeded.
+  ///
+  /// The daemon imports and exits by design: the genesis block is written by
+  /// the ordinary startup that has to happen first, and by then the core has
+  /// cached a view of the chain that the import invalidates. So this is a
+  /// separate child process from the one [start] supervises.
+  Future<bool> _import(LocalNodeConfig config, String snapshotPath) async {
+    final daemon = LocalNodePaths.findDaemon();
+    if (daemon == null) {
+      state = state.copyWith(
+          phase: LocalNodePhase.failed, error: 'daemon-not-found');
+      return false;
+    }
+
+    _logTail.clear();
+    state = state.copyWith(
+      phase: LocalNodePhase.importing,
+      importPhase: 'verify',
+      importPercent: 0,
+      clearError: true,
+    );
+
+    try {
+      final process = await Process.start(
+        daemon.path,
+        config.importArguments(LocalNodePaths.dataDir, snapshotPath),
+        workingDirectory: LocalNodePaths.dataDir,
+      );
+      _process = process;
+
+      // Both streams still have to be drained or the daemon blocks on a full
+      // pipe, and this one runs for half an hour.
+      _drain(process.stderr);
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen(_onImportLine);
+
+      final code = await process.exitCode;
+      _process = null;
+
+      if (code != 0) {
+        state = state.copyWith(
+          phase: LocalNodePhase.failed,
+          error: _logTail.isEmpty ? 'import-failed' : _logTail.join('\n'),
+        );
+        return false;
+      }
+
+      state = state.copyWith(
+          phase: LocalNodePhase.stopped, importPhase: 'done', importPercent: 100);
+      return true;
+    } catch (e) {
+      _process = null;
+      state =
+          state.copyWith(phase: LocalNodePhase.failed, error: e.toString());
+      return false;
+    }
+  }
+
+  /// Picks the machine-readable progress lines out of the daemon's output.
+  ///
+  /// Anything else is kept for the log tail, which is what an operator gets
+  /// shown when an import fails.
+  void _onImportLine(String line) {
+    if (!line.startsWith('WRKZ-IMPORT ')) {
+      _remember(line);
+      return;
+    }
+
+    try {
+      final json =
+          jsonDecode(line.substring('WRKZ-IMPORT '.length)) as Map<String, dynamic>;
+
+      state = state.copyWith(
+        importPhase: json['phase'] as String? ?? state.importPhase,
+        importPercent: (json['percent'] as num?)?.toDouble() ?? state.importPercent,
+      );
+    } catch (_) {
+      // A malformed progress line is not worth failing an import over.
+    }
+  }
+
+  Future<void> start() async {
+    final config = state.config;
+    if (config == null) throw StateError('no local node is configured');
+    if (state.isRunning) return;
+
+    await _setAutoStart(true);
+
+    final daemon = LocalNodePaths.findDaemon();
+    if (daemon == null) {
+      state = state.copyWith(
+        phase: LocalNodePhase.failed,
+        error: 'daemon-not-found',
+      );
+      return;
+    }
+
+    _logTail.clear();
+    state = state.copyWith(phase: LocalNodePhase.starting, clearError: true);
+
+    try {
+      final process = await Process.start(
+        daemon.path,
+        config.arguments(LocalNodePaths.dataDir),
+        workingDirectory: LocalNodePaths.dataDir,
+      );
+      _process = process;
+      _adoptedPid = null;
+      await _writePidFile(process.pid);
+
+      // Both streams have to be drained or the daemon blocks on a full pipe
+      // once it has written a few kilobytes of startup output.
+      _drain(process.stdout);
+      _drain(process.stderr);
+
+      unawaited(process.exitCode.then(_onExit));
+    } catch (e) {
+      state = state.copyWith(
+        phase: LocalNodePhase.failed,
+        error: e.toString(),
+      );
+      return;
+    }
+
+    _startPolling();
+  }
+
+  /// Stops the node.
+  ///
+  /// [keepAutoStart] is for the app shutting down: the node is being stopped
+  /// because the wallet is closing, not because the user turned it off, so it
+  /// should come back with the app. A Stop pressed in settings means the
+  /// opposite and clears the flag.
+  Future<void> stop({bool keepAutoStart = false}) async {
+    if (!keepAutoStart) await _setAutoStart(false);
+
+    // The exitCode handler fires before this method gets to set the phase, so
+    // it has to be told this exit was asked for or it reports it as a crash.
+    _stopping = true;
+    _poll?.cancel();
+    _poll = null;
+
+    final config = state.config;
+    final process = _process;
+    final pid = process?.pid ?? _adoptedPid;
+
+    if (pid == null || config == null) {
+      _stopping = false;
+      state = state.copyWith(
+          phase: LocalNodePhase.stopped, synced: false, clearError: true);
+      return;
+    }
+
+    // SIGINT is what the daemon installs a handler for, and it runs the same
+    // shutdown the console 'exit' command does. Windows has no real SIGINT for
+    // a child of a GUI process — dart:io maps it onto TerminateProcess — so
+    // there it is simply a hard stop, which the WAL makes safe.
+    try {
+      if (process != null) {
+        process.kill(ProcessSignal.sigint);
+      } else {
+        Process.killPid(pid, ProcessSignal.sigint);
+      }
+    } catch (_) {
+      // Already gone.
+    }
+
+    if (process != null) {
+      await process.exitCode.timeout(_kStopGrace, onTimeout: () {
+        process.kill(ProcessSignal.sigkill);
+        return -1;
+      });
+    } else {
+      // An adopted node has no Process to wait on, so the port is the only
+      // signal that it is going down. It stops answering early in the shutdown,
+      // while RocksDB is still flushing — killing on that would interrupt
+      // exactly the clean close the SIGINT asked for. Worse, once the process
+      // has fully exited the pid is free to be reused, and the kill would land
+      // on a stranger. So only the timeout kills.
+      final closed = await _waitForPortToClose(config.rpcPort, _kStopGrace);
+      if (!closed) {
+        try {
+          Process.killPid(pid, ProcessSignal.sigkill);
+        } catch (_) {
+          // It exited between the last probe and here.
+        }
+      }
+    }
+
+    _process = null;
+    _adoptedPid = null;
+    _stopping = false;
+    await _clearPidFile();
+    state = state.copyWith(
+        phase: LocalNodePhase.stopped, synced: false, clearError: true);
+    unawaited(_refreshDiskUsage());
+  }
+
+  /// Stops the node and deletes its blockchain database and configuration.
+  ///
+  /// The wallet is untouched. What is lost is the sync — a new node starts
+  /// again from nothing, which is hours.
+  Future<void> destroy() async {
+    if (state.isRunning) await stop();
+
+    final dir = Directory(LocalNodePaths.dataDir);
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
+
+    state = const LocalNodeState(phase: LocalNodePhase.unconfigured);
+  }
+
+  // ── polling ────────────────────────────────────────────────────────────
+
+  void _startPolling() {
+    _poll?.cancel();
+    _poll = Timer.periodic(_kPollInterval, (_) => unawaited(refresh()));
+    unawaited(refresh());
+  }
+
+  Future<void> refresh() async {
+    final config = state.config;
+    if (config == null) return;
+
+    final info = await _probe(config.rpcPort);
+    if (info == null) {
+      // Not answering yet is normal while it opens the database, which on a
+      // large one takes a while. Only an exited process is a failure, and
+      // that arrives through _onExit.
+      return;
+    }
+
+    if (state.phase == LocalNodePhase.starting) {
+      state = state.copyWith(phase: LocalNodePhase.running, clearError: true);
+    }
+    _applyInfo(info);
+    unawaited(_refreshDiskUsage());
+  }
+
+  void _applyInfo(Map<String, dynamic> info) {
+    final height = (info['height'] as num?)?.toInt() ?? 0;
+    final network = (info['network_height'] as num?)?.toInt() ?? 0;
+    final incoming = (info['incoming_connections_count'] as num?)?.toInt() ?? 0;
+    final outgoing = (info['outgoing_connections_count'] as num?)?.toInt() ?? 0;
+
+    state = state.copyWith(
+      height: height,
+      networkHeight: network,
+      peers: incoming + outgoing,
+      // Trust the daemon's own answer rather than comparing heights here: it
+      // is the same comparison, made where the numbers come from.
+      synced: info['synced'] as bool? ?? (height > 0 && height == network),
+      // Absent from /height, so only overwrite when /info actually answered.
+      reportedLiteStartHeight: (info['lite_start_height'] as num?)?.toInt(),
+    );
+  }
+
+  Future<void> _refreshDiskUsage() async {
+    final bytes = await LocalNodePaths.directorySize(LocalNodePaths.dataDir);
+    if (bytes != state.diskBytes) {
+      state = state.copyWith(diskBytes: bytes);
+    }
+  }
+
+  /// One `/info` call, falling back to `/height`.
+  ///
+  /// `/info` reads more of the core than `/height` does and can answer BUSY
+  /// while the chain is locked, which during a long initial sync would leave
+  /// the progress display frozen. `/height` reads two counters and always
+  /// answers, so it keeps the numbers moving.
+  Future<Map<String, dynamic>?> _probe(int port) async {
+    final info = await _get(port, '/info');
+    if (info != null && info['status'] == 'OK') return info;
+    return _get(port, '/height');
+  }
+
+  /// `/info` from the daemon on this config's port, but only if it is the one
+  /// this config describes. Returns null for an empty port and for a stranger
+  /// alike, so the caller cannot confuse the two with a running node of ours.
+  Future<Map<String, dynamic>?> _probeOurNode(LocalNodeConfig config) async {
+    final info = await _get(config.rpcPort, '/info');
+    if (info == null || info['status'] != 'OK') return null;
+    final reported = (info['lite_start_height'] as num?)?.toInt();
+    return reported == config.liteHeight ? info : null;
+  }
+
+  Future<Map<String, dynamic>?> _get(int port, String path) async {
+    try {
+      final request = await _http.get(kLocalNodeHost, port, path);
+      final response = await request.close().timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) {
+        await response.drain<void>();
+        return null;
+      }
+      final body = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(body);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether the port went quiet within [limit]. False means it timed out and
+  /// the daemon is still answering, which is the only case that earns a kill.
+  /// Polls until this config's own node answers, or [limit] runs out.
+  Future<Map<String, dynamic>?> _awaitOurNode(
+      LocalNodeConfig config, Duration limit) async {
+    final deadline = DateTime.now().add(limit);
+    while (DateTime.now().isBefore(deadline)) {
+      final info = await _probeOurNode(config);
+      if (info != null) return info;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return null;
+  }
+
+  Future<bool> _waitForPortToClose(int port, Duration limit) async {
+    final deadline = DateTime.now().add(limit);
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _get(port, '/height') == null) return true;
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    return false;
+  }
+
+  // ── process plumbing ───────────────────────────────────────────────────
+
+  void _drain(Stream<List<int>> stream) {
+    stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(_remember, onError: (_) {});
+  }
+
+  /// Keeps the last few lines of daemon output, which is what an operator is
+  /// shown when it fails to start or an import is refused.
+  void _remember(String line) {
+    _logTail.addLast(line);
+    while (_logTail.length > _kLogTailLines) {
+      _logTail.removeFirst();
+    }
+  }
+
+  void _onExit(int code) {
+    _poll?.cancel();
+    _poll = null;
+    _process = null;
+    unawaited(_clearPidFile());
+
+    // A stop() we asked for is not a failure. Anything else is the node
+    // falling over, and the log tail is the only explanation available.
+    if (_stopping ||
+        state.phase == LocalNodePhase.stopped ||
+        state.phase == LocalNodePhase.unconfigured) {
+      return;
+    }
+
+    state = state.copyWith(
+      phase: LocalNodePhase.failed,
+      synced: false,
+      error: _logTail.isEmpty
+          ? 'Node exited with code $code.'
+          : 'Node exited with code $code.\n\n${_logTail.join('\n')}',
+    );
+  }
+
+  /// Records whether the node should come back up on the next launch.
+  ///
+  /// Written through to disk so it survives the app, and mirrored into the
+  /// in-memory config so a later save does not undo it.
+  Future<void> _setAutoStart(bool autoStart) async {
+    final config = state.config;
+    if (config == null || config.autoStart == autoStart) return;
+    final updated = config.copyWith(autoStart: autoStart);
+    state = state.copyWith(config: updated);
+    try {
+      await writeLocalNodeConfig(updated);
+    } catch (_) {
+      // Losing the preference costs one click on the next launch.
+    }
+  }
+
+  Future<void> _writePidFile(int pid) async {
+    try {
+      await File(LocalNodePaths.pidPath).writeAsString('$pid');
+    } catch (_) {
+      // Adoption is a convenience; failing to record the pid is not fatal.
+    }
+  }
+
+  Future<int?> _readPidFile() async {
+    try {
+      final file = File(LocalNodePaths.pidPath);
+      if (!await file.exists()) return null;
+      return int.tryParse((await file.readAsString()).trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _clearPidFile() async {
+    try {
+      final file = File(LocalNodePaths.pidPath);
+      if (await file.exists()) await file.delete();
+    } catch (_) {
+      // Nothing depends on it being gone.
+    }
+  }
+
+  /// The last lines the daemon printed, for the failure panel.
+  String get logTail => _logTail.join('\n');
+}
+
+final localNodeProvider =
+    NotifierProvider<LocalNodeController, LocalNodeState>(
+        LocalNodeController.new);

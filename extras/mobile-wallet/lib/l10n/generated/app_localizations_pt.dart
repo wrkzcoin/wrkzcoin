@@ -780,4 +780,106 @@ class SPt extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamanho do anel reduzido para $actual (normalmente $normal). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nó leve';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Este nó só guarda blocos a partir de $height. Transações anteriores a esse bloco não podem ser encontradas através dele.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Este nó começa no bloco $nodeHeight, mas esta carteira começa no bloco $walletHeight. Tudo o que foi recebido entre os dois é invisível aqui, por isso o saldo apresentado pode estar baixo demais. Ligue-se a um nó com a cadeia completa para o ver.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Sincronização parada no bloco $wallet. Este nó não guarda nada abaixo do bloco $node, por isso os blocos intermédios não podem ser transferidos dele. O saldo fica incompleto até ligar um nó com a cadeia completa.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Este nó não consegue reanalisar tão atrás';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'O nó ligado é um nó leve sem dados de bloco abaixo de $height. Reanalisar a partir de um ponto mais baixo descartaria transações que esta carteira já encontrou, sem forma de as recuperar aqui. Nada foi alterado.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Reanalisar a partir de $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'O nó ligado só pode reanalisar a partir do bloco $height ou acima.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Fornece blocos a partir de';
+
+  @override
+  String get nodeFullChain => 'Cadeia completa';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Executar o nó no próprio telemóvel está planeado, mas ainda não está disponível — um nó precisa de vários GB de armazenamento e horas de sincronização. Até lá, aponte esta carteira para um nó seu.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronização parada';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronização parada no bloco $covered. O nó com que falava só responde a partir do bloco $servesFrom, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.';
+  }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transações';
+
+  @override
+  String get txPowServerUse => 'Usar um servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.';
+
+  @override
+  String get txPowServerSaved => 'Configurações do servidor PoW salvas';
+
+  @override
+  String get txPowServerInvalid => 'Informe um host e uma porta válidos';
+
+  @override
+  String get txPowServerTest => 'Testar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor acessível em $ms ms: $threads threads, $queue de $capacity vagas da fila em uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor inacessível: $error';
+  }
+
+  @override
+  String get nodeTest => 'Testar';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Acessível em $ms ms: altura $height, $peers pares';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Acessível em $ms ms, mas o nó ainda está sincronizando: altura $height de $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nó inacessível: $error';
+  }
 }

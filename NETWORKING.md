@@ -70,6 +70,7 @@ Wrkzd --rpc-bind-ipv6-address ::1 --rpc-use-ipv6
 | `--rpc-max-rpm` | `240` | Max RPC requests per minute per client IP. `0` disables rate limiting. |
 | `--rpc-max-global-index-range` | `5000` | Max block range for `get_global_indexes_for_range` |
 | `--rpc-max-block-count` | `100` | Max `blockCount` for wallet/raw-block sync RPC methods |
+| `--rpc-sync-cache-size` | `64` | Megabytes of finished wallet sync responses to keep, so wallets syncing past the same height are served from one build. `0` disables the cache |
 
 ---
 
@@ -96,9 +97,9 @@ rather than opening an unrestricted endpoint.
 | `Wrkzd` | `--rpc-ipc-mode` | `0600` | Octal permissions for the socket file |
 | `Wrkzd` | `--rpc-ipc-group` | *(empty)* | Group to own the socket file, for a `0660` shared setup |
 | `Wrkzd` | `--rpc-ipc-require-token` | `false` | Also demand `--rpc-access-token` from IPC callers |
-| `Wrkz-service` | `--bind-ipc-path` | *(empty)* | Serve JSON-RPC on this socket **instead of** the TCP port |
-| `Wrkz-service` | `--bind-ipc-mode` | `0600` | Octal permissions for the socket file |
-| `Wrkz-service` | `--bind-ipc-group` | *(empty)* | Group to own the socket file |
+| `wrkz-service` | `--bind-ipc-path` | *(empty)* | Serve JSON-RPC on this socket **instead of** the TCP port |
+| `wrkz-service` | `--bind-ipc-mode` | `0600` | Octal permissions for the socket file |
+| `wrkz-service` | `--bind-ipc-group` | *(empty)* | Group to own the socket file |
 | `wallet-api` | `--rpc-ipc-path` | *(empty)* | Also serve the API on this socket |
 | `wallet-api` | `--rpc-ipc-mode` | `0600` | Octal permissions for the socket file |
 | `wallet-api` | `--rpc-ipc-group` | *(empty)* | Group to own the socket file |
@@ -119,11 +120,48 @@ Wrkzd --rpc-ipc-path /run/wrkz/wrkzd.sock
 
 miner --daemon-address /run/wrkz/wrkzd.sock --address WRKZ...
 zedwallet++ --remote-daemon /run/wrkz/wrkzd.sock
-Wrkz-service --daemon-address /run/wrkz/wrkzd.sock --container-file w --container-password p
+wrkz-service --daemon-address /run/wrkz/wrkzd.sock --container-file w --container-password p
 ```
+
+A relative path has to be written as `ipc://./wrkzd.sock`, and is resolved against the
+client's working directory. Without the prefix it is indistinguishable from a hostname and
+is dialled as one.
 
 The daemon's own console uses the IPC socket automatically whenever one is bound, so
 `status`, `print_cn` and friends stop making loopback TCP connections to their own process.
+
+### Attaching a console
+
+A daemon run under a process manager - pm2, systemd, a container - has no terminal, so it
+runs with `--no-console` and its commands are out of reach. `attach` puts them back: it
+opens an interactive console against a daemon that is already running, over its IPC socket.
+Every line typed runs inside that daemon through the same command handler the local console
+uses, and whatever it prints comes back.
+
+```
+pm2 start Wrkzd -- --no-console --rpc-ipc-path /run/wrkz/wrkzd.sock
+Wrkzd attach /run/wrkz/wrkzd.sock
+```
+
+`Wrkzd --attach /run/wrkz/wrkzd.sock` is the same thing. The socket is the only endpoint
+accepted: console commands change log levels, ban peers, start compactions and stop the
+node, so they are served on the IPC socket alone, where the mode on the socket file decides
+who may connect, and never on a TCP listener with or without a token. Attach therefore runs
+as a user the socket admits, which by default means the daemon's own.
+
+Inside the console `exit` and `quit` leave the session and the daemon carries on. `stop`
+shuts the daemon down; it is the same command as the local console's `exit`, and exists
+under a second name so that leaving an attached session is never confused with stopping the
+node. Commands run one at a time across all consoles, local and attached, and a command
+that blocks - `compact_db wait` - holds its connection until it finishes.
+
+Under the hood this is one route, `POST /console` with `{"command": "..."}`, answering
+`{"output": "...", "status": "OK"}`. It is registered on the IPC listener only. Scripts can
+call it directly, or pipe commands into `attach`, which exits when its input ends.
+
+A daemon whose stdin is at end of file - what a process manager hands a daemon started
+without `--no-console` - no longer spins reading empty lines. It prints one notice and runs
+headless, as if `--no-console` had been given.
 
 ### Authentication
 
@@ -133,7 +171,7 @@ except an obligation to hand the secret to every local integration. Set
 `--rpc-ipc-require-token` to demand both. Rate limiting is skipped on IPC for the same
 reason it is skipped on loopback — the caller is neither anonymous nor remote.
 
-`wallet-api` and `Wrkz-service` still require their password on IPC. Those endpoints move
+`wallet-api` and `wrkz-service` still require their password on IPC. Those endpoints move
 money, and silently dropping an authentication step that was previously unconditional is
 not a change worth making by default.
 
@@ -154,7 +192,7 @@ Wrkzd --rpc-ipc-path /run/wrkz/wrkzd.sock --rpc-ipc-mode 0660 --rpc-ipc-group wr
 Wallet service with no TCP port at all, talking to the daemon over IPC as well:
 
 ```
-Wrkz-service --bind-ipc-path /run/wrkz/service.sock \
+wrkz-service --bind-ipc-path /run/wrkz/service.sock \
              --daemon-address /run/wrkz/wrkzd.sock \
              --container-file wallet --container-password hunter2
 ```
@@ -176,7 +214,7 @@ Wrkzd --zmq-pub ipc:///run/wrkz/wrkzd.zmq
 - **The socket file is unlinked on shutdown.**
 - **A failed IPC bind is not fatal for the daemon or wallet-api** — it warns and keeps
   serving on the TCP listeners, matching how an IPv6 bind failure is handled. For
-  `Wrkz-service`, where IPC replaces the TCP port, a failed bind stops startup.
+  `wrkz-service`, where IPC replaces the TCP port, a failed bind stops startup.
 - Socket paths are limited to 107 bytes by the kernel, not by us.
 
 ---
@@ -207,7 +245,7 @@ Monero-style push hooks. Each flag takes **either** an `http://` / `https://` UR
 
 All three are also accepted in the daemon config file (`block-notify`, `reorg-notify`, `tx-notify`, `notify-during-sync`).
 
-### Wallet service (`Wrkz-service`)
+### Wallet service (`wrkz-service`)
 
 | Flag | Fires on | Placeholders |
 |------|----------|--------------|
@@ -231,7 +269,7 @@ JSON body as for the wallet service plus `"isCoinbase":bool`; `confirmed` is alw
 ```
 # built-in webhook (no external tools needed)
 Wrkzd --block-notify https://example.com/hooks/wrkz-block
-Wrkz-service ... --tx-notify http://127.0.0.1:9000/tx --tx-confirmed-notify http://127.0.0.1:9000/tx-confirmed
+wrkz-service ... --tx-notify http://127.0.0.1:9000/tx --tx-confirmed-notify http://127.0.0.1:9000/tx-confirmed
 
 # Monero-compatible command form
 Wrkzd --block-notify "/usr/local/bin/on-block.sh %s"
@@ -290,9 +328,27 @@ Multiple `--add-peer`, `--add-priority-node`, `--add-exclusive-node`, and `--see
 
 ## Seed Nodes & DNS Seeds
 
-Static seed nodes are compiled in (`CryptoNoteConfig.h → SEED_NODES`). DNS-based seeds (`DNS_SEED_NODES`) are resolved at startup using `IpResolver::resolveAll()` which queries **both A and AAAA records**. IPv4 results are added to the IPv4 seed list; IPv6 results are added to a separate IPv6 seed list. The daemon bootstraps from either or both, whichever respond first.
+Static seed nodes are compiled in (`CryptoNoteConfig.h → SEED_NODES`). DNS-based seeds (`DNS_SEED_NODES`) are resolved using `IpResolver::resolveAll()` which queries **both A and AAAA records**. IPv4 results are added to the IPv4 seed list; IPv6 results are added to a separate IPv6 seed list. The daemon bootstraps from either or both, whichever respond first. `--seed-node` entries join the same list.
 
 To publish IPv6 seed nodes, simply add AAAA records to the seed hostnames in your DNS zone — no daemon configuration changes are needed.
+
+### When the seeds are asked
+
+A seed is only ever asked for its peer list (the connection is closed again afterwards). The daemon asks in two situations:
+
+- **Nothing known yet** — the white lists are empty (first start, or after `--p2p-reset-peerstate`).
+- **Stuck** — a connection-maker round could not dial anybody new *and* fewer than `P2P_SEED_RETRY_OUT_PEERS_FLOOR` (3) outgoing connections are up. This is what recovers a node whose saved peer list has gone stale, for instance after a long time offline.
+
+Both cases share one rate limit, `P2P_SEED_RETRY_INTERVAL_SECONDS` (5 minutes), so seeds that are down get one walk per interval instead of one per round.
+
+Seed hostnames are looked up again on a helper thread after `P2P_SEED_RERESOLVE_INTERVAL_SECONDS` (1 hour), or at the next seed round while the lookup has produced nothing (DNS not up yet at boot). A lookup that fails keeps the previously resolved addresses.
+
+### Keeping the peer lists honest
+
+- An address that refused or timed out is left alone for `P2P_FAILED_PEER_FORGET_SECONDS` (10 minutes) instead of being retried every round.
+- Once a minute one random gray-list peer is dialled for its peer list (`P2P_GRAY_PEERLIST_HOUSEKEEPING_INTERVAL`): if it answers it moves to the white list, if not it is dropped, so addresses that peers keep relaying to each other get verified.
+- A peer list received in a handshake or timed sync is cut to `P2P_DEFAULT_PEERS_IN_HANDSHAKE` (250) entries, the same number the daemon sends.
+- After `P2P_NO_PEERS_WARNING_SECONDS` (2 minutes) without any connection the daemon logs a WARNING with the known-peer and seed counts. `/info` reports `seed_nodes_count` and `last_seed_bootstrap` (unix time, 0 = never).
 
 ---
 
@@ -305,6 +361,9 @@ To publish IPv6 seed nodes, simply add AAAA records to the seed hostnames in you
 | `--db-read-buffer-size` | `256` | RocksDB read cache size in MB |
 | `--db-write-buffer-size` | `64` | RocksDB write buffer size in MB |
 | `--db-threads` | `8` | RocksDB background compaction/flush threads |
+| `--db-compression-level` | `0` | ZSTD level for the bottommost level; `0` uses RocksDB's default of 3. Higher compresses harder at the same read speed, paying only in compaction time |
+| `--db-row-cache-percent` | `0` | Share of the read buffer given to the row cache; `0` uses the built-in eighth. A row-cache hit skips block decompression entirely |
+| `--db-bottom-filters` | `false` | Keep bloom filters on the bottommost level. Costs space, but spent key image checks are lookups meant to miss, and without filters each one reads and decompresses a block |
 | `--skip-boot-compaction` | `false` | Skip the automatic DB compaction check at startup |
 
 ---
@@ -378,7 +437,7 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 - **wallet-api IPv6** — `--rpc-bind-ipv6-address` + `--rpc-use-ipv6` start a second API listener on the IPv6 address.
 - **HttpClient IPv6** — `NodeRpcProxy` (used by wallet-service and walletd) resolves hostnames using AF_UNSPEC (`IpResolver`), so it can connect to an IPv6 daemon when the address resolves to AAAA.
 - **HttpServer IPv6** — wallet-service JSON-RPC can bind to an IPv6 address by passing `::1` or `::` as `--bind-address`.
-- **Local IPC sockets** — `--rpc-ipc-path` (daemon, wallet-api) and `--bind-ipc-path` (wallet service) serve HTTP over an AF_UNIX socket whose file mode decides who may connect. Off unless a path is given; POSIX only. Clients reach one by passing the path as the daemon address, which also covers `Wrkz-service` — daemon and the daemon's own console.
+- **Local IPC sockets** — `--rpc-ipc-path` (daemon, wallet-api) and `--bind-ipc-path` (wallet service) serve HTTP over an AF_UNIX socket whose file mode decides who may connect. Off unless a path is given; POSIX only. Clients reach one by passing the path as the daemon address, which also covers `wrkz-service` — daemon and the daemon's own console.
 - **zedwallet++ `--remote-daemon` IPv6** — bracket notation `[2001:db8::1]:17856` is accepted anywhere a daemon address is parsed (zedwallet++, miner, walletd).
 
 ### Known Limitations
@@ -386,4 +445,5 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 - **IPv6 duplicate-connection detection** — `is_peer_used6()` deduplicates by peer ID only, not by IP. Duplicate attempts gracefully fail at handshake level.
 - **IPC on Windows** — not supported. AF_UNIX exists there, but the socket file carries no permissions the OS enforces and there is no `SO_PEERCRED`, so the flags are ignored with a warning rather than opening an endpoint nobody can restrict.
 - **P2P over IPC** — not offered. A local socket cannot carry a peer-to-peer network.
+- **Console commands over TCP** — not offered. `attach` and the `/console` route exist on the IPC socket only; see "Attaching a console".
 - **`--add-peer` / `--add-priority-node` / `--add-exclusive-node`** — these CLI flags only accept IPv4 addresses. IPv6 literal support requires updating `parsePeerFromString()` in `NetNodeConfig.cpp`.

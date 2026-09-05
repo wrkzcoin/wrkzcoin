@@ -75,7 +75,10 @@
       window.dispatchEvent(new Event('walletBridgeReady'));
     }).catch((err) => {
       console.error('Failed to load WASM wallet module:', err);
-      window.walletBridgeError = err.message;
+      // Always a string: a rejection is not necessarily an Error, and leaving
+      // this undefined is what made a failed boot indistinguishable from a
+      // slow one on the Dart side.
+      window.walletBridgeError = _extractJsError(err);
     });
   </script>
 </head>

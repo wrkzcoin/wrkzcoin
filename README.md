@@ -11,7 +11,10 @@
     <li><a href="#node-system-requirements">Node System Requirements</a></li>
     <li><a href="#build-from-source">Build from Source</a></li>
     <li><a href="#getting-started-fast">Getting Started Fast</a></li>
+    <li><a href="#lite-node--snapshots">Lite Node &amp; Snapshots</a></li>
     <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
+    <li><a href="#daemon-zmq-quick-test">Daemon ZMQ (Quick Test)</a></li>
+    <li><a href="#notification-hooks-monero-style---block-notify----tx-notify">Notification Hooks</a></li>
     <li><a href="#a-note-for-contributing-developers">A note for contributing developers</a></li>
     <li><a href="#contributing-projects">Contributing Projects</a></li>
     <li><a href="#our-discord">Our Discord</a></li>
@@ -62,13 +65,27 @@ Build instructions are maintained in:
 
 - [COMPILE.md](COMPILE.md)
 - [Cross-platform build guide](scripts/cross-platform/README.md)
+- [Docker release builds](scripts/docker/README.md) - one command builds and packages the Linux, Windows and Android CLI sets
 
 ### Getting Started Fast
 
 Everyone starts somewhere. If you're new or returning, you'll probably want to get in sync with the network so you can use your funds. Syncing from your own node is faster than syncing from a remote node. Here are some handy links to get you there as soon as possible.
 
--   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://checkpoints.wrkz.work/) or via [Direct link](https://checkpoints.wrkz.work/checkpoints.csv) 
+-   **Use checkpoints** - Checkpoints help your node sync faster, [WrkzCoin Checkpoints](https://checkpoints.wrkz.work/) or via [Direct link](https://checkpoints.wrkz.work/checkpoints.csv), or generate your own from a synced daemon with [`scripts/checkpoints/gen_checkpoints.sh`](scripts/checkpoints/gen_checkpoints.sh)
 -   **Backup your keys** - You can generate a wallet right inside the software, or use [this paper wallet generator](https://paperwallet.wrkz.work)
+
+### Lite Node & Snapshots
+
+- A **lite node** (`--lite --lite-height H`) keeps full block data only from height `H` upward and just the indexes below it, cutting disk use to a fraction of a full node's. [LITENODE.md](LITENODE.md) explains what it serves and what it cannot.
+- A **snapshot** bootstraps that index region from a file instead of syncing it. [LITESNAPSHOT.md](LITESNAPSHOT.md) covers producing, checking and importing one.
+
+### Solo Mining
+
+- The daemon serves stratum directly (`--stratum-bind-port`), so a stock miner points straight at the node with no pool and no bridge. [MINING.md](MINING.md) covers the flags, why `xmrig --daemon` cannot mine here, and what the node logs.
+
+### Transaction PoW Server
+
+- Every transaction carries a small proof of work. `wrkz-txpow-server` computes it on behalf of wallets that would rather not spend their own CPU on it, such as phones and browsers; the desktop, mobile and web wallets have a setting for it and fall back to their own CPU when the server does not answer. [TXPOWSERVER.md](TXPOWSERVER.md) covers running it and the protocol.
 
 ### Daemon DB Compaction
 
@@ -89,7 +106,7 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 
 ### Notification Hooks (Monero-style `--block-notify` / `--tx-notify`)
 
-- Daemon: `--block-notify`, `--reorg-notify`, `--tx-notify`; wallets: `--tx-notify` (`Wrkz-service` also `--tx-confirmed-notify`).
+- Daemon: `--block-notify`, `--reorg-notify`, `--tx-notify`; wallets: `--tx-notify` (`wrkz-service` also `--tx-confirmed-notify`).
 - Each takes an `http(s)://` URL (JSON POST) or a command template (`%s` hash, `%h` height, ...), e.g.
   - `Wrkzd --block-notify https://example.com/hooks/block`
   - `Wrkzd --block-notify "curl -s -X POST https://example.com/hook -d hash=%s -d height=%h"`
