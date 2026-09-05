@@ -830,9 +830,15 @@ main() {
   local pkg extra sums="$OUT_DIR/SHA256SUMS-$VERSION.txt"
   shopt -s nullglob
   local pkgs=("$OUT_DIR/$PKG_PREFIX-"*"-$VERSION.tar.gz" "$OUT_DIR/$PKG_PREFIX-"*"-$VERSION.zip")
-  shopt -u nullglob
   # Application packages carry their own pubspec version, so they cannot be
-  # globbed by $VERSION; take the ones this run recorded.
+  # globbed by $VERSION - match them on the prefix instead. Globbing them,
+  # rather than trusting $PACKAGE_LIST alone, is what keeps a package an
+  # earlier run produced in the checksum file: the list is truncated every
+  # run, so a run that built only "mobile" used to drop the "web" line it
+  # found there.
+  pkgs+=("$OUT_DIR/$APP_PKG_PREFIX-"*.tar.gz "$OUT_DIR/$APP_PKG_PREFIX-"*.apk "$OUT_DIR/$APP_PKG_PREFIX-"*.aab)
+  shopt -u nullglob
+  # ... plus anything else this run recorded that those globs did not catch.
   if [ -s "$PACKAGE_LIST" ]; then
     while read -r extra; do
       [ -f "$extra" ] || continue
