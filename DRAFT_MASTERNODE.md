@@ -3,7 +3,7 @@
 > **Status:** DRAFT — implementation under review on branch `test-mnodes-v2`; pending testnet soak and mainnet fork activation.
 > Fork activation heights are configured in `src/config/CryptoNoteConfig.h` and advertised through `FORK_HEIGHTS[]`.
 >
-> **Revision note (Aug 2026):** fork heights moved to 5,000,000 / 5,200,000; Register payload is now **v4**
+> **Revision note (Sep 2026):** fork heights moved to 4,800,000 / 5,000,000; Register payload is now **v4**
 > (carries the payout *view* key and a dedicated *operator* key for heartbeats); every other signed payload
 > carries a creation **height** (anti-replay); the masternode reward output is a standard one-time stealth
 > output derived from a deterministic coinbase tx key; ChainLock/InstantSend messages are validated against the
@@ -132,8 +132,8 @@ The masternode feature activates in two stages to give operators time to registe
 
 | Fork | Config Constant | Height | `FORK_HEIGHTS[]` index | Approximate Date* |
 |------|----------------|--------|------------------------|-------------------|
-| Feature fork | `MASTERNODE_FEATURE_FORK_HEIGHT` | 5,000,000 | 22 | ~March 2028 |
-| Reward fork | `MASTERNODE_REWARD_FORK_HEIGHT` | 5,200,000 (Feature + 200,000 blocks ≈ 139 days) | 23 | ~July 2028 |
+| Feature fork | `MASTERNODE_FEATURE_FORK_HEIGHT` | 4,800,000 | 22 | ~October 2027 |
+| Reward fork | `MASTERNODE_REWARD_FORK_HEIGHT` | 5,000,000 (Feature + 200,000 blocks ≈ 139 days) | 23 | ~March 2028 |
 
 \* Estimated from height 3,925,097 on 2026‑02‑17 at 1,440 blocks/day; re-check against a live `/getinfo` before announcing.
 
@@ -141,13 +141,13 @@ Both heights are also entries in `FORK_HEIGHTS[]` (and `SOFTWARE_SUPPORTED_FORK_
 `/getinfo` → `upgrade_heights` / `supported_height` and the daemon `status` fork countdown warn operators of
 old software before each fork. A `static_assert` in `CryptoNoteConfig.h` keeps the two places in sync.
 
-**Stage 1 — Feature fork (height 5,000,000):**
+**Stage 1 — Feature fork (height 4,800,000):**
 - Masternode Register, Activate, Deactivate, Penalize, Revoke, Heartbeat, Attest, and UpdateEndpoint transactions are accepted into blocks.
 - State tracking begins. Health samples accumulate.
 - ChainLock and InstantSend services activate (masternodes with `--mn-signing-key` begin signing).
 - No reward split yet — 100% of block reward goes to PoW miner.
 
-**Stage 2 — Reward fork (height 5,200,000, ~139 days after Feature fork):**
+**Stage 2 — Reward fork (height 5,000,000, ~139 days after Feature fork):**
 - 40% of block reward distributed to the selected masternode winner, **but only while at least
   `MASTERNODE_MIN_ELIGIBLE_FOR_REWARD_SPLIT` (20) masternodes are reward-eligible**; otherwise 100% stays with the miner.
 - 60% of block reward goes to PoW miner.
@@ -1062,8 +1062,8 @@ Returns the InstantSend lock status for a transaction.
   "masternode_eligible_count": 12,
   "masternode_set_hash": "aabbcc...",
   "masternode_reward_winner": "mnid_hex_or_empty_string",
-  "upgrade_heights": [ "...", 4500000, 5000000, 5200000 ],
-  "supported_height": 5200000
+  "upgrade_heights": [ "...", 4500000, 4800000, 5000000 ],
+  "supported_height": 5000000
 }
 ```
 
@@ -1271,8 +1271,8 @@ Edit `src/config/CryptoNoteConfig.h` to change any parameter. Requires recompila
 ```cpp
 // Fork activation heights (both also listed in FORK_HEIGHTS[] as indices 22 / 23,
 // SOFTWARE_SUPPORTED_FORK_INDEX = 23; static_asserts keep them in sync)
-const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 5000000;
-const uint64_t MASTERNODE_REWARD_FORK_HEIGHT  = 5200000;
+const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 4800000;
+const uint64_t MASTERNODE_REWARD_FORK_HEIGHT  = 5000000;
 
 // Unlock-time V3 (min unlock 15 -> 3 blocks): DEFERRED, 0 = not scheduled
 const uint64_t UNLOCK_TIME_HEIGHT_V3 = 0;

@@ -296,14 +296,14 @@ namespace CryptoNote
         /* Masternode rollout fork heights. Set MASTERNODE_FEATURE_FORK_HEIGHT to 0 to keep the
          * feature disabled until configured.
          *
-         * Feature fork (5,000,000): MN transactions accepted, state tracking + ChainLock/InstantSend start.
-         * Reward fork  (5,200,000): 70/30 reward split activates (~200,000 blocks ≈ 139 days later, giving
+         * Feature fork (4,800,000): MN transactions accepted, state tracking + ChainLock/InstantSend start.
+         * Reward fork  (5,000,000): the MASTERNODE_REWARD_PERCENT split activates (~200,000 blocks ≈ 139 days later, giving
          *                           operators time to register/activate and quorums time to form).
          *
          * Both heights MUST also appear in FORK_HEIGHTS[] below so that /getinfo upgrade_heights and the
          * daemon fork countdown advertise them to older software. */
-        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 5000000;
-        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = 5200000;
+        const uint64_t MASTERNODE_FEATURE_FORK_HEIGHT = 4800000;
+        const uint64_t MASTERNODE_REWARD_FORK_HEIGHT = 5000000;
 
         /* Signed masternode payloads (heartbeat, attest, activate/deactivate/penalize/revoke,
          * update-endpoint) embed the block height they were created at. A payload is only valid if
@@ -572,8 +572,8 @@ namespace CryptoNote
             3800000,  // 19
             4300000,  // 20
             4500000,  // 21 prune capability + mixed full/pruned sync policy activation
-            5000000,  // 22 masternode feature fork (MASTERNODE_FEATURE_FORK_HEIGHT)
-            5200000,  // 23 masternode reward fork (MASTERNODE_REWARD_FORK_HEIGHT)
+            4800000,  // 22 masternode feature fork (MASTERNODE_FEATURE_FORK_HEIGHT)
+            5000000,  // 23 masternode reward fork (MASTERNODE_REWARD_FORK_HEIGHT)
         };
 
         /* MAKE SURE TO UPDATE THIS VALUE WITH EVERY MAJOR RELEASE BEFORE A FORK */
