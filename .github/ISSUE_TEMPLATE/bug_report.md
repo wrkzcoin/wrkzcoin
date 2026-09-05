@@ -18,16 +18,15 @@ about: Create a report to help us improve
 
 ### WrkzCoin Build Information
 
-**Version:** <!-- please indicate the full build number ex. v0.2.13.67 -->
+**Version:** <!-- as printed by `Wrkzd --version`, ex. v0.4.8.280 -->
 **Binary Source:** <!-- please indicate if you compiled the binaries yourself or if you are using pre-compiled binaries please link to the source of those binaries  -->
 **If self compiled, please provide all the build commands you used**
 
 ```
 Please insert your build commands here. Example:
 
-mkdir build && cd build
-cmake ..
-make -j4
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 **If self compiled, please provide of your WrkzCoin CMake output at the default verbosity**:
@@ -38,7 +37,7 @@ Please insert your default verbosity CMake output here
 
 ### Issue Report
 
-**Binary Reported:** <!-- does this issue affect zedwallet, Wrkzd, wrkz-service, miner? -->
+**Binary Reported:** <!-- does this issue affect Wrkzd, wrkz-wallet, wrkz-wallet-api, wrkz-service, miner, or one of the wallet apps under extras/? -->
 
 #### Expected Behavior
 

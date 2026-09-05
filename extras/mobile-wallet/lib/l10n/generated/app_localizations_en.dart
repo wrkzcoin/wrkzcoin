@@ -772,4 +772,106 @@ class SEn extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ring size reduced to $actual (normally $normal). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Lite node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'This node only holds blocks from $height onward. Transactions before that block cannot be found through it.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'This node starts at block $nodeHeight, but this wallet starts at block $walletHeight. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Sync stopped at block $wallet. This node holds nothing below block $node, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'This node cannot rescan that far back';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'The connected node is a lite node holding no block data below $height. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Rescan from $height instead';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'The connected node can only rescan from block $height or above.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Serves blocks from';
+
+  @override
+  String get nodeFullChain => 'Full chain';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Running the node on the phone itself is planned, but not available yet — a node needs several GB of storage and hours of syncing. Until then, point this wallet at a node you run yourself.';
+
+  @override
+  String get syncStoppedTitle => 'Sync stopped';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sync stopped at block $covered. The node it was talking to answers only from block $servesFrom upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.';
+  }
+
+  @override
+  String get txPowServerSection => 'Transaction PoW Server';
+
+  @override
+  String get txPowServerUse => 'Use an external PoW server';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.';
+
+  @override
+  String get txPowServerSaved => 'PoW server settings saved';
+
+  @override
+  String get txPowServerInvalid => 'Enter a valid host and port';
+
+  @override
+  String get txPowServerTest => 'Test';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server not reachable: $error';
+  }
+
+  @override
+  String get nodeTest => 'Test';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Reachable in $ms ms: height $height, $peers peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Node not reachable: $error';
+  }
 }

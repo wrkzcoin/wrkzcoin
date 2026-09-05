@@ -73,6 +73,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       final address = await ffi.getPrimaryAddress();
       final seed = await ffi.getMnemonicSeed();
       final keys = await ffi.getSpendKeysJson(address);
@@ -107,6 +108,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
@@ -133,6 +135,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');
@@ -160,6 +163,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
       );
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
       await storePasswordVerifier(_passCtrl.text);
       ref.read(walletOpenProvider.notifier).state = true;
       if (mounted) context.go('/overview');

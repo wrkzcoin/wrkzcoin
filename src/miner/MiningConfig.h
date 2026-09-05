@@ -33,6 +33,19 @@ namespace CryptoNote
 
         size_t blocksLimit;
 
+        /* Seconds between hash rate reports. 0 turns the reporter off. */
+        size_t hashRateInterval;
+
+        /* Seconds to hash locally and then exit, without needing a daemon.
+           0 means mine normally. */
+        size_t benchmarkSeconds;
+
+        /* Connect, read and write timeout for daemon requests, in seconds. */
+        size_t daemonTimeout;
+
+        /* Seconds to wait before asking an unreachable daemon again. */
+        size_t retryInterval;
+
         uint64_t firstBlockTimestamp;
 
         int64_t blockTimestampInterval;

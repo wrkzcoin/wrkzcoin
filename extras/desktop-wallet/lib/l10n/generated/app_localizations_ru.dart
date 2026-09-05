@@ -427,7 +427,7 @@ class SRu extends S {
   String get continueButton => 'Продолжить';
 
   @override
-  String get browse => 'Обзор';
+  String get browse => 'Обзор…';
 
   @override
   String get backupWarning =>
@@ -816,5 +816,306 @@ class SRu extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
+  }
+
+  @override
+  String get liteNodeTitle => 'Облегчённый узел';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Этот узел хранит блоки только начиная с $height. Транзакции до этого блока через него найти невозможно.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Этот узел начинается с блока $nodeHeight, а кошелёк — с блока $walletHeight. Всё полученное между ними здесь не видно, поэтому показанный баланс может быть занижен. Подключитесь к узлу с полной цепочкой, чтобы увидеть его.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Синхронизация остановлена на блоке $wallet. Этот узел не хранит ничего ниже блока $node, поэтому промежуточные блоки с него не скачать. Баланс останется неполным, пока вы не подключите узел с полной цепочкой.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Этот узел не может пересканировать так далеко назад';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Подключённый узел — облегчённый и не хранит данные блоков ниже $height. Пересканирование с меньшей высоты отбросит уже найденные кошельком транзакции, и найти их здесь снова будет невозможно. Ничего не изменено.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Пересканировать с $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Подключённый узел может пересканировать только с блока $height и выше.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Отдаёт блоки с';
+
+  @override
+  String get nodeFullChain => 'Полная цепочка';
+
+  @override
+  String get sectionLocalNode => 'Локальный облегчённый узел';
+
+  @override
+  String get localNodeDescription =>
+      'Запустите узел на этом компьютере и синхронизируйтесь с ним вместо удалённого сервера. Облегчённый узел хранит только то, что нужно кошельку, но всё равно один раз скачивает всю цепочку.';
+
+  @override
+  String get localNodeSetUp => 'Настроить локальный узел';
+
+  @override
+  String get localNodeStart => 'Запустить';
+
+  @override
+  String get localNodeStop => 'Остановить';
+
+  @override
+  String get localNodeUse => 'Использовать этот узел';
+
+  @override
+  String get localNodeDelete => 'Удалить данные узла';
+
+  @override
+  String get localNodeStateStopped => 'Остановлен';
+
+  @override
+  String get localNodeStateStarting => 'Запускается';
+
+  @override
+  String get localNodeStateSyncing => 'Синхронизация';
+
+  @override
+  String get localNodeStateReady => 'Синхронизирован';
+
+  @override
+  String get localNodeStateFailed => 'Ошибка';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Блок $height из $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count пиров';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'Локальный узел ещё догоняет сеть и пока не может обслуживать кошелёк. Он продолжает синхронизацию в фоне — оставайтесь на удалённом узле, пока он не будет готов, затем переключитесь.';
+
+  @override
+  String get localNodeInUse => 'Кошелёк подключён к этому узлу.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name не найден. Поместите исполняемый файл демона рядом с приложением кошелька или в папку «sidecar» рядом с ним и попробуйте снова.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Настройка локального облегчённого узла';
+
+  @override
+  String get localNodeSetupCost =>
+      'Перед началом:\n• Около 6 ГБ на диске, и вся цепочка скачивается один раз.\n• Первая синхронизация занимает часы. Она идёт в фоне, и пока можно пользоваться удалённым узлом.\n• Начальная высота ниже задаётся навсегда. Чтобы изменить её потом, придётся удалить узел и синхронизировать всё заново.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Начальная высота';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Блоки ниже этой высоты скачиваются и проверяются, но сохраняется только индекс, нужный последующим блокам. Задайте её не выше начальной высоты этого кошелька ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Выше начальной высоты этого кошелька ($height). Узел никогда не сможет показать его более старые транзакции.';
+  }
+
+  @override
+  String get localNodeCreate => 'Создать узел';
+
+  @override
+  String get localNodeDeleteTitle => 'Удалить данные локального узла?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'Это остановит узел и безвозвратно удалит его базу данных цепочки с диска. Кошелёк, его seed-фраза и средства не затрагиваются, но новый локальный узел начнёт синхронизацию с нуля, а это часы.';
+
+  @override
+  String get localNodeDeleted => 'Локальный узел удалён.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size на диске';
+  }
+
+  @override
+  String get nodePresetRemote => 'Удалённый узел';
+
+  @override
+  String get nodePresetLocal => 'Локальный облегчённый узел';
+
+  @override
+  String get savingWallet => 'Сохранение кошелька…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON записывает кошелёк на диск. На большом кошельке это может занять некоторое время.';
+
+  @override
+  String get shutdownTakingLong =>
+      'Это занимает больше времени, чем ожидалось. Выход сейчас отменит это сохранение — файл кошелька на диске останется прежним, ничего не испортится, но всё после последнего сохранения пропадёт.';
+
+  @override
+  String get quitAnyway => 'Всё равно выйти';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON продолжает работать в системном трее. Нажмите на значок, чтобы вернуть окно, или нажмите правой кнопкой и выберите «Выход».';
+
+  @override
+  String get localNodeDataFolder => 'Папка данных';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Сюда будет записано около 6 ГБ. Выберите диск с достаточным местом.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'В этой папке уже есть другие файлы. Выберите пустую или новую папку.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Укажите высоту, с которой хранить полные блоки. Она должна быть больше нуля — лайт-узел не может начинаться с генезис-блока.';
+
+  @override
+  String get nodeExitTitle => 'Локальный узел всё ещё работает';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Первая синхронизация не завершена. Она занимает часы и идёт только пока узел запущен — но оставленный работать узел продолжает использовать диск и сеть после закрытия PLUTON.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Он на уровне сети. Если оставить его работать, он таким и останется и продолжит тратить процессор, трафик и диск, пока PLUTON закрыт; если остановить — в следующий раз потребуется короткое догоняние.';
+
+  @override
+  String get nodeExitKeep => 'Оставить работать';
+
+  @override
+  String get nodeExitStop => 'Остановить';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Можно изменить позже в Настройках, в разделе Локальный лайт-узел.';
+
+  @override
+  String get rememberMyChoice => 'Запомнить выбор';
+
+  @override
+  String get shutdownStoppingNode => 'Остановка локального узла…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Даём ему сбросить базу на диск, чтобы следующий запуск не переигрывал журнал записи.';
+
+  @override
+  String get nodeExitPolicyLabel => 'При закрытии кошелька';
+
+  @override
+  String get nodeExitPolicyAsk => 'Спрашивать';
+
+  @override
+  String get nodeExitPolicyKeep => 'Оставлять узел работать';
+
+  @override
+  String get nodeExitPolicyStop => 'Останавливать узел';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Локальный лайт-узел продолжает работать в фоне. Откройте PLUTON, чтобы его остановить.';
+
+  @override
+  String get syncStoppedTitle => 'Синхронизация остановлена';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Синхронизация остановлена на блоке $covered. Узел, с которым шёл обмен, отвечает только начиная с блока $servesFrom, поэтому блоки между ними с него не скачать. Баланс неполный, пока вы не подключите узел с полной цепочкой.';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => 'Этот узел не готов';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Локальный узел отстаёт от сети ещё на $behind блоков. Если переключить кошелёк на него сейчас, синхронизация встанет до его догона, а баланс будет без всего, чего он ещё не достиг — и ничто на экране этого не объяснит. Остаться на удалённом узле ничего не стоит: узел в любом случае продолжает синхронизацию.';
+  }
+
+  @override
+  String get switchAnyway => 'Всё равно переключить';
+
+  @override
+  String get switchToRemoteNode => 'Переключиться на удалённый узел';
+
+  @override
+  String get nodeWillServeFromLabel => 'Будет отдавать блоки с';
+
+  @override
+  String get txPowServerSection => 'PoW-сервер транзакций';
+
+  @override
+  String get txPowServerUse => 'Использовать внешний PoW-сервер';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Отправлять proof of work транзакции на сервер вместо вычисления на этом устройстве. Если сервер не отвечает, используется процессор этого устройства.';
+
+  @override
+  String get txPowServerSaved => 'Настройки PoW-сервера сохранены';
+
+  @override
+  String get txPowServerInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String get txPowServerTest => 'Проверить';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Сервер доступен за $ms мс: потоков $threads, занято $queue из $capacity мест в очереди';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Сервер недоступен: $error';
+  }
+
+  @override
+  String get nodeTest => 'Проверить';
+
+  @override
+  String get nodeInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Доступна за $ms мс: высота $height, пиров $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Доступна за $ms мс, но нода ещё синхронизируется: высота $height из $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Нода недоступна: $error';
   }
 }

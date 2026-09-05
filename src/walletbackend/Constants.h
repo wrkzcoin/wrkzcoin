@@ -38,6 +38,18 @@ namespace Constants
     /* How large should the m_lastKnownBlockHashes container be */
     const size_t LAST_KNOWN_BLOCK_HASHES_SIZE = 50;
 
+    /* How many times running a daemon may answer from higher up the chain than
+       the block we asked for, without declaring a lite start height that
+       explains it, before sync is stopped and the user told their balance is
+       incomplete.
+
+       Not one. A reorg at the tip produces exactly this symptom and is over by
+       the next request, and stopping a wallet dead over a single block is out
+       of all proportion to what one block means. A daemon that genuinely
+       cannot serve the range keeps answering the same way, so it still gets
+       caught - three attempts later. */
+    const uint64_t UNEXPLAINED_SYNC_START_LIMIT = 3;
+
     /* Save a block hash checkpoint every BLOCK_HASH_CHECKPOINTS_INTERVAL
        blocks */
     const uint32_t BLOCK_HASH_CHECKPOINTS_INTERVAL = 5000;

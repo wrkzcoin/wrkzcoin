@@ -6,6 +6,7 @@ import '../../core/config/app_config.dart';
 import '../../core/ffi/wallet_web.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/providers.dart';
+import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/copy_button.dart';
@@ -40,7 +41,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   String? _selectedWallet;    // currently selected wallet in the dropdown
 
   // Form fields — on web, wallet "filename" is just a logical name stored in IndexedDB
+  //
+  // _fileCtrl names a NEW wallet (create / import). The Open form deliberately
+  // does not share it: it used to, and _loadSavedWallets() overwrote it with
+  // the first saved wallet's name. Backing out of Open and going to Import
+  // then arrived with someone else's wallet name already in the field, and
+  // submitting that overwrote their existing wallet.
   final _fileCtrl = TextEditingController(text: 'my_wallet');
+  // Free-typed name for the Open form, used only when nothing is saved yet.
+  final _openFileCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _passConfirmCtrl = TextEditingController();
   final _daemonHostCtrl = TextEditingController(text: kDefaultDaemonHost);
@@ -53,10 +62,32 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   @override
   void dispose() {
     for (final c in [
-      _fileCtrl, _passCtrl, _passConfirmCtrl, _daemonHostCtrl, _daemonPortCtrl,
+      _fileCtrl, _openFileCtrl, _passCtrl, _passConfirmCtrl,
+      _daemonHostCtrl, _daemonPortCtrl,
       _viewKeyCtrl, _spendKeyCtrl, _seedCtrl, _scanHeightCtrl,
     ]) { c.dispose(); }
     super.dispose();
+  }
+
+  /// The wallet the Open form should open: the dropdown selection when there
+  /// are saved wallets, otherwise the free-typed name.
+  String get _openWalletName {
+    final selected = _selectedWallet?.trim() ?? '';
+    if (selected.isNotEmpty) return selected;
+    return _openFileCtrl.text.trim();
+  }
+
+  /// Everything that has to happen once a wallet is live: push the settings
+  /// the wallet library does not persist itself, record which wallet this is,
+  /// and drop every cache belonging to the wallet that was open before.
+  Future<void> _afterWalletOpened(WalletCApi ffi, String name) async {
+    ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+    ref.read(txPowServerProvider).applyTo(ffi);
+    await storeWalletPassword(_passCtrl.text);
+    await saveLastWalletPath(name);
+    if (!mounted) return;
+    ref.invalidate(lastWalletPathProvider);
+    beginWalletSession(ref, walletName: name);
   }
 
   Future<void> _doCreate() async {
@@ -64,11 +95,16 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       setState(() => _error = 'Passwords do not match.');
       return;
     }
+    final name = _fileCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a name for the wallet.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
       await ffi.create(
-        _fileCtrl.text.trim(),
+        name,
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
@@ -78,9 +114,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       final seed = await ffi.getMnemonicSeed();
       final keys = await ffi.getSpendKeysJson(address);
       final viewKey = await ffi.getPrivateViewKey();
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-
-      await storeWalletPassword(_passCtrl.text);
+      await _afterWalletOpened(ffi, name);
+      if (!mounted) return;
       setState(() {
         _newWalletAddress = address;
         _newWalletSeed = seed;
@@ -99,20 +134,25 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doOpen() async {
+    final name = _openWalletName;
+    if (name.isEmpty) {
+      setState(() => _error = 'Select a wallet to open.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
       await ffi.open(
-        _fileCtrl.text.trim(),
+        name,
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await _afterWalletOpened(ffi, name);
+      if (!mounted) return;
       ref.read(walletOpenProvider.notifier).state = true;
-      if (mounted) context.go('/overview');
+      context.go('/overview');
     } on WalletCApiException catch (e) {
       setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
@@ -123,22 +163,27 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportSeed() async {
+    final name = _fileCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a name for the wallet.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
       await ffi.restoreFromSeed(
         _seedCtrl.text.trim(),
-        _fileCtrl.text.trim(),
+        name,
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await _afterWalletOpened(ffi, name);
+      if (!mounted) return;
       ref.read(walletOpenProvider.notifier).state = true;
-      if (mounted) context.go('/overview');
+      context.go('/overview');
     } on WalletCApiException catch (e) {
       setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
@@ -149,23 +194,28 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 
   Future<void> _doImportKeys() async {
+    final name = _fileCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a name for the wallet.');
+      return;
+    }
     setState(() { _loading = true; _error = null; });
     try {
       final ffi = ref.read(walletCApiProvider);
       await ffi.restoreFromKeys(
         _spendKeyCtrl.text.trim(),
         _viewKeyCtrl.text.trim(),
-        _fileCtrl.text.trim(),
+        name,
         _passCtrl.text,
         _daemonHostCtrl.text.trim(),
         int.tryParse(_daemonPortCtrl.text) ?? kDefaultDaemonPort,
         scanHeight: int.tryParse(_scanHeightCtrl.text) ?? 0,
         ssl: _daemonSSL,
       );
-      ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
-      await storeWalletPassword(_passCtrl.text);
+      await _afterWalletOpened(ffi, name);
+      if (!mounted) return;
       ref.read(walletOpenProvider.notifier).state = true;
-      if (mounted) context.go('/overview');
+      context.go('/overview');
     } on WalletCApiException catch (e) {
       setState(() => _error = e.message.isNotEmpty ? e.message : e.toString());
     } catch (e) {
@@ -192,11 +242,21 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       ),
     );
     if (confirmed != true) return;
+    // Do not swallow the failure. This used to be a bare `catch (_) {}`, which
+    // is how a delete that never reached IndexedDB looked exactly like one
+    // that worked - the wallet was simply still in the list afterwards.
+    String? failure;
     try {
       await ref.read(walletCApiProvider).deleteFile(name);
-    } catch (_) {}
+    } catch (e) {
+      failure = e is WalletCApiException ? e.message : e.toString();
+    }
     // Reload the list
-    setState(() { _savedWallets = null; _selectedWallet = null; });
+    setState(() {
+      _savedWallets = null;
+      _selectedWallet = null;
+      _error = failure == null ? null : 'Could not delete "$name": $failure';
+    });
     await _loadSavedWallets();
   }
 
@@ -206,10 +266,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           .timeout(const Duration(seconds: 10));
       if (mounted) setState(() {
         _savedWallets = wallets;
-        if (wallets.isNotEmpty) {
-          _selectedWallet = wallets.first;
-          _fileCtrl.text = wallets.first;
-        }
+        // Preselect, but only into the Open form's own state — _fileCtrl names
+        // the wallet a create/import is about to write, and pre-filling it
+        // with an existing wallet's name is how an import silently replaced
+        // the wallet the user had picked here a moment earlier.
+        _selectedWallet = wallets.isNotEmpty ? wallets.first : null;
       });
     } catch (_) {
       if (mounted) setState(() => _savedWallets = []);
@@ -333,7 +394,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
           const Center(child: SizedBox(height: 48, child: CircularProgressIndicator(strokeWidth: 2)))
         else if (wallets.isEmpty)
           // No saved wallets — free-type name
-          _TField(ctrl: _fileCtrl, label: tr?.walletFile ?? 'Wallet name')
+          _TField(ctrl: _openFileCtrl, label: tr?.walletFile ?? 'Wallet name')
         else
           // Dropdown of saved wallets with delete action
           Column(
@@ -349,10 +410,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   items: wallets
                       .map((w) => DropdownMenuItem(value: w, child: Text(w)))
                       .toList(),
-                  onChanged: (v) => setState(() {
-                    _selectedWallet = v;
-                    _fileCtrl.text = v ?? '';
-                  }),
+                  onChanged: (v) => setState(() => _selectedWallet = v),
                 ),
               ),
               if (_selectedWallet != null)

@@ -12,12 +12,16 @@
 #include "rpc/CoreRpcServerCommandsDefinitions.h"
 #include "rpc/JsonRpc.h"
 #include "rpc/RpcServer.h"
+#include <daemon/LiteSnapshot.h>
 
 #include <logging/LoggerManager.h>
 #include <logging/LoggerRef.h>
 #include <atomic>
 #include <future>
+#include <iostream>
+#include <map>
 #include <mutex>
+#include <ostream>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -58,6 +62,11 @@ class DaemonCommandsHandler
 
     bool exit(const std::vector<std::string> &args);
 
+    /* Runs one command line on behalf of a console attached over the RPC IPC
+       socket and returns everything it printed, in place of the daemon's
+       stdout. Serialised with the local console. */
+    std::string run_remote_command(const std::string &commandLine);
+
     void start_boot_compaction_if_needed();
 
     void stop_compaction_scheduler();
@@ -73,6 +82,13 @@ class DaemonCommandsHandler
 
     httplib::Client m_rpcServer;
 
+    /* The maintenance scheduler polls /info on its own client rather than
+       sharing the console's. httplib serialises requests per client, so one
+       client meant an operator's `status` could queue behind a background poll
+       - a console that looks stuck for reasons that have nothing to do with
+       the command just typed. */
+    httplib::Client m_maintenanceRpcServer;
+
     Logging::LoggerRef logger;
 
     DaemonConfig::DaemonConfiguration m_config;
@@ -80,6 +96,33 @@ class DaemonCommandsHandler
     std::shared_ptr<Logging::LoggerManager> m_logManager;
 
     std::string get_commands_str();
+
+    using Command = bool (DaemonCommandsHandler::*)(const std::vector<std::string> &);
+
+    /* Every command is registered here, for the local console and the remote
+       one alike, so the two can never drift apart. */
+    void register_command(const std::string &name, const Command command, const std::string &usage);
+
+    /* The one place a command runs: takes m_commandMutex and points out() at
+       the stream that should receive what it prints. */
+    bool run_command(const Command command, const std::vector<std::string> &args, std::ostream &output);
+
+    /* Where the command currently running writes: the daemon's stdout for the
+       local console, a buffer for an attached one. Only meaningful under
+       m_commandMutex, which is why every command goes through run_command.
+       Notices from background threads that are not the answer to a command
+       still go to std::cout directly. */
+    std::ostream *m_out = &std::cout;
+
+    std::ostream &out()
+    {
+        return *m_out;
+    }
+
+    /* One command at a time, whichever console it came from. */
+    std::mutex m_commandMutex;
+
+    std::map<std::string, Command> m_commands;
 
     bool print_block_by_height(uint32_t height);
 
@@ -117,9 +160,20 @@ class DaemonCommandsHandler
 
     bool compact_db(const std::vector<std::string> &args);
 
+    /* Writes the index only region of the chain to a lite node snapshot file,
+       so another machine can import it rather than spend days rebuilding it.
+       Runs on its own thread - it walks the three biggest tables in the
+       database - so the console stays usable and the work can be cancelled.
+       See LITESNAPSHOT.md. */
+    bool snapshot_export(const std::vector<std::string> &args);
+
+    void refresh_snapshot_state_locked();
+
     bool ban(const std::vector<std::string> &args);
 
     httplib::Result rpc_get(const std::string &path);
+
+    httplib::Result rpc_get(httplib::Client &client, const std::string &path);
 
     void refresh_compaction_state_locked();
 
@@ -162,4 +216,31 @@ class DaemonCommandsHandler
     uint64_t m_schedulerCheckIntervalSeconds = 60;
 
     uint32_t m_nearSyncStreak = 0;
+
+    std::mutex m_snapshotMutex;
+
+    std::future<void> m_snapshotTask;
+
+    bool m_snapshotRunning = false;
+
+    bool m_snapshotHasResult = false;
+
+    /* Empty means the last export succeeded. The worker never throws out of
+       itself: an operator reads the reason here or from `snapshot_export
+       status`, not from a stack unwinding through a console thread. */
+    std::string m_snapshotError;
+
+    std::string m_snapshotPath;
+
+    std::string m_snapshotStage;
+
+    uint64_t m_snapshotScanned = 0;
+
+    uint64_t m_snapshotKept = 0;
+
+    uint64_t m_snapshotStartedAt = 0;
+
+    std::atomic<bool> m_snapshotCancel {false};
+
+    CryptoNote::LiteSnapshot::Header m_snapshotResult;
 };

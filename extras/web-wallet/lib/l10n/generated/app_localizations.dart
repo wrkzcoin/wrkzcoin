@@ -1562,6 +1562,84 @@ abstract class S {
   /// In en, this message translates to:
   /// **'Ring size reduced to {actual} (normally {normal}). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.'**
   String ringSizeReduced(int actual, int normal);
+
+  /// No description provided for @txPowServerSection.
+  ///
+  /// In en, this message translates to:
+  /// **'Transaction PoW Server'**
+  String get txPowServerSection;
+
+  /// No description provided for @txPowServerUse.
+  ///
+  /// In en, this message translates to:
+  /// **'Use an external PoW server'**
+  String get txPowServerUse;
+
+  /// No description provided for @txPowServerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.'**
+  String get txPowServerSubtitle;
+
+  /// No description provided for @txPowServerSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'PoW server settings saved'**
+  String get txPowServerSaved;
+
+  /// No description provided for @txPowServerInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid host and port'**
+  String get txPowServerInvalid;
+
+  /// No description provided for @txPowServerTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get txPowServerTest;
+
+  /// No description provided for @txPowServerTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Server reachable in {ms} ms: {threads} threads, {queue} of {capacity} queue slots in use'**
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity);
+
+  /// No description provided for @txPowServerTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Server not reachable: {error}'**
+  String txPowServerTestFailed(String error);
+
+  /// No description provided for @nodeTest.
+  ///
+  /// In en, this message translates to:
+  /// **'Test'**
+  String get nodeTest;
+
+  /// No description provided for @nodeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid host and port'**
+  String get nodeInvalid;
+
+  /// No description provided for @nodeTestOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms: height {height}, {peers} peers'**
+  String nodeTestOk(int ms, int height, int peers);
+
+  /// No description provided for @nodeTestSyncing.
+  ///
+  /// In en, this message translates to:
+  /// **'Reachable in {ms} ms, but the node is still syncing: height {height} of {networkHeight}'**
+  String nodeTestSyncing(int ms, int height, int networkHeight);
+
+  /// No description provided for @nodeTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Node not reachable: {error}'**
+  String nodeTestFailed(String error);
 }
 
 class _SDelegate extends LocalizationsDelegate<S> {

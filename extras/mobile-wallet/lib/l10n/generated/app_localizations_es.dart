@@ -780,4 +780,106 @@ class SEs extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
   }
+
+  @override
+  String get liteNodeTitle => 'Nodo ligero';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Este nodo solo guarda bloques a partir de $height. Las transacciones anteriores a ese bloque no se pueden encontrar a través de él.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Este nodo empieza en el bloque $nodeHeight, pero esta cartera empieza en el bloque $walletHeight. Todo lo recibido entre medias es invisible aquí, así que el saldo mostrado puede ser demasiado bajo. Conecta un nodo con la cadena completa para verlo.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'La sincronización se detuvo en el bloque $wallet. Este nodo no guarda nada por debajo del bloque $node, así que los bloques intermedios no se pueden descargar de él. El saldo estará incompleto hasta que conectes un nodo con la cadena completa.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Este nodo no puede reescanear tan atrás';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'El nodo conectado es un nodo ligero sin datos de bloque por debajo de $height. Reescanear desde más abajo descartaría transacciones que esta cartera ya encontró, sin forma de recuperarlas aquí. No se ha cambiado nada.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Reescanear desde $height en su lugar';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'El nodo conectado solo puede reescanear desde el bloque $height o superior.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Sirve bloques desde';
+
+  @override
+  String get nodeFullChain => 'Cadena completa';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Ejecutar el nodo en el propio teléfono está planeado, pero aún no disponible: un nodo necesita varios GB de almacenamiento y horas de sincronización. Mientras tanto, apunta esta cartera a un nodo tuyo.';
+
+  @override
+  String get syncStoppedTitle => 'Sincronización detenida';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Sincronización detenida en el bloque $covered. El nodo con el que hablaba solo responde desde el bloque $servesFrom en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.';
+  }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transacciones';
+
+  @override
+  String get txPowServerUse => 'Usar un servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.';
+
+  @override
+  String get txPowServerSaved => 'Ajustes del servidor PoW guardados';
+
+  @override
+  String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
+
+  @override
+  String get txPowServerTest => 'Probar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor accesible en $ms ms: $threads hilos, $queue de $capacity puestos de cola en uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor no accesible: $error';
+  }
+
+  @override
+  String get nodeTest => 'Probar';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Accesible en $ms ms: altura $height, $peers pares';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Accesible en $ms ms, pero el nodo aún se está sincronizando: altura $height de $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nodo no accesible: $error';
+  }
 }

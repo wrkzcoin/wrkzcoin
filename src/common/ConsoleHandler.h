@@ -23,6 +23,13 @@
 
 namespace Common
 {
+    /* Reads one line from the terminal with editing and history, or from a
+       pipe when stdin is not a terminal. Returns false at end of input or on
+       Ctrl+C / Ctrl+D. Lives here because linenoise is header-only with a
+       few non-static globals, so exactly one translation unit per binary may
+       include it - this one. */
+    bool readConsoleLine(const std::string &prompt, std::string &line);
+
     class AsyncConsoleReader
     {
       public:
@@ -69,6 +76,13 @@ namespace Common
         void requestStop();
 
         bool runCommand(const std::vector<std::string> &cmdAndArgs);
+
+        /* Tokenises a command line the way the interactive reader does -
+           trimmed, split on spaces with runs collapsed - so a command that
+           arrives over a socket is parsed exactly like one that was typed. */
+        static std::vector<std::string> splitCommandLine(const std::string &line);
+
+        bool hasCommand(const std::string &command) const;
 
         void start(
             bool startThread = true,

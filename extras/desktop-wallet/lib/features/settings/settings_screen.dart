@@ -11,8 +11,11 @@ import '../../core/ffi/wallet_ffi.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/wallet_notifiers.dart';
+import '../../core/node/local_node.dart';
+import '../../core/node/local_node_controller.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../l10n/generated/app_localizations.dart';
+import 'local_node_section.dart';
 
 const _storage = FlutterSecureStorage();
 const _kLastWalletKey = 'pluton_last_wallet_path';
@@ -42,6 +45,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _savingNode = false;
+  bool _testingNode = false;
   String? _nodeError;
   String? _nodeSuccess;
 
@@ -49,6 +53,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _nodeHostCtrl = TextEditingController();
   final _nodePortCtrl = TextEditingController();
   bool _nodeSSL = false;
+
+  // Tx PoW server form
+  final _powHostCtrl = TextEditingController();
+  final _powPortCtrl = TextEditingController();
+  bool _powEnabled = false;
+  bool _powSSL = false;
+  bool _powFormLoaded = false;
+  bool _powTesting = false;
+  String? _powError;
+  String? _powSuccess;
 
   @override
   void initState() {
@@ -67,7 +81,194 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _nodeHostCtrl.dispose();
     _nodePortCtrl.dispose();
+    _powHostCtrl.dispose();
+    _powPortCtrl.dispose();
     super.dispose();
+  }
+
+  /// Prefills the PoW server form once the stored setting has been read, and
+  /// leaves it alone afterwards so typing is not overwritten by rebuilds.
+  void _syncPowForm(TxPowServerSettings s) {
+    if (_powFormLoaded || !s.loaded) return;
+    _powFormLoaded = true;
+    _powEnabled = s.enabled;
+    _powSSL = s.ssl;
+    _powHostCtrl.text = s.host;
+    _powPortCtrl.text = '${s.port}';
+  }
+
+  Future<void> _savePowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (_powEnabled && (host.isEmpty || port <= 0 || port > 65535)) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    final settings = TxPowServerSettings(
+      enabled: _powEnabled,
+      host: host,
+      port: port > 0 ? port : kDefaultTxPowServerPort,
+      ssl: _powSSL,
+    );
+    await ref.read(txPowServerProvider.notifier).set(settings);
+    settings.applyTo(ref.read(walletCApiProvider));
+    if (!mounted) return;
+    setState(() {
+      _powError = null;
+      _powSuccess = tr?.txPowServerSaved ?? 'PoW server settings saved';
+    });
+  }
+
+  /// Probes the server named in the form, without saving anything.
+  Future<void> _testPowServer() async {
+    final tr = S.of(context);
+    final host = _powHostCtrl.text.trim();
+    final port = int.tryParse(_powPortCtrl.text.trim()) ?? 0;
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _powError = tr?.txPowServerInvalid ?? 'Enter a valid host and port';
+        _powSuccess = null;
+      });
+      return;
+    }
+    setState(() { _powTesting = true; _powError = null; _powSuccess = null; });
+    try {
+      final r = await ref.read(walletCApiProvider).testTxPowServer(host, port, ssl: _powSSL);
+      if (!mounted) return;
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final threads = (r['threads'] as num?)?.toInt() ?? 0;
+        final queue = (r['queue'] as num?)?.toInt() ?? 0;
+        final capacity = (r['capacity'] as num?)?.toInt() ?? 0;
+        setState(() => _powSuccess = tr?.txPowServerTestOk(ms, threads, queue, capacity)
+            ?? 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use');
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _powError = tr?.txPowServerTestFailed(error) ?? 'Server not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _powError = tr?.txPowServerTestFailed(e.toString()) ?? 'Server not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _powTesting = false);
+    }
+  }
+
+  /// Probes the node in the form without switching the wallet onto it.
+  ///
+  /// Applying a bad node leaves the wallet unable to sync with nothing on
+  /// screen to explain it, so it is worth being able to ask first.
+  Future<void> _testNode() async {
+    final tr = S.of(context);
+    final host = _nodeHostCtrl.text.trim();
+    final port = int.tryParse(_nodePortCtrl.text.trim()) ?? 0;
+
+    if (host.isEmpty || port <= 0 || port > 65535) {
+      setState(() {
+        _nodeError = tr?.nodeInvalid ?? 'Enter a valid host and port';
+        _nodeSuccess = null;
+      });
+      return;
+    }
+
+    setState(() { _testingNode = true; _nodeError = null; _nodeSuccess = null; });
+
+    try {
+      final r = await ref.read(walletCApiProvider).testNode(host, port, ssl: _nodeSSL);
+      if (!mounted) return;
+
+      if (r['ok'] == true) {
+        final ms = (r['latency_ms'] as num?)?.toInt() ?? 0;
+        final height = (r['height'] as num?)?.toInt() ?? 0;
+        final networkHeight = (r['networkHeight'] as num?)?.toInt() ?? 0;
+        final peers = (r['peerCount'] as num?)?.toInt() ?? 0;
+        final synced = r['synced'] == true;
+
+        // A node that answers but is behind will "work" and then sync the
+        // wallet to the wrong height, so say so rather than just "reachable".
+        setState(() => _nodeSuccess = synced
+            ? (tr?.nodeTestOk(ms, height, peers)
+                ?? 'Reachable in $ms ms: height $height, $peers peers')
+            : (tr?.nodeTestSyncing(ms, height, networkHeight)
+                ?? 'Reachable in $ms ms, but the node is still syncing: '
+                   'height $height of $networkHeight'));
+      } else {
+        final error = '${r['error'] ?? 'unknown error'}';
+        setState(() => _nodeError = tr?.nodeTestFailed(error) ?? 'Node not reachable: $error');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _nodeError = tr?.nodeTestFailed(e.toString()) ?? 'Node not reachable: $e');
+    } finally {
+      if (mounted) setState(() => _testingNode = false);
+    }
+  }
+
+  /// True when Apply may go ahead.
+  ///
+  /// Only asks when the target is this machine's own lite node and that node
+  /// cannot serve the wallet yet — it is still catching up, has no peers, or
+  /// has not reached its own start height. Any other daemon is the user's
+  /// business and is applied without comment.
+  Future<bool> _confirmUnreadyLocalNode() async {
+    final node = ref.read(localNodeProvider);
+    final config = node.config;
+    if (config == null) return true;
+
+    final targetingLocal = _nodeHostCtrl.text.trim() == kLocalNodeHost &&
+        int.tryParse(_nodePortCtrl.text) == config.rpcPort;
+    if (!targetingLocal || node.canServeWallet) return true;
+
+    final tr = S.of(context);
+    final behind = node.networkHeight > node.height
+        ? node.networkHeight - node.height
+        : 0;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.localNodeNotReadyTitle ?? 'This node is not ready'),
+          content: SizedBox(
+            width: 420,
+            child: Text(
+              dlgTr?.localNodeNotReadyBody(behind) ??
+                  'The local node is still $behind blocks behind the network. '
+                      'Point the wallet at it now and the sync will park until '
+                      'it catches up, showing a balance that is missing '
+                      'anything it has not reached — with nothing on screen to '
+                      'say why. Staying on the remote node until it is ready '
+                      'costs nothing; the node keeps syncing either way.',
+              style: const TextStyle(height: 1.5, fontSize: 13),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dlgTr?.cancel ?? 'Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dlgTr?.switchAnyway ?? 'Switch anyway'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (proceed != true) {
+      if (mounted) {
+        setState(() =>
+            _nodeError = tr?.localNodeNotReadyTitle ?? 'This node is not ready');
+      }
+      return false;
+    }
+    return true;
   }
 
   Future<void> _saveNode() async {
@@ -76,6 +277,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       setState(() => _nodeError = tr?.hostIpAddress ?? 'Host / IP address');
       return;
     }
+
+    // "Use this node" in the card below is gated on the node being able to
+    // serve the wallet. This field and Apply reached the same daemon with no
+    // gate at all, which made that check two clicks from useless - and pointing
+    // a wallet at a lite node that has not reached its own start height is
+    // exactly what parks the sync with an incomplete balance.
+    if (!await _confirmUnreadyLocalNode()) return;
+
     setState(() { _savingNode = true; _nodeError = null; _nodeSuccess = null; });
     try {
       await ref.read(walletCApiProvider).swapNode(
@@ -245,46 +454,132 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  /// Rescan from a chosen height.
+  ///
+  /// Against a lite node the field is floored at that node's start height: it
+  /// holds nothing below there and would answer a lower request from its own
+  /// start anyway, which would move the wallet's recorded position over blocks
+  /// nobody ever looked at. The native side refuses it as well — the daemon
+  /// can be swapped between this check and the call — and that refusal gets
+  /// its own dialog rather than a bare error code. See LITENODE.md.
   Future<void> _resetScanHeight() async {
-    final heightCtrl = TextEditingController(text: '0');
+    final liteStart =
+        ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0;
+
+    final heightCtrl =
+        TextEditingController(text: liteStart > 0 ? '$liteStart' : '0');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         final dlgTr = S.of(ctx);
-        return AlertDialog(
-          title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
-              const SizedBox(height: 12),
-              TextField(
-                controller: heightCtrl,
-                decoration: InputDecoration(labelText: dlgTr?.scanHeight ?? 'Scan height'),
-                keyboardType: TextInputType.number,
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final entered = int.tryParse(heightCtrl.text);
+            final tooLow =
+                liteStart > 0 && entered != null && entered < liteStart;
+            return AlertDialog(
+              title: Text(dlgTr?.resetScanHeight ?? 'Reset Scan Height'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dlgTr?.resetScanHeightDescription ?? 'Enter a block height to rescan from. Use 0 for a full rescan.'),
+                  if (liteStart > 0) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      dlgTr?.liteNodeRescanHint(liteStart) ??
+                          'The connected node can only rescan from block $liteStart or above.',
+                      style: const TextStyle(color: kWarning, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: heightCtrl,
+                    onChanged: (_) => setDialogState(() {}),
+                    decoration: InputDecoration(
+                      labelText: dlgTr?.scanHeight ?? 'Scan height',
+                      errorText: tooLow
+                          ? (dlgTr?.liteNodeRescanHint(liteStart) ??
+                              'The connected node can only rescan from block $liteStart or above.')
+                          : null,
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(dlgTr?.reset ?? 'Reset')),
-          ],
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+                FilledButton(
+                  onPressed: tooLow ? null : () => Navigator.pop(ctx, true),
+                  child: Text(dlgTr?.reset ?? 'Reset'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
     final height = int.tryParse(heightCtrl.text) ?? 0;
     heightCtrl.dispose();
     if (confirmed != true) return;
+    await _runReset(height);
+  }
+
+  Future<void> _runReset(int height) async {
     try {
       await ref.read(walletCApiProvider).reset(scanHeight: height);
       ref.read(statusProvider.notifier).refresh();
     } on WalletCApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: kError),
-        );
+      if (!mounted) return;
+      if (e.errorCode == kErrLiteNodeCannotRescanThatLow) {
+        await _showLiteRescanRefused();
+        return;
       }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: kError),
+      );
+    }
+  }
+
+  /// The wallet refused the rescan because the connected lite node holds no
+  /// data that far back and the wallet already has transactions from below
+  /// there — rescanning would drop them with no way to find them again here.
+  /// Nothing has been changed, so the only choices are to rescan from a height
+  /// this node can serve, or to connect a node holding the whole chain.
+  Future<void> _showLiteRescanRefused() async {
+    await ref.read(statusProvider.notifier).refresh();
+    if (!mounted) return;
+    final liteStart =
+        ref.read(statusProvider).valueOrNull?.daemonLiteStartHeight ?? 0;
+
+    final rescanFrom = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dlgTr = S.of(ctx);
+        return AlertDialog(
+          title: Text(dlgTr?.liteNodeRescanRefusedTitle ?? 'This node cannot rescan that far back'),
+          content: Text(
+            dlgTr?.liteNodeRescanRefused(liteStart) ??
+                'The connected node is a lite node holding no block data below '
+                    '$liteStart. Rescanning from lower than that would drop '
+                    'transactions this wallet has already found, with no way to '
+                    'find them again here. Nothing has been changed.',
+            style: const TextStyle(height: 1.5),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(dlgTr?.cancel ?? 'Cancel')),
+            if (liteStart > 0)
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(dlgTr?.liteNodeRescanFromInstead(liteStart) ?? 'Rescan from $liteStart instead'),
+              ),
+          ],
+        );
+      },
+    );
+
+    if (rescanFrom == true && liteStart > 0) {
+      await _runReset(liteStart);
     }
   }
 
@@ -409,6 +704,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
     final scanCoinbase = ref.watch(scanCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
+    _syncPowForm(ref.watch(txPowServerProvider));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -443,7 +739,61 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         tr?.nodeDescription ?? 'Connect to a local or remote daemon node. Changes take effect immediately.',
                         style: const TextStyle(color: kTextSecondary, fontSize: 13),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
+                      // Quick targets, and the only thing on screen that says
+                      // which node the wallet is actually on: the host field
+                      // shows what will be applied, not what is connected, and
+                      // those differ the moment anyone types in it.
+                      //
+                      // Selection is decided by the live connection, not by the
+                      // fields.
+                      Builder(builder: (context) {
+                        final localConfig = ref.watch(localNodeProvider).config;
+                        final info = ref.watch(nodeInfoProvider).valueOrNull;
+                        final liveHost = info?['daemonHost'] as String?;
+                        final livePort = (info?['daemonPort'] as num?)?.toInt();
+
+                        final onLocal = localConfig != null &&
+                            liveHost == kLocalNodeHost &&
+                            livePort == localConfig.rpcPort;
+                        final onRemote = liveHost != null && !onLocal;
+
+                        return Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ChoiceChip(
+                              avatar: Icon(Icons.cloud_outlined,
+                                  size: 16,
+                                  color: onRemote ? kPrimary : null),
+                              label: Text(tr?.nodePresetRemote ?? 'Remote node'),
+                              selected: onRemote,
+                              selectedColor: kPrimary.withAlpha(40),
+                              onSelected: (_) => setState(() {
+                                _nodeHostCtrl.text = kDefaultDaemonHost;
+                                _nodePortCtrl.text = '$kDefaultDaemonPort';
+                                _nodeSSL = kDefaultDaemonSSL;
+                              }),
+                            ),
+                            if (localConfig != null)
+                              ChoiceChip(
+                                avatar: Icon(Icons.dns_outlined,
+                                    size: 16, color: onLocal ? kPrimary : null),
+                                label:
+                                    Text(tr?.nodePresetLocal ?? 'Local lite node'),
+                                selected: onLocal,
+                                selectedColor: kPrimary.withAlpha(40),
+                                onSelected: (_) => setState(() {
+                                  _nodeHostCtrl.text = kLocalNodeHost;
+                                  _nodePortCtrl.text = '${localConfig.rpcPort}';
+                                  _nodeSSL = false;
+                                }),
+                              ),
+                          ],
+                        );
+                      }),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
                           Expanded(
@@ -490,11 +840,182 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                       const SizedBox(height: 14),
-                      FilledButton(
-                        onPressed: _savingNode ? null : _saveNode,
-                        child: _savingNode
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                            : Text(tr?.apply ?? 'Apply'),
+                      Row(
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_testingNode || _savingNode) ? null : _testNode,
+                            child: _testingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.nodeTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: (_savingNode || _testingNode) ? null : _saveNode,
+                            child: _savingNode
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
+                      ),
+
+                      // How far back the connected node goes. A lite node
+                      // answers every scan from its own start height, so this
+                      // is not a detail: it decides whether this wallet's
+                      // older transactions can be seen at all. See LITENODE.md.
+                      if (nodeAsync.valueOrNull case final status?) ...[
+                        const Divider(height: 28),
+                        Row(
+                          children: [
+                            Text(
+                              tr?.nodeServesFromLabel ?? 'Serves blocks from',
+                              style: const TextStyle(color: kTextSecondary, fontSize: 12),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              status.isLiteNode
+                                  ? '${status.daemonLiteStartHeight}'
+                                  : (tr?.nodeFullChain ?? 'Full chain'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: status.isLiteNode ? kWarning : kSuccess,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // The shell already shows this banner across the top
+                        // of every screen, this one included. Two copies of the
+                        // same red paragraph on one page is not twice the
+                        // warning, and the second one pushed the node controls
+                        // off the fold. The shell's is the one that stays.
+                        if (status.hasReportableSyncGap) ...[
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: (_savingNode || _testingNode)
+                                ? null
+                                : () {
+                                    setState(() {
+                                      _nodeHostCtrl.text = kDefaultDaemonHost;
+                                      _nodePortCtrl.text =
+                                          '$kDefaultDaemonPort';
+                                      _nodeSSL = kDefaultDaemonSSL;
+                                    });
+                                    unawaited(_saveNode());
+                                  },
+                            icon: const Icon(Icons.cloud_outlined, size: 16),
+                            label: Text(tr?.switchToRemoteNode ??
+                                'Switch to the remote node'),
+                          ),
+                        ],
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // -- Local lite node section -------------------------------------
+              _SectionHeader(
+                  title: tr?.sectionLocalNode ?? 'Local Lite Node',
+                  icon: Icons.dns_outlined),
+              const SizedBox(height: 12),
+              LocalNodeSection(
+                onNodeSwitched: (host, port) {
+                  setState(() {
+                    _nodeHostCtrl.text = host;
+                    _nodePortCtrl.text = '$port';
+                    _nodeSSL = false;
+                    _nodeError = null;
+                    _nodeSuccess = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // -- Transaction PoW server section ------------------------------
+              _SectionHeader(title: tr?.txPowServerSection ?? 'Transaction PoW Server', icon: Icons.memory_outlined),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(tr?.txPowServerUse ?? 'Use an external PoW server', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tr?.txPowServerSubtitle ?? "Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device's CPU is used.",
+                                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Switch(
+                            value: _powEnabled,
+                            onChanged: (v) => setState(() => _powEnabled = v),
+                          ),
+                        ],
+                      ),
+                      if (_powEnabled) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextField(
+                                controller: _powHostCtrl,
+                                decoration: InputDecoration(labelText: tr?.hostIpAddress ?? 'Host / IP address'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _powPortCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(labelText: tr?.port ?? 'Port'),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              children: [
+                                Text(tr?.ssl ?? 'SSL', style: const TextStyle(color: kTextSecondary, fontSize: 12)),
+                                Switch(value: _powSSL, onChanged: (v) => setState(() => _powSSL = v)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (_powError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powError!, style: const TextStyle(color: kError, fontSize: 13)),
+                      ],
+                      if (_powSuccess != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_powSuccess!, style: const TextStyle(color: kSuccess, fontSize: 13)),
+                      ],
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: (_powEnabled && !_powTesting) ? _testPowServer : null,
+                            child: _powTesting
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : Text(tr?.txPowServerTest ?? 'Test'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: _savePowServer,
+                            child: Text(tr?.apply ?? 'Apply'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

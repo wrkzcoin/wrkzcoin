@@ -427,7 +427,7 @@ class SDe extends S {
   String get continueButton => 'Weiter';
 
   @override
-  String get browse => 'Durchsuchen';
+  String get browse => 'Durchsuchen…';
 
   @override
   String get backupWarning =>
@@ -816,5 +816,307 @@ class SDe extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
+  }
+
+  @override
+  String get liteNodeTitle => 'Lite-Node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Dieser Node hält nur Blöcke ab $height. Transaktionen vor diesem Block sind über ihn nicht auffindbar.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Dieser Node beginnt bei Block $nodeHeight, diese Wallet aber bei Block $walletHeight. Alles, was dazwischen empfangen wurde, ist hier unsichtbar, der angezeigte Kontostand kann also zu niedrig sein. Verbinde einen Node mit der vollständigen Blockchain, um ihn zu sehen.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Synchronisierung bei Block $wallet gestoppt. Dieser Node hält nichts unterhalb von Block $node, die Blöcke dazwischen können also nicht von ihm geladen werden. Der Kontostand bleibt unvollständig, bis du einen Node mit der vollständigen Blockchain verbindest.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Dieser Node kann nicht so weit zurück scannen';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Der verbundene Node ist ein Lite-Node ohne Blockdaten unterhalb von $height. Ein Rescan von tiefer würde bereits gefundene Transaktionen dieser Wallet verwerfen, ohne sie hier wiederfinden zu können. Es wurde nichts geändert.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Stattdessen ab $height scannen';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Der verbundene Node kann nur ab Block $height oder höher scannen.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Liefert Blöcke ab';
+
+  @override
+  String get nodeFullChain => 'Vollständige Blockchain';
+
+  @override
+  String get sectionLocalNode => 'Lokaler Lite-Node';
+
+  @override
+  String get localNodeDescription =>
+      'Betreibe einen Node auf diesem Computer und synchronisiere darüber statt über einen entfernten Server. Ein Lite-Node speichert nur, was eine Wallet braucht, lädt aber trotzdem einmal die gesamte Blockchain herunter.';
+
+  @override
+  String get localNodeSetUp => 'Lokalen Node einrichten';
+
+  @override
+  String get localNodeStart => 'Starten';
+
+  @override
+  String get localNodeStop => 'Stoppen';
+
+  @override
+  String get localNodeUse => 'Diesen Node verwenden';
+
+  @override
+  String get localNodeDelete => 'Node-Daten löschen';
+
+  @override
+  String get localNodeStateStopped => 'Gestoppt';
+
+  @override
+  String get localNodeStateStarting => 'Startet';
+
+  @override
+  String get localNodeStateSyncing => 'Synchronisiert';
+
+  @override
+  String get localNodeStateReady => 'Synchronisiert';
+
+  @override
+  String get localNodeStateFailed => 'Fehlgeschlagen';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Block $height von $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count Peers';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'Der lokale Node holt noch auf und kann die Wallet noch nicht bedienen. Er synchronisiert im Hintergrund weiter — bleib solange bei einem entfernten Node und wechsle, sobald er bereit ist.';
+
+  @override
+  String get localNodeInUse => 'Die Wallet ist mit diesem Node verbunden.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name wurde nicht gefunden. Lege die Daemon-Datei neben die Wallet-Anwendung oder in einen Ordner \"sidecar\" daneben und versuche es erneut.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Lokalen Lite-Node einrichten';
+
+  @override
+  String get localNodeSetupCost =>
+      'Bevor du beginnst:\n• Rund 6 GB Speicherplatz, und die gesamte Blockchain wird einmal heruntergeladen.\n• Die erste Synchronisierung dauert Stunden. Sie läuft im Hintergrund weiter, und du kannst währenddessen einen entfernten Node nutzen.\n• Die Starthöhe unten ist endgültig. Eine spätere Änderung bedeutet, den Node zu löschen und wieder bei null zu synchronisieren.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Starthöhe';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Blöcke unterhalb dieser Höhe werden geladen und geprüft; behalten wird nur der Index, den spätere Blöcke brauchen. Wähle sie gleich oder niedriger als die Starthöhe dieser Wallet ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Höher als die Starthöhe dieser Wallet ($height). Der Node könnte die älteren Transaktionen dieser Wallet nie anzeigen.';
+  }
+
+  @override
+  String get localNodeCreate => 'Node erstellen';
+
+  @override
+  String get localNodeDeleteTitle => 'Lokale Node-Daten löschen?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'Das stoppt den Node und löscht seine Blockchain-Datenbank dauerhaft von der Festplatte. Deine Wallet, ihr Seed und ihr Guthaben bleiben unberührt — ein neuer lokaler Node synchronisiert aber wieder bei null, was Stunden dauert.';
+
+  @override
+  String get localNodeDeleted => 'Lokaler Node gelöscht.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size auf der Festplatte';
+  }
+
+  @override
+  String get nodePresetRemote => 'Entfernter Node';
+
+  @override
+  String get nodePresetLocal => 'Lokaler Lite-Node';
+
+  @override
+  String get savingWallet => 'Wallet wird gespeichert…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON schreibt Ihr Wallet auf die Festplatte. Bei einem großen Wallet kann das einen Moment dauern.';
+
+  @override
+  String get shutdownTakingLong =>
+      'Das dauert länger als erwartet. Jetzt zu beenden verwirft diesen Speichervorgang — die Wallet-Datei auf der Festplatte bleibt unverändert, es wird also nichts beschädigt, aber alles seit dem letzten Speichern ist weg.';
+
+  @override
+  String get quitAnyway => 'Trotzdem beenden';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON läuft weiter im Infobereich. Klicken Sie auf das Symbol, um es zurückzuholen, oder klicken Sie mit der rechten Maustaste und wählen Sie Beenden.';
+
+  @override
+  String get localNodeDataFolder => 'Datenordner';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Hier werden etwa 6 GB geschrieben. Wählen Sie ein Laufwerk mit genügend Platz.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'In diesem Ordner liegen bereits andere Dateien. Wählen Sie einen leeren oder einen neuen Ordner.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Geben Sie die Höhe an, ab der vollständige Blöcke behalten werden. Sie muss größer als null sein — ein Lite-Node kann nicht beim Genesis-Block beginnen.';
+
+  @override
+  String get nodeExitTitle => 'Der lokale Node läuft noch';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Seine erste Synchronisierung ist nicht fertig. Sie dauert Stunden und kommt nur voran, solange der Node läuft — ein laufender Node nutzt aber auch nach dem Schließen von PLUTON weiter Festplatte und Netzwerk.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Er ist auf dem Stand des Netzwerks. Weiterlaufen zu lassen hält ihn dort und verbraucht weiter CPU, Bandbreite und Festplatte, während PLUTON geschlossen ist; ihn zu stoppen kostet beim nächsten Mal kurzes Aufholen.';
+
+  @override
+  String get nodeExitKeep => 'Weiterlaufen lassen';
+
+  @override
+  String get nodeExitStop => 'Stoppen';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Später in den Einstellungen unter Lokaler Lite-Node änderbar.';
+
+  @override
+  String get rememberMyChoice => 'Auswahl merken';
+
+  @override
+  String get shutdownStoppingNode => 'Lokaler Node wird gestoppt…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'Er darf seine Datenbank schreiben, damit der nächste Start das Write-Ahead-Log nicht nachspielen muss.';
+
+  @override
+  String get nodeExitPolicyLabel => 'Beim Schließen des Wallets';
+
+  @override
+  String get nodeExitPolicyAsk => 'Nachfragen';
+
+  @override
+  String get nodeExitPolicyKeep => 'Node weiterlaufen lassen';
+
+  @override
+  String get nodeExitPolicyStop => 'Node stoppen';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Der lokale Lite-Node läuft weiter im Hintergrund. Öffnen Sie PLUTON, um ihn zu stoppen.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisierung gestoppt';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => 'Dieser Node ist nicht bereit';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Der lokale Node liegt noch $behind Blöcke hinter dem Netzwerk. Wenn Sie das Wallet jetzt darauf richten, pausiert die Synchronisierung, bis er aufgeholt hat, und zeigt einen Kontostand ohne alles, was er noch nicht erreicht hat — ohne dass etwas auf dem Bildschirm das erklärt. Auf dem entfernten Node zu bleiben kostet nichts; der Node synchronisiert so oder so weiter.';
+  }
+
+  @override
+  String get switchAnyway => 'Trotzdem wechseln';
+
+  @override
+  String get switchToRemoteNode => 'Zum entfernten Node wechseln';
+
+  @override
+  String get nodeWillServeFromLabel => 'Wird Blöcke liefern ab';
+
+  @override
+  String get txPowServerSection => 'Transaktions-PoW-Server';
+
+  @override
+  String get txPowServerUse => 'Externen PoW-Server verwenden';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.';
+
+  @override
+  String get txPowServerSaved => 'PoW-Server-Einstellungen gespeichert';
+
+  @override
+  String get txPowServerInvalid =>
+      'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String get txPowServerTest => 'Testen';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server in $ms ms erreichbar: $threads Threads, $queue von $capacity Warteschlangenplätzen belegt';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server nicht erreichbar: $error';
+  }
+
+  @override
+  String get nodeTest => 'Testen';
+
+  @override
+  String get nodeInvalid => 'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'In $ms ms erreichbar: Höhe $height, $peers Peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'In $ms ms erreichbar, aber der Knoten synchronisiert noch: Höhe $height von $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Knoten nicht erreichbar: $error';
   }
 }

@@ -6,6 +6,19 @@ import '../api/models/transaction.dart';
 import '../config/app_config.dart';
 import 'providers.dart';
 
+// ── Wallet session ────────────────────────────────────────────────────────────
+
+/// Starts a new wallet session: drops every wallet-scoped cache so nothing
+/// from the previous wallet can be shown against the new one.
+///
+/// Call after each successful open/create/restore, and after a close. The
+/// providers below all watch [walletSessionProvider], so bumping it rebuilds
+/// them — which also cancels and restarts their poll timers.
+void beginWalletSession(WidgetRef ref, {String? walletName}) {
+  ref.read(openWalletNameProvider.notifier).state = walletName;
+  ref.read(walletSessionProvider.notifier).state++;
+}
+
 // ── Status polling ────────────────────────────────────────────────────────────
 
 class StatusNotifier extends AsyncNotifier<WalletStatus> {
@@ -13,6 +26,7 @@ class StatusNotifier extends AsyncNotifier<WalletStatus> {
 
   @override
   Future<WalletStatus> build() async {
+    ref.watch(walletSessionProvider);
     ref.onDispose(() => _timer?.cancel());
     _timer = Timer.periodic(kStatusPollInterval, (_) => _refresh());
     return _fetch();
@@ -42,6 +56,7 @@ class BalanceNotifier extends AsyncNotifier<Balance> {
 
   @override
   Future<Balance> build() async {
+    ref.watch(walletSessionProvider);
     ref.onDispose(() => _timer?.cancel());
     _timer = Timer.periodic(kBalancePollInterval, (_) => _refresh());
     return _fetch();
@@ -71,6 +86,7 @@ class TransactionsNotifier extends AsyncNotifier<List<Transaction>> {
 
   @override
   Future<List<Transaction>> build() async {
+    ref.watch(walletSessionProvider);
     ref.onDispose(() => _timer?.cancel());
     _timer = Timer.periodic(kTransactionPollInterval, (_) => _refresh());
     return _fetch();
@@ -109,6 +125,7 @@ class NodeInfoNotifier extends AsyncNotifier<Map<String, dynamic>> {
 
   @override
   Future<Map<String, dynamic>> build() async {
+    ref.watch(walletSessionProvider);
     ref.onDispose(() => _timer?.cancel());
     _timer = Timer.periodic(kStatusPollInterval, (_) => _refresh());
     return _fetch();

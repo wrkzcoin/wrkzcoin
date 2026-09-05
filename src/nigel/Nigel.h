@@ -110,6 +110,11 @@ class Nigel
 
     uint64_t networkBlockCount() const;
 
+    /* The lowest height this daemon can be scanned from. Zero when it holds the
+       whole chain. A wallet asked to scan from lower than this cannot find its
+       funds here, so callers floor their scan height to it. */
+    uint64_t liteStartHeight() const;
+
     uint64_t peerCount() const;
 
     uint64_t hashrate() const;
@@ -133,6 +138,12 @@ class Nigel
        and tells us how far it looked, which is what makes fetching several
        windows at once safe rather than a guess about where each ends. */
     bool daemonSupportsHeightRange() const;
+
+    /* Whether the daemon leaves coinbase only blocks out of a sync response
+       when we ask it to. When it does, the heights we receive are not
+       contiguous by design, and a caller checking for holes has to know that
+       the holes are ones it asked for. */
+    bool daemonSkipsEmptyBlocks() const;
 
     WalletSyncResponse getWalletSyncData(
         const std::vector<Crypto::Hash> blockHashCheckpoints,
@@ -271,6 +282,10 @@ class Nigel
     /* Whether the daemon is a blockchain cache API
        see: https://github.com/TurtlePay/blockchain-cache-api */
     std::atomic<bool> m_isBlockchainCache = false;
+
+    /* Lowest height this daemon holds anything for; 0 when it holds everything.
+       See LITENODE.md. */
+    std::atomic<uint64_t> m_liteStartHeight = 0;
 
     /* Optional sync behaviours, each switched on only once the daemon has
        named it in /info. Left off for a daemon that advertises nothing, which

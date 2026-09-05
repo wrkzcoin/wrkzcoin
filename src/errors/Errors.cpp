@@ -333,6 +333,16 @@ std::string Error::getErrorMessage() const
                    "destination. Send to a single address, or use a long (64 "
                    "character) payment ID instead.";
         }
+        case LITE_NODE_CANNOT_RESCAN_THAT_LOW:
+        {
+            return "The daemon this wallet is connected to is a lite node and "
+                   "holds no block data below its lite height. Rescanning from "
+                   "lower than that would start at the lite height instead, and "
+                   "the transactions this wallet already holds from underneath "
+                   "would be lost with no way to find them again here. Connect a "
+                   "daemon that holds the whole chain, or rescan from the lite "
+                   "height.";
+        }
         /* No default case so the compiler warns us if we missed one */
     }
 

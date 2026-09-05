@@ -1,12 +1,40 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config/app_config.dart';
+import '../ffi/wallet_web.dart';
+import 'providers.dart';
 
 const _storage = FlutterSecureStorage();
 const _kThemeModeKey = 'pluton_theme_mode';
 const _kLogLevelKey = 'pluton_log_level';
 const _kNotificationsKey = 'pluton_notifications_enabled';
+const _kLastWalletKey = 'pluton_last_wallet_name';
+
+// ── Last-opened wallet ───────────────────────────────────────────────────────
+
+// These used to live in settings_screen.dart, where the only caller was the
+// "Delete Wallet Data" button reading the key. Nothing ever wrote it, so the
+// name was always null and that button deleted nothing. Keeping them next to
+// the other persisted preferences puts them where the setup and lock screens
+// can write them too.
+
+/// The name of the wallet file that was last opened, or null if none.
+final lastWalletPathProvider = FutureProvider<String?>((ref) async {
+  return _storage.read(key: _kLastWalletKey);
+});
+
+/// Records which wallet is open. Call on every successful open/create/restore.
+Future<void> saveLastWalletPath(String name) async {
+  await _storage.write(key: _kLastWalletKey, value: name);
+}
+
+/// Forgets the open wallet. Call on close.
+Future<void> clearLastWalletPath() async {
+  await _storage.delete(key: _kLastWalletKey);
+}
 
 // ── Theme mode ────────────────────────────────────────────────────────────────
 
@@ -72,11 +100,27 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
       (l) => l.value == n,
       orElse: () => WalletLogLevel.info,
     );
+    _applyToNative(state);
   }
 
   Future<void> set(WalletLogLevel level) async {
     state = level;
+    _applyToNative(level);
     await _storage.write(key: _kLogLevelKey, value: level.value.toString());
+  }
+
+  /// The wallet library's logger defaults to DISABLED every time the WASM
+  /// module loads, so the stored preference has to be pushed across on load as
+  /// well as on change. Without this the dropdown restores to "debug" from
+  /// browser storage while the library is still silent, and the log viewer
+  /// tells you to set a level above Disabled - which you appear to have
+  /// already done. Desktop has always done this; the web port dropped it.
+  void _applyToNative(WalletLogLevel level) {
+    try {
+      ref.read(walletCApiProvider).setLogLevel(level.name);
+    } catch (_) {
+      // Bridge not up yet, or not loadable at all - logging is best effort.
+    }
   }
 }
 
@@ -157,6 +201,102 @@ class ScanCoinbaseNotifier extends Notifier<bool> {
 
 final scanCoinbaseProvider =
     NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+
+// ── External Tx PoW server ───────────────────────────────────────────────────
+
+const _kTxPowServerKey = 'pluton_tx_pow_server';
+
+/// Where the wallet sends its transaction proof of work. When [active], the
+/// wallet worker asks the server first and falls back to computing it in the
+/// browser if the server does not answer. Without a server the web wallet
+/// pays the PoW bypass fee instead, because browser PoW is very slow. Off by
+/// default: the fields start out pointing at the project's public server so
+/// enabling it is one switch.
+class TxPowServerSettings {
+  const TxPowServerSettings({
+    this.enabled = false,
+    this.host = kDefaultTxPowServerHost,
+    this.port = kDefaultTxPowServerPort,
+    this.ssl = kDefaultTxPowServerSSL,
+    this.loaded = false,
+  });
+
+  final bool enabled;
+  final String host;
+  final int port;
+  final bool ssl;
+
+  /// True once the stored value has been read, so forms know when to prefill.
+  final bool loaded;
+
+  bool get active => enabled && host.isNotEmpty && port > 0;
+
+  TxPowServerSettings copyWith({
+    bool? enabled,
+    String? host,
+    int? port,
+    bool? ssl,
+    bool? loaded,
+  }) =>
+      TxPowServerSettings(
+        enabled: enabled ?? this.enabled,
+        host: host ?? this.host,
+        port: port ?? this.port,
+        ssl: ssl ?? this.ssl,
+        loaded: loaded ?? this.loaded,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'enabled': enabled, 'host': host, 'port': port, 'ssl': ssl};
+
+  factory TxPowServerSettings.fromJson(Map<String, dynamic> j) {
+    final host = (j['host'] as String? ?? '').trim();
+    return TxPowServerSettings(
+      enabled: j['enabled'] as bool? ?? false,
+      host: host.isEmpty ? kDefaultTxPowServerHost : host,
+      port: (j['port'] as num?)?.toInt() ?? kDefaultTxPowServerPort,
+      ssl: j['ssl'] as bool? ?? kDefaultTxPowServerSSL,
+      loaded: true,
+    );
+  }
+
+  /// Pushes this setting into the wallet worker. Call after every wallet
+  /// open and whenever the setting changes.
+  void applyTo(WalletCApi ffi) =>
+      ffi.setTxPowServer(active ? host : '', port, ssl: ssl);
+}
+
+class TxPowServerNotifier extends Notifier<TxPowServerSettings> {
+  @override
+  TxPowServerSettings build() {
+    _load();
+    return const TxPowServerSettings();
+  }
+
+  Future<void> _load() async {
+    final v = await _storage.read(key: _kTxPowServerKey);
+    if (v == null || v.isEmpty) {
+      state = state.copyWith(loaded: true);
+      return;
+    }
+    try {
+      state = TxPowServerSettings.fromJson(
+          jsonDecode(v) as Map<String, dynamic>);
+    } catch (_) {
+      state = state.copyWith(loaded: true);
+    }
+  }
+
+  Future<void> set(TxPowServerSettings settings) async {
+    state = settings.copyWith(loaded: true);
+    await _storage.write(
+        key: _kTxPowServerKey, value: jsonEncode(settings.toJson()));
+  }
+}
+
+final txPowServerProvider =
+    NotifierProvider<TxPowServerNotifier, TxPowServerSettings>(
+        TxPowServerNotifier.new);
 
 // ── Wallet lock ───────────────────────────────────────────────────────────────
 

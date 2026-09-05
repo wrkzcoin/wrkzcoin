@@ -365,5 +365,78 @@
   "retry": "Tentar novamente",
   "youReceivedAmount": "Recebeu {amount}",
   "ringSize": "Tamanho do anel",
-  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual."
+  "ringSizeReduced": "Tamanho do anel reduzido para {actual} (normalmente {normal}). Os valores enviados não têm saídas suficientes na cadeia para formar um anel completo, por isso esta transação é menos privada do que o habitual.",
+  "liteNodeTitle": "Nó leve",
+  "liteNodeServesFrom": "Este nó só guarda blocos a partir de {height}. Transações anteriores a esse bloco não podem ser encontradas através dele.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Este nó começa no bloco {nodeHeight}, mas esta carteira começa no bloco {walletHeight}. Tudo o que foi recebido entre os dois é invisível aqui, por isso o saldo apresentado pode estar baixo demais. Ligue-se a um nó com a cadeia completa para o ver.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Sincronização parada no bloco {wallet}. Este nó não guarda nada abaixo do bloco {node}, por isso os blocos intermédios não podem ser transferidos dele. O saldo fica incompleto até ligar um nó com a cadeia completa.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Este nó não consegue reanalisar tão atrás",
+  "liteNodeRescanRefused": "O nó ligado é um nó leve sem dados de bloco abaixo de {height}. Reanalisar a partir de um ponto mais baixo descartaria transações que esta carteira já encontrou, sem forma de as recuperar aqui. Nada foi alterado.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Reanalisar a partir de {height}",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "O nó ligado só pode reanalisar a partir do bloco {height} ou acima.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Fornece blocos a partir de",
+  "nodeFullChain": "Cadeia completa",
+  "localNodeMobileFuture": "Executar o nó no próprio telemóvel está planeado, mas ainda não está disponível — um nó precisa de vários GB de armazenamento e horas de sincronização. Até lá, aponte esta carteira para um nó seu.",
+  "syncStoppedTitle": "Sincronização parada",
+  "syncGapStalled": "Sincronização parada no bloco {covered}. O nó com que falava só responde a partir do bloco {servesFrom}, então os blocos intermediários não podem ser baixados dele. O saldo fica incompleto até você conectar um nó com a cadeia inteira.",
+  "txPowServerSection": "Servidor PoW de transações",
+  "txPowServerUse": "Usar um servidor PoW externo",
+  "txPowServerSubtitle": "Enviar a prova de trabalho da transação para um servidor em vez de calculá-la neste dispositivo. Se o servidor não responder, a CPU deste dispositivo é usada.",
+  "txPowServerSaved": "Configurações do servidor PoW salvas",
+  "txPowServerInvalid": "Informe um host e uma porta válidos",
+  "txPowServerTest": "Testar",
+  "txPowServerTestOk": "Servidor acessível em {ms} ms: {threads} threads, {queue} de {capacity} vagas da fila em uso",
+  "txPowServerTestFailed": "Servidor inacessível: {error}",
+  "nodeTest": "Testar",
+  "nodeTestOk": "Acessível em {ms} ms: altura {height}, {peers} pares",
+  "nodeTestSyncing": "Acessível em {ms} ms, mas o nó ainda está sincronizando: altura {height} de {networkHeight}",
+  "nodeTestFailed": "Nó inacessível: {error}"
 }

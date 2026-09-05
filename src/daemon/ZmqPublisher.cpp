@@ -23,11 +23,13 @@ namespace Daemon
         System::Dispatcher &dispatcher,
         CryptoNote::ICore &core,
         std::shared_ptr<Logging::ILogger> logger,
-        std::string endpoint):
+        std::string endpoint,
+        uint32_t liteHeight):
         m_dispatcher(dispatcher),
         m_core(core),
         m_logger(logger, "ZmqPublisher"),
         m_endpoint(std::move(endpoint)),
+        m_liteHeight(liteHeight),
         m_queue(dispatcher),
         m_contextGroup(dispatcher),
         m_running(false),
@@ -170,6 +172,15 @@ namespace Daemon
                 std::ostringstream body;
                 body << "{\"height\":" << m.blockIndex << ",\"hash\":\"" << hashToString(m.blockHash) << "\"}";
                 sendMultipart("hashblock", body.str());
+
+                /* A lite node stores no body for blocks below its lite height, so
+                   the transaction hash list this payload carries cannot be built
+                   for them. Catching the read failure per block would work but
+                   would warn once for every block of the initial sync. */
+                if (m_liteHeight != 0 && m.blockIndex < m_liteHeight)
+                {
+                    return;
+                }
 
                 try
                 {

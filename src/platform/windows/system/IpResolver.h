@@ -14,6 +14,8 @@ namespace System
     class Dispatcher;
 
     // Resolves hostnames to IpAddress (IPv4 and IPv6).
+    // A resolver built with the default constructor has no dispatcher: it can
+    // be used from any thread, but its lookups cannot be interrupted.
     class IpResolver
     {
       public:

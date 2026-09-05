@@ -15,6 +15,8 @@
 #define NOMINMAX
 #endif
 
+#include <io.h>
+#include <stdio.h>
 #include <windows.h>
 
 #else
@@ -81,6 +83,30 @@ namespace
 
 namespace Common
 {
+    bool readConsoleLine(const std::string &prompt, std::string &line)
+    {
+        line.clear();
+
+        if (linenoise::Readline(prompt.c_str(), line))
+        {
+            return false;
+        }
+
+        /* Not a terminal and out of input: see consoleThread below for why
+           linenoise does not report this itself. */
+        if (!std::cin.good())
+        {
+            return false;
+        }
+
+        if (!line.empty())
+        {
+            linenoise::AddHistory(line.c_str());
+        }
+
+        return true;
+    }
+
     /////////////////////////////////////////////////////////////////////////////
     // AsyncConsoleReader
     /////////////////////////////////////////////////////////////////////////////
@@ -154,6 +180,32 @@ namespace Common
 
     void AsyncConsoleReader::consoleThread()
     {
+#ifdef _WIN32
+        /* On Windows the NUL device counts as a character device, so a
+           daemon started with no stdin passes _isatty and linenoise takes its
+           raw-mode path. That path asks the console mode of stdout, and when
+           stdout is a file or a pipe it closes the stdout handle it was given
+           before giving up - taking the process's own stdout with it, and
+           then whichever socket or file next reuses that handle value, on
+           every spin of the loop below. Neither a NUL stdin nor a redirected
+           stdout is a console we can read from, so behave as --no-console.
+           A pipe on stdin is not a character device and still reads lines. */
+        if (_isatty(_fileno(stdin)))
+        {
+            DWORD mode = 0;
+
+            const bool stdinIsConsole = GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &mode) != 0;
+            const bool stdoutIsConsole = GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &mode) != 0;
+
+            if (!stdinIsConsole || !stdoutIsConsole)
+            {
+                std::cout << "Console input is not an interactive console; no commands will be read from stdin."
+                          << std::endl;
+                return;
+            }
+        }
+#endif
+
         linenoise::SetHistoryMaxLen(256);
 
         while (!m_stop)
@@ -162,6 +214,23 @@ namespace Common
             const bool quit = linenoise::Readline("", line);
             if (quit)
             {
+                break;
+            }
+
+            /* With stdin at end of file - a process manager that handed us
+               /dev/null, or a piped script that has run out - the non-tty
+               path in linenoise returns an empty line with quit unset, and
+               does so again instantly on the next call. Without this check
+               the reader and the handler thread ping-pong empty lines at full
+               speed. Stop reading instead: the process keeps running with no
+               console, which is what --no-console would have given it. */
+            if (!std::cin.good())
+            {
+                if (!m_stop)
+                {
+                    std::cout << "Console input closed; no further commands will be read from stdin." << std::endl;
+                }
+
                 break;
             }
 
@@ -328,11 +397,27 @@ namespace Common
         return true;
     }
 
+    std::vector<std::string> ConsoleHandler::splitCommandLine(const std::string &line)
+    {
+        std::string trimmed = line;
+        trimInPlace(trimmed);
+
+        if (trimmed.empty())
+        {
+            return {};
+        }
+
+        return splitCompressed(trimmed, ' ');
+    }
+
+    bool ConsoleHandler::hasCommand(const std::string &command) const
+    {
+        return m_handlers.find(command) != m_handlers.end();
+    }
+
     void ConsoleHandler::handleCommand(const std::string &cmd)
     {
-        std::vector<std::string> args;
-        args = splitCompressed(cmd, ' ');
-        runCommand(args);
+        runCommand(splitCommandLine(cmd));
     }
 
     void ConsoleHandler::handlerThread()

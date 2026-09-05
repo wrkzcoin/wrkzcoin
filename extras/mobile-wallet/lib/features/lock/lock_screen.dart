@@ -130,6 +130,7 @@ class _LockScreenState extends ConsumerState<LockScreen> {
       }
 
       ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+      ref.read(txPowServerProvider).applyTo(ffi);
 
       await ref.read(walletRegistryProvider).setLastOpened(filename);
       ref.read(walletOpenProvider.notifier).state = true;

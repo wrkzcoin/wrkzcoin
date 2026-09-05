@@ -50,7 +50,10 @@ class PeerlistManager
 
     bool set_peer_just_seen(uint64_t peer, const NetworkAddress &addr);
 
-    bool set_peer_unreachable(const PeerlistEntry &pr);
+    /* Drop an address from the gray list; false if it was not there. */
+    bool remove_from_gray(const NetworkAddress &addr);
+
+    bool remove_from_gray6(const NetworkAddress6 &addr);
 
     bool is_ip_allowed(uint32_t ip) const;
 

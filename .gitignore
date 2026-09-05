@@ -1,21 +1,10 @@
 .DS_Store
 .build/
-/build/
-/build64/
-/build32/
-/build-wasm/
 /build**
 /tags
 .idea
 .ycm_extra_conf.py
 .ycm_extra_conf.pyc
-build/src/Release
-build/src/Debug
-src/CMakeCache.txt
-src/CMakeFiles/
-src/Makefile
-src/build/
-src/cmake_install.cmake
 *.swp
 .vscode
 .howto/
@@ -29,3 +18,13 @@ extras/mobile-wallet/android/local.properties
 extras/mobile-wallet/build/**
 extras/mobile-wallet/android/.gradle/**
 extras/web-wallet/.dart_tool/**
+extras/web-wallet/build/**
+extras/web-wallet/.flutter-plugins-dependencies
+# Copied in from build-wasm/wasm/ before every flutter build web; build output,
+# not source. The canonical sources are extras/web-wallet-wasm/wasm/.
+extras/web-wallet/web/wallet_wasm.js
+extras/web-wallet/web/wallet_wasm.wasm
+extras/web-wallet/web/wallet_wasm.worker.js
+
+# Daemon log written into whatever directory it is started from
+Wrkzd.log

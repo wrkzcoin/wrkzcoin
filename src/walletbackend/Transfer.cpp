@@ -23,6 +23,7 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/WalletBackend.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <nigel/TxPowClient.h>
 #include <ctime> // time_t
 
 namespace SendTransaction
@@ -300,7 +301,15 @@ namespace SendTransaction
         }
 
         WalletTypes::TransactionResult txResult;
-        uint64_t changeRequired;
+
+        /* Zero, not uninitialised: the loop below only assigns this once the
+           inputs cover the total, and the guard after it only returns early
+           when they do not cover requiredAmount - which starts equal to
+           totalAmount but does not stay there. A zero total with no available
+           inputs slips between the two and reaches txInfo.changeRequired and
+           storeSentTransaction with whatever was on the stack. No change owed
+           is what zero means here anyway. */
+        uint64_t changeRequired = 0;
         uint64_t requiredAmount = totalAmount;
         WalletTypes::PreparedTransactionInfo txInfo;
 
@@ -1539,9 +1548,15 @@ namespace SendTransaction
 
             time (&time_begin); // note time before execution
 
+            /* When a GUI wallet has configured an external PoW server the
+               solver asks it first and falls back to this CPU; otherwise the
+               solver is empty and the work is done here as always. */
+            const auto remotePoW = TxPowClient::solver();
+
             if (daemon->networkBlockCount() < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE_HEIGHT)
             {
-                setupTX.extra = CryptoNote::generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+                setupTX.extra = CryptoNote::generateTransactionPoWHeight(
+                    setupTX, extra, daemon->networkBlockCount(), remotePoW);
             } else
             {
                 const uint64_t actualFee = sumTransactionFee(setupTX);
@@ -1552,7 +1567,8 @@ namespace SendTransaction
                     setupTX.extra = extra;
                 } else
                 {
-                    setupTX.extra = CryptoNote::generateTransactionPoWHeight(setupTX, extra, daemon->networkBlockCount());
+                    setupTX.extra = CryptoNote::generateTransactionPoWHeight(
+                        setupTX, extra, daemon->networkBlockCount(), remotePoW);
                 }
             }
 

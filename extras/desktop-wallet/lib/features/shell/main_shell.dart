@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_notifier/local_notifier.dart';
-import 'package:path/path.dart' as p;
-import 'package:system_tray/system_tray.dart';
-import 'package:window_manager/window_manager.dart';
+import 'app_lifecycle.dart';
 import '../../core/api/models/transaction.dart';
 import '../../core/api/models/wallet_status.dart';
 import '../../core/providers/app_providers.dart';
@@ -17,6 +14,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/utils/amount_formatter.dart';
 import '../../shared/widgets/language_selector.dart';
+import '../../shared/widgets/lite_node_banner.dart';
 import '../../shared/widgets/pluton_logo.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -27,122 +25,51 @@ class MainShell extends ConsumerStatefulWidget {
   ConsumerState<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends ConsumerState<MainShell>
-    with WindowListener {
-
+class _MainShellState extends ConsumerState<MainShell> {
   final Set<String> _knownTxHashes = {};
   bool _firstTxLoad = true;
-  Timer? _trayClickTimer;
-  bool _trayReady = false;
-  bool _shuttingDown = false;
 
-  // ── System tray ──────────────────────────────────────────────────────────────
-  final _systemTray = SystemTray();
+  /* The most toasts one transaction update may raise. Each show() is a
+     blocking call out to the platform's notification service, so this is what
+     stands between a burst of transactions and a frozen window. */
+  static const _kMaxNotificationsPerUpdate = 5;
 
   // ── Autosave ────────────────────────────────────────────────────────────────
   static const _autosaveInterval = Duration(minutes: 5);
   Timer? _autosaveTimer;
   bool _savedAfterSync = false;
 
+  /* Every toast we raise, so we can take them back down. Nothing here ever
+     closed one, and on Windows a notification outlives the process that
+     registered it - which is how a backlog of them carried on popping up in
+     the tray after the app had already quit. */
+  final List<LocalNotification> _liveNotifications = [];
+
   @override
   void initState() {
     super.initState();
-    windowManager.addListener(this);
-    // Intercept the close so the wallet can be saved and closed first. Whether
-    // closing hides to tray or actually quits is decided in onWindowClose,
-    // once we know if the tray icon exists.
-    windowManager.setPreventClose(true);
-    _initSystemTray();
+    /* The app ends at exit() inside forceQuitNow, which runs no dispose(), so
+       the quit path has to be able to reach these directly. */
+    takeDownNotifications = _takeDownNotifications;
+  }
+
+  Future<void> _takeDownNotifications() async {
+    for (final n in _liveNotifications) {
+      try {
+        await n.destroy();
+      } catch (_) {
+        // Already gone, or the shell is not answering.
+      }
+    }
+    _liveNotifications.clear();
   }
 
   @override
   void dispose() {
-    _trayClickTimer?.cancel();
     _autosaveTimer?.cancel();
-    windowManager.setPreventClose(false);
-    windowManager.removeListener(this);
+    takeDownNotifications = () async {};
+    unawaited(_takeDownNotifications());
     super.dispose();
-  }
-
-  /// Flutter copies `assets/` into `data/flutter_assets/` next to the
-  /// executable, so the tray icon has to be addressed there — a bare
-  /// `assets/...` path only resolves when running from the project root.
-  String get _trayIconPath {
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final name = Platform.isWindows ? 'app_icon.ico' : 'app_icon.png';
-    final bundled =
-        p.join(exeDir, 'data', 'flutter_assets', 'assets', 'images', name);
-    if (File(bundled).existsSync()) return bundled;
-    return p.join('assets', 'images', name); // `flutter run` from the repo
-  }
-
-  Future<void> _initSystemTray() async {
-    try {
-      await _systemTray.initSystemTray(
-        title: 'PLUTON Wallet',
-        iconPath: _trayIconPath,
-        toolTip: 'PLUTON Wallet',
-      );
-
-      final menu = Menu();
-      await menu.buildFrom([
-        MenuItemLabel(label: 'Show', onClicked: (_) => _showWindow()),
-        MenuSeparator(),
-        MenuItemLabel(label: 'Exit', onClicked: (_) => _quit()),
-      ]);
-      await _systemTray.setContextMenu(menu);
-      // Only now is hiding the window safe — there is something to restore it.
-      _trayReady = true;
-
-      _systemTray.registerSystemTrayEventHandler((eventName) {
-        if (eventName == kSystemTrayEventClick) {
-          // Single left click → show window
-          if (_trayClickTimer?.isActive ?? false) {
-            // Second click within threshold → double-click: maximize
-            _trayClickTimer!.cancel();
-            _trayClickTimer = null;
-            _showWindow(maximize: true);
-          } else {
-            _trayClickTimer = Timer(const Duration(milliseconds: 350), () {
-              _showWindow();
-              _trayClickTimer = null;
-            });
-          }
-        } else if (eventName == kSystemTrayEventRightClick) {
-          _systemTray.popUpContextMenu();
-        }
-      });
-    } catch (e) {
-      // No tray: leave close/minimise behaving normally so the window stays
-      // reachable.
-      _trayReady = false;
-      debugPrint('[tray] init failed: $e');
-    }
-  }
-
-  /// Saves and closes the wallet, then lets the window close for real.
-  ///
-  /// Quitting used to bypass this entirely, discarding everything since the
-  /// last autosave and leaving the wallet file open.
-  Future<void> _quit() async {
-    if (_shuttingDown) return;
-    _shuttingDown = true;
-    _autosaveTimer?.cancel();
-    final ffi = ref.read(walletCApiProvider);
-    if (ffi.isOpen) {
-      try {
-        await ffi.save();
-      } catch (e) {
-        debugPrint('[shutdown] save failed: $e');
-      }
-      try {
-        await ffi.close();
-      } catch (e) {
-        debugPrint('[shutdown] close failed: $e');
-      }
-    }
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
   }
 
   // ── Autosave logic ──────────────────────────────────────────────────────────
@@ -183,34 +110,6 @@ class _MainShellState extends ConsumerState<MainShell>
     }
   }
 
-  // ── Window helpers ─────────────────────────────────────────────────────────
-
-  Future<void> _showWindow({bool maximize = false}) async {
-    await windowManager.show();
-    if (maximize) await windowManager.maximize();
-    // Windows restricts SetForegroundWindow from background processes.
-    // Briefly setting alwaysOnTop forces the window to the front reliably.
-    await windowManager.setAlwaysOnTop(true);
-    await windowManager.focus();
-    await windowManager.setAlwaysOnTop(false);
-  }
-
-  // ── Window events ─────────────────────────────────────────────────────────────
-
-  @override
-  Future<void> onWindowMinimize() async {
-    if (_trayReady) await windowManager.hide();
-  }
-
-  @override
-  Future<void> onWindowClose() async {
-    if (_trayReady && !_shuttingDown) {
-      await windowManager.hide();
-      return;
-    }
-    await _quit();
-  }
-
   // ── Incoming transaction notifications ────────────────────────────────────────
 
   void _onTxUpdate(
@@ -227,13 +126,30 @@ class _MainShellState extends ConsumerState<MainShell>
       return;
     }
 
+    /* A syncing wallet meets its whole history a chunk at a time. Those are old
+       transactions arriving late, not money coming in now, and raising a toast
+       for each one puts one blocking platform-channel call per transaction on
+       the UI isolate - a wallet with thousands of them freezes the app until
+       the queue drains. Learn them silently and only speak up once the wallet
+       has caught up and a new transaction really is new. */
+    final synced = ref.read(statusProvider).valueOrNull?.isWalletSynced ?? false;
     final notificationsEnabled = ref.read(notificationsEnabledProvider);
+
+    var shown = 0;
+
     for (final tx in txs) {
       if (_knownTxHashes.contains(tx.hash)) continue;
       _knownTxHashes.add(tx.hash);
-      if (tx.isIncoming && notificationsEnabled) {
-        _showNotification(tx);
-      }
+
+      if (!synced || !tx.isIncoming || !notificationsEnabled) continue;
+
+      /* Even a synced wallet can be handed a burst at once - a reconnect, a
+         rescan, or a block that pays it many times over. Cap what a single
+         update is allowed to raise so the UI thread survives any of them. */
+      if (shown >= _kMaxNotificationsPerUpdate) continue;
+
+      shown++;
+      _showNotification(tx);
     }
   }
 
@@ -243,6 +159,14 @@ class _MainShellState extends ConsumerState<MainShell>
       title: tr?.wrkzReceived ?? 'WRKZ Received',
       body: tr?.youReceivedAmount(formatAmount(tx.totalAmount.abs(), showTicker: true)) ?? 'You received ${formatAmount(tx.totalAmount.abs(), showTicker: true)}',
     );
+    /* Keep only a short tail. These are for tearing down what is still on
+       screen at exit, not a log - an unbounded list would be one more thing
+       growing with the session. */
+    _liveNotifications.add(notification);
+    if (_liveNotifications.length > _kMaxNotificationsPerUpdate) {
+      _liveNotifications.removeAt(0).destroy();
+    }
+
     notification.show();
   }
 
@@ -330,7 +254,24 @@ class _MainShellState extends ConsumerState<MainShell>
             ),
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: widget.child),
+          Expanded(
+            child: Column(
+              children: [
+                // Lite-node notice lives in the shell so it is on every
+                // screen, and stays up once the wallet is synced — which is
+                // exactly when a balance missing its older half looks most
+                // trustworthy. See LITENODE.md.
+                Consumer(
+                  builder: (context, ref, _) {
+                    final status = ref.watch(statusProvider).valueOrNull;
+                    if (status == null) return const SizedBox.shrink();
+                    return LiteNodeBanner(status: status);
+                  },
+                ),
+                Expanded(child: widget.child),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -347,7 +288,6 @@ class _NodeStatusFooter extends ConsumerWidget {
     final isOnline = nodeInfoAsync.valueOrNull?['daemonOnline'] as bool? ?? false;
     final host = nodeInfoAsync.valueOrNull?['daemonHost'] as String? ?? '…';
     final port = nodeInfoAsync.valueOrNull?['daemonPort'];
-    final nodeStr = port != null ? '$host:$port' : host;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
@@ -365,13 +305,23 @@ class _NodeStatusFooter extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 6),
-          Expanded(
+          // The port is the half that matters when two nodes differ only by
+          // it, and it is the half an ellipsis eats. Keep it, and let the
+          // hostname be the part that gives way.
+          Flexible(
             child: Text(
-              nodeStr,
+              host,
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
               overflow: TextOverflow.ellipsis,
+              softWrap: false,
             ),
           ),
+          if (port != null)
+            Text(
+              ':$port',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 11),
+            ),
+          const Spacer(),
           // Language switcher
           const LanguageSelectorButton(),
           const SizedBox(width: 2),

@@ -5,6 +5,11 @@
 - Bind daemon RPC to localhost unless remote access is required.
 - Bind wallet-api to localhost unless behind a trusted reverse proxy.
 - Restrict inbound access using host firewall/security groups.
+- The stratum server (`--stratum-bind-port`) is off by default and binds to
+  loopback when enabled. It has no account and no password: anyone who reaches
+  the port can mine to their own address using this node's CPU to build
+  templates. Put it behind a firewall or VPN before moving it off loopback, and
+  cap it with `--stratum-max-connections`.
 
 ## Authentication baseline
 

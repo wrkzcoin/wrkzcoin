@@ -199,7 +199,7 @@ namespace CryptoNote
 
             WalletRecord &record = m_records[position];
 
-            const Crypto::PublicKey spendPublicKey = record.spendPublicKey;
+            [[maybe_unused]] const Crypto::PublicKey spendPublicKey = record.spendPublicKey;
             const CryptoNote::ITransfersContainer *oldContainer = record.container;
 
             modifier(record);
@@ -532,7 +532,7 @@ namespace CryptoNote
 
             CryptoNote::WalletTransaction &transaction = m_transactions[position];
 
-            const Crypto::Hash hash = transaction.hash;
+            [[maybe_unused]] const Crypto::Hash hash = transaction.hash;
             const uint32_t oldBlockHeight = transaction.blockHeight;
 
             modifier(transaction);

@@ -787,4 +787,54 @@ class SEn extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ring size reduced to $actual (normally $normal). The amounts being sent do not have enough outputs on the chain to form a full ring, so this transaction is less private than usual.';
   }
+
+  @override
+  String get txPowServerSection => 'Transaction PoW Server';
+
+  @override
+  String get txPowServerUse => 'Use an external PoW server';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device\'s CPU is used.';
+
+  @override
+  String get txPowServerSaved => 'PoW server settings saved';
+
+  @override
+  String get txPowServerInvalid => 'Enter a valid host and port';
+
+  @override
+  String get txPowServerTest => 'Test';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server reachable in $ms ms: $threads threads, $queue of $capacity queue slots in use';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server not reachable: $error';
+  }
+
+  @override
+  String get nodeTest => 'Test';
+
+  @override
+  String get nodeInvalid => 'Enter a valid host and port';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Reachable in $ms ms: height $height, $peers peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Reachable in $ms ms, but the node is still syncing: height $height of $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Node not reachable: $error';
+  }
 }

@@ -137,6 +137,15 @@ class RpcServer
        failed to bind. Only meaningful after start(). */
     std::string getIpcPath() const;
 
+    /* Runs one daemon console command line and returns what it printed. The
+       daemon installs this once its command handler exists, which is after
+       start() because the handler needs to know which listeners came up;
+       until then the route answers 503. Only ever reachable over the IPC
+       socket - see setupRoutes. */
+    using ConsoleExecutor = std::function<std::string(const std::string &commandLine)>;
+
+    void setConsoleExecutor(ConsoleExecutor executor);
+
   private:
     //////////////////////////////
     /* Private member functions */
@@ -207,6 +216,10 @@ class RpcServer
     ///////////////////
     /* POST REQUESTS */
     ///////////////////
+
+    /* IPC only. Runs a daemon console command through the installed executor. */
+    std::tuple<Error, uint16_t>
+        console(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
 
     std::tuple<Error, uint16_t>
         sendTransaction(const httplib::Request &req, httplib::Response &res, const nlohmann::json &body);
@@ -350,6 +363,12 @@ class RpcServer
 
     /* Set once the IPC socket is bound, so shutdown knows to unlink it */
     bool m_ipcBound = false;
+
+    /* Installed after start() from the daemon thread while the listeners are
+       already serving, so every reader takes a copy under the lock. */
+    std::mutex m_consoleExecutorMutex;
+
+    ConsoleExecutor m_consoleExecutor;
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;

@@ -16,8 +16,8 @@ Binaries for Testing:
   - AARCH64: <!-- link to release candidate binaries for this platform -->
 
 ### Project
-- [ ] Currently Passing Travis & AppVeyor build tests
-- [ ] `Version.h.in` updated to correct semver value
+- [ ] Release builds succeed on every target platform (see `scripts/cross-platform/README.md`)
+- [ ] `src/config/version.h.in` updated to the correct version and build number
 - [ ] Release Notes Prepared (<!-- link to proposed copy of release notes -->)
 
 ### Wrkzd Tests
@@ -58,7 +58,7 @@ Binaries for Testing:
   - [ ] Linux
   - [ ] MacOS
 
-### zedwallet/beta Tests
+### wrkz-wallet Tests
 - Connect to local daemon
   - [ ] Windows
   - [ ] Linux
@@ -92,6 +92,48 @@ Binaries for Testing:
   - [ ] Linux
   - [ ] MacOS
 - Integrated Addresses work
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Scan From Height Works Correctly
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+
+### wrkz-wallet-api Tests
+- Connect to local daemon
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Connect to a remote daemon
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Open, create and import wallets
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Send a transaction
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Receive a transaction
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Perform a fusion transaction
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Export keys and seeds
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- Integrated Addresses work
+  - [ ] Windows
+  - [ ] Linux
+  - [ ] MacOS
+- All REST endpoints are operational
   - [ ] Windows
   - [ ] Linux
   - [ ] MacOS

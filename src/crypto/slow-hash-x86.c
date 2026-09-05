@@ -121,6 +121,16 @@ THREADV uint8_t *hp_state = NULL;
 
 THREADV int hp_allocated = 0;
 
+/* How much hp_state actually points at, so a smaller scratchpad can reuse a
+   bigger buffer and munmap gets the length it was given. */
+THREADV uint32_t hp_size = 0;
+
+void slow_hash_release_state(void);
+
+/* Defined in slow-hash-state.cpp: makes this thread release its scratchpad
+   when it exits. */
+extern void slow_hash_arm_state_release(void);
+
 #if defined(_MSC_VER)
 #define cpuid(info, x) __cpuidex(info, x, 0)
 #else
@@ -403,22 +413,37 @@ BOOL SetLockPagesPrivilege(HANDLE hProcess, BOOL bEnable)
 #endif
 
 /**
- * @brief allocate the 2MB scratch buffer using OS support for huge pages, if available
+ * @brief allocate the scratch buffer using OS support for huge pages, if available
  *
- * This function tries to allocate the 2MB scratch buffer using a single
+ * This function tries to allocate the scratch buffer using a single
  * 2MB "huge page" (instead of the usual 4KB page sizes) to reduce TLB misses
  * during the random accesses to the scratch buffer.  This is one of the
  * important speed optimizations needed to make CryptoNight faster.
  *
- * No parameters.  Updates a thread-local pointer, hp_state, to point to
- * the allocated buffer.
+ * The buffer is kept for the life of the thread rather than released after
+ * each hash. Allocating and freeing it per hash was a large part of the cost of
+ * hashing: every call handed back a fresh mapping that then had to be faulted
+ * in a page at a time, and on Windows each one also adjusted the process token
+ * for large pages before asking VirtualAlloc for a MEM_LARGE_PAGES mapping that
+ * a sub-2MB scratchpad can never be given. Measured on Windows with cn_upx,
+ * keeping the buffer was worth 1.3x on one thread and about 2x on sixteen.
+ *
+ * Updates the thread-local pointer hp_state, and hp_size with the size that was
+ * actually mapped, so a later request for a bigger scratchpad (the algorithms
+ * range from 128KB to 2MB) reallocates and a smaller one reuses what is here.
  */
 
 void slow_hash_allocate_state(uint32_t page_size)
 {
-    if (hp_state != NULL)
+    if (hp_state != NULL && hp_size >= page_size)
     {
         return;
+    }
+
+    /* A different algorithm wants more room than this thread has. */
+    if (hp_state != NULL)
+    {
+        slow_hash_release_state();
     }
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
@@ -444,13 +469,27 @@ void slow_hash_allocate_state(uint32_t page_size)
         hp_allocated = 0;
         hp_state = (uint8_t *)malloc(page_size);
     }
+
+    hp_size = hp_state == NULL ? 0 : page_size;
+
+    /* A C thread-local pointer has no destructor, and callers that spawn a
+       thread per unit of work (the miner's workers, wrkz-txpow-server's job
+       threads, stratum share validation) would otherwise leak this buffer
+       every time one of those threads ended. */
+    if (hp_state != NULL)
+    {
+        slow_hash_arm_state_release();
+    }
 }
 
 /**
  *@brief frees the state allocated by slow_hash_allocate_state
+ *
+ * Called on thread exit through the hook armed above, and whenever a thread
+ * needs a larger scratchpad than the one it is holding.
  */
 
-void slow_hash_free_state(uint32_t page_size)
+void slow_hash_release_state(void)
 {
     if (hp_state == NULL)
     {
@@ -466,10 +505,11 @@ void slow_hash_free_state(uint32_t page_size)
 #if defined(_MSC_VER) || defined(__MINGW32__)
         VirtualFree(hp_state, 0, MEM_RELEASE);
 #else
-        munmap(hp_state, page_size);
+        munmap(hp_state, hp_size);
 #endif
     }
 
+    hp_size = 0;
     hp_state = NULL;
     hp_allocated = 0;
 }
@@ -657,7 +697,6 @@ void cn_slow_hash(
     memcpy(state.init, text, INIT_SIZE_BYTE);
     hash_permutation(&state.hs);
     extra_hashes[state.hs.b[0] & 3](&state, 200, hash);
-    slow_hash_free_state(page_size);
 }
 
 #endif

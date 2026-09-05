@@ -281,7 +281,13 @@ namespace CryptoNote
         return serializeMap(value, name, serializer, [](uint64_t size) {});
     }
 
-    template<uint64_t size>
+    /* The bound of a std::array is a size_t, so the non-type parameter has to be
+       one too. Spelling it uint64_t makes this overload undeducible wherever
+       size_t is narrower than 64 bits - wasm32 and 32-bit ARM - and the call
+       then falls through to the generic serialize(), which fails to compile with
+       "no member named 'serialize' in std::array". It matches on x86_64 and
+       MSVC only because size_t happens to be 64 bits there. */
+    template<size_t size>
     bool serialize(std::array<uint8_t, size> &value, Common::StringView name, CryptoNote::ISerializer &s)
     {
         return s.binary(value.data(), value.size(), name);

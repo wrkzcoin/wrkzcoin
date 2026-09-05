@@ -35,6 +35,8 @@ class BlockchainMonitor
 
     System::ContextGroup m_sleepingContext;
 
+    void sleepPollingInterval();
+
     std::optional<Crypto::Hash> requestLastBlockHash();
 
     std::shared_ptr<httplib::Client> m_httpClient = nullptr;

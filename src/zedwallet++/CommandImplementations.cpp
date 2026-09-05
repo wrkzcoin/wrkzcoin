@@ -267,6 +267,33 @@ void status(const std::shared_ptr<WalletBackend> walletBackend)
 
     /* Print a summary of the sync status */
     printSyncSummary(status.localDaemonBlockCount, status.networkBlockCount, status.walletBlockCount);
+
+    /* The one thing about a lite node a wallet has to know: it holds nothing
+       below this height, so funds received lower down cannot be found through
+       it however far back the wallet is told to scan. See LITENODE.md. */
+    if (status.daemonLiteStartHeight != 0)
+    {
+        std::cout << "\n"
+                  << InformationMsg("This node is a lite node and holds no data below height ")
+                  << InformationMsg(status.daemonLiteStartHeight) << InformationMsg(".") << std::endl
+                  << "Transactions received below that height cannot be found through it." << std::endl;
+    }
+
+    if (status.syncStalledByLiteNode)
+    {
+        /* The recorded heights, not walletBlockCount and the current daemon's
+           lite height: the wallet has moved on since the stall, and the daemon
+           on the other end may have been swapped for one that never caused it. */
+        std::cout << "\n"
+                  << WarningMsg("Sync has stopped. This wallet has scanned to height ")
+                  << WarningMsg(status.syncGapCoveredTo)
+                  << WarningMsg(", but the node it was talking to answers only from height ")
+                  << WarningMsg(status.syncGapDaemonServesFrom) << WarningMsg(" upward.") << std::endl
+                  << "Your balance is incomplete until this is resolved. Connect a node that holds" << std::endl
+                  << "the whole chain, or reset the wallet to " << status.syncGapDaemonServesFrom
+                  << " and accept that earlier transactions" << std::endl
+                  << "cannot be found here." << std::endl;
+    }
 }
 
 void reset(const std::shared_ptr<WalletBackend> walletBackend)
@@ -278,6 +305,25 @@ void reset(const std::shared_ptr<WalletBackend> walletBackend)
               << InformationMsg("You can't make any transactions during the ") << InformationMsg("process.")
               << std::endl
               << std::endl;
+
+    /* A lite node serves a rescan from its lite height whatever it is asked
+       for, so anything this wallet knows about from below there is dropped and
+       cannot be found again here. Say that before the confirmation, not after
+       the funds have gone missing. See LITENODE.md. */
+    const auto [liteStartHeight, transactionsLost] = walletBackend->liteRescanImpact(scanHeight);
+
+    if (transactionsLost != 0)
+    {
+        std::cout << WarningMsg("The node you are connected to is a lite node and holds no data below height ")
+                  << WarningMsg(liteStartHeight) << WarningMsg(".") << std::endl
+                  << WarningMsg("Rescanning from ") << WarningMsg(scanHeight) << WarningMsg(" will start at ")
+                  << WarningMsg(liteStartHeight) << WarningMsg(" instead, and ") << WarningMsg(transactionsLost)
+                  << WarningMsg(" transaction(s) this wallet already knows about will be lost.") << std::endl
+                  << WarningMsg("They cannot be recovered through this node. Connect a node that holds the whole")
+                  << std::endl
+                  << WarningMsg("chain first if you want to keep them.") << std::endl
+                  << std::endl;
+    }
 
     if (!Utilities::confirm("Are you sure?"))
     {

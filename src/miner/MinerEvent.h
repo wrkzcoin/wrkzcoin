@@ -14,6 +14,7 @@ namespace Miner
     {
         BLOCK_MINED,
         BLOCKCHAIN_UPDATED,
+        SHUTDOWN,
     };
 
     struct MinerEvent

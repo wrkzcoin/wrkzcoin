@@ -6,7 +6,7 @@
 
 #include <common/ConsoleTools.h>
 #include <iomanip>
-#include <ostream>
+#include <iostream>
 #include <string>
 
 template<typename T> class ColouredMsg
@@ -36,7 +36,17 @@ template<typename T> class ColouredMsg
 
     friend std::ostream &operator<<(std::ostream &os, const ColouredMsg &m)
     {
-        Common::Console::setTextColor(m.colour);
+        /* The colour is set on the terminal, not written into the stream, so
+           it is only right when the stream is the terminal. A daemon command
+           whose output is being captured for an attached console would
+           otherwise recolour the daemon's own screen while writing plain text
+           somewhere else. */
+        const bool onTerminal = (&os == &std::cout) || (&os == &std::cerr);
+
+        if (onTerminal)
+        {
+            Common::Console::setTextColor(m.colour);
+        }
 
         if (m.pad)
         {
@@ -47,7 +57,11 @@ template<typename T> class ColouredMsg
             os << m.msg;
         }
 
-        Common::Console::setTextColor(Common::Console::Color::Default);
+        if (onTerminal)
+        {
+            Common::Console::setTextColor(Common::Console::Color::Default);
+        }
+
         return os;
     }
 

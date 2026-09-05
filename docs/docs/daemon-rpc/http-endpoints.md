@@ -7,26 +7,38 @@ Implementation mapping: route registrations in `src/rpc/RpcServer.cpp`.
 | Path | Handler | Permission Mode |
 | --- | --- | --- |
 | `/json_rpc` | JSON-RPC dispatcher | Depends on method |
-| `/info` | `info` | `Default` |
-| `/fee` | `fee` | `Default` |
-| `/height` | `height` | `Default` |
-| `/peers` | `peers` | `Default` |
+| `/info` | `info` | `Standard` |
+| `/height` | `height` | `Standard` |
+| `/peers` | `peers` | `Standard` |
+| `/getinfo` | `info` | `Standard` |
+| `/getheight` | `height` | `Standard` |
+
+`/getinfo` and `/getheight` are aliases of `/info` and `/height`, serving the
+same handlers under the spelling Monero-lineage tooling expects. A solo miner
+polls `/getheight` first and falls back to `/getinfo` when the answer carries no
+`hash` member, which is how it tells a CryptoNote daemon from a Monero one — so
+`/getheight` deliberately answers without one.
 
 ## POST
 
 | Path | Handler | Permission Mode |
 | --- | --- | --- |
 | `/json_rpc` | JSON-RPC dispatcher | Depends on method |
-| `/sendrawtransaction` | `sendTransaction` | `Default` |
-| `/getrandom_outs` | `getRandomOuts` | `Default` |
-| `/getwalletsyncdata` | `getWalletSyncData` | `Default` |
-| `/get_global_indexes_for_range` | `getGlobalIndexes` | `Default` |
-| `/queryblockslite` | `queryBlocksLite` | `Default` |
-| `/get_transactions_status` | `getTransactionsStatus` | `Default` |
-| `/get_pool_changes_lite` | `getPoolChanges` | `Default` |
-| `/queryblocksdetailed` | `queryBlocksDetailed` | `AllMethodsEnabled` |
-| `/get_o_indexes` | `getGlobalIndexesDeprecated` | `Default` |
-| `/getrawblocks` | `getRawBlocks` | `Default` |
+| `/sendrawtransaction` | `sendTransaction` | `Standard` |
+| `/getrandom_outs` | `getRandomOuts` | `Standard` |
+| `/getwalletsyncdata` | `getWalletSyncData` | `Standard` |
+| `/get_global_indexes_for_range` | `getGlobalIndexes` | `Standard` |
+| `/queryblockslite` | `queryBlocksLite` | `Standard` |
+| `/get_transactions_status` | `getTransactionsStatus` | `Standard` |
+| `/get_pool_changes_lite` | `getPoolChanges` | `Standard` |
+| `/queryblocksdetailed` | `queryBlocksDetailed` | `Explorer` |
+| `/get_o_indexes` | `getGlobalIndexesDeprecated` | `Standard` |
+| `/getrawblocks` | `getRawBlocks` | `Standard` |
+| `/console` | `console` | `Standard`, local socket only |
+
+`/console` runs daemon console commands and is registered **only** on the IPC
+socket (`--rpc-ipc-path`), never on a TCP listener, token or no token. The mode
+on the socket file decides who may connect.
 
 ## OPTIONS
 
@@ -36,10 +48,13 @@ Implementation mapping: route registrations in `src/rpc/RpcServer.cpp`.
 
 ```bash
 curl -s "$DAEMON_RPC_URL/info"
-curl -s "$DAEMON_RPC_URL/fee"
 curl -s "$DAEMON_RPC_URL/height"
 curl -s "$DAEMON_RPC_URL/peers"
 ```
+
+`/info` reports the node's own state: `height`, `top_block_hash`,
+`network_height`, `difficulty`, `hashrate`, peer counts, `synced`, the lite node
+fields (`lite`, `lite_start_height`), `compression` and `sync_features`.
 
 ## POST Examples
 

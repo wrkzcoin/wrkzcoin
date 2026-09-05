@@ -15,6 +15,12 @@ include_directories(${CMAKE_SOURCE_DIR}/external/nlohmann-json)
 include_directories(${CMAKE_SOURCE_DIR}/external/cxxopts)
 include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 include_directories(${CMAKE_SOURCE_DIR}/external/zstd)
+# zstd.h itself lives under lib/. Only the daemon includes it - the lite node
+# snapshot container compresses its frames with zstd - and only the daemon links
+# the library, via WRKZ_ZSTD_LIBS below. Keeping the snapshot format in the
+# daemon rather than in CryptoNoteCore is deliberate: that library is linked into
+# every wallet binary, and none of them has any use for a snapshot.
+include_directories(${CMAKE_SOURCE_DIR}/external/zstd/lib)
 
 # wallet_capi shared target links many internal static libraries. Ensure they
 # are built with PIC so shared linking succeeds on ELF/Mach-O platforms.
@@ -37,6 +43,7 @@ file(GLOB_RECURSE JsonRpcServer CONFIGURE_DEPENDS jsonrpcserver/*)
 file(GLOB_RECURSE Logging CONFIGURE_DEPENDS logging/*)
 file(GLOB_RECURSE Logger CONFIGURE_DEPENDS logger/*)
 file(GLOB_RECURSE miner CONFIGURE_DEPENDS miner/*)
+file(GLOB_RECURSE TxPowServer CONFIGURE_DEPENDS txpowserver/*)
 file(GLOB_RECURSE Mnemonics CONFIGURE_DEPENDS mnemonics/*)
 file(GLOB_RECURSE Nigel CONFIGURE_DEPENDS nigel/*)
 file(GLOB_RECURSE NodeRpcProxy CONFIGURE_DEPENDS noderpcproxy/*)
@@ -74,7 +81,7 @@ else ()
 endif ()
 
 # Group the files together in IDEs
-source_group("" FILES ${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
+source_group("" FILES ${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${TxPowServer} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
 
 # Define a group of files as a library to link against
 add_library(Common STATIC ${Common})
@@ -185,6 +192,9 @@ if (WIN32)
     set(MINER_SOURCES_OS
             binaryinfo/miner.rc
             )
+    set(TXPOW_SERVER_SOURCES_OS
+            binaryinfo/txpowserver.rc
+            )
     set(PG_SOURCES_OS
             binaryinfo/service.rc
             )
@@ -202,6 +212,7 @@ endif ()
 if (WRKZ_BUILD_EXECUTABLES)
     add_executable(cryptotest ${CryptoTest} ${CT_SOURCES_OS})
     add_executable(miner ${miner} ${MINER_SOURCES_OS})
+    add_executable(TxPowServer ${TxPowServer} ${TXPOW_SERVER_SOURCES_OS})
     add_executable(WalletService ${WalletService} ${PG_SOURCES_OS})
     add_executable(Wrkzd ${Wrkzd} ${DAEMON_SOURCES_OS})
     add_executable(WalletApi ${WalletApi} ${WALLET_API_SOURCES_OS})
@@ -252,7 +263,7 @@ if (WRKZ_ENABLE_PCH)
         wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
     endforeach ()
     if (WRKZ_BUILD_EXECUTABLES)
-        foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner)
+        foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner TxPowServer)
             wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
         endforeach ()
     endif ()
@@ -273,6 +284,7 @@ if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(zedwallet++ ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(WalletApi ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(miner ws2_32 advapi32 crypt32 gdi32 user32)
+    target_link_libraries(TxPowServer ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(WalletUpgrader ws2_32 advapi32 crypt32 gdi32 user32)
 endif ()
 
@@ -337,7 +349,7 @@ endif ()
 if (WRKZ_BUILD_EXECUTABLES)
     # WRKZ_ROCKSDB_LIBS is set by external/CMakeLists.txt and names whichever
     # RocksDB (plus bundled zstd, when we build it) this configuration uses.
-    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} Errors)
+    target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} ${WRKZ_ZSTD_LIBS} Errors)
 endif ()
 
 # Add the dependencies we need
@@ -361,6 +373,9 @@ if (WRKZ_BUILD_EXECUTABLES)
     # ID tests use to build a real tx_extra and read it back.
     target_link_libraries(cryptotest Crypto Common Utilities Serialization)
     target_link_libraries(miner Crypto Errors Utilities System Serialization)
+    # The PoW server only parses prefixes, hashes them and serves HTTP: no
+    # chain, no wallet, no P2P.
+    target_link_libraries(TxPowServer Crypto Common Logger Serialization)
     target_link_libraries(WalletApi WalletBackend)
     target_link_libraries(WalletService JsonRpcServer Wallet Mnemonics Errors)
     target_link_libraries(WalletUpgrader Utilities WalletBackend Common)
@@ -423,7 +438,29 @@ if (WRKZ_BUILD_WALLET_WASM)
         target_link_options(wallet_wasm PRIVATE
             -pthread
             -sUSE_PTHREADS=1
-            -sPTHREAD_POOL_SIZE=4
+            ## The pool must cover every thread the wallet can hold at once, or
+            ## the wallet deadlocks on startup. wallet_wasm_request runs as a
+            ## synchronous ccall inside the worker's onmessage handler, so once
+            ## the pool is empty a pthread_create has to spawn a fresh Worker -
+            ## and that needs the very event loop the blocked call is sitting on.
+            ## It does not fail, it hangs: the engine reports ready and then
+            ## create/open never returns.
+            ##
+            ## Must exceed the peak live thread count, or a wallet hangs rather
+            ## than fails. Syncing runs: WalletSynchronizer::mainLoop,
+            ## BlockDownloader::downloader, Nigel's background refresh, up to
+            ## SYNC_THREADS_MAX blockProcessingThread (resolve_sync_threads()
+            ## in wallet_wasm_exports.cpp scales that with
+            ## navigator.hardwareConcurrency, cap 6), the
+            ## WalletConfig::syncRequestConcurrency = 4 std::async windows that
+            ## downloadBlocksInParallel() launches and then blocks on, and a
+            ## few short-lived EventHandler threads. That peaks around 15.
+            ##
+            ## The std::async windows are the ones to remember: nothing at that
+            ## call site looks like it starts a thread, and leaving them out of
+            ## this sum is how the pool ends up one short and sync stops moving
+            ## with no error anywhere. Raise this and SYNC_THREADS_MAX together.
+            -sPTHREAD_POOL_SIZE=24
         )
     endif ()
 endif ()
@@ -432,6 +469,7 @@ if (OPENSSL_FOUND)
     target_link_libraries(Nigel ${OPENSSL_LIBRARIES})
     if (WRKZ_BUILD_EXECUTABLES)
         target_link_libraries(miner ${OPENSSL_LIBRARIES})
+        target_link_libraries(TxPowServer ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletApi ${OPENSSL_LIBRARIES})
         target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
@@ -445,6 +483,7 @@ if (ZLIB_FOUND)
     target_link_libraries(Nigel ${ZLIB_LIBRARIES})
     if (WRKZ_BUILD_EXECUTABLES)
         target_link_libraries(miner ${ZLIB_LIBRARIES})
+        target_link_libraries(TxPowServer ${ZLIB_LIBRARIES})
         target_link_libraries(WalletApi ${ZLIB_LIBRARIES})
         target_link_libraries(zedwallet++ ${ZLIB_LIBRARIES})
         target_link_libraries(WalletService ${ZLIB_LIBRARIES})
@@ -486,6 +525,7 @@ if (ANDROID AND WRKZ_ANDROID_UCONTEXT_LIB)
     if (WRKZ_BUILD_EXECUTABLES)
         target_link_libraries(cryptotest "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(miner "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(TxPowServer "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletApi "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletService "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletUpgrader "${WRKZ_ANDROID_UCONTEXT_LIB}")
@@ -503,6 +543,7 @@ add_dependencies(Rpc version)
 if (WRKZ_BUILD_EXECUTABLES)
     add_dependencies(cryptotest version)
     add_dependencies(miner version)
+    add_dependencies(TxPowServer version)
     add_dependencies(Wrkzd version)
     add_dependencies(WalletUpgrader version)
     add_dependencies(WalletApi version)
@@ -523,6 +564,7 @@ if (WRKZ_BUILD_EXECUTABLES)
     set_property(TARGET zedwallet++ PROPERTY OUTPUT_NAME "wrkz-wallet")
     set_property(TARGET WalletService PROPERTY OUTPUT_NAME "wrkz-service")
     set_property(TARGET miner PROPERTY OUTPUT_NAME "miner")
+    set_property(TARGET TxPowServer PROPERTY OUTPUT_NAME "wrkz-txpow-server")
     set_property(TARGET cryptotest PROPERTY OUTPUT_NAME "cryptotest")
     set_property(TARGET WalletApi PROPERTY OUTPUT_NAME "wrkz-wallet-api")
     set_property(TARGET WalletUpgrader PROPERTY OUTPUT_NAME "wallet-upgrader")

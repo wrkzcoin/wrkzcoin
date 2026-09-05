@@ -29,6 +29,7 @@
 #include <logger/Logger.h>
 #include <logging/LoggerManager.h>
 #include <mnemonics/Mnemonics.h>
+#include <nigel/TxPowClient.h>
 #include <noderpcproxy/NodeRpcProxy.h>
 #include <utilities/Addresses.h>
 #include <utilities/Mixins.h>
@@ -671,33 +672,81 @@ Error WalletBackend::saveWalletJSONToDisk(std::string walletJSON, std::string fi
 
     return SUCCESS;
 #else
-    std::ofstream file(filename, std::ios_base::binary);
+    /* Write a temporary alongside and rename it over the wallet, rather than
+       truncating the wallet and writing into it.
 
-    if (!file)
+       An in-place write is only safe if nothing interrupts it. Anything that
+       does - power loss, the OS killing a GUI wallet, a user who gave up on a
+       save that would not finish and reached for Task Manager - leaves a
+       truncated file, and a truncated wallet file is unopenable: the funds are
+       gone unless there is a backup or the seed. A rename over an existing file
+       is atomic on both NTFS and POSIX, so the wallet on disk is only ever the
+       old one or the new one. */
+    const fs::path target = fs::path(filename);
+    const fs::path temp = fs::path(filename + ".tmp");
+
     {
+        std::ofstream file(temp, std::ios_base::binary | std::ios_base::trunc);
+
+        if (!file)
+        {
+            Logger::logger.log(
+                std::string("Wallet filename: ") + filename + " is invalid",
+                Logger::FATAL,
+                {Logger::FILESYSTEM, Logger::SAVE});
+
+            return INVALID_WALLET_FILENAME;
+        }
+
+        /* Write the isAWalletIdentifier to the file, so when we open it we can
+           verify that it is a wallet file */
+        std::copy(
+            Constants::IS_A_WALLET_IDENTIFIER.begin(),
+            Constants::IS_A_WALLET_IDENTIFIER.end(),
+            std::ostreambuf_iterator<char>(file));
+
+        /* Write the salt to the file, so we can use it to unencrypt the file
+           later. Note that the salt is unencrypted. */
+        std::copy(std::begin(salt), std::end(salt), std::ostreambuf_iterator<char>(file));
+
+        /* Write the encrypted wallet data to the file */
+        std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
+
+        /* Flush explicitly and check: the destructor cannot report a failed
+           write, and renaming a short file over a good wallet would be worse
+           than not saving at all. */
+        file.flush();
+
+        if (!file)
+        {
+            file.close();
+            std::error_code ignored;
+            fs::remove(temp, ignored);
+
+            Logger::logger.log(
+                std::string("Failed writing wallet to: ") + temp.string(),
+                Logger::FATAL,
+                {Logger::FILESYSTEM, Logger::SAVE});
+
+            return INVALID_WALLET_FILENAME;
+        }
+    }
+
+    std::error_code renameError;
+    fs::rename(temp, target, renameError);
+
+    if (renameError)
+    {
+        std::error_code ignored;
+        fs::remove(temp, ignored);
+
         Logger::logger.log(
-            std::string("Wallet filename: ") + filename + " is invalid",
+            std::string("Failed replacing wallet file ") + filename + ": " + renameError.message(),
             Logger::FATAL,
             {Logger::FILESYSTEM, Logger::SAVE});
 
         return INVALID_WALLET_FILENAME;
     }
-
-    std::string saltString = std::string(salt, salt + sizeof(salt));
-
-    /* Write the isAWalletIdentifier to the file, so when we open it we can
-       verify that it is a wallet file */
-    std::copy(
-        Constants::IS_A_WALLET_IDENTIFIER.begin(),
-        Constants::IS_A_WALLET_IDENTIFIER.end(),
-        std::ostreambuf_iterator<char>(file));
-
-    /* Write the salt to the file, so we can use it to unencrypt the file
-       later. Note that the salt is unencrypted. */
-    std::copy(std::begin(salt), std::end(salt), std::ostreambuf_iterator<char>(file));
-
-    /* Write the encrypted wallet data to the file */
-    std::copy(encryptedData.begin(), encryptedData.end(), std::ostreambuf_iterator<char>(file));
 
     return SUCCESS;
 #endif
@@ -731,8 +780,40 @@ void WalletBackend::init()
         {
             const uint64_t createdHeight = m_daemon->networkBlockCount();
             const uint64_t timestampHeight = Utilities::timestampToScanHeight(startTimestamp);
-            startHeight = std::min(createdHeight, timestampHeight);
-            startTimestamp = 0;
+
+            /* std::min() over a zero is not a lower bound, it is a wrong
+               answer. networkBlockCount() reads 0 until the first /info has
+               landed, and taking the minimum against it hands a brand new
+               wallet a scan height of 0 - the whole chain - while the line
+               that used to follow threw away the timestamp that was the only
+               other way to work the height out. The wallet then reports block
+               0 against a network of millions and grinds through blocks it
+               has no reason to look at.
+
+               It shows up on the web build first: there the initial /info is
+               an XHR issued from inside a blocking call, on a cold DNS and TLS
+               path, so it is the request most likely to be slow or to fail. A
+               native wallet usually wins that race and never notices. */
+            uint64_t candidate = 0;
+
+            if (createdHeight != 0 && timestampHeight != 0)
+            {
+                candidate = std::min(createdHeight, timestampHeight);
+            }
+            else
+            {
+                candidate = createdHeight != 0 ? createdHeight : timestampHeight;
+            }
+
+            if (candidate != 0)
+            {
+                startHeight = candidate;
+                startTimestamp = 0;
+            }
+
+            /* Neither was usable: keep the timestamp so the synchronizer can
+               resolve a height once the daemon answers. Scanning from a
+               timestamp is slow; scanning from genesis is worse. */
         }
 
         m_walletSynchronizer = std::make_shared<WalletSynchronizer>(
@@ -1068,14 +1149,16 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         /* Iteratively estimate fee: the destination amount is decomposed into canonical
            denominations, so the output count depends on the fee, which depends on the
            output count.
-           In WASM builds the fee is clamped to TRANSACTION_POW_PASS_WITH_FEE so the
-           extremely slow single-threaded PoW is bypassed entirely.  In native builds
-           we still add 9 bytes overhead for the PoW nonce that makeTransaction appends. */
+           In WASM builds without an external PoW server the fee is clamped to
+           TRANSACTION_POW_PASS_WITH_FEE so the extremely slow single-threaded PoW is
+           bypassed entirely.  Everywhere else we add 9 bytes overhead for the PoW
+           nonce that makeTransaction appends. */
 #if defined(__EMSCRIPTEN__)
-        const size_t POW_NONCE_OVERHEAD = 0;
+        const bool bypassPowWithFee = !TxPowClient::configured();
 #else
-        const size_t POW_NONCE_OVERHEAD = 9;
+        const bool bypassPowWithFee = false;
 #endif
+        const size_t POW_NONCE_OVERHEAD = bypassPowWithFee ? 0 : 9;
         size_t numOutputs = 1;
         uint64_t estimatedFee = 0;
 
@@ -1084,13 +1167,11 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
             const size_t estimatedSize = Utilities::estimateTransactionSize(
                 mixin, batch.size(), numOutputs, resolvedPaymentID != "", 0) + POW_NONCE_OVERHEAD;
             estimatedFee = Utilities::getMinimumTransactionFee(estimatedSize, height);
-#if defined(__EMSCRIPTEN__)
             /* Ensure fee is high enough to bypass tx PoW in WASM */
-            if (estimatedFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+            if (bypassPowWithFee && estimatedFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
             {
                 estimatedFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
             }
-#endif
 
             if (estimatedFee >= batchSum)
                 break;
@@ -1227,8 +1308,9 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
 
 #if defined(__EMSCRIPTEN__)
             /* Keep clearing the bar that lets WASM skip the tx PoW, which is
-               punishingly slow single-threaded. */
-            if (requiredFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
+               punishingly slow single-threaded - unless an external PoW server
+               is doing that work, in which case the normal fee applies. */
+            if (!TxPowClient::configured() && requiredFee < CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE)
             {
                 requiredFee = CryptoNote::parameters::TRANSACTION_POW_PASS_WITH_FEE;
             }
@@ -1706,7 +1788,46 @@ WalletTypes::WalletStatus WalletBackend::getStatus() const
     status.peerCount = m_daemon->peerCount();
     status.lastKnownHashrate = m_daemon->hashrate();
 
+    status.daemonLiteStartHeight = m_daemon->liteStartHeight();
+
+    /* The heights come with the flag. They are not derivable from anything
+       else here: the wallet's block count moves on after the stall, and the
+       daemon now connected may not be the one that caused it. */
+    std::tie(status.syncStalledByLiteNode, status.syncGapCoveredTo, status.syncGapDaemonServesFrom) =
+        m_walletSynchronizer->getSyncGap();
+
+    /* Where this wallet was told to start, not where it has got to. A synced
+       wallet's block count says nothing about how far back its funds go, so
+       this is the only number a caller can size a lite node against. */
+    std::tie(status.walletSyncStartHeight, status.walletSyncStartTimestamp) =
+        m_subWallets->getMinInitialSyncStart();
+
     return status;
+}
+
+std::tuple<uint64_t, uint64_t> WalletBackend::liteRescanImpact(const uint64_t scanHeight) const
+{
+    const uint64_t liteStartHeight = m_daemon->liteStartHeight();
+
+    if (liteStartHeight == 0 || scanHeight >= liteStartHeight)
+    {
+        return {0, 0};
+    }
+
+    /* Only the transactions below the floor are actually at stake. A wallet
+       that holds nothing down there loses nothing by rescanning from lower
+       than the daemon can serve, so there is no reason to stand in its way. */
+    uint64_t transactionsLost = 0;
+
+    for (const auto &transaction : getTransactions())
+    {
+        if (transaction.blockHeight != 0 && transaction.blockHeight < liteStartHeight)
+        {
+            transactionsLost++;
+        }
+    }
+
+    return {liteStartHeight, transactionsLost};
 }
 
 /* Returns transactions in the range [startHeight, endHeight - 1] - so if
@@ -1725,7 +1846,7 @@ std::vector<WalletTypes::Transaction>
                 transactions.begin(),
                 transactions.end(),
                 std::back_inserter(result),
-                [&startHeight, &endHeight](const auto tx) {
+                [&startHeight, &endHeight](const auto &tx) {
                     return tx.blockHeight >= startHeight && tx.blockHeight < endHeight;
                 });
 
@@ -1737,6 +1858,12 @@ std::vector<WalletTypes::Transaction>
     } catch (const std::exception &e)
     {
     }
+
+    /* getTransactions() threw and the catch above swallowed it. Falling off the
+       end of a function returning a vector is undefined behaviour, so say what
+       happens instead: the caller gets the empty range it would have got had
+       there been no transactions in it. */
+    return result;
 }
 
 std::tuple<uint64_t, std::string> WalletBackend::getNodeFee() const

@@ -794,4 +794,54 @@ class SEs extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Tamaño del anillo reducido a $actual (normalmente $normal). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.';
   }
+
+  @override
+  String get txPowServerSection => 'Servidor PoW de transacciones';
+
+  @override
+  String get txPowServerUse => 'Usar un servidor PoW externo';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.';
+
+  @override
+  String get txPowServerSaved => 'Ajustes del servidor PoW guardados';
+
+  @override
+  String get txPowServerInvalid => 'Introduce un host y un puerto válidos';
+
+  @override
+  String get txPowServerTest => 'Probar';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Servidor accesible en $ms ms: $threads hilos, $queue de $capacity puestos de cola en uso';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Servidor no accesible: $error';
+  }
+
+  @override
+  String get nodeTest => 'Probar';
+
+  @override
+  String get nodeInvalid => 'Introduce un host y un puerto válidos';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Accesible en $ms ms: altura $height, $peers pares';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Accesible en $ms ms, pero el nodo aún se está sincronizando: altura $height de $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nodo no accesible: $error';
+  }
 }
