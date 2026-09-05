@@ -147,5 +147,98 @@ ENV HOME=/tmp/wrkz-home \
 RUN mkdir -p /work /build /out /tmp/wrkz-home \
  && chmod 1777 /work /build /out /tmp/wrkz-home
 
+# ---------------------------------------------------------------------------
+# Optional: the wallet applications under extras/. Each stage is off by default
+# and adds gigabytes, so they live at the end of the file - switching one on or
+# off only rebuilds these layers, and Docker keeps both variants cached.
+# build.sh turns on whatever the requested target needs.
+#
+# Caches that must be writable by an arbitrary uid at run time live under
+# /build (a bind mount), not in the image.
+# ---------------------------------------------------------------------------
+ENV FLUTTER_ROOT=/opt/flutter \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_HOME=/opt/android-sdk \
+    EMSDK=/opt/emsdk \
+    PUB_CACHE=/build/.pub-cache \
+    GRADLE_USER_HOME=/build/.gradle \
+    EM_CACHE=/build/.emscripten-cache \
+    FLUTTER_SUPPRESS_ANALYTICS=true \
+    PATH=/opt/flutter/bin:/opt/flutter/bin/cache/dart-sdk/bin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:$PATH
+
+# Flutter SDK + the Linux desktop toolchain (clang/GTK). Needed by every
+# application target. The apps ask for Flutter 3.38+ / Dart 3.10+ in their
+# pubspec.yaml, so keep FLUTTER_VERSION at or above that.
+ARG WITH_FLUTTER=0
+ARG FLUTTER_VERSION=3.38.7
+RUN set -eux; \
+    if [ "${WITH_FLUTTER}" = "1" ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends \
+            clang \
+            libgtk-3-dev \
+            liblzma-dev \
+            libglu1-mesa; \
+        rm -rf /var/lib/apt/lists/*; \
+        curl -fsSL -o /tmp/flutter.tar.xz \
+          "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"; \
+        tar -C /opt -xf /tmp/flutter.tar.xz; \
+        rm -f /tmp/flutter.tar.xz; \
+        test -x "${FLUTTER_ROOT}/bin/flutter"; \
+        git config --system --add safe.directory "${FLUTTER_ROOT}"; \
+        (flutter precache --universal --linux --web && flutter --version) \
+          || echo "note: flutter refused to run as root; the caches are fetched on the first build instead"; \
+        chmod -R a+rwX "${FLUTTER_ROOT}"; \
+    fi
+
+# Android SDK + JDK for the mobile wallet's Gradle build. The NDK version is
+# the one the installed Flutter pins (android/app/build.gradle asks for
+# flutter.ndkVersion); override it with ANDROID_SDK_NDK_VERSION if the
+# detection ever misses. This is separate from the CLI toolchain's
+# /opt/android-ndk, which Gradle does not look at.
+ARG WITH_ANDROID_SDK=0
+ARG ANDROID_CMDLINE_TOOLS_VERSION=13114758
+ARG ANDROID_SDK_PACKAGES="platform-tools platforms;android-36 build-tools;36.0.0"
+ARG ANDROID_SDK_NDK_VERSION=
+RUN set -eux; \
+    if [ "${WITH_ANDROID_SDK}" = "1" ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends openjdk-17-jdk-headless; \
+        rm -rf /var/lib/apt/lists/*; \
+        mkdir -p "${ANDROID_SDK_ROOT}/cmdline-tools"; \
+        curl -fsSL -o /tmp/cmdline-tools.zip \
+          "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_VERSION}_latest.zip"; \
+        unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools; \
+        mv /tmp/cmdline-tools/cmdline-tools "${ANDROID_SDK_ROOT}/cmdline-tools/latest"; \
+        rm -rf /tmp/cmdline-tools /tmp/cmdline-tools.zip; \
+        ndk_ver="${ANDROID_SDK_NDK_VERSION}"; \
+        if [ -z "${ndk_ver}" ] && [ -d "${FLUTTER_ROOT}/packages/flutter_tools/gradle" ]; then \
+            ndk_ver="$(grep -rhoE 'ndkVersion[^0-9]*[0-9]+\.[0-9]+\.[0-9]+' \
+                        "${FLUTTER_ROOT}/packages/flutter_tools/gradle" 2>/dev/null \
+                       | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"; \
+        fi; \
+        if [ -n "${ndk_ver}" ]; then \
+            echo "Android SDK NDK for Gradle: ${ndk_ver}"; \
+        else \
+            echo "No Flutter NDK pin detected; set --build-arg ANDROID_SDK_NDK_VERSION=<x.y.z> if Gradle asks for one"; \
+        fi; \
+        yes | sdkmanager --licenses > /dev/null; \
+        sdkmanager --install ${ANDROID_SDK_PACKAGES} ${ndk_ver:+ndk;${ndk_ver}} > /dev/null; \
+        chmod -R a+rwX "${ANDROID_SDK_ROOT}"; \
+    fi
+
+# Emscripten for the web wallet's WASM module. 3.1.50 is the version the first
+# green web build used.
+ARG WITH_EMSDK=0
+ARG EMSDK_VERSION=3.1.50
+RUN set -eux; \
+    if [ "${WITH_EMSDK}" = "1" ]; then \
+        git clone --depth 1 https://github.com/emscripten-core/emsdk.git "${EMSDK}"; \
+        cd "${EMSDK}"; \
+        ./emsdk install "${EMSDK_VERSION}"; \
+        ./emsdk activate "${EMSDK_VERSION}"; \
+        chmod -R a+rwX "${EMSDK}"; \
+    fi
+
 WORKDIR /work
 CMD ["bash"]

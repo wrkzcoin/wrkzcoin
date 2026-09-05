@@ -10,8 +10,27 @@ and packs each one for release, with the root `LICENSE` inside:
 | `android` | `wrkzcoin-cli-android-<abi>-<version>.tar.gz`  | Android NDK, one package per ABI, API 24+         |
 | `macos`   | not yet, see [macOS](#macos) below             |                                                   |
 
+The same image also builds and packs the wallet applications under `extras/`,
+using toolchain stages that are off by default (see
+[Wallet applications](#wallet-applications)):
+
+| Target    | Package                                        | How it is built                                   |
+|-----------|------------------------------------------------|---------------------------------------------------|
+| `web`     | `pluton-web-<appversion>.tar.gz`               | Emscripten WASM module + Flutter web bundle       |
+| `desktop` | `pluton-desktop-linux-x86_64-<appversion>.tar.gz` | Flutter Linux (GTK) bundle + `libwallet_capi.so` |
+| `mobile`  | `pluton-mobile-android-<appversion>.apk` / `.aab` | Flutter Android + `libwallet_capi.so` per ABI  |
+| `apps`    | all three                                       |                                                   |
+
+Windows and macOS desktop builds and iOS are **not** possible from this image:
+`flutter build windows` needs MSVC on Windows and the Apple targets need Xcode
+on macOS. Only the Windows `wallet_capi.dll` cross-builds, with
+`scripts/cross-build-windows-wallet-lib.sh`.
+
 `<version>` is `MAJOR.MINOR.REV.BUILD` from `src/config/version.h.in`
-(for example `0.4.8.280`); override it with `VERSION=`.
+(for example `0.4.8.280`); override it with `VERSION=`. The applications carry
+their own `<appversion>` from their `pubspec.yaml` (PLUTON 2.0.0 desktop and
+mobile, 1.0.0 web), because they release on their own schedule; every package
+produced by a run is still listed in that run's `SHA256SUMS-<version>.txt`.
 
 Every package contains, flat inside a directory of the same name:
 
@@ -32,7 +51,9 @@ than guessed, so the zip runs on a machine with nothing installed. A
 - Docker 20.10 or newer (or Podman: `DOCKER=podman`). Any Linux host works;
   Docker Desktop on macOS/Windows works too, the image is always `linux/amd64`.
 - About 12 GB of free disk for the image (the Android NDK is most of it) and
-  another 6-8 GB for the build trees.
+  another 6-8 GB for the build trees. The application stages add roughly
+  2 GB (Flutter), 1.5 GB (Emscripten) and 3 GB (Android SDK) on top, and only
+  when you ask for a target that needs them.
 - RAM: the RocksDB and C++20 sources need roughly 1.5 GB per compile job.
   A 4 GB machine should use `JOBS=2`.
 - Network access the first time, to fetch the base image, the NDK, OpenSSL
@@ -55,6 +76,14 @@ ANDROID_ABIS="arm64-v8a x86_64" bash scripts/docker/build.sh android
 
 # Fewer compile jobs on a small machine
 JOBS=2 bash scripts/docker/build.sh
+
+# The wallet applications (each adds its toolchain to the image on first use)
+bash scripts/docker/build.sh web
+bash scripts/docker/build.sh desktop mobile
+bash scripts/docker/build.sh apps
+
+# APK only, for one ABI
+MOBILE_FORMATS=apk ANDROID_ABIS=arm64-v8a bash scripts/docker/build.sh mobile
 ```
 
 The first run builds the toolchain image (10-20 minutes, mostly downloads and
@@ -70,6 +99,10 @@ builds/
   wrkzcoin-cli-linux-x86_64-0.4.8.280.tar.gz
   wrkzcoin-cli-windows-x86_64-0.4.8.280.zip
   wrkzcoin-cli-android-arm64-v8a-0.4.8.280.tar.gz
+  pluton-web-1.0.0.tar.gz
+  pluton-desktop-linux-x86_64-2.0.0.tar.gz
+  pluton-mobile-android-2.0.0.apk
+  pluton-mobile-android-2.0.0.aab
   SHA256SUMS-0.4.8.280.txt
 ```
 
@@ -83,7 +116,9 @@ All options are environment variables. Targets are positional arguments.
 |--------------------|-------------------------------|--------------------------------------------------------------------------|
 | `JOBS`             | all CPUs in the container     | parallel compile jobs (also used for the nested RocksDB build)           |
 | `VERSION`          | from `src/config/version.h.in`| version string in the package names                                      |
-| `ANDROID_ABIS`     | `arm64-v8a`                   | ABIs to build for `android`; space or comma separated                    |
+| `ANDROID_ABIS`     | `arm64-v8a`                   | ABIs to build for `android`; space or comma separated. Also the ABIs the `mobile` package carries and targets |
+| `MOBILE_FORMATS`   | `apk aab`                     | Android artefacts the `mobile` target produces                            |
+| `WEB_PTHREADS`     | `1`                           | build the WASM module with pthreads (`0` is single-threaded and slower)   |
 | `OUT_DIR`          | `builds/`                     | where packages and checksums go                                          |
 | `BUILD_ROOT`       | `build-docker/`               | build trees, staging directories, ccache and logs                        |
 | `CLEAN`            | `0`                           | `1` wipes each requested target's build tree before configuring          |
@@ -132,6 +167,54 @@ checks the ELF machine type. The binaries link the static libc++, so they
 only depend on bionic. They run under Termux or any shell with a writable
 directory.
 
+## Wallet applications
+
+The three Flutter applications in `extras/` are built from the same image, but
+each needs a toolchain the CLI targets do not: Flutter for all of them,
+Emscripten for the web module, an Android SDK and JDK for the APK. Those stages
+sit at the end of the Dockerfile and are off by default; `build.sh` switches on
+the ones your targets need (`--build-arg WITH_FLUTTER=1` and friends) and
+rebuilds the image, so the first `build.sh web` takes a while and later ones do
+not. Switching between CLI-only and application builds does not thrash the
+cache: only the trailing stages differ, and Docker keeps both variants.
+
+Every application is built in a **copy** of its directory under
+`build-docker/apps/`, never in the bind-mounted checkout, so a container build
+does not fight with your own `flutter run` tree or leave outputs behind in
+`extras/`.
+
+**web** builds the WASM wallet module with `emcmake` (`WRKZ_BUILD_WALLET_WASM=ON`,
+pthreads unless `WEB_PTHREADS=0`), copies `wallet_wasm.{js,wasm,worker.js}` and
+the three bridge scripts from `extras/web-wallet-wasm/wasm/js/` into the app's
+`web/` directory - both copies are re-made every build, because that directory
+holds duplicates that have silently drifted before - then runs
+`flutter build web --release --no-web-resources-cdn` (CanvasKit is self-hosted,
+so the bundle needs no CDN at run time). The package is the contents of
+`build/web`, plus `LICENSE`. With pthreads it also carries a `SERVING.txt`: the
+page only works when the server sends `Cross-Origin-Opener-Policy: same-origin`
+and `Cross-Origin-Embedder-Policy: require-corp`.
+
+**desktop** builds `libwallet_capi.so` (`WRKZ_BUILD_EXECUTABLES=OFF`,
+`WRKZ_BUILD_WALLET_CAPI=ON`, `PORTABLE_BINARY=ON`) and the Flutter Linux
+bundle, then stages the bundle with the stripped library in `lib/` - the
+runner's RUNPATH is `$ORIGIN/lib` - and a `libwallet_capi.so` symlink beside
+the executable for a plain `dlopen`. Unlike the CLI, a GTK application cannot
+be statically linked: the bundle needs the glibc and GTK 3 of the image's base
+(Ubuntu 24.04, glibc 2.39) or newer on the user's machine. Build the image
+`--build-arg UBUNTU_VERSION=22.04` for a lower floor, at the cost of an older
+GCC for every other target.
+
+**mobile** builds `libwallet_capi.so` for each ABI in `ANDROID_ABIS` against
+the NDK and the image's libucontext, drops them into `jniLibs/` (replacing the
+prebuilt ones the checkout carries), and runs `flutter build apk` and
+`flutter build appbundle` limited to those ABIs, so no device gets an APK
+without a matching native library. Gradle downloads its own distribution and
+the app's dependencies on the first run into `build-docker/.gradle`, so that
+build needs network access even when the image is already built.
+`android/app/build.gradle` signs release builds with the **debug** key: the
+`.apk` installs from a download, but re-sign the `.aab` with your own keystore
+before uploading it to a store.
+
 ## Toolchain versions
 
 Everything the image downloads is pinned at the top of the
@@ -146,6 +229,25 @@ Everything the image downloads is pinned at the top of the
 | `LIBUCONTEXT_REF`     | `libucontext-1.5.2`                          | libucontext tag built per Android ABI      |
 | `ANDROID_ABIS`        | `arm64-v8a x86_64`                           | ABIs that get a libucontext in the image   |
 | `ANDROID_PLATFORM`    | `24`                                         | libucontext target API level               |
+
+The application stages, off unless the target needs them (`build.sh` passes
+these itself; set them by hand only for `--image-only`):
+
+| Build argument                  | Default                                 | Used for                                          |
+|---------------------------------|-----------------------------------------|---------------------------------------------------|
+| `WITH_FLUTTER`                  | `0`                                     | Flutter SDK + clang/GTK 3: every application target |
+| `FLUTTER_VERSION`               | `3.38.7`                                | the apps ask for Flutter 3.38+ / Dart 3.10+       |
+| `WITH_ANDROID_SDK`              | `0`                                     | Android SDK + JDK 17 for `mobile`                  |
+| `ANDROID_CMDLINE_TOOLS_VERSION` | `13114758`                              | commandlinetools zip to fetch                      |
+| `ANDROID_SDK_PACKAGES`          | `platform-tools platforms;android-36 build-tools;36.0.0` | matches the app's `compileSdk` |
+| `ANDROID_SDK_NDK_VERSION`       | empty (detected from the Flutter SDK)   | the NDK Gradle wants for `flutter.ndkVersion`; separate from `/opt/android-ndk` |
+| `WITH_EMSDK`                    | `0`                                     | Emscripten for the `web` WASM module               |
+| `EMSDK_VERSION`                 | `3.1.50`                                | the version the first green web build used         |
+
+```bash
+# Prepare an image with every application toolchain, without building anything
+bash scripts/docker/build.sh --image-only apps
+```
 
 Example, moving to a newer NDK:
 
@@ -177,6 +279,22 @@ docker rmi wrkzcoin-cli-builder     # the image
   Report the DLL name; the lookup lives in `find_mingw_dll` in
   `container-build.sh`.
 - **Stale configuration after switching branches**: `CLEAN=1`.
+- **`no Flutter SDK in this image` / `no Emscripten SDK` / `no Android SDK`**:
+  the image predates the application stages, or was built with
+  `NO_IMAGE_BUILD=1`. Run `bash scripts/docker/build.sh --image-only apps`.
+- **Gradle asks for an NDK version that is not installed**: the app follows
+  `flutter.ndkVersion`, which the image detects from the Flutter SDK. Pin it:
+  `IMAGE_BUILD_ARGS="--build-arg WITH_FLUTTER=1 --build-arg WITH_ANDROID_SDK=1 --build-arg ANDROID_SDK_NDK_VERSION=<x.y.z>"`.
+- **`flutter pub get` or Gradle fails to download**: application builds need
+  network access every run (pub.dev, Gradle distributions, Maven). The caches
+  under `build-docker/.pub-cache` and `build-docker/.gradle` make later runs
+  cheap but not offline.
+- **The web wallet loads and then waits forever**: the server is not sending
+  the two COOP/COEP headers the pthread build needs (`SERVING.txt` in the
+  package), or `wallet_wasm.wasm` did not reach the document root.
+- **`GLIBC_2.39 not found` from the desktop bundle**: the target machine is
+  older than the image's base. Rebuild with
+  `IMAGE_BUILD_ARGS="--build-arg UBUNTU_VERSION=22.04 --build-arg WITH_FLUTTER=1"`.
 - **Windows host, Git Bash**: `build.sh` converts paths for Docker Desktop
   itself. The repository should be checked out with LF line endings for the
   scripts under `scripts/docker/` (the `.gitattributes` rule takes care of a

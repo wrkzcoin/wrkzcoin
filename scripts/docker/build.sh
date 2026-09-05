@@ -45,6 +45,12 @@ Targets (default: all):
   all        linux windows android
   macos      not available in the image yet (see README.md)
 
+Wallet applications (extras/, each pulls extra toolchains into the image):
+  web        PLUTON Web, WASM + Flutter web bundle -> .tar.gz
+  desktop    PLUTON desktop, Linux x86_64 bundle   -> .tar.gz
+  mobile     PLUTON mobile, Android                -> .apk and .aab
+  apps       web desktop mobile
+
 Options:
   --shell        open an interactive shell in the builder image instead
   --image-only   build/refresh the builder image and stop
@@ -53,7 +59,10 @@ Options:
 Environment:
   JOBS=N                 parallel compile jobs (default: all container CPUs)
   VERSION=x.y.z.b        package version (default: src/config/version.h.in)
-  ANDROID_ABIS="a b"     Android ABIs to build (default: arm64-v8a)
+  ANDROID_ABIS="a b"     Android ABIs to build (default: arm64-v8a; also the
+                         ABIs the mobile wallet ships libwallet_capi.so for)
+  MOBILE_FORMATS="a b"   Android artefacts: apk, aab (default: both)
+  WEB_PTHREADS=0|1       build the WASM module with pthreads (default: 1)
   OUT_DIR=path           where packages go (default: builds/)
   BUILD_ROOT=path        build trees + ccache (default: build-docker/)
   CLEAN=1                wipe each target's build tree first
@@ -75,6 +84,7 @@ while [ $# -gt 0 ]; do
     --shell) MODE=shell ;;
     --image-only) MODE=image ;;
     linux|windows|android|macos|all) TARGETS+=("$1") ;;
+    web|desktop|mobile|apps) TARGETS+=("$1") ;;
     *)
       echo "Unknown argument: $1" >&2
       usage >&2
@@ -120,15 +130,44 @@ if [ -t 0 ] && [ -t 1 ]; then
   TTY_ARGS=(-it)
 fi
 
+# The wallet applications need toolchains the CLI image does not carry, so the
+# corresponding (optional, off by default) image stages are switched on for the
+# targets that need them. An explicit --build-arg in IMAGE_BUILD_ARGS wins.
+AUTO_BUILD_ARGS=()
+auto_build_arg() {
+  case " $IMAGE_BUILD_ARGS " in
+    *" $1="*|*"--build-arg $1="*) return 0 ;;
+  esac
+  AUTO_BUILD_ARGS+=(--build-arg "$1=$2")
+}
+for t in "${TARGETS[@]}"; do
+  case "$t" in
+    web)     auto_build_arg WITH_FLUTTER 1; auto_build_arg WITH_EMSDK 1 ;;
+    desktop) auto_build_arg WITH_FLUTTER 1 ;;
+    mobile)  auto_build_arg WITH_FLUTTER 1; auto_build_arg WITH_ANDROID_SDK 1 ;;
+    apps)
+      auto_build_arg WITH_FLUTTER 1
+      auto_build_arg WITH_EMSDK 1
+      auto_build_arg WITH_ANDROID_SDK 1
+      ;;
+  esac
+done
+
 if [ "$NO_IMAGE_BUILD" != "1" ]; then
   echo "==> Building image $IMAGE ($DOCKER_PLATFORM)"
+  if [ "${#AUTO_BUILD_ARGS[@]}" -gt 0 ]; then
+    echo "    application toolchains: ${AUTO_BUILD_ARGS[*]}"
+  fi
   # shellcheck disable=SC2086  # IMAGE_BUILD_ARGS is a list of extra arguments
   "$DOCKER" build \
     --platform "$DOCKER_PLATFORM" \
     $IMAGE_BUILD_ARGS \
+    ${AUTO_BUILD_ARGS[@]+"${AUTO_BUILD_ARGS[@]}"} \
     -t "$IMAGE" \
     -f "$(host_path "$SCRIPT_DIR/Dockerfile")" \
     "$(host_path "$REPO_ROOT/scripts")"
+elif [ "${#AUTO_BUILD_ARGS[@]}" -gt 0 ]; then
+  echo "note: NO_IMAGE_BUILD=1, so $IMAGE must already carry ${AUTO_BUILD_ARGS[*]}"
 fi
 
 if [ "$MODE" = "image" ]; then
@@ -153,6 +192,8 @@ RUN_ARGS=(
   -e "ANDROID_ABIS=$ANDROID_ABIS"
   -e "CLEAN=$CLEAN"
   -e "KEEP_GOING=$KEEP_GOING"
+  -e "MOBILE_FORMATS=${MOBILE_FORMATS:-apk aab}"
+  -e "WEB_PTHREADS=${WEB_PTHREADS:-1}"
   -e BUILD_ROOT=/build
   -e OUT_DIR=/out
   # The mounted checkout is normally owned by the container user already;
