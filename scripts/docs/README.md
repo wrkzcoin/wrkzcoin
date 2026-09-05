@@ -21,10 +21,25 @@ Nothing in the existing site moves, so every bookmark, external link and search
 result keeps working. That is the reason for this layout rather than the usual
 `mike` one, which puts everything under `/latest/`.
 
+## Setup, once
+
+```bash
+cd /path/to/wrkzcoin
+python3 -m venv .venv-docs
+.venv-docs/bin/pip install -r docs/requirements.txt
+```
+
+Use a virtualenv rather than a system-wide install. `apt install mkdocs` gives
+you base mkdocs, whose only themes are `mkdocs` and `readthedocs`, so the build
+dies with `Unrecognised theme name: 'material'`; and a bare `pip install` is
+refused outright on Debian 12+ and Ubuntu 23.04+ as an externally-managed
+environment.
+
 ## Publishing
 
 ```bash
-pip install -r docs/requirements.txt
+git pull
+source .venv-docs/bin/activate
 
 # routine docs update
 scripts/docs/publish.sh
@@ -40,6 +55,16 @@ scripts/docs/publish.sh --dry-run
 | --- | --- |
 | `DOCS_WEB_ROOT` | `/var/www/docs.wrkz.work` |
 | `DOCS_BASE_URL` | `https://docs.wrkz.work` |
+
+If the web root is not writable by your user, run it as one that owns the
+directory, or keep the virtualenv on `PATH` through sudo:
+
+```bash
+sudo -E env "PATH=$PATH" scripts/docs/publish.sh
+```
+
+Plain `sudo scripts/docs/publish.sh` fails with `mkdocs is not installed` —
+root has a different `PATH` and cannot see the virtualenv.
 
 The version comes from `src/config/version.h.in`, the same header the binaries
 report, so the docs and `Wrkzd --version` cannot disagree about which release

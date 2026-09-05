@@ -59,6 +59,42 @@ for tool in mkdocs rsync python3; do
     command -v "$tool" >/dev/null || { echo "$tool is not installed" >&2; exit 1; }
 done
 
+# `mkdocs` being on PATH is not enough: a distribution package gives you base
+# mkdocs, whose only themes are mkdocs and readthedocs, and the config is then
+# rejected with "Unrecognised theme name: 'material'".
+#
+# Rather than guess which interpreter that mkdocs belongs to - which is wrong
+# on Windows, and wherever python3 is not its sibling - let mkdocs answer, and
+# explain the failure. Nothing has been synced at this point, so a failed build
+# costs nothing but the message.
+build_docs() {
+    local site_url="$1" out_dir="$2"
+
+    if DOCS_SITE_URL="$site_url" mkdocs build \
+        --strict -f "$REPO_ROOT/docs/mkdocs.yml" -d "$out_dir"; then
+        return 0
+    fi
+
+    cat >&2 <<EOF
+
+The build failed. If the error above names an unrecognised theme ('material')
+or an unknown plugin ('minify'), the mkdocs on PATH cannot build this config:
+
+    $(command -v mkdocs)
+
+Install the documentation requirements into the same environment:
+
+    python3 -m venv .venv-docs
+    .venv-docs/bin/pip install -r docs/requirements.txt
+    source .venv-docs/bin/activate
+
+"apt install mkdocs" provides base mkdocs only, and a bare "pip install" is
+refused on Debian 12+/Ubuntu 23.04+ as an externally-managed environment -
+hence the virtualenv.
+EOF
+    exit 1
+}
+
 # Build into a staging directory, never straight into the web root: `mkdocs
 # build` wipes its output directory first, which would take the archives with
 # it.
@@ -66,13 +102,11 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
 echo "==> building live docs"
-DOCS_SITE_URL="$BASE_URL/" mkdocs build \
-    --strict -f "$REPO_ROOT/docs/mkdocs.yml" -d "$STAGE/live"
+build_docs "$BASE_URL/" "$STAGE/live"
 
 if [ "$ARCHIVE" = 1 ]; then
     echo "==> building archive copy for v$VERSION"
-    DOCS_SITE_URL="$BASE_URL/v$VERSION/" mkdocs build \
-        --strict -f "$REPO_ROOT/docs/mkdocs.yml" -d "$STAGE/v$VERSION"
+    build_docs "$BASE_URL/v$VERSION/" "$STAGE/v$VERSION"
 fi
 
 RSYNC_OPTS=(-a --delete)
