@@ -6,7 +6,12 @@
 
 #include <httplib.h>
 
-#if defined(__ANDROID__)
+/* set_ca_cert_path() only exists on httplib::Client when cpp-httplib is built
+   with OpenSSL. The Android CLI build turns OpenSSL off
+   (WRKZ_ANDROID_DISABLE_OPENSSL), so there is no TLS to point at a trust store
+   and no such member to call - the helper has to compile away there. */
+#if defined(__ANDROID__) && defined(CPPHTTPLIB_OPENSSL_SUPPORT)
+#define WRKZ_HAVE_ANDROID_CA_CERT_DIR 1
 #include <sys/stat.h>
 #endif
 
@@ -36,7 +41,7 @@ namespace Common
      */
     inline void applySystemCaCertificates(httplib::Client &client)
     {
-#if defined(__ANDROID__)
+#if defined(WRKZ_HAVE_ANDROID_CA_CERT_DIR)
         /* Newest first: since Android 14 the store moved into the Conscrypt
            APEX, with the old path kept as a compatibility symlink on most
            devices but not guaranteed. */
