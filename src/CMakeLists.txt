@@ -572,10 +572,15 @@ endif ()
 
 # Additional make targets, can be used to build a subset of the targets
 # e.g. make pool will build only Wrkzd and service
+#
+# None of these may be named after an OUTPUT_NAME set above: CMake 3.28 and
+# newer give every target a <subdir>/<target> alias in the Ninja files, so a
+# convenience target called wrkz-wallet collides with src/wrkz-wallet, the
+# executable zedwallet++ links, and ninja aborts with "multiple rules generate".
 if (WRKZ_BUILD_EXECUTABLES)
     add_custom_target(pool DEPENDS Wrkzd WalletService)
     add_custom_target(solominer DEPENDS Wrkzd zedwallet++ miner)
     add_custom_target(cli DEPENDS Wrkzd zedwallet++)
-    add_custom_target(wrkz-wallet DEPENDS zedwallet++)
+    add_custom_target(wallet-cli DEPENDS zedwallet++)
 endif ()
 
