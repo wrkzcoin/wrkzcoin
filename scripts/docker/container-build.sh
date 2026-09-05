@@ -308,6 +308,25 @@ make_zip() {
   log "Package: $out"
 }
 
+# require_zip_entries <archive> <what> <entry...>: fail unless the archive
+# contains every named entry. The listing is read in full before anything
+# inspects it. "unzip -l ... | grep -q" looks equivalent but is not: grep exits
+# at the first match, unzip takes SIGPIPE on its next write, and pipefail then
+# reports a check that actually passed as a failure.
+require_zip_entries() {
+  local archive="$1" what="$2" listing entry
+  shift 2
+  [ -f "$archive" ] || die "expected artefact not found: $archive"
+  listing="$(unzip -Z1 "$archive")" || die "cannot list $archive"
+  for entry in "$@"; do
+    case $'\n'"$listing"$'\n' in
+      *$'\n'"$entry"$'\n'*) ;;
+      *) die "$what carries no $entry" ;;
+    esac
+  done
+  echo "$what carries: $*"
+}
+
 # ship_file <source file> <package file name>: copy a single-file artefact
 # (an .apk, an .aab) into OUT_DIR under the release name.
 ship_file() {
@@ -665,15 +684,21 @@ build_mobile() {
         local apk="$app/build/app/outputs/flutter-apk/app-release.apk"
         # An APK for an ABI whose libwallet_capi.so is missing installs and
         # then dies on the first FFI call, so check before shipping it.
-        for abi in "${abis[@]}"; do
-          unzip -l "$apk" | grep -q "lib/$abi/libwallet_capi.so" \
-            || die "the APK carries no libwallet_capi.so for $abi"
-        done
+        local want=()
+        for abi in "${abis[@]}"; do want+=("lib/$abi/libwallet_capi.so"); done
+        require_zip_entries "$apk" "the APK" "${want[@]}"
         ship_file "$apk" "$name.apk"
         ;;
       aab)
         (cd "$app" && flutter build appbundle --release --target-platform "$platforms")
-        ship_file "$app/build/app/outputs/bundle/release/app-release.aab" "$name.aab"
+        local aab="$app/build/app/outputs/bundle/release/app-release.aab"
+        # Play serves one split per ABI, so a split without the library is
+        # an install that dies on the first FFI call. A bundle keeps its
+        # native libraries under the base module.
+        local want=()
+        for abi in "${abis[@]}"; do want+=("base/lib/$abi/libwallet_capi.so"); done
+        require_zip_entries "$aab" "the AAB" "${want[@]}"
+        ship_file "$aab" "$name.aab"
         ;;
       *)
         die "unknown MOBILE_FORMATS entry '$fmt' (use: apk, aab)"
