@@ -1,5 +1,7 @@
 site_name: WrkzCoin Documentation
-site_url: https://docs.wrkz.work/
+# Overridable so an archived build can declare its own canonical URL:
+# DOCS_SITE_URL=https://docs.wrkz.work/v0.4.8/ mkdocs build
+site_url: !ENV [DOCS_SITE_URL, "https://docs.wrkz.work/"]
 site_description: Daemon RPC, wallet RPC, and operator guides for WrkzCoin
 site_author: The WrkzCoin Developers
 copyright: Copyright &copy; 2018-2026 The WrkzCoin Developers
@@ -63,6 +65,13 @@ markdown_extensions:
       alternate_style: true
 
 extra:
+  # Reads /versions.json at the domain root. The live docs are served from the
+  # root itself, which has no path segment for the selector to match against,
+  # so Material falls back to the FIRST entry in that file - keep the current
+  # release first. scripts/docs/publish.sh maintains it.
+  version:
+    provider: mike
+    default: latest
   social:
     - icon: fontawesome/brands/discord
       link: https://discord.com/invite/KN8PjyuvG4
