@@ -40,7 +40,7 @@ function asFilename(value) {
 export class WalletBridge {
   constructor() {
     this._module = null;
-    this._request = null; // cwrap'd _wallet_wasm_request
+    this._request = null; // heap-marshalling wrapper around _wallet_wasm_request
     this._storage = new WalletStorage();
     this._eventTimer = null;
     this._eventCallback = null;
@@ -61,12 +61,46 @@ export class WalletBridge {
     console.log('[WalletBridge] module ready. _wallet_wasm_request exported:',
       typeof this._module._wallet_wasm_request);
 
-    // Create the cwrap'd request function
-    this._request = this._module.cwrap(
-      'wallet_wasm_request',
-      'number', // returns char* (pointer)
-      ['string'] // takes const char* (JSON string)
-    );
+    // Put the request on the heap, NOT on the stack.
+    //
+    // The obvious spelling of this is
+    //   cwrap('wallet_wasm_request', 'number', ['string'])
+    // and it is a trap. Emscripten marshals a 'string' argument with
+    // stringToUTF8OnStack(), i.e. stackAlloc() — a bare
+    // `sp = (sp - size) & -16` with no bounds check whatsoever. The WASM
+    // stack here is the emcc default of 64 KB, sitting directly on top of
+    // the static data segment.
+    //
+    // Most requests are a few hundred bytes, so this held right up until
+    // open(), which hands importFileData the whole base64 wallet file:
+    //   - past ~64 KB the copy runs off the bottom of the stack and writes
+    //     base64 text over the static data below it — malloc's arena, the
+    //     WasmFs store, Logger::logger, vtables — and the *next* call dies
+    //     on a wild pointer;
+    //   - past ~800 KB the stack pointer itself goes negative and the first
+    //     dereference inside wallet_wasm_request traps outright.
+    // Either way the browser reports "memory access out of bounds", pointing
+    // nowhere near the call that actually caused it.
+    //
+    // A wallet is only small enough to survive that while it is brand new,
+    // which is exactly why create-then-use works and reopening later does
+    // not. The heap has no such limit and is already what the response
+    // travels on, so send the request the same way.
+    this._request = (requestJson) => {
+      const size = this._module.lengthBytesUTF8(requestJson) + 1;
+      const ptr = this._module._malloc(size);
+
+      if (!ptr) {
+        throw new Error(`[WalletBridge] could not allocate ${size} bytes for the request`);
+      }
+
+      try {
+        this._module.stringToUTF8(requestJson, ptr, size);
+        return this._module._wallet_wasm_request(ptr);
+      } finally {
+        this._module._free(ptr);
+      }
+    };
 
     // Initialize IndexedDB
     await this._storage.init();

@@ -425,6 +425,14 @@ if (WRKZ_BUILD_WALLET_WASM)
         -fexceptions
         -sWASM=1
         -sALLOW_MEMORY_GROWTH=1
+        ## emcc defaults the stack to 64 KB and places it immediately above
+        ## the static data, with no guard page and no bounds check in
+        ## stackAlloc(). Nothing in this backend was written for a stack that
+        ## small - the JSON parser and the CryptoNote deserializer are both
+        ## recursive - and an overflow does not fault where it happens: it
+        ## silently overwrites malloc's arena and the C++ statics, and some
+        ## later call dies with "memory access out of bounds".
+        -sSTACK_SIZE=4MB
         -sMODULARIZE=1
         -sEXPORT_ES6=1
         -sENVIRONMENT=web,worker
@@ -461,6 +469,12 @@ if (WRKZ_BUILD_WALLET_WASM)
             ## this sum is how the pool ends up one short and sync stops moving
             ## with no error anywhere. Raise this and SYNC_THREADS_MAX together.
             -sPTHREAD_POOL_SIZE=24
+            ## Spawned threads do not inherit STACK_SIZE; they get this, and
+            ## its default is the same 64 KB. The block processing threads run
+            ## the same recursive deserializer as the main thread, so give
+            ## them room. Charged to the heap per live thread, not per pooled
+            ## worker, so the peak of ~15 threads costs ~15 MB.
+            -sDEFAULT_PTHREAD_STACK_SIZE=1MB
         )
     endif ()
 endif ()
