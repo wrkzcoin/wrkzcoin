@@ -61,13 +61,6 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
         message(FATAL_ERROR "Clang 10 or greater is required to compile (C++20). Please check COMPILE.md for detailed compilation instructions.")
     endif ()
-    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
-        message(WARNING
-            "Clang < 15 on Linux may fail with C++20 <chrono> depending on libstdc++ headers "
-            "(known issue: clang-14 with GCC 13 libstdc++). Prefer clang >= 15, GCC, clang+libc++, "
-            "or clang with an older GCC toolchain."
-        )
-    endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     # Visual Studio 2019 16.11 (MSVC 19.29, first with /std:c++20) or higher
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.29)
@@ -93,10 +86,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Validate the active compiler/standard-library tuple can compile C++20 <chrono>.
-# This catches known combinations such as clang-14 with GCC 13 libstdc++ headers.
+# Validate that the active compiler/standard-library tuple can actually compile
+# C++20 <chrono>. Old clang against new libstdc++ headers is the recurring
+# offender: libstdc++ >= 13 rewrote <chrono> around consteval and CTAD for
+# aggregates, and clang only finished both in clang 17, so clang <= 16 dies
+# while parsing the header no matter what this project does. clang 15 was fine
+# here only while the newest libstdc++ on the box was GCC 11/12; installing
+# GCC 13+ alongside it is enough to break it.
+#
+# Compile only, do not link: a missing static libstdc++, a broken default
+# linker or a cross-compile sysroot must not be reported here as a <chrono>
+# failure.
 include(CheckCXXSourceCompiles)
-set(CMAKE_REQUIRED_QUIET TRUE)
+set(WRKZ_SAVED_TRY_COMPILE_TARGET_TYPE "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 check_cxx_source_compiles(
     "
     #include <chrono>
@@ -107,11 +110,36 @@ check_cxx_source_compiles(
     "
     WRKZ_CXX20_CHRONO_WORKS
 )
+set(CMAKE_TRY_COMPILE_TARGET_TYPE "${WRKZ_SAVED_TRY_COMPILE_TARGET_TYPE}")
+unset(WRKZ_SAVED_TRY_COMPILE_TARGET_TYPE)
 if (NOT WRKZ_CXX20_CHRONO_WORKS)
+    # CMake >= 3.26 records try_compile output in CMakeConfigureLog.yaml; older
+    # releases append it to CMakeError.log.
+    if (CMAKE_VERSION VERSION_LESS 3.26)
+        set(WRKZ_PROBE_LOG "${CMAKE_BINARY_DIR}/CMakeFiles/CMakeError.log")
+    else ()
+        set(WRKZ_PROBE_LOG "${CMAKE_BINARY_DIR}/CMakeFiles/CMakeConfigureLog.yaml")
+    endif ()
     message(FATAL_ERROR
-        "This compiler/stdlib combination cannot compile C++20 <chrono>.\n"
-        "Known bad combo: clang-14 with GCC 13 libstdc++ headers.\n"
-        "Use GCC, clang >= 15, clang + libc++, or clang with an older GCC toolchain (e.g. g++-11 headers)."
+        "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} cannot compile C++20 <chrono> "
+        "with the standard library headers it picked up.\n"
+        "The compiler's own diagnostic is in:\n  ${WRKZ_PROBE_LOG}\n"
+        "Reproduce it directly with:\n"
+        "  echo '#include <chrono>' | ${CMAKE_CXX_COMPILER} -std=c++20 -x c++ -fsyntax-only -\n"
+        "Usual cause: clang <= 16 against libstdc++ >= 13 headers (GCC 13/14/15). "
+        "libstdc++ 13 rewrote <chrono> using consteval and CTAD for aggregates; clang only "
+        "implements the last of that in clang 17, so the header fails to parse.\n"
+        "Pick one:\n"
+        "  * build with GCC (g++ >= 10)\n"
+        "  * install clang >= 17 (apt.llvm.org) and point CMAKE_C_COMPILER/CMAKE_CXX_COMPILER at it\n"
+        "  * keep this clang and switch to libc++ (needs libc++-dev and libc++abi-dev):\n"
+        "      -DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++\n"
+        "  * keep this clang and pin it to older libstdc++ headers, e.g. GCC 12:\n"
+        "      clang >= 16: -DCMAKE_CXX_FLAGS=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/12\n"
+        "      clang <= 15: -DCMAKE_CXX_FLAGS='-nostdinc++ -isystem /usr/include/c++/12 "
+        "-isystem /usr/include/x86_64-linux-gnu/c++/12'\n"
+        "This probe result is cached, so after changing toolchain configure into a fresh build "
+        "directory (or delete CMakeCache.txt) or the failure is remembered."
     )
 endif ()
 

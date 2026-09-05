@@ -105,12 +105,23 @@ Minimum tooling:
 - CMake >= 3.16
 - A C++20 compiler (the build sets `CMAKE_CXX_STANDARD 20`, and CMake refuses older toolchains):
   - GCC >= 10, or
-  - Clang >= 10 (`clang >= 15` on Linux, see below), or
+  - Clang >= 17 with `libstdc++`, or Clang >= 10 with `libc++` (see below), or
   - MSVC 19.29 or later (Visual Studio 2019 16.11, or Visual Studio 2022)
-- C++20 `<chrono>` compatibility note (Linux):
-  - Confirmed: `clang-15` compiles successfully.
-  - `clang-14` with GCC 13 `libstdc++` headers is known to fail in `<chrono>`.
-  - Use GCC, `clang >= 15`, clang with `libc++`, or point clang at an older GCC toolchain (for example GCC 11 headers/libs).
+- C++20 `<chrono>` compatibility note (Linux): configure compiles a small `<chrono>` probe and
+  stops with a `FATAL_ERROR` when the compiler/standard-library pair cannot parse it.
+  - libstdc++ >= 13 (GCC 13/14/15) rewrote `<chrono>` around `consteval` and CTAD for aggregates.
+    Clang only finished both in clang 17, so **clang <= 16 fails against libstdc++ >= 13 headers.**
+    `clang-15` used to work here only because the newest `libstdc++` installed was GCC 11/12;
+    installing GCC 13+ alongside it is enough to break it.
+  - Fix it by building with GCC, by installing `clang >= 17` (apt.llvm.org), or by giving the clang
+    you have a different standard library:
+    - `libc++` (needs `libc++-dev` and `libc++abi-dev`):
+      `-DCMAKE_CXX_FLAGS=-stdlib=libc++ -DCMAKE_EXE_LINKER_FLAGS=-stdlib=libc++`
+    - older `libstdc++` headers, for example GCC 12:
+      clang >= 16 `-DCMAKE_CXX_FLAGS=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/12`;
+      clang <= 15 `-DCMAKE_CXX_FLAGS='-nostdinc++ -isystem /usr/include/c++/12 -isystem /usr/include/x86_64-linux-gnu/c++/12'`
+  - The probe result is cached, so after changing toolchain configure into a fresh build directory
+    (or delete `CMakeCache.txt`) — otherwise the previous failure is remembered.
 - Git
 - Make or Ninja
 
