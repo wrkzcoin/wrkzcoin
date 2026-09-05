@@ -82,6 +82,14 @@ if (ENABLE_ZMQ AND WRKZ_USE_BUNDLED_ZMQ)
     # Avoid host/target mismatch in cross builds (e.g. pkg-config finding host libbsd).
     # libzmq has a builtin strlcpy fallback when libbsd is disabled.
     set(WITH_LIBBSD OFF CACHE BOOL "Disable libzmq libbsd for bundled builds" FORCE)
+    # libzmq only defaults its I/O poller to epoll (bundled wepoll) on Windows
+    # when MSVC_VERSION says the compiler is VS2013 or newer, so a MinGW build
+    # falls back to select. mingw-w64 ships afunix.h, so libzmq also turns IPC
+    # on, and select + IPC is a hard #error in ipc_listener.cpp. Ask for epoll
+    # explicitly, which is what a Windows build gets under MSVC anyway.
+    if (WIN32 AND NOT MSVC AND NOT POLLER)
+        set(POLLER "epoll" CACHE STRING "libzmq I/O thread polling method" FORCE)
+    endif ()
     add_subdirectory(libzmq EXCLUDE_FROM_ALL)
 
     if (_WRKZ_HAD_BUILD_SHARED)
