@@ -13,6 +13,13 @@ cmake --build build -j
 
 Binaries are produced in `build/src`.
 
+## Release packages with Docker
+
+`bash scripts/docker/build.sh` builds the portable CLI set for Linux (static),
+Windows (MinGW) and Android inside one Docker image and packs each as
+`wrkzcoin-cli-<os>-<version>.tar.gz` / `.zip` with the LICENSE included. It
+needs nothing on the host but Docker; see [scripts/docker/README.md](scripts/docker/README.md).
+
 ### Build Parallelism (Top-level + RocksDB sub-build)
 
 RocksDB is built as a nested CMake sub-build. To keep parallel job count aligned across both top-level build and RocksDB, set:

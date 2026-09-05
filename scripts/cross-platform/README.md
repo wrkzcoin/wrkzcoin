@@ -2,6 +2,11 @@
 
 This folder documents Linux-hosted cross-build flows.
 
+If you only want the release packages, `bash scripts/docker/build.sh` runs the
+Linux, Windows and Android CLI flows below inside a Docker image with every
+toolchain preinstalled; see [../docker/README.md](../docker/README.md). The
+rest of this guide is for building on a prepared Ubuntu host directly.
+
 ARM64 scope in this repo:
 
 - `aarch64` means Linux ARM64 cross-builds (GNU/Linux target).
