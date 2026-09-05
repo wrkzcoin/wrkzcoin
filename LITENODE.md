@@ -1,5 +1,8 @@
 # Lite Node
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/lite-node/>. This file stays the long form.
+
 A lite node stores **full block data only from a chosen height upward**. Below that height
 it keeps just the indexes that later blocks actually need: key output info, spent key
 images, per-amount output counts, and block headers. The block bodies, transaction

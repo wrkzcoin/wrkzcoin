@@ -1,5 +1,8 @@
 # Solo mining
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/solo-mining/>. This file stays the long form.
+
 `Wrkzd` can hand work straight to a mining program, so solo mining needs no
 pool and no bridge. Start the node with a stratum port and point a miner at it.
 

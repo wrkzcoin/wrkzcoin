@@ -1,5 +1,8 @@
 ### Compiling WrkzCoin
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/building/>. This file stays the long form.
+
 This document reflects the current build system and recommended defaults.
 
 ## Quick Start (Linux/macOS)

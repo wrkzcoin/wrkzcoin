@@ -1,5 +1,9 @@
 # Networking: IPv4 & IPv6 Binding
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/networking/>, along with the full daemon
+> configuration reference. This file stays the long form.
+
 ## P2P Network
 
 ### IPv4 (always on)
@@ -69,7 +73,7 @@ Wrkzd --rpc-bind-ipv6-address ::1 --rpc-use-ipv6
 | `--rpc-max-body-bytes` | `2097152` | Maximum RPC request body size in bytes (default 2 MB) |
 | `--rpc-max-rpm` | `240` | Max RPC requests per minute per client IP. `0` disables rate limiting. |
 | `--rpc-max-global-index-range` | `5000` | Max block range for `get_global_indexes_for_range` |
-| `--rpc-max-block-count` | `100` | Max `blockCount` for wallet/raw-block sync RPC methods |
+| `--rpc-max-block-count` | `1000` | Max `blockCount` for wallet/raw-block sync RPC methods |
 | `--rpc-sync-cache-size` | `64` | Megabytes of finished wallet sync responses to keep, so wallets syncing past the same height are served from one build. `0` disables the cache |
 
 ---
@@ -364,6 +368,8 @@ Seed hostnames are looked up again on a helper thread after `P2P_SEED_RERESOLVE_
 | `--db-compression-level` | `0` | ZSTD level for the bottommost level; `0` uses RocksDB's default of 3. Higher compresses harder at the same read speed, paying only in compaction time |
 | `--db-row-cache-percent` | `0` | Share of the read buffer given to the row cache; `0` uses the built-in eighth. A row-cache hit skips block decompression entirely |
 | `--db-bottom-filters` | `false` | Keep bloom filters on the bottommost level. Costs space, but spent key image checks are lookups meant to miss, and without filters each one reads and decompresses a block |
+| `--db-compression-dict-bytes` | `0` | ZSTD dictionary size. `0` disables the dictionary |
+| `--db-block-size` | `4` | SST block size in KB |
 | `--skip-boot-compaction` | `false` | Skip the automatic DB compaction check at startup |
 
 ---
@@ -399,8 +405,9 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 |------|---------|-------------|
 | `--data-dir` | *(platform default)* | Path to the blockchain data directory |
 | `--log-file` | `WRKZCoind.log` | Path to the log file |
-| `--log-level` | `3` (WARNING) | Log verbosity: `0`=FATAL `1`=ERROR `2`=WARNING `3`=INFO `4`=DEBUG `5`=TRACE |
+| `--log-level` | `2` (WARNING) | Log verbosity: `0`=FATAL `1`=ERROR `2`=WARNING `3`=INFO `4`=DEBUG `5`=TRACE |
 | `--no-console` | `false` | Disable the interactive daemon console |
+| `--attach <socket>` | *(none)* | Attach an interactive console to a daemon already running, over its IPC socket, instead of starting a node. `Wrkzd attach <socket>` is the same thing |
 | `--load-checkpoints` | `default` | CSV checkpoint file path, or `default` for built-in checkpoints |
 | `--config-file` | *(none)* | Load settings from a config file (ini or JSON) |
 | `--save-config` | *(none)* | Write the current resolved configuration to a file and exit |
@@ -417,6 +424,11 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 | `--import-blockchain` | Import blockchain DB from a dump file |
 | `--export-blockchain` | Export blockchain DB to a dump file |
 | `--max-export-blocks #` | Maximum number of blocks to include in an export |
+| `--lite` | Lite-node mode: store full block data only from `--lite-height` upward. Permanent for the database, and mutually exclusive with `--prune` and `--daemon-mode explorer`. See [LITENODE.md](LITENODE.md) |
+| `--lite-height #` | Height at and above which a lite node stores full block data. Required with `--lite` |
+| `--import-lite-snapshot <file>` | Load a lite node snapshot into an empty database, then exit. See [LITESNAPSHOT.md](LITESNAPSHOT.md) |
+| `--snapshot-info <file>` | Print what a snapshot file contains, as JSON, and exit |
+| `--snapshot-stats` | Report per-table storage, for sizing a snapshot |
 
 ---
 
@@ -426,9 +438,9 @@ These thresholds control when the daemon automatically prunes old blocks or comp
 - **IPv4 P2P listening** — always enabled, unchanged
 - **IPv6 P2P inbound** — enabled with `--p2p-bind-ipv6-address`; dual-stack socket accepts both IPv4 and native IPv6 peers on one port
 - **IPv4-mapped clients on IPv6 listener** — transparently unwrapped; existing ban / peer-list logic applies
-- **IPv6 peer-list exchange** — `local_peerlist6` field in handshake and timed-sync responses (v18+ peers only; v17 peers silently ignore it)
+- **IPv6 peer-list exchange** — `local_peerlist6` field in handshake and timed-sync responses, gated on `P2P_IPV6_CAPABILITY_VERSION` (19); peers below that never see it
 - **IPv6 banning** — `ban add <ipv6>` and `ban delete <ipv6>` work; checked in the IPv6 accept loop
-- **Backward compatibility** — existing v17 nodes talk to v18 nodes without issues; IPv6 list is simply ignored by old nodes
+- **Backward compatibility** — nodes advertise `P2P_CURRENT_VERSION` 19 and accept anything at or above `P2P_MINIMUM_VERSION` (16), so older nodes still connect; the IPv6 list is simply not sent to them
 - **DNS seed resolution (A + AAAA)** — both A records (IPv4) and AAAA records (IPv6) from `DNS_SEED_NODES` and `SEED_NODES` hostnames are resolved at startup. IPv4 seeds go to the IPv4 seed list; IPv6 seeds go to a separate IPv6 seed list.
 - **Outbound IPv6 connections** — the daemon dials IPv6 seed nodes and discovered IPv6 peers using `TcpConnector::connect(IpAddress, port)`. IPv6 peers can be synced from alongside IPv4 peers.
 - **IPv6 white-list promotion** — after a successful outbound IPv6 handshake the peer is added to the IPv6 white-list (`PeerlistManager::m_peers_white6`) and reused in future connection cycles.

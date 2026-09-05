@@ -1,5 +1,8 @@
 # Lite Node Snapshots
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/lite-snapshots/>. This file stays the long form.
+
 A lite node saves disk but not time: it still downloads every block from genesis and
 builds the key output and key image indexes from them. On a modest machine that is a
 day; on a laptop it has been measured at two to three. A snapshot replaces that work
@@ -209,7 +212,7 @@ restriction is on importing, not on lite mode.
 ## Producing one
 
 ```
-snapshot_export [start [path] | status | cancel]
+snapshot_export [start [height] [path] | status | cancel]
 ```
 
 A console command, following `compact_db`'s shape: it starts, reports, and can be

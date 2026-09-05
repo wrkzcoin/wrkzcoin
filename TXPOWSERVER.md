@@ -1,5 +1,8 @@
 # Transaction PoW Server
 
+> A shorter, cross-linked version of this page is published at
+> <https://docs.wrkz.work/guides/txpow-server/>. This file stays the long form.
+
 Every WrkzCoin transaction carries a small proof of work: the wallet appends a
 nonce to the transaction extra and searches until the `cn_upx` hash of the
 unsigned transaction prefix meets a difficulty derived from the number of
