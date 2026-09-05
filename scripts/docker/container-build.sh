@@ -61,6 +61,12 @@ APP_PKG_PREFIX="${APP_PKG_PREFIX:-pluton}"
 WEB_PTHREADS="${WEB_PTHREADS:-1}"
 # Which Android artefacts the mobile target produces: apk, aab, or both.
 MOBILE_FORMATS="${MOBILE_FORMATS:-apk aab}"
+# ... and in which build modes: release, debug, or both. A debug artefact
+# runs the Dart VM in JIT mode with the debug banner and the observatory on,
+# so it is several times larger and much slower than the release one - it is
+# for testers who need logs, not for publishing. Both modes package the same
+# Release-built libwallet_capi.so, which is compiled once per ABI.
+MOBILE_MODES="${MOBILE_MODES:-release debug}"
 # Packages written by this run, recorded through a file because run_target
 # executes each target in a pipeline (and therefore a subshell).
 PACKAGE_LIST="$BUILD_ROOT/packages.list"
@@ -654,7 +660,7 @@ build_desktop() {
 # PLUTON mobile wallet: an Android APK and/or AAB with libwallet_capi.so for
 # each ABI in ANDROID_ABIS.
 build_mobile() {
-  local app name appver abi abis platforms fmt
+  local app name appver abi abis platforms fmt mode
   flutter_env
   android_sdk_env
 
@@ -662,6 +668,22 @@ build_mobile() {
   abis=($ANDROID_ABIS)
   [ "${#abis[@]}" -gt 0 ] || die "ANDROID_ABIS is empty"
   platforms="$(flutter_target_platform "${abis[@]}")"
+
+  # Reject a bad list now rather than after twenty minutes of compiling.
+  [ -n "${MOBILE_FORMATS// /}" ] || die "MOBILE_FORMATS is empty (use: apk, aab)"
+  [ -n "${MOBILE_MODES// /}" ] || die "MOBILE_MODES is empty (use: release, debug)"
+  for fmt in $MOBILE_FORMATS; do
+    case "$fmt" in
+      apk|aab) ;;
+      *) die "unknown MOBILE_FORMATS entry '$fmt' (use: apk, aab)" ;;
+    esac
+  done
+  for mode in $MOBILE_MODES; do
+    case "$mode" in
+      release|debug) ;;
+      *) die "unknown MOBILE_MODES entry '$mode' (use: release, debug)" ;;
+    esac
+  done
 
   app="$(app_workdir mobile-wallet)"
   appver="$(read_app_version "$app")"
@@ -675,41 +697,50 @@ build_mobile() {
     build_wallet_capi_android "$abi" "$app/android/app/src/main/jniLibs/$abi"
   done
 
-  log "Building the Android application ($MOBILE_FORMATS) for $platforms"
+  log "Building the Android application ($MOBILE_FORMATS; $MOBILE_MODES) for $platforms"
   (cd "$app" && flutter pub get)
-  for fmt in $MOBILE_FORMATS; do
-    case "$fmt" in
-      apk)
-        (cd "$app" && flutter build apk --release --target-platform "$platforms")
-        local apk="$app/build/app/outputs/flutter-apk/app-release.apk"
-        # An APK for an ABI whose libwallet_capi.so is missing installs and
-        # then dies on the first FFI call, so check before shipping it.
-        local want=()
-        for abi in "${abis[@]}"; do want+=("lib/$abi/libwallet_capi.so"); done
-        require_zip_entries "$apk" "the APK" "${want[@]}"
-        ship_file "$apk" "$name.apk"
-        ;;
-      aab)
-        (cd "$app" && flutter build appbundle --release --target-platform "$platforms")
-        local aab="$app/build/app/outputs/bundle/release/app-release.aab"
-        # Play serves one split per ABI, so a split without the library is
-        # an install that dies on the first FFI call. A bundle keeps its
-        # native libraries under the base module.
-        local want=()
-        for abi in "${abis[@]}"; do want+=("base/lib/$abi/libwallet_capi.so"); done
-        require_zip_entries "$aab" "the AAB" "${want[@]}"
-        ship_file "$aab" "$name.aab"
-        ;;
-      *)
-        die "unknown MOBILE_FORMATS entry '$fmt' (use: apk, aab)"
-        ;;
-    esac
+  # Only debug is suffixed, so a release download URL does not change.
+  local suffix
+  for mode in $MOBILE_MODES; do
+    suffix=""
+    [ "$mode" = "release" ] || suffix="-$mode"
+    for fmt in $MOBILE_FORMATS; do
+      case "$fmt" in
+        apk)
+          (cd "$app" && flutter build apk "--$mode" --target-platform "$platforms")
+          local apk="$app/build/app/outputs/flutter-apk/app-$mode.apk"
+          # An APK for an ABI whose libwallet_capi.so is missing installs and
+          # then dies on the first FFI call, so check before shipping it.
+          local want=()
+          for abi in "${abis[@]}"; do want+=("lib/$abi/libwallet_capi.so"); done
+          require_zip_entries "$apk" "the $mode APK" "${want[@]}"
+          ship_file "$apk" "$name$suffix.apk"
+          ;;
+        aab)
+          (cd "$app" && flutter build appbundle "--$mode" --target-platform "$platforms")
+          local aab="$app/build/app/outputs/bundle/$mode/app-$mode.aab"
+          # Play serves one split per ABI, so a split without the library is
+          # an install that dies on the first FFI call. A bundle keeps its
+          # native libraries under the base module.
+          local want=()
+          for abi in "${abis[@]}"; do want+=("base/lib/$abi/libwallet_capi.so"); done
+          require_zip_entries "$aab" "the $mode AAB" "${want[@]}"
+          ship_file "$aab" "$name$suffix.aab"
+          ;;
+      esac
+    done
   done
 
   # android/app/build.gradle signs release builds with the debug key, so these
   # artefacts install from a download but are not Play Store uploads.
   echo "note: signed with the Android debug key (android/app/build.gradle);"
   echo "      re-sign with your own keystore before publishing to a store."
+  case " $MOBILE_MODES " in
+    *" debug "*)
+      echo "note: the -debug artefacts are JIT builds with the debug banner and"
+      echo "      the observatory port open. Give them to testers, not to users."
+      ;;
+  esac
 }
 
 build_macos() {

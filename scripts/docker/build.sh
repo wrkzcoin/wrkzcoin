@@ -49,6 +49,7 @@ Wallet applications (extras/, each pulls extra toolchains into the image):
   web        PLUTON Web, WASM + Flutter web bundle -> .tar.gz
   desktop    PLUTON desktop, Linux x86_64 bundle   -> .tar.gz
   mobile     PLUTON mobile, Android                -> .apk and .aab
+             (release and debug; see MOBILE_MODES)
   apps       web desktop mobile
 
 Options:
@@ -62,6 +63,9 @@ Environment:
   ANDROID_ABIS="a b"     Android ABIs to build (default: arm64-v8a; also the
                          ABIs the mobile wallet ships libwallet_capi.so for)
   MOBILE_FORMATS="a b"   Android artefacts: apk, aab (default: both)
+  MOBILE_MODES="a b"     Android build modes: release, debug (default: both).
+                         Debug artefacts get a -debug name suffix; they are JIT
+                         builds for testers, several times larger and slower.
   WEB_PTHREADS=0|1       build the WASM module with pthreads (default: 1)
   OUT_DIR=path           where packages go (default: builds/)
   BUILD_ROOT=path        build trees + ccache (default: build-docker/)
@@ -193,6 +197,7 @@ RUN_ARGS=(
   -e "CLEAN=$CLEAN"
   -e "KEEP_GOING=$KEEP_GOING"
   -e "MOBILE_FORMATS=${MOBILE_FORMATS:-apk aab}"
+  -e "MOBILE_MODES=${MOBILE_MODES:-release debug}"
   -e "WEB_PTHREADS=${WEB_PTHREADS:-1}"
   -e BUILD_ROOT=/build
   -e OUT_DIR=/out

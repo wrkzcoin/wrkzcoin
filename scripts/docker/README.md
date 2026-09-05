@@ -18,7 +18,7 @@ using toolchain stages that are off by default (see
 |-----------|------------------------------------------------|---------------------------------------------------|
 | `web`     | `pluton-web-<appversion>.tar.gz`               | Emscripten WASM module + Flutter web bundle       |
 | `desktop` | `pluton-desktop-linux-x86_64-<appversion>.tar.gz` | Flutter Linux (GTK) bundle + `libwallet_capi.so` |
-| `mobile`  | `pluton-mobile-android-<appversion>.apk` / `.aab` | Flutter Android + `libwallet_capi.so` per ABI  |
+| `mobile`  | `pluton-mobile-android-<appversion>[-debug].apk` / `.aab` | Flutter Android + `libwallet_capi.so` per ABI, release and debug |
 | `apps`    | all three                                       |                                                   |
 
 Windows and macOS desktop builds and iOS are **not** possible from this image:
@@ -84,6 +84,9 @@ bash scripts/docker/build.sh apps
 
 # APK only, for one ABI
 MOBILE_FORMATS=apk ANDROID_ABIS=arm64-v8a bash scripts/docker/build.sh mobile
+
+# release artefacts only, skipping the debug ones
+MOBILE_MODES=release bash scripts/docker/build.sh mobile
 ```
 
 The first run builds the toolchain image (10-20 minutes, mostly downloads and
@@ -103,6 +106,8 @@ builds/
   pluton-desktop-linux-x86_64-2.0.0.tar.gz
   pluton-mobile-android-2.0.0.apk
   pluton-mobile-android-2.0.0.aab
+  pluton-mobile-android-2.0.0-debug.apk
+  pluton-mobile-android-2.0.0-debug.aab
   SHA256SUMS-0.4.8.280.txt
 ```
 
@@ -118,6 +123,7 @@ All options are environment variables. Targets are positional arguments.
 | `VERSION`          | from `src/config/version.h.in`| version string in the package names                                      |
 | `ANDROID_ABIS`     | `arm64-v8a`                   | ABIs to build for `android`; space or comma separated. Also the ABIs the `mobile` package carries and targets |
 | `MOBILE_FORMATS`   | `apk aab`                     | Android artefacts the `mobile` target produces                            |
+| `MOBILE_MODES`     | `release debug`               | Android build modes; debug artefacts get a `-debug` name suffix           |
 | `WEB_PTHREADS`     | `1`                           | build the WASM module with pthreads (`0` is single-threaded and slower)   |
 | `OUT_DIR`          | `builds/`                     | where packages and checksums go                                          |
 | `BUILD_ROOT`       | `build-docker/`               | build trees, staging directories, ccache and logs                        |
@@ -214,6 +220,16 @@ build needs network access even when the image is already built.
 `android/app/build.gradle` signs release builds with the **debug** key: the
 `.apk` installs from a download, but re-sign the `.aab` with your own keystore
 before uploading it to a store.
+
+By default the target builds each artefact twice, once per entry in
+`MOBILE_MODES`. The release artefact keeps the plain name; the debug one is
+suffixed `-debug`. A debug build runs the Dart VM in JIT mode with the debug
+banner drawn and the observatory port open, which makes it several times
+larger and much slower - give it to testers who need logs, not to users, and
+never upload it to a store. Both modes package the same `Release`-built
+`libwallet_capi.so`, which is compiled once per ABI and reused, so the second
+mode costs only its Gradle and Dart work. Set `MOBILE_MODES=release` to get
+the previous behaviour.
 
 ## Toolchain versions
 
