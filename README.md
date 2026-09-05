@@ -65,6 +65,7 @@ Build instructions are maintained in:
 
 - [COMPILE.md](COMPILE.md)
 - [Cross-platform build guide](scripts/cross-platform/README.md)
+- [Docker release builds](scripts/docker/README.md) - one command builds and packages the Linux, Windows and Android CLI sets
 
 ### Getting Started Fast
 
