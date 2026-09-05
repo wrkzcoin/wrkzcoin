@@ -58,6 +58,9 @@ namespace CryptoNote
 
         void log_connections();
 
+        /* The connections table log_connections writes to the log, as text. */
+        std::string connections_to_string();
+
         // Interface t_payload_net_handler, where t_payload_net_handler is template argument of nodetool::node_server
         void stop();
 
@@ -101,6 +104,12 @@ namespace CryptoNote
         virtual uint32_t getSyncDemotedPeers() const override;
 
         void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
+
+        /* Zero for a normal node. Above zero this is the height from which full
+           block data is stored; see LITENODE.md. */
+        void setLiteNodeConfig(uint32_t liteHeight);
+
+        virtual uint32_t getLiteNodeHeight() const override;
 
         void setSyncTuning(
             uint32_t syncMaxPeers,
@@ -230,6 +239,22 @@ namespace CryptoNote
         bool m_isPrunedNode;
 
         uint32_t m_prunedNodeDepth;
+
+        /* 0 = full node. Above 0, the height this node stores full blocks from. */
+        uint32_t m_liteHeight = 0;
+
+        /* The lite height is only safe once we know how tall the network is, and
+           that is first knowable at the opening handshake. Set once the question
+           is settled, either way, and never revisited. */
+        bool m_liteDepthChecked = false;
+
+        /* Tallest chain any peer has claimed so far. A max, so a peer reporting a
+           short chain - honestly or otherwise - cannot drag the answer down. */
+        uint64_t m_liteMaxPeerHeight = 0;
+
+        /* How many peers have contributed to the above. The verdict that kills the
+           daemon waits for several, so one peer cannot deliver it alone. */
+        uint32_t m_liteDepthSamples = 0;
 
         uint32_t m_syncMaxPeers;
 

@@ -793,4 +793,55 @@ class SDe extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
   }
+
+  @override
+  String get txPowServerSection => 'Transaktions-PoW-Server';
+
+  @override
+  String get txPowServerUse => 'Externen PoW-Server verwenden';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.';
+
+  @override
+  String get txPowServerSaved => 'PoW-Server-Einstellungen gespeichert';
+
+  @override
+  String get txPowServerInvalid =>
+      'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String get txPowServerTest => 'Testen';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server in $ms ms erreichbar: $threads Threads, $queue von $capacity Warteschlangenplätzen belegt';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server nicht erreichbar: $error';
+  }
+
+  @override
+  String get nodeTest => 'Testen';
+
+  @override
+  String get nodeInvalid => 'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'In $ms ms erreichbar: Höhe $height, $peers Peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'In $ms ms erreichbar, aber der Knoten synchronisiert noch: Höhe $height von $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Knoten nicht erreichbar: $error';
+  }
 }

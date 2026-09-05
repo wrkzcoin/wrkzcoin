@@ -403,5 +403,305 @@
         "type": "int"
       }
     }
+  },
+  "liteNodeTitle": "Lite node",
+  "liteNodeServesFrom": "This node only holds blocks from {height} onward. Transactions before that block cannot be found through it.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "This node starts at block {nodeHeight}, but this wallet starts at block {walletHeight}. Anything received in between is invisible here, so the balance shown may be too low. Connect a node holding the whole chain to see it.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Sync stopped at block {wallet}. This node holds nothing below block {node}, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "This node cannot rescan that far back",
+  "liteNodeRescanRefused": "The connected node is a lite node holding no block data below {height}. Rescanning from lower than that would drop transactions this wallet has already found, with no way to find them again here. Nothing has been changed.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Rescan from {height} instead",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "The connected node can only rescan from block {height} or above.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Serves blocks from",
+  "nodeFullChain": "Full chain",
+  "sectionLocalNode": "Local Lite Node",
+  "localNodeDescription": "Run a node on this computer and sync against it instead of a remote server. A lite node stores only what a wallet needs, but it still downloads the whole chain once.",
+  "localNodeSetUp": "Set up local node",
+  "localNodeStart": "Start",
+  "localNodeStop": "Stop",
+  "localNodeUse": "Use this node",
+  "localNodeDelete": "Delete node data",
+  "localNodeStateStopped": "Stopped",
+  "localNodeStateStarting": "Starting",
+  "localNodeStateSyncing": "Syncing",
+  "localNodeStateReady": "Synced",
+  "localNodeStateFailed": "Failed",
+  "localNodeProgress": "Block {height} of {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} peers",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "The local node is still catching up and cannot serve the wallet yet. It keeps syncing in the background — stay on a remote node until it is ready, then switch over.",
+  "localNodeInUse": "The wallet is connected to this node.",
+  "localNodeBinaryMissing": "{name} was not found. Place the daemon binary next to the wallet executable, or in a 'sidecar' folder beside it, and try again.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Set up a local lite node",
+  "localNodeSetupCost": "Before you start:\n• Around 6 GB of disk space, and the whole chain is downloaded once.\n• The first sync takes hours. It continues in the background and you can keep using a remote node meanwhile.\n• The start height below is permanent. Changing it later means deleting the node and syncing again from nothing.",
+  "localNodeStartHeightLabel": "Start height",
+  "localNodeStartHeightHelp": "Blocks below this height are downloaded and checked, then only the index later blocks need is kept. Keep it at or below this wallet's own start height ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Higher than this wallet's start height ({height}). The node would never be able to show this wallet's older transactions.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Create node",
+  "localNodeDeleteTitle": "Delete local node data?",
+  "localNodeDeleteWarning": "This stops the node and permanently deletes its blockchain database from disk. Your wallet, its seed and its funds are not touched — but a new local node starts syncing again from nothing, which takes hours.",
+  "localNodeDeleted": "Local node deleted.",
+  "localNodeDiskUsage": "{size} on disk",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Remote node",
+  "nodePresetLocal": "Local lite node",
+  "savingWallet": "Saving your wallet…",
+  "@savingWallet": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "savingWalletBody": "PLUTON is writing your wallet to disk. This can take a moment on a large wallet.",
+  "@savingWalletBody": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "shutdownTakingLong": "This is taking longer than expected. Quitting now loses this save — the wallet on disk stays as it was, so nothing is damaged, but anything since the last save is gone.",
+  "@shutdownTakingLong": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "quitAnyway": "Quit anyway",
+  "@quitAnyway": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "stillRunningInTray": "PLUTON is still running in the system tray. Click the tray icon to bring it back, or right-click it and choose Exit to quit.",
+  "@stillRunningInTray": {
+    "description": "Shutdown overlay and minimise-to-tray notice"
+  },
+  "browse": "Browse…",
+  "@browse": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolder": "Data folder",
+  "@localNodeDataFolder": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolderHelp": "Around 6 GB is written here. Pick a drive with room for it.",
+  "@localNodeDataFolderHelp": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeDataFolderInUse": "That folder already holds other files. Choose an empty folder, or a new one.",
+  "@localNodeDataFolderInUse": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "localNodeStartHeightRequired": "Enter the height to keep full blocks from. It has to be above zero — a lite node cannot start at the genesis block.",
+  "@localNodeStartHeightRequired": {
+    "description": "Local node data folder picker and start-height hint"
+  },
+  "nodeExitTitle": "The local node is still running",
+  "@nodeExitTitle": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitBodySyncing": "Its first sync has not finished. That takes hours, and it only makes progress while the node is running — but a node left running keeps using the disk and the network after PLUTON has closed.",
+  "@nodeExitBodySyncing": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitBodySynced": "It is level with the network. Leaving it running keeps it that way and keeps using CPU, bandwidth and the disk while PLUTON is closed; stopping it costs a short catch-up next time.",
+  "@nodeExitBodySynced": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitKeep": "Leave it running",
+  "@nodeExitKeep": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitStop": "Stop it",
+  "@nodeExitStop": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitChangeLater": "Changeable later in Settings, under Local Lite Node.",
+  "@nodeExitChangeLater": {
+    "description": "Local node exit question and policy"
+  },
+  "rememberMyChoice": "Remember my choice",
+  "@rememberMyChoice": {
+    "description": "Local node exit question and policy"
+  },
+  "shutdownStoppingNode": "Stopping the local node…",
+  "@shutdownStoppingNode": {
+    "description": "Local node exit question and policy"
+  },
+  "shutdownStoppingNodeBody": "Letting it flush its database, so the next start does not have to replay the write-ahead log.",
+  "@shutdownStoppingNodeBody": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyLabel": "When the wallet closes",
+  "@nodeExitPolicyLabel": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyAsk": "Ask me",
+  "@nodeExitPolicyAsk": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyKeep": "Leave the node running",
+  "@nodeExitPolicyKeep": {
+    "description": "Local node exit question and policy"
+  },
+  "nodeExitPolicyStop": "Stop the node",
+  "@nodeExitPolicyStop": {
+    "description": "Local node exit question and policy"
+  },
+  "localNodeStillRunningBody": "The local lite node is still running in the background. Open PLUTON to stop it.",
+  "@localNodeStillRunningBody": {
+    "description": "Local node exit question and policy"
+  },
+  "syncStoppedTitle": "Sync stopped",
+  "syncGapStalled": "Sync stopped at block {covered}. The node it was talking to answers only from block {servesFrom} upward, so the blocks in between cannot be downloaded from it. The balance is incomplete until you connect a node holding the whole chain.",
+  "@syncGapStalled": {
+    "placeholders": {
+      "covered": {
+        "type": "int"
+      },
+      "servesFrom": {
+        "type": "int"
+      }
+    }
+  },
+  "@syncStoppedTitle": {
+    "description": "Banner label when sync has stopped over a range no daemon served"
+  },
+  "localNodeNotReadyTitle": "This node is not ready",
+  "localNodeNotReadyBody": "The local node is still {behind} blocks behind the network. Point the wallet at it now and the sync will park until it catches up, showing a balance that is missing anything it has not reached — with nothing on screen to say why. Staying on the remote node costs nothing; the node keeps syncing either way.",
+  "@localNodeNotReadyBody": {
+    "placeholders": {
+      "behind": {
+        "type": "int"
+      }
+    }
+  },
+  "switchAnyway": "Switch anyway",
+  "switchToRemoteNode": "Switch to the remote node",
+  "nodeWillServeFromLabel": "Will serve blocks from",
+  "txPowServerSection": "Transaction PoW Server",
+  "txPowServerUse": "Use an external PoW server",
+  "txPowServerSubtitle": "Send the transaction proof of work to a server instead of computing it on this device. If the server does not respond, this device's CPU is used.",
+  "txPowServerSaved": "PoW server settings saved",
+  "txPowServerInvalid": "Enter a valid host and port",
+  "txPowServerTest": "Test",
+  "txPowServerTestOk": "Server reachable in {ms} ms: {threads} threads, {queue} of {capacity} queue slots in use",
+  "@txPowServerTestOk": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "threads": {"type": "int"},
+      "queue": {"type": "int"},
+      "capacity": {"type": "int"}
+    }
+  },
+  "txPowServerTestFailed": "Server not reachable: {error}",
+  "@txPowServerTestFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "nodeTest": "Test",
+  "nodeInvalid": "Enter a valid host and port",
+  "nodeTestOk": "Reachable in {ms} ms: height {height}, {peers} peers",
+  "@nodeTestOk": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "height": {"type": "int"},
+      "peers": {"type": "int"}
+    }
+  },
+  "nodeTestSyncing": "Reachable in {ms} ms, but the node is still syncing: height {height} of {networkHeight}",
+  "@nodeTestSyncing": {
+    "placeholders": {
+      "ms": {"type": "int"},
+      "height": {"type": "int"},
+      "networkHeight": {"type": "int"}
+    }
+  },
+  "nodeTestFailed": "Node not reachable: {error}",
+  "@nodeTestFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
   }
 }

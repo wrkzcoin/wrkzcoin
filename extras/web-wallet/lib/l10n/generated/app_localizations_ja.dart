@@ -771,4 +771,54 @@ class SJa extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'リングサイズが $actual に縮小されました（通常は $normal）。送金する金額に対して、チェーン上に完全なリングを構成するのに十分な出力がないため、この取引は通常よりも匿名性が低くなります。';
   }
+
+  @override
+  String get txPowServerSection => 'トランザクション PoW サーバー';
+
+  @override
+  String get txPowServerUse => '外部 PoW サーバーを使用';
+
+  @override
+  String get txPowServerSubtitle =>
+      'トランザクションのプルーフ・オブ・ワークをこの端末で計算せず、サーバーに任せます。サーバーが応答しない場合は、この端末の CPU を使用します。';
+
+  @override
+  String get txPowServerSaved => 'PoW サーバーの設定を保存しました';
+
+  @override
+  String get txPowServerInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String get txPowServerTest => 'テスト';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'サーバーに $ms ms で接続できました: $threads スレッド、キュー $queue/$capacity 使用中';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'サーバーに接続できません: $error';
+  }
+
+  @override
+  String get nodeTest => 'テスト';
+
+  @override
+  String get nodeInvalid => '有効なホストとポートを入力してください';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '$ms ms で接続できました: 高さ $height、ピア $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '$ms ms で接続できましたが、ノードはまだ同期中です: 高さ $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'ノードに接続できません: $error';
+  }
 }

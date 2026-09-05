@@ -127,6 +127,119 @@ All settings (node address, theme, log level) are persisted with `flutter_secure
 - **Settings** — daemon node switch, save/export/reset wallet, theme mode (System/Light/Dark), log level (0–5), delete wallet (two-step confirmation)
 - **About** — links to GitHub, Discord, Twitter/X, website
 - **Lock** — nav-rail lock button saves and closes the wallet, returning to the setup screen
+- **Local Lite Node** — run `Wrkzd` on this machine and sync against it (see below)
+
+---
+
+## Window, tray and quitting
+
+`AppLifecycle` owns the tray icon, the window close interception and the
+shutdown. It sits above the router in `main.dart` on purpose: these used to
+live in `MainShell`, which a `ShellRoute` builds, so locking the wallet — a
+route outside that shell — disposed the state while the tray icon stayed on
+screen with an Exit item bound to it. Riverpod throws on `ref` after dispose,
+so tray Exit silently did nothing until the wallet was unlocked again.
+
+| | |
+|---|---|
+| Close / minimise | Hides to the tray, but only if the icon actually installed. A shell that refuses it leaves close quitting normally, so the window can never vanish with nothing to bring it back |
+| First hide | A desktop notification says the app is still in the tray. On Windows a new icon goes into the overflow flyout, and a window that disappears with no icon in sight reads as a crash |
+| Exit | Closes the wallet, which is what saves it, then quits. A second Exit joins the first rather than starting a competing close |
+| A save that stalls | An overlay covers the window while the wallet is written out, and after 20 seconds offers to quit anyway — with the warning that it can damage the wallet file, because the file is rewritten in place rather than through a temporary |
+
+---
+
+## Local lite node
+
+Settings has a **Local Lite Node** card that supervises a `Wrkzd` child process
+on this machine, so the wallet can sync against a node the user owns rather
+than a public server.
+
+### Shipping the daemon
+
+The node is a separate binary, looked for in this order:
+
+1. `$WRKZ_DAEMON_PATH`
+2. next to the wallet executable
+3. a `sidecar/` folder beside it
+4. `Contents/Resources/` and `Contents/Resources/sidecar/` (macOS bundle)
+5. the working directory, and `sidecar/` inside it (`flutter run`)
+
+Build it with the normal daemon target and drop it next to the app:
+
+```bash
+cmake --build build --target Wrkzd --config Release
+copy build\src\Release\Wrkzd.exe build\windows\x64\runner\Release\
+```
+
+It adds roughly 9 MB to a release. If it is absent the card says so and nothing
+else in the app changes.
+
+`WRKZ_DAEMON_EXTRA_ARGS` appends flags to the daemon's command line, space
+separated. The app never sets it; it exists for daemons built without something
+the standard argument list assumes. The usual case is a RocksDB linked without
+ZSTD, which exits the moment it creates a database unless it is given
+`--db-enable-compression=false` — and note that running a lite node uncompressed
+costs roughly 28 GB instead of 6 GB, so that is a debugging flag, not a setting.
+
+### Testing it
+
+`test/local_node_e2e_test.dart` drives the supervisor against a real daemon on
+the real network: start, `/info`, the `lite_start_height` round trip, peers,
+stop, port release, delete, and adoption of a running node by a second app
+instance. It is skipped unless `WRKZ_LOCAL_NODE_E2E=1` is set, so an ordinary
+`flutter test` never touches the network.
+
+```bash
+WRKZ_LOCAL_NODE_E2E=1 WRKZ_DAEMON_PATH=/path/to/Wrkzd \
+  flutter test test/local_node_e2e_test.dart
+```
+
+### What the app does with it
+
+| | |
+|---|---|
+| Data directory | `<app support>/node`, with its own `pluton-node.json`, pid file and `wrkzd.log` |
+| Ports | An ephemeral RPC and P2P port picked once and stored, so the node never collides with a daemon the user runs themselves |
+| RPC binding | `127.0.0.1` only |
+| Console | `--no-console`; the process is stopped by signal |
+| Restarts | A node that was running comes back up on the next launch. One stopped on purpose stays stopped |
+| Quitting the app | **The node keeps running.** Nothing stops or signals it — a first sync takes hours and is not worth throwing away every time the window is closed. Stop it from Settings if you want it gone |
+| Crash recovery | A node left behind by a force-quit app is found by its port and adopted rather than started twice on the same database |
+
+**The RPC is unauthenticated.** `--rpc-access-token` cannot be used: the wallet
+backend builds its own request headers and has no way to send one. On POSIX the
+daemon can also expose an AF_UNIX socket with 0600 permissions, which would be
+tighter, but Windows compiles that out — loopback is what both ends can always
+agree on. Anything else running as any user on the machine can reach this node.
+
+**Stopping is a signal, not a clean shutdown, on Windows.** `dart:io` maps
+`SIGINT` onto `TerminateProcess` there. That is safe: writes already in
+RocksDB's WAL are in the OS's hands and get replayed on the next open. It costs
+recovery time at startup, not data.
+
+### The start height is the whole decision
+
+The setup wizard defaults to the wallet's own start height, read from
+`walletSyncStartHeight`. Choosing higher is allowed but needs an explicit
+acknowledgement, because a node that starts above the wallet can never show
+that wallet's older transactions — the balance simply reads low. The height
+cannot be changed afterwards: the daemon refuses to start against a database
+built at a different one, so changing it means deleting the node and syncing
+again.
+
+### Switching between nodes
+
+The node's life is independent of the wallet's connection. It keeps syncing
+whether or not the wallet points at it, so the usual flow is to stay on a
+remote node for the hours the first sync takes and switch over when it is
+ready. **Use this node** is disabled until the node reports itself synced —
+switching earlier would leave the wallet parked with nothing on screen to
+explain the stall. Switching back is the **Remote node** chip and Apply, and
+stopping or deleting the node moves the wallet back automatically rather than
+leaving it addressing a dead port.
+
+See `LITENODE.md` for what a lite node does and does not hold.
 
 ---
 

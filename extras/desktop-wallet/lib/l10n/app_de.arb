@@ -366,5 +366,181 @@
   "exportJsonWarningBody": "Die exportierte Datei enthält Ihren privaten View-Key und Ihre privaten Spend-Keys im Klartext. Wer sie liest, kann Ihr Guthaben ausgeben.\n\nSpeichern Sie sie nur auf einem Datenträger, den Sie kontrollieren, und löschen Sie sie danach sofort.",
   "passwordTooShort": "Das Passwort muss mindestens {count} Zeichen lang sein",
   "ringSize": "Ringgröße",
-  "ringSizeReduced": "Ringgröße auf {actual} reduziert (normalerweise {normal}). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich."
+  "ringSizeReduced": "Ringgröße auf {actual} reduziert (normalerweise {normal}). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.",
+  "liteNodeTitle": "Lite-Node",
+  "liteNodeServesFrom": "Dieser Node hält nur Blöcke ab {height}. Transaktionen vor diesem Block sind über ihn nicht auffindbar.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Dieser Node beginnt bei Block {nodeHeight}, diese Wallet aber bei Block {walletHeight}. Alles, was dazwischen empfangen wurde, ist hier unsichtbar, der angezeigte Kontostand kann also zu niedrig sein. Verbinde einen Node mit der vollständigen Blockchain, um ihn zu sehen.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Synchronisierung bei Block {wallet} gestoppt. Dieser Node hält nichts unterhalb von Block {node}, die Blöcke dazwischen können also nicht von ihm geladen werden. Der Kontostand bleibt unvollständig, bis du einen Node mit der vollständigen Blockchain verbindest.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Dieser Node kann nicht so weit zurück scannen",
+  "liteNodeRescanRefused": "Der verbundene Node ist ein Lite-Node ohne Blockdaten unterhalb von {height}. Ein Rescan von tiefer würde bereits gefundene Transaktionen dieser Wallet verwerfen, ohne sie hier wiederfinden zu können. Es wurde nichts geändert.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Stattdessen ab {height} scannen",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Der verbundene Node kann nur ab Block {height} oder höher scannen.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Liefert Blöcke ab",
+  "nodeFullChain": "Vollständige Blockchain",
+  "sectionLocalNode": "Lokaler Lite-Node",
+  "localNodeDescription": "Betreibe einen Node auf diesem Computer und synchronisiere darüber statt über einen entfernten Server. Ein Lite-Node speichert nur, was eine Wallet braucht, lädt aber trotzdem einmal die gesamte Blockchain herunter.",
+  "localNodeSetUp": "Lokalen Node einrichten",
+  "localNodeStart": "Starten",
+  "localNodeStop": "Stoppen",
+  "localNodeUse": "Diesen Node verwenden",
+  "localNodeDelete": "Node-Daten löschen",
+  "localNodeStateStopped": "Gestoppt",
+  "localNodeStateStarting": "Startet",
+  "localNodeStateSyncing": "Synchronisiert",
+  "localNodeStateReady": "Synchronisiert",
+  "localNodeStateFailed": "Fehlgeschlagen",
+  "localNodeProgress": "Block {height} von {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} Peers",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "Der lokale Node holt noch auf und kann die Wallet noch nicht bedienen. Er synchronisiert im Hintergrund weiter — bleib solange bei einem entfernten Node und wechsle, sobald er bereit ist.",
+  "localNodeInUse": "Die Wallet ist mit diesem Node verbunden.",
+  "localNodeBinaryMissing": "{name} wurde nicht gefunden. Lege die Daemon-Datei neben die Wallet-Anwendung oder in einen Ordner \"sidecar\" daneben und versuche es erneut.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Lokalen Lite-Node einrichten",
+  "localNodeSetupCost": "Bevor du beginnst:\n• Rund 6 GB Speicherplatz, und die gesamte Blockchain wird einmal heruntergeladen.\n• Die erste Synchronisierung dauert Stunden. Sie läuft im Hintergrund weiter, und du kannst währenddessen einen entfernten Node nutzen.\n• Die Starthöhe unten ist endgültig. Eine spätere Änderung bedeutet, den Node zu löschen und wieder bei null zu synchronisieren.",
+  "localNodeStartHeightLabel": "Starthöhe",
+  "localNodeStartHeightHelp": "Blöcke unterhalb dieser Höhe werden geladen und geprüft; behalten wird nur der Index, den spätere Blöcke brauchen. Wähle sie gleich oder niedriger als die Starthöhe dieser Wallet ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Höher als die Starthöhe dieser Wallet ({height}). Der Node könnte die älteren Transaktionen dieser Wallet nie anzeigen.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Node erstellen",
+  "localNodeDeleteTitle": "Lokale Node-Daten löschen?",
+  "localNodeDeleteWarning": "Das stoppt den Node und löscht seine Blockchain-Datenbank dauerhaft von der Festplatte. Deine Wallet, ihr Seed und ihr Guthaben bleiben unberührt — ein neuer lokaler Node synchronisiert aber wieder bei null, was Stunden dauert.",
+  "localNodeDeleted": "Lokaler Node gelöscht.",
+  "localNodeDiskUsage": "{size} auf der Festplatte",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Entfernter Node",
+  "nodePresetLocal": "Lokaler Lite-Node",
+  "savingWallet": "Wallet wird gespeichert…",
+  "savingWalletBody": "PLUTON schreibt Ihr Wallet auf die Festplatte. Bei einem großen Wallet kann das einen Moment dauern.",
+  "shutdownTakingLong": "Das dauert länger als erwartet. Jetzt zu beenden verwirft diesen Speichervorgang — die Wallet-Datei auf der Festplatte bleibt unverändert, es wird also nichts beschädigt, aber alles seit dem letzten Speichern ist weg.",
+  "quitAnyway": "Trotzdem beenden",
+  "stillRunningInTray": "PLUTON läuft weiter im Infobereich. Klicken Sie auf das Symbol, um es zurückzuholen, oder klicken Sie mit der rechten Maustaste und wählen Sie Beenden.",
+  "browse": "Durchsuchen…",
+  "localNodeDataFolder": "Datenordner",
+  "localNodeDataFolderHelp": "Hier werden etwa 6 GB geschrieben. Wählen Sie ein Laufwerk mit genügend Platz.",
+  "localNodeDataFolderInUse": "In diesem Ordner liegen bereits andere Dateien. Wählen Sie einen leeren oder einen neuen Ordner.",
+  "localNodeStartHeightRequired": "Geben Sie die Höhe an, ab der vollständige Blöcke behalten werden. Sie muss größer als null sein — ein Lite-Node kann nicht beim Genesis-Block beginnen.",
+  "nodeExitTitle": "Der lokale Node läuft noch",
+  "nodeExitBodySyncing": "Seine erste Synchronisierung ist nicht fertig. Sie dauert Stunden und kommt nur voran, solange der Node läuft — ein laufender Node nutzt aber auch nach dem Schließen von PLUTON weiter Festplatte und Netzwerk.",
+  "nodeExitBodySynced": "Er ist auf dem Stand des Netzwerks. Weiterlaufen zu lassen hält ihn dort und verbraucht weiter CPU, Bandbreite und Festplatte, während PLUTON geschlossen ist; ihn zu stoppen kostet beim nächsten Mal kurzes Aufholen.",
+  "nodeExitKeep": "Weiterlaufen lassen",
+  "nodeExitStop": "Stoppen",
+  "nodeExitChangeLater": "Später in den Einstellungen unter Lokaler Lite-Node änderbar.",
+  "rememberMyChoice": "Auswahl merken",
+  "shutdownStoppingNode": "Lokaler Node wird gestoppt…",
+  "shutdownStoppingNodeBody": "Er darf seine Datenbank schreiben, damit der nächste Start das Write-Ahead-Log nicht nachspielen muss.",
+  "nodeExitPolicyLabel": "Beim Schließen des Wallets",
+  "nodeExitPolicyAsk": "Nachfragen",
+  "nodeExitPolicyKeep": "Node weiterlaufen lassen",
+  "nodeExitPolicyStop": "Node stoppen",
+  "localNodeStillRunningBody": "Der lokale Lite-Node läuft weiter im Hintergrund. Öffnen Sie PLUTON, um ihn zu stoppen.",
+  "syncStoppedTitle": "Synchronisierung gestoppt",
+  "syncGapStalled": "Synchronisierung bei Block {covered} gestoppt. Der befragte Node antwortet erst ab Block {servesFrom}, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.",
+  "localNodeNotReadyTitle": "Dieser Node ist nicht bereit",
+  "localNodeNotReadyBody": "Der lokale Node liegt noch {behind} Blöcke hinter dem Netzwerk. Wenn Sie das Wallet jetzt darauf richten, pausiert die Synchronisierung, bis er aufgeholt hat, und zeigt einen Kontostand ohne alles, was er noch nicht erreicht hat — ohne dass etwas auf dem Bildschirm das erklärt. Auf dem entfernten Node zu bleiben kostet nichts; der Node synchronisiert so oder so weiter.",
+  "switchAnyway": "Trotzdem wechseln",
+  "switchToRemoteNode": "Zum entfernten Node wechseln",
+  "nodeWillServeFromLabel": "Wird Blöcke liefern ab",
+  "txPowServerSection": "Transaktions-PoW-Server",
+  "txPowServerUse": "Externen PoW-Server verwenden",
+  "txPowServerSubtitle": "Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.",
+  "txPowServerSaved": "PoW-Server-Einstellungen gespeichert",
+  "txPowServerInvalid": "Bitte einen gültigen Host und Port eingeben",
+  "txPowServerTest": "Testen",
+  "txPowServerTestOk": "Server in {ms} ms erreichbar: {threads} Threads, {queue} von {capacity} Warteschlangenplätzen belegt",
+  "txPowServerTestFailed": "Server nicht erreichbar: {error}",
+  "nodeTest": "Testen",
+  "nodeInvalid": "Bitte einen gültigen Host und Port eingeben",
+  "nodeTestOk": "In {ms} ms erreichbar: Höhe {height}, {peers} Peers",
+  "nodeTestSyncing": "In {ms} ms erreichbar, aber der Knoten synchronisiert noch: Höhe {height} von {networkHeight}",
+  "nodeTestFailed": "Knoten nicht erreichbar: {error}"
 }

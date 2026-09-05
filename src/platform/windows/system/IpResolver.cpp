@@ -47,8 +47,10 @@ namespace System
 
     IpAddress IpResolver::resolve(const std::string &host)
     {
-        assert(dispatcher != nullptr);
-        if (dispatcher->interrupted())
+        // Without a dispatcher the lookup simply cannot be interrupted, which is
+        // what a helper thread wants: getaddrinfo blocks and must not touch the
+        // dispatcher's state from another thread.
+        if (dispatcher != nullptr && dispatcher->interrupted())
         {
             throw InterruptedException();
         }
@@ -93,8 +95,10 @@ namespace System
 
     std::vector<IpAddress> IpResolver::resolveAll(const std::string &host)
     {
-        assert(dispatcher != nullptr);
-        if (dispatcher->interrupted())
+        // Without a dispatcher the lookup simply cannot be interrupted, which is
+        // what a helper thread wants: getaddrinfo blocks and must not touch the
+        // dispatcher's state from another thread.
+        if (dispatcher != nullptr && dispatcher->interrupted())
         {
             throw InterruptedException();
         }

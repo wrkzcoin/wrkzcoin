@@ -780,4 +780,107 @@ class SDe extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Ringgröße auf $actual reduziert (normalerweise $normal). Für die gesendeten Beträge gibt es in der Blockchain nicht genug Ausgänge für einen vollständigen Ring, daher ist diese Transaktion weniger privat als üblich.';
   }
+
+  @override
+  String get liteNodeTitle => 'Lite-Node';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Dieser Node hält nur Blöcke ab $height. Transaktionen vor diesem Block sind über ihn nicht auffindbar.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Dieser Node beginnt bei Block $nodeHeight, diese Wallet aber bei Block $walletHeight. Alles, was dazwischen empfangen wurde, ist hier unsichtbar, der angezeigte Kontostand kann also zu niedrig sein. Verbinde einen Node mit der vollständigen Blockchain, um ihn zu sehen.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Synchronisierung bei Block $wallet gestoppt. Dieser Node hält nichts unterhalb von Block $node, die Blöcke dazwischen können also nicht von ihm geladen werden. Der Kontostand bleibt unvollständig, bis du einen Node mit der vollständigen Blockchain verbindest.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Dieser Node kann nicht so weit zurück scannen';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Der verbundene Node ist ein Lite-Node ohne Blockdaten unterhalb von $height. Ein Rescan von tiefer würde bereits gefundene Transaktionen dieser Wallet verwerfen, ohne sie hier wiederfinden zu können. Es wurde nichts geändert.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Stattdessen ab $height scannen';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Der verbundene Node kann nur ab Block $height oder höher scannen.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Liefert Blöcke ab';
+
+  @override
+  String get nodeFullChain => 'Vollständige Blockchain';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Den Node direkt auf dem Telefon zu betreiben ist geplant, aber noch nicht verfügbar — ein Node braucht mehrere GB Speicher und Stunden zum Synchronisieren. Richte diese Wallet bis dahin auf einen selbst betriebenen Node.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisierung gestoppt';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisierung bei Block $covered gestoppt. Der befragte Node antwortet erst ab Block $servesFrom, die Blöcke dazwischen lassen sich von ihm also nicht laden. Der Kontostand bleibt unvollständig, bis Sie einen Node mit der ganzen Kette verbinden.';
+  }
+
+  @override
+  String get txPowServerSection => 'Transaktions-PoW-Server';
+
+  @override
+  String get txPowServerUse => 'Externen PoW-Server verwenden';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Den Proof of Work der Transaktion an einen Server senden, statt ihn auf diesem Gerät zu berechnen. Antwortet der Server nicht, wird die CPU dieses Geräts verwendet.';
+
+  @override
+  String get txPowServerSaved => 'PoW-Server-Einstellungen gespeichert';
+
+  @override
+  String get txPowServerInvalid =>
+      'Bitte einen gültigen Host und Port eingeben';
+
+  @override
+  String get txPowServerTest => 'Testen';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Server in $ms ms erreichbar: $threads Threads, $queue von $capacity Warteschlangenplätzen belegt';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Server nicht erreichbar: $error';
+  }
+
+  @override
+  String get nodeTest => 'Testen';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'In $ms ms erreichbar: Höhe $height, $peers Peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'In $ms ms erreichbar, aber der Knoten synchronisiert noch: Höhe $height von $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Knoten nicht erreichbar: $error';
+  }
 }

@@ -11,7 +11,12 @@
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/table.h"
+#include "rocksdb/sst_file_writer.h"
+#include <common/ScopeExit.h>
+#include <cstdio>
+#include <memory>
 #include <algorithm>
+#include <cstring>
 #include <stdexcept>
 
 using namespace CryptoNote;
@@ -284,21 +289,35 @@ std::error_code RocksDBWrapper::readThreadSafe(IReadBatch &batch)
 
 std::error_code RocksDBWrapper::compact()
 {
-    return compactDetailed().first;
+    return compactDetailed(false).first;
 }
 
-std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
+std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed(bool rewriteBottommost)
 {
     if (state.load() != INITIALIZED)
     {
         throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
     }
 
-    logger(INFO) << "Starting RocksDB full compaction...";
+    logger(INFO) << "Starting RocksDB full compaction"
+                 << (rewriteBottommost ? " (rewriting the bottommost level)..." : "...");
 
     rocksdb::CompactRangeOptions options;
     options.change_level = true;
     options.target_level = -1;
+
+    /* CompactRange leaves the bottommost level alone unless there is a compaction
+     * filter, and there is none here. After an earlier full compaction that level
+     * holds essentially the whole database, so an ordinary compaction rewrites
+     * almost nothing - which is what you want for reclaiming space after deletes,
+     * and useless for applying changed compression settings to data already
+     * written. kForce rather than kForceOptimized because the latter skips files
+     * a previous manual compaction produced, and those are exactly the ones still
+     * carrying the old settings. */
+    if (rewriteBottommost)
+    {
+        options.bottommost_level_compaction = rocksdb::BottommostLevelCompaction::kForce;
+    }
 
     const rocksdb::Status status = db->CompactRange(options, nullptr, nullptr);
     if (!status.ok())
@@ -310,6 +329,201 @@ std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed()
 
     logger(INFO) << "RocksDB full compaction completed.";
     return {std::error_code(), std::string()};
+}
+
+std::error_code RocksDBWrapper::iterate(
+    const std::string &keyPrefix,
+    const std::function<bool(const std::string &key, const std::string &value)> &callback)
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    rocksdb::ReadOptions options;
+
+    /* Pin a consistent view for the whole walk, so a scan running beside block
+       processing cannot see half of a block's writes. Released below. */
+    const rocksdb::Snapshot *snapshot = db->GetSnapshot();
+    options.snapshot = snapshot;
+
+    /* A long scan should not hold every block it touches in the block cache and
+       evict the working set that block processing depends on. */
+    options.fill_cache = false;
+
+    std::error_code result;
+
+    {
+        std::unique_ptr<rocksdb::Iterator> it(db->NewIterator(options));
+
+        for (it->Seek(keyPrefix); it->Valid(); it->Next())
+        {
+            const rocksdb::Slice key = it->key();
+
+            /* Seek only positions us at the first key at or after the prefix, so
+               the end of the range still has to be recognised. */
+            if (key.size() < keyPrefix.size() || std::memcmp(key.data(), keyPrefix.data(), keyPrefix.size()) != 0)
+            {
+                break;
+            }
+
+            if (!callback(key.ToString(), it->value().ToString()))
+            {
+                break;
+            }
+        }
+
+        if (!it->status().ok())
+        {
+            logger(ERROR) << "RocksDBWrapper::iterate failed: " << it->status().ToString();
+            result = make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+    }
+
+    db->ReleaseSnapshot(snapshot);
+
+    return result;
+}
+
+std::error_code RocksDBWrapper::ingestSorted(
+    const std::string &scratchDirectory,
+    const std::function<bool(std::string &key, std::string &value)> &next)
+{
+    if (state.load() != INITIALIZED)
+    {
+        throw std::system_error(make_error_code(CryptoNote::error::DataBaseErrorCodes::NOT_INITIALIZED));
+    }
+
+    /* Rolled at this size so a failed or cancelled load leaves bounded rubbish
+       behind, and so the engine gets several files to place rather than one
+       enormous one. */
+    constexpr uint64_t BYTES_PER_FILE = 256 * 1024 * 1024;
+
+    const rocksdb::Options options = getDBOptions(m_config);
+    const rocksdb::EnvOptions envOptions;
+
+    std::vector<std::string> files;
+
+    /* Anything still on disk here is ours and is either half written or already
+       ingested by reference; either way nothing else will ever look for it. */
+    Tools::ScopeExit removeLeftovers([&files]() {
+        for (const auto &file : files)
+        {
+            std::remove(file.c_str());
+        }
+    });
+
+    std::unique_ptr<rocksdb::SstFileWriter> writer;
+
+    uint64_t bytesInFile = 0;
+
+    std::string key;
+    std::string value;
+
+    const auto closeCurrentFile = [&]() -> std::error_code {
+        if (!writer)
+        {
+            return {};
+        }
+
+        const auto status = writer->Finish();
+
+        writer.reset();
+        bytesInFile = 0;
+
+        if (!status.ok())
+        {
+            logger(ERROR) << "RocksDBWrapper::ingestSorted failed closing a table file: " << status.ToString();
+
+            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        return {};
+    };
+
+    while (next(key, value))
+    {
+        if (!writer)
+        {
+            writer = std::make_unique<rocksdb::SstFileWriter>(envOptions, options);
+
+            const std::string path = scratchDirectory + "/ingest-" + std::to_string(files.size()) + ".sst";
+
+            const auto status = writer->Open(path);
+
+            if (!status.ok())
+            {
+                logger(ERROR) << "RocksDBWrapper::ingestSorted could not open " << path << ": " << status.ToString();
+
+                return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+            }
+
+            files.push_back(path);
+        }
+
+        const auto status = writer->Put(key, value);
+
+        if (!status.ok())
+        {
+            /* Out of order keys land here, which is the one caller error this
+               can actually detect, so say so rather than only quoting RocksDB. */
+            logger(ERROR) << "RocksDBWrapper::ingestSorted rejected a record - are the keys really sorted? "
+                          << status.ToString();
+
+            return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+        }
+
+        bytesInFile += key.size() + value.size();
+
+        if (bytesInFile >= BYTES_PER_FILE)
+        {
+            const auto error = closeCurrentFile();
+
+            if (error)
+            {
+                return error;
+            }
+        }
+    }
+
+    const auto error = closeCurrentFile();
+
+    if (error)
+    {
+        return error;
+    }
+
+    if (files.empty())
+    {
+        return {};
+    }
+
+    rocksdb::IngestExternalFileOptions ingestOptions;
+
+    /* Move rather than copy - the files were written next to the database for
+       exactly this reason, and copying 9 GB to save nothing is a poor trade. */
+    ingestOptions.move_files = true;
+
+    /* Nothing is reading this database while an import runs: it happens before
+       the core is constructed, on a database that has to be empty. Skipping the
+       consistency snapshot lets the files keep sequence number zero and land
+       directly at the bottom level, which is where they belong. */
+    ingestOptions.snapshot_consistency = false;
+    ingestOptions.allow_global_seqno = true;
+    ingestOptions.allow_blocking_flush = true;
+
+    const auto status = db->IngestExternalFile(files, ingestOptions);
+
+    if (!status.ok())
+    {
+        logger(ERROR) << "RocksDBWrapper::ingestSorted failed handing the table files over: " << status.ToString();
+
+        return make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR);
+    }
+
+    /* Ingest consumed them. Anything left is a file it declined to move, and
+       removeLeftovers is welcome to it. */
+    return {};
 }
 
 rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
@@ -328,7 +542,9 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
      * decompression and index search a block cache hit still pays for. Carved
      * out of the configured read cache rather than added on top, so the memory
      * an operator asked for is the memory they get. */
-    const uint64_t rowCacheSize = config.readCacheSize / 8;
+    const uint64_t rowCacheSize = config.rowCachePercent > 0
+        ? (config.readCacheSize / 100) * std::min<uint64_t>(config.rowCachePercent, 90)
+        : config.readCacheSize / 8;
 
     if (rowCacheSize > 0)
     {
@@ -374,8 +590,34 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     // Keep bottom-most level compressed as well when compression is enabled.
     fOptions.bottommost_compression = compressionLevel;
 
+    /* A per-SST ZSTD dictionary. Off unless asked for: it costs training time on
+     * every compaction, and what it buys depends entirely on how repetitive the
+     * records are. See DataBaseConfig::compressionDictBytes for why this database
+     * is a good candidate. The trainer is fed a multiple of the dictionary size,
+     * which is what RocksDB recommends over sampling less. */
+    if (config.compressionEnabled && config.compressionDictBytes > 0)
+    {
+        fOptions.compression_opts.max_dict_bytes = static_cast<uint32_t>(config.compressionDictBytes);
+        fOptions.compression_opts.zstd_max_train_bytes = static_cast<uint32_t>(config.compressionDictBytes * 100);
+    }
+
+    /* bottommost_compression_opts is ignored unless enabled is set, so this has
+     * to be built whenever either knob is in play - otherwise raising the level
+     * would silently do nothing to the level that holds nearly all the data. */
+    if (config.compressionEnabled && (config.compressionDictBytes > 0 || config.compressionLevel > 0))
+    {
+        fOptions.bottommost_compression_opts = fOptions.compression_opts;
+        fOptions.bottommost_compression_opts.enabled = true;
+
+        if (config.compressionLevel > 0)
+        {
+            fOptions.bottommost_compression_opts.level = config.compressionLevel;
+        }
+    }
+
     rocksdb::BlockBasedTableOptions tableOptions;
     tableOptions.block_cache = rocksdb::NewLRUCache(config.readCacheSize - rowCacheSize);
+    tableOptions.block_size = static_cast<size_t>(config.blockSize);
 
     /* This workload is almost entirely point lookups - block hash to index,
      * index to raw block, transaction hash to transaction. Without a bloom
@@ -392,9 +634,12 @@ rocksdb::Options RocksDBWrapper::getDBOptions(const DataBaseConfig &config)
     tableOptions.cache_index_and_filter_blocks = true;
     tableOptions.pin_l0_filter_and_index_blocks_in_cache = true;
 
-    /* Most of our lookups are for keys that do exist, so RocksDB can skip
-     * building filters for the bottommost level and save that space. */
-    fOptions.optimize_filters_for_hits = true;
+    /* Most block and transaction hash lookups are for keys that do exist, so by
+     * default RocksDB skips building filters for the bottommost level and saves
+     * that space. Spent key image checks are the exception - they ask about a key
+     * image exactly when it should be absent - so a node that finds transaction
+     * validation slow can buy those filters back. */
+    fOptions.optimize_filters_for_hits = !config.bottommostFilters;
 
     std::shared_ptr<rocksdb::TableFactory> tfp(NewBlockBasedTableFactory(tableOptions));
     fOptions.table_factory = tfp;

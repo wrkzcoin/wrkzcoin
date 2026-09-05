@@ -429,7 +429,7 @@ class SFr extends S {
   String get continueButton => 'Continuer';
 
   @override
-  String get browse => 'Parcourir';
+  String get browse => 'Parcourir…';
 
   @override
   String get backupWarning =>
@@ -819,5 +819,306 @@ class SFr extends S {
   @override
   String ringSizeReduced(int actual, int normal) {
     return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
+  }
+
+  @override
+  String get liteNodeTitle => 'Nœud allégé';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Ce nœud ne conserve que les blocs à partir de $height. Les transactions antérieures à ce bloc sont introuvables via ce nœud.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Ce nœud démarre au bloc $nodeHeight, mais ce portefeuille démarre au bloc $walletHeight. Tout ce qui a été reçu entre les deux est invisible ici, le solde affiché peut donc être trop bas. Connectez un nœud disposant de la chaîne complète pour le voir.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Synchronisation arrêtée au bloc $wallet. Ce nœud ne conserve rien en dessous du bloc $node, les blocs intermédiaires ne peuvent donc pas en être téléchargés. Le solde restera incomplet tant qu\'un nœud disposant de la chaîne complète n\'est pas connecté.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Ce nœud ne peut pas réanalyser aussi loin';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Le nœud connecté est un nœud allégé sans données de bloc en dessous de $height. Réanalyser plus bas supprimerait des transactions déjà trouvées par ce portefeuille, sans moyen de les retrouver ici. Rien n\'a été modifié.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Réanalyser depuis $height à la place';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Le nœud connecté ne peut réanalyser qu\'à partir du bloc $height ou au-delà.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Fournit les blocs à partir de';
+
+  @override
+  String get nodeFullChain => 'Chaîne complète';
+
+  @override
+  String get sectionLocalNode => 'Nœud allégé local';
+
+  @override
+  String get localNodeDescription =>
+      'Faites tourner un nœud sur cet ordinateur et synchronisez dessus plutôt que sur un serveur distant. Un nœud allégé ne stocke que ce dont un portefeuille a besoin, mais télécharge quand même toute la chaîne une fois.';
+
+  @override
+  String get localNodeSetUp => 'Configurer le nœud local';
+
+  @override
+  String get localNodeStart => 'Démarrer';
+
+  @override
+  String get localNodeStop => 'Arrêter';
+
+  @override
+  String get localNodeUse => 'Utiliser ce nœud';
+
+  @override
+  String get localNodeDelete => 'Supprimer les données du nœud';
+
+  @override
+  String get localNodeStateStopped => 'Arrêté';
+
+  @override
+  String get localNodeStateStarting => 'Démarrage';
+
+  @override
+  String get localNodeStateSyncing => 'Synchronisation';
+
+  @override
+  String get localNodeStateReady => 'Synchronisé';
+
+  @override
+  String get localNodeStateFailed => 'Échec';
+
+  @override
+  String localNodeProgress(int height, int network) {
+    return 'Bloc $height sur $network';
+  }
+
+  @override
+  String localNodePeers(int count) {
+    return '$count pairs';
+  }
+
+  @override
+  String get localNodeNotReadyYet =>
+      'Le nœud local est encore en train de rattraper son retard et ne peut pas encore servir le portefeuille. Il continue de se synchroniser en arrière-plan — restez sur un nœud distant jusqu\'à ce qu\'il soit prêt, puis basculez.';
+
+  @override
+  String get localNodeInUse => 'Le portefeuille est connecté à ce nœud.';
+
+  @override
+  String localNodeBinaryMissing(String name) {
+    return '$name est introuvable. Placez le binaire du démon à côté de l\'exécutable du portefeuille, ou dans un dossier « sidecar » adjacent, puis réessayez.';
+  }
+
+  @override
+  String get localNodeSetupTitle => 'Configurer un nœud allégé local';
+
+  @override
+  String get localNodeSetupCost =>
+      'Avant de commencer :\n• Environ 6 Go d\'espace disque, et toute la chaîne est téléchargée une fois.\n• La première synchronisation dure des heures. Elle continue en arrière-plan et vous pouvez utiliser un nœud distant entre-temps.\n• La hauteur de départ ci-dessous est définitive. La changer plus tard implique de supprimer le nœud et de resynchroniser depuis zéro.';
+
+  @override
+  String get localNodeStartHeightLabel => 'Hauteur de départ';
+
+  @override
+  String localNodeStartHeightHelp(int height) {
+    return 'Les blocs sous cette hauteur sont téléchargés et vérifiés, puis seul l\'index dont les blocs suivants ont besoin est conservé. Gardez-la égale ou inférieure à la hauteur de départ de ce portefeuille ($height).';
+  }
+
+  @override
+  String localNodeStartHeightTooHigh(int height) {
+    return 'Supérieure à la hauteur de départ de ce portefeuille ($height). Le nœud ne pourrait jamais afficher ses transactions plus anciennes.';
+  }
+
+  @override
+  String get localNodeCreate => 'Créer le nœud';
+
+  @override
+  String get localNodeDeleteTitle => 'Supprimer les données du nœud local ?';
+
+  @override
+  String get localNodeDeleteWarning =>
+      'Cela arrête le nœud et supprime définitivement sa base de données de la chaîne du disque. Votre portefeuille, sa phrase de récupération et ses fonds ne sont pas touchés — mais un nouveau nœud local resynchronisera depuis zéro, ce qui prend des heures.';
+
+  @override
+  String get localNodeDeleted => 'Nœud local supprimé.';
+
+  @override
+  String localNodeDiskUsage(String size) {
+    return '$size sur le disque';
+  }
+
+  @override
+  String get nodePresetRemote => 'Nœud distant';
+
+  @override
+  String get nodePresetLocal => 'Nœud allégé local';
+
+  @override
+  String get savingWallet => 'Enregistrement de votre portefeuille…';
+
+  @override
+  String get savingWalletBody =>
+      'PLUTON écrit votre portefeuille sur le disque. Cela peut prendre un moment sur un gros portefeuille.';
+
+  @override
+  String get shutdownTakingLong =>
+      'Cela prend plus de temps que prévu. Quitter maintenant perd cette sauvegarde — le fichier du portefeuille sur le disque reste tel quel, rien n\'est endommagé, mais tout ce qui suit la dernière sauvegarde est perdu.';
+
+  @override
+  String get quitAnyway => 'Quitter quand même';
+
+  @override
+  String get stillRunningInTray =>
+      'PLUTON fonctionne toujours dans la zone de notification. Cliquez sur l\'icône pour le rouvrir, ou faites un clic droit et choisissez Quitter.';
+
+  @override
+  String get localNodeDataFolder => 'Dossier de données';
+
+  @override
+  String get localNodeDataFolderHelp =>
+      'Environ 6 Go y seront écrits. Choisissez un disque avec assez de place.';
+
+  @override
+  String get localNodeDataFolderInUse =>
+      'Ce dossier contient déjà d\'autres fichiers. Choisissez un dossier vide ou un nouveau dossier.';
+
+  @override
+  String get localNodeStartHeightRequired =>
+      'Indiquez la hauteur à partir de laquelle garder les blocs complets. Elle doit être supérieure à zéro — un nœud allégé ne peut pas démarrer au bloc de genèse.';
+
+  @override
+  String get nodeExitTitle => 'Le nœud local fonctionne toujours';
+
+  @override
+  String get nodeExitBodySyncing =>
+      'Sa première synchronisation n\'est pas terminée. Elle prend des heures et n\'avance que pendant que le nœud tourne — mais un nœud laissé en marche continue d\'utiliser le disque et le réseau après la fermeture de PLUTON.';
+
+  @override
+  String get nodeExitBodySynced =>
+      'Il est à jour avec le réseau. Le laisser tourner le maintient à jour et continue d\'utiliser le processeur, la bande passante et le disque pendant que PLUTON est fermé ; l\'arrêter coûte un bref rattrapage la prochaine fois.';
+
+  @override
+  String get nodeExitKeep => 'Le laisser tourner';
+
+  @override
+  String get nodeExitStop => 'L\'arrêter';
+
+  @override
+  String get nodeExitChangeLater =>
+      'Modifiable ensuite dans Paramètres, sous Nœud allégé local.';
+
+  @override
+  String get rememberMyChoice => 'Retenir mon choix';
+
+  @override
+  String get shutdownStoppingNode => 'Arrêt du nœud local…';
+
+  @override
+  String get shutdownStoppingNodeBody =>
+      'On le laisse vider sa base de données, pour que le prochain démarrage n\'ait pas à rejouer le journal d\'écriture.';
+
+  @override
+  String get nodeExitPolicyLabel => 'À la fermeture du portefeuille';
+
+  @override
+  String get nodeExitPolicyAsk => 'Me demander';
+
+  @override
+  String get nodeExitPolicyKeep => 'Laisser le nœud tourner';
+
+  @override
+  String get nodeExitPolicyStop => 'Arrêter le nœud';
+
+  @override
+  String get localNodeStillRunningBody =>
+      'Le nœud allégé local fonctionne toujours en arrière-plan. Ouvrez PLUTON pour l\'arrêter.';
+
+  @override
+  String get syncStoppedTitle => 'Synchronisation arrêtée';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Synchronisation arrêtée au bloc $covered. Le nœud interrogé ne répond qu\'à partir du bloc $servesFrom, donc les blocs intermédiaires ne peuvent pas en être téléchargés. Le solde est incomplet tant que vous ne vous connectez pas à un nœud détenant toute la chaîne.';
+  }
+
+  @override
+  String get localNodeNotReadyTitle => 'Ce nœud n\'est pas prêt';
+
+  @override
+  String localNodeNotReadyBody(int behind) {
+    return 'Le nœud local a encore $behind blocs de retard sur le réseau. Y connecter le portefeuille maintenant met la synchronisation en attente jusqu\'à ce qu\'il rattrape, en affichant un solde amputé de tout ce qu\'il n\'a pas atteint — sans rien à l\'écran pour l\'expliquer. Rester sur le nœud distant ne coûte rien ; le nœud continue de se synchroniser dans les deux cas.';
+  }
+
+  @override
+  String get switchAnyway => 'Basculer quand même';
+
+  @override
+  String get switchToRemoteNode => 'Basculer vers le nœud distant';
+
+  @override
+  String get nodeWillServeFromLabel => 'Servira les blocs à partir de';
+
+  @override
+  String get txPowServerSection => 'Serveur PoW des transactions';
+
+  @override
+  String get txPowServerUse => 'Utiliser un serveur PoW externe';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.';
+
+  @override
+  String get txPowServerSaved => 'Paramètres du serveur PoW enregistrés';
+
+  @override
+  String get txPowServerInvalid => 'Saisissez un hôte et un port valides';
+
+  @override
+  String get txPowServerTest => 'Tester';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Serveur joignable en $ms ms : $threads threads, $queue sur $capacity places de file utilisées';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Serveur injoignable : $error';
+  }
+
+  @override
+  String get nodeTest => 'Tester';
+
+  @override
+  String get nodeInvalid => 'Saisissez un hôte et un port valides';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Joignable en $ms ms : hauteur $height, $peers pairs';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Joignable en $ms ms, mais le nœud se synchronise encore : hauteur $height sur $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nœud injoignable : $error';
   }
 }

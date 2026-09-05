@@ -797,4 +797,54 @@ class SFr extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Taille de l\'anneau réduite à $actual (normalement $normal). Les montants envoyés n\'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d\'habitude.';
   }
+
+  @override
+  String get txPowServerSection => 'Serveur PoW des transactions';
+
+  @override
+  String get txPowServerUse => 'Utiliser un serveur PoW externe';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.';
+
+  @override
+  String get txPowServerSaved => 'Paramètres du serveur PoW enregistrés';
+
+  @override
+  String get txPowServerInvalid => 'Saisissez un hôte et un port valides';
+
+  @override
+  String get txPowServerTest => 'Tester';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Serveur joignable en $ms ms : $threads threads, $queue sur $capacity places de file utilisées';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Serveur injoignable : $error';
+  }
+
+  @override
+  String get nodeTest => 'Tester';
+
+  @override
+  String get nodeInvalid => 'Saisissez un hôte et un port valides';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Joignable en $ms ms : hauteur $height, $peers pairs';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Joignable en $ms ms, mais le nœud se synchronise encore : hauteur $height sur $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Nœud injoignable : $error';
+  }
 }

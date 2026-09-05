@@ -47,16 +47,19 @@ project(WrkzCoin)
 enable_language(C)
 enable_language(CXX)
 
-# Assert our compiler is good
+# Assert our compiler is good. The floor is what CMAKE_CXX_STANDARD 20 below
+# actually needs: a toolchain with a real -std=c++20 (or /std:c++20) mode and
+# the standard library to go with it. Older releases fail in <chrono>,
+# <optional> and lambda captures long before reaching anything project-specific.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    # GCC 7.0 or higher
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7)
-        message(FATAL_ERROR "GCC/G++ 7.0 or greater is required to compile. Please check the README.md for detailed compilation instructions.")
+    # GCC 10 or higher
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
+        message(FATAL_ERROR "GCC/G++ 10 or greater is required to compile (C++20). Please check COMPILE.md for detailed compilation instructions.")
     endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    # Clang 6.0 or higher
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6)
-        message(FATAL_ERROR "Clang 6.0 or greater is required to compile. Please check the README.md for detailed compilation instructions.")
+    # Clang 10 or higher
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 10)
+        message(FATAL_ERROR "Clang 10 or greater is required to compile (C++20). Please check COMPILE.md for detailed compilation instructions.")
     endif ()
     if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 15)
         message(WARNING
@@ -66,9 +69,9 @@ elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         )
     endif ()
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    # Visual Studio 15 2017 or higher
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.10)
-        message(FATAL_ERROR "MSVC 19.10 or greater is required to compile (Latest Visual Studio 15 2017 should suffice). Please check the README.md for detailed compilation instructions.")
+    # Visual Studio 2019 16.11 (MSVC 19.29, first with /std:c++20) or higher
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.29)
+        message(FATAL_ERROR "MSVC 19.29 or greater is required to compile (Visual Studio 2019 16.11 or Visual Studio 2022, for /std:c++20). Please check COMPILE.md for detailed compilation instructions.")
     endif ()
 else ()
     message(WARNING "You are using an unsupported compiler. The compilation is very likely to fail. God speed.")

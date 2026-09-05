@@ -11,6 +11,7 @@
 
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
+#include <common/PlatformCaCerts.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
@@ -86,6 +87,13 @@ inline std::shared_ptr<httplib::Client> getClient(
     if (useIpc)
     {
         Common::Ipc::configureClient(*client);
+    }
+    else if (useSsl)
+    {
+        /* Android's trust store is not on any path cpp-httplib probes, and the
+           miss is silent - see PlatformCaCerts.h. Without this an https daemon
+           is unreachable from the mobile wallet while http works fine. */
+        Common::applySystemCaCertificates(*client);
     }
 
     client->set_connection_timeout(timeout);
@@ -176,7 +184,21 @@ EM_JS(char*, wrkzSyncXhr, (const char* url, const char* method,
                 xhr.setRequestHeader('Accept', 'application/json');
             }
             if (body_len > 0) {
-                xhr.send(new TextDecoder('utf-8').decode(h8.subarray(body, body + body_len)));
+                // slice(), not subarray(). In a pthreads build h8 is a view over
+                // the SharedArrayBuffer that backs wasm memory, and
+                // TextDecoder.decode() throws a TypeError on any shared-backed
+                // view - the spec forbids it. subarray() hands it exactly that;
+                // slice() copies the bytes into a fresh, unshared buffer first.
+                //
+                // This is why every POST failed on the web while every GET
+                // worked: a GET has no body and never reaches this line, and the
+                // response path below encodes into a fresh array and set()s it
+                // into the shared view, which is allowed. The throw landed in
+                // the catch, came back as status 0, survived the retry without
+                // a Content-Type (same line, same throw), and surfaced as
+                // "failed to open socket" - instantly, on a daemon that was
+                // answering the identical request with 200 and CORS headers.
+                xhr.send(new TextDecoder('utf-8').decode(h8.slice(body, body + body_len)));
             } else {
                 xhr.send(null);
             }
@@ -710,6 +732,11 @@ bool Nigel::daemonSupportsHeightRange() const
     return m_daemonSupportsHeightRange;
 }
 
+bool Nigel::daemonSkipsEmptyBlocks() const
+{
+    return m_daemonSkipsEmptyBlocks;
+}
+
 WalletSyncResponse Nigel::getWalletSyncDataRange(
     const size_t slot,
     const uint64_t startHeight,
@@ -867,6 +894,19 @@ bool Nigel::getDaemonInfo()
             m_isBlockchainCache = j.at("isCacheApi").get<bool>();
         }
 
+        /* A lite daemon stores nothing below this height, so no wallet can find
+           funds down there through it however far back it is told to scan. A
+           daemon too old to advertise the field leaves this at zero, which reads
+           as "serves everything" - which is what it is. See LITENODE.md. */
+        if (j.find("lite_start_height") != j.end())
+        {
+            m_liteStartHeight = j.at("lite_start_height").get<uint64_t>();
+        }
+        else
+        {
+            m_liteStartHeight = 0;
+        }
+
         /* Optional sync behaviours only get switched on once the daemon has
            named them. A daemon too old to advertise anything simply never
            enables them, and keeps serving what it always has. */
@@ -952,6 +992,11 @@ uint64_t Nigel::localDaemonBlockCount() const
 uint64_t Nigel::networkBlockCount() const
 {
     return m_networkBlockCount;
+}
+
+uint64_t Nigel::liteStartHeight() const
+{
+    return m_liteStartHeight;
 }
 
 uint64_t Nigel::peerCount() const

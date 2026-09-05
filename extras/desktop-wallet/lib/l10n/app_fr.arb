@@ -366,5 +366,181 @@
   "exportJsonWarningBody": "Le fichier exporté contient votre clé de vue privée et vos clés de dépense privées en clair. Quiconque le lit peut dépenser vos fonds.\n\nEnregistrez-le uniquement sur un support que vous contrôlez et supprimez-le dès que vous avez terminé.",
   "passwordTooShort": "Le mot de passe doit comporter au moins {count} caractères",
   "ringSize": "Taille de l'anneau",
-  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude."
+  "ringSizeReduced": "Taille de l'anneau réduite à {actual} (normalement {normal}). Les montants envoyés n'ont pas assez de sorties sur la chaîne pour former un anneau complet, cette transaction est donc moins privée que d'habitude.",
+  "liteNodeTitle": "Nœud allégé",
+  "liteNodeServesFrom": "Ce nœud ne conserve que les blocs à partir de {height}. Les transactions antérieures à ce bloc sont introuvables via ce nœud.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Ce nœud démarre au bloc {nodeHeight}, mais ce portefeuille démarre au bloc {walletHeight}. Tout ce qui a été reçu entre les deux est invisible ici, le solde affiché peut donc être trop bas. Connectez un nœud disposant de la chaîne complète pour le voir.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "Synchronisation arrêtée au bloc {wallet}. Ce nœud ne conserve rien en dessous du bloc {node}, les blocs intermédiaires ne peuvent donc pas en être téléchargés. Le solde restera incomplet tant qu'un nœud disposant de la chaîne complète n'est pas connecté.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Ce nœud ne peut pas réanalyser aussi loin",
+  "liteNodeRescanRefused": "Le nœud connecté est un nœud allégé sans données de bloc en dessous de {height}. Réanalyser plus bas supprimerait des transactions déjà trouvées par ce portefeuille, sans moyen de les retrouver ici. Rien n'a été modifié.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Réanalyser depuis {height} à la place",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "Le nœud connecté ne peut réanalyser qu'à partir du bloc {height} ou au-delà.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Fournit les blocs à partir de",
+  "nodeFullChain": "Chaîne complète",
+  "sectionLocalNode": "Nœud allégé local",
+  "localNodeDescription": "Faites tourner un nœud sur cet ordinateur et synchronisez dessus plutôt que sur un serveur distant. Un nœud allégé ne stocke que ce dont un portefeuille a besoin, mais télécharge quand même toute la chaîne une fois.",
+  "localNodeSetUp": "Configurer le nœud local",
+  "localNodeStart": "Démarrer",
+  "localNodeStop": "Arrêter",
+  "localNodeUse": "Utiliser ce nœud",
+  "localNodeDelete": "Supprimer les données du nœud",
+  "localNodeStateStopped": "Arrêté",
+  "localNodeStateStarting": "Démarrage",
+  "localNodeStateSyncing": "Synchronisation",
+  "localNodeStateReady": "Synchronisé",
+  "localNodeStateFailed": "Échec",
+  "localNodeProgress": "Bloc {height} sur {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} pairs",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "Le nœud local est encore en train de rattraper son retard et ne peut pas encore servir le portefeuille. Il continue de se synchroniser en arrière-plan — restez sur un nœud distant jusqu'à ce qu'il soit prêt, puis basculez.",
+  "localNodeInUse": "Le portefeuille est connecté à ce nœud.",
+  "localNodeBinaryMissing": "{name} est introuvable. Placez le binaire du démon à côté de l'exécutable du portefeuille, ou dans un dossier « sidecar » adjacent, puis réessayez.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Configurer un nœud allégé local",
+  "localNodeSetupCost": "Avant de commencer :\n• Environ 6 Go d'espace disque, et toute la chaîne est téléchargée une fois.\n• La première synchronisation dure des heures. Elle continue en arrière-plan et vous pouvez utiliser un nœud distant entre-temps.\n• La hauteur de départ ci-dessous est définitive. La changer plus tard implique de supprimer le nœud et de resynchroniser depuis zéro.",
+  "localNodeStartHeightLabel": "Hauteur de départ",
+  "localNodeStartHeightHelp": "Les blocs sous cette hauteur sont téléchargés et vérifiés, puis seul l'index dont les blocs suivants ont besoin est conservé. Gardez-la égale ou inférieure à la hauteur de départ de ce portefeuille ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Supérieure à la hauteur de départ de ce portefeuille ({height}). Le nœud ne pourrait jamais afficher ses transactions plus anciennes.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Créer le nœud",
+  "localNodeDeleteTitle": "Supprimer les données du nœud local ?",
+  "localNodeDeleteWarning": "Cela arrête le nœud et supprime définitivement sa base de données de la chaîne du disque. Votre portefeuille, sa phrase de récupération et ses fonds ne sont pas touchés — mais un nouveau nœud local resynchronisera depuis zéro, ce qui prend des heures.",
+  "localNodeDeleted": "Nœud local supprimé.",
+  "localNodeDiskUsage": "{size} sur le disque",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Nœud distant",
+  "nodePresetLocal": "Nœud allégé local",
+  "savingWallet": "Enregistrement de votre portefeuille…",
+  "savingWalletBody": "PLUTON écrit votre portefeuille sur le disque. Cela peut prendre un moment sur un gros portefeuille.",
+  "shutdownTakingLong": "Cela prend plus de temps que prévu. Quitter maintenant perd cette sauvegarde — le fichier du portefeuille sur le disque reste tel quel, rien n'est endommagé, mais tout ce qui suit la dernière sauvegarde est perdu.",
+  "quitAnyway": "Quitter quand même",
+  "stillRunningInTray": "PLUTON fonctionne toujours dans la zone de notification. Cliquez sur l'icône pour le rouvrir, ou faites un clic droit et choisissez Quitter.",
+  "browse": "Parcourir…",
+  "localNodeDataFolder": "Dossier de données",
+  "localNodeDataFolderHelp": "Environ 6 Go y seront écrits. Choisissez un disque avec assez de place.",
+  "localNodeDataFolderInUse": "Ce dossier contient déjà d'autres fichiers. Choisissez un dossier vide ou un nouveau dossier.",
+  "localNodeStartHeightRequired": "Indiquez la hauteur à partir de laquelle garder les blocs complets. Elle doit être supérieure à zéro — un nœud allégé ne peut pas démarrer au bloc de genèse.",
+  "nodeExitTitle": "Le nœud local fonctionne toujours",
+  "nodeExitBodySyncing": "Sa première synchronisation n'est pas terminée. Elle prend des heures et n'avance que pendant que le nœud tourne — mais un nœud laissé en marche continue d'utiliser le disque et le réseau après la fermeture de PLUTON.",
+  "nodeExitBodySynced": "Il est à jour avec le réseau. Le laisser tourner le maintient à jour et continue d'utiliser le processeur, la bande passante et le disque pendant que PLUTON est fermé ; l'arrêter coûte un bref rattrapage la prochaine fois.",
+  "nodeExitKeep": "Le laisser tourner",
+  "nodeExitStop": "L'arrêter",
+  "nodeExitChangeLater": "Modifiable ensuite dans Paramètres, sous Nœud allégé local.",
+  "rememberMyChoice": "Retenir mon choix",
+  "shutdownStoppingNode": "Arrêt du nœud local…",
+  "shutdownStoppingNodeBody": "On le laisse vider sa base de données, pour que le prochain démarrage n'ait pas à rejouer le journal d'écriture.",
+  "nodeExitPolicyLabel": "À la fermeture du portefeuille",
+  "nodeExitPolicyAsk": "Me demander",
+  "nodeExitPolicyKeep": "Laisser le nœud tourner",
+  "nodeExitPolicyStop": "Arrêter le nœud",
+  "localNodeStillRunningBody": "Le nœud allégé local fonctionne toujours en arrière-plan. Ouvrez PLUTON pour l'arrêter.",
+  "syncStoppedTitle": "Synchronisation arrêtée",
+  "syncGapStalled": "Synchronisation arrêtée au bloc {covered}. Le nœud interrogé ne répond qu'à partir du bloc {servesFrom}, donc les blocs intermédiaires ne peuvent pas en être téléchargés. Le solde est incomplet tant que vous ne vous connectez pas à un nœud détenant toute la chaîne.",
+  "localNodeNotReadyTitle": "Ce nœud n'est pas prêt",
+  "localNodeNotReadyBody": "Le nœud local a encore {behind} blocs de retard sur le réseau. Y connecter le portefeuille maintenant met la synchronisation en attente jusqu'à ce qu'il rattrape, en affichant un solde amputé de tout ce qu'il n'a pas atteint — sans rien à l'écran pour l'expliquer. Rester sur le nœud distant ne coûte rien ; le nœud continue de se synchroniser dans les deux cas.",
+  "switchAnyway": "Basculer quand même",
+  "switchToRemoteNode": "Basculer vers le nœud distant",
+  "nodeWillServeFromLabel": "Servira les blocs à partir de",
+  "txPowServerSection": "Serveur PoW des transactions",
+  "txPowServerUse": "Utiliser un serveur PoW externe",
+  "txPowServerSubtitle": "Envoyer la preuve de travail de la transaction à un serveur au lieu de la calculer sur cet appareil. Si le serveur ne répond pas, le processeur de cet appareil est utilisé.",
+  "txPowServerSaved": "Paramètres du serveur PoW enregistrés",
+  "txPowServerInvalid": "Saisissez un hôte et un port valides",
+  "txPowServerTest": "Tester",
+  "txPowServerTestOk": "Serveur joignable en {ms} ms : {threads} threads, {queue} sur {capacity} places de file utilisées",
+  "txPowServerTestFailed": "Serveur injoignable : {error}",
+  "nodeTest": "Tester",
+  "nodeInvalid": "Saisissez un hôte et un port valides",
+  "nodeTestOk": "Joignable en {ms} ms : hauteur {height}, {peers} pairs",
+  "nodeTestSyncing": "Joignable en {ms} ms, mais le nœud se synchronise encore : hauteur {height} sur {networkHeight}",
+  "nodeTestFailed": "Nœud injoignable : {error}"
 }

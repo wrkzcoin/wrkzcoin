@@ -105,6 +105,10 @@ class WalletSynchronizer
 
     uint64_t getCurrentScanHeight() const;
 
+    /* {stalled, the height we have covered to, the lowest height the daemon
+       can serve}. See BlockDownloader::getSyncGap(). */
+    std::tuple<bool, uint64_t, uint64_t> getSyncGap() const;
+
     void swapNode(const std::shared_ptr<Nigel> daemon);
 
     void setSyncStart(const uint64_t startTimestamp, const uint64_t startHeight);

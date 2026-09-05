@@ -206,13 +206,20 @@ namespace Utilities
     bool parseDaemonAddressFromString(std::string &host, uint16_t &port, std::string address)
     {
         /* A local socket has no port to speak of, and its path must survive
-           the host:port splitting below untouched. */
+           the host:port splitting below untouched.
+
+           The address is kept whole, ipc:// prefix and all. Everything that
+           later dials this host asks isIpcDaemonAddress() again, and only the
+           address as the user wrote it still answers to that - stripping the
+           prefix here left a relative path such as "./wrkzd.sock" looking like
+           an ordinary hostname, and the wallet went off to resolve it as one.
+           Dial sites run the address through ipcDaemonPath() themselves. */
         if (isIpcDaemonAddress(address))
         {
-            host = ipcDaemonPath(address);
+            host = address;
             port = 0;
 
-            return !host.empty();
+            return !ipcDaemonPath(address).empty();
         }
 
         /* Lets users enter url's instead of host:port */

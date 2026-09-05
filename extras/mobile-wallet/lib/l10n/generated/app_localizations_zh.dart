@@ -761,4 +761,105 @@ class SZh extends S {
   String ringSizeReduced(int actual, int normal) {
     return '环签名大小已降至 $actual（通常为 $normal）。链上没有足够的输出来为所发送的金额构成完整的环，因此此交易的隐私性低于平常。';
   }
+
+  @override
+  String get liteNodeTitle => '轻节点';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return '此节点仅保存从 $height 起的区块。该区块之前的交易无法通过它找到。';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return '此节点从区块 $nodeHeight 开始，而此钱包从区块 $walletHeight 开始。两者之间收到的款项在这里不可见，因此显示的余额可能偏低。请连接保存完整链的节点以查看。';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return '同步已在区块 $wallet 停止。此节点不保存区块 $node 以下的任何数据，因此无法从它下载中间的区块。在连接保存完整链的节点之前，余额并不完整。';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle => '此节点无法回溯到那么早重新扫描';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return '当前连接的是轻节点，不保存 $height 以下的区块数据。从更低处重新扫描会丢弃钱包已找到的交易，且在此无法再次找回。未做任何更改。';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return '改为从 $height 重新扫描';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return '当前连接的节点只能从区块 $height 或更高处重新扫描。';
+  }
+
+  @override
+  String get nodeServesFromLabel => '提供区块起始于';
+
+  @override
+  String get nodeFullChain => '完整链';
+
+  @override
+  String get localNodeMobileFuture =>
+      '在手机上直接运行节点已在计划中，但尚不可用——节点需要数 GB 存储和数小时同步。在此之前，请将本钱包指向你自己运行的节点。';
+
+  @override
+  String get syncStoppedTitle => '同步已停止';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return '同步在区块 $covered 停止。所连接的节点只从区块 $servesFrom 开始响应，因此无法从它下载中间的区块。在您连接一个保存完整链的节点之前，余额都是不完整的。';
+  }
+
+  @override
+  String get txPowServerSection => '交易 PoW 服务器';
+
+  @override
+  String get txPowServerUse => '使用外部 PoW 服务器';
+
+  @override
+  String get txPowServerSubtitle =>
+      '将交易的工作量证明交由服务器计算，而不是在本设备上计算。如果服务器无响应，将使用本设备的 CPU。';
+
+  @override
+  String get txPowServerSaved => 'PoW 服务器设置已保存';
+
+  @override
+  String get txPowServerInvalid => '请输入有效的主机和端口';
+
+  @override
+  String get txPowServerTest => '测试';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return '服务器可达，耗时 $ms ms：$threads 个线程，队列已用 $queue/$capacity';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return '无法连接服务器：$error';
+  }
+
+  @override
+  String get nodeTest => '测试';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return '可达，耗时 $ms ms：高度 $height，$peers 个节点连接';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return '可达，耗时 $ms ms，但节点仍在同步：高度 $height/$networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return '无法连接节点：$error';
+  }
 }

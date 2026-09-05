@@ -49,9 +49,17 @@ namespace CryptoNote
 
         std::error_code compact() override;
 
-        std::pair<std::error_code, std::string> compactDetailed() override;
+        std::pair<std::error_code, std::string> compactDetailed(bool rewriteBottommost) override;
 
         void recreate() override;
+
+        std::error_code iterate(
+            const std::string &keyPrefix,
+            const std::function<bool(const std::string &key, const std::string &value)> &callback) override;
+
+        std::error_code ingestSorted(
+            const std::string &scratchDirectory,
+            const std::function<bool(std::string &key, std::string &value)> &next) override;
 
       private:
         rocksdb::Options getDBOptions(const DataBaseConfig &config);

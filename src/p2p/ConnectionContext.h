@@ -54,6 +54,9 @@ namespace CryptoNote
         uint32_t m_last_response_height = 0;
         bool m_remote_is_pruned_node = false;
         uint32_t m_remote_pruned_node_height = 0;
+        bool m_remote_is_lite_node = false;
+        /* Lowest height the peer can serve a block for; 0 means every height. */
+        uint32_t m_remote_lite_start_height = 0;
 
         uint32_t m_sync_batch_size = 100;
         uint64_t m_sync_blocks_received = 0;

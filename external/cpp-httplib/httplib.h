@@ -16195,7 +16195,13 @@ inline STACK_OF(X509_NAME) *
   X509 *cert = nullptr;
   while ((cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) !=
          nullptr) {
-    X509_NAME *name = X509_get_subject_name(cert);
+    // auto, not X509_NAME*: OpenSSL 4.0 made X509_get_subject_name()
+    // return a const X509_NAME*, so a non-const local stops compiling
+    // there while still being correct on 3.x. Deducing works on both,
+    // X509_NAME_dup() has taken a const pointer since 3.0, and every
+    // other call site in this file already uses auto. Drop this note if
+    // cpp-httplib is upgraded past 0.37.0.
+    auto *name = X509_get_subject_name(cert);
     if (name) { sk_X509_NAME_push(ca_list, X509_NAME_dup(name)); }
     X509_free(cert);
   }

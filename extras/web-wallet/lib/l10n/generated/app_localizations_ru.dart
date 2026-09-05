@@ -793,4 +793,54 @@ class SRu extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
   }
+
+  @override
+  String get txPowServerSection => 'PoW-сервер транзакций';
+
+  @override
+  String get txPowServerUse => 'Использовать внешний PoW-сервер';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Отправлять proof of work транзакции на сервер вместо вычисления на этом устройстве. Если сервер не отвечает, используется процессор этого устройства.';
+
+  @override
+  String get txPowServerSaved => 'Настройки PoW-сервера сохранены';
+
+  @override
+  String get txPowServerInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String get txPowServerTest => 'Проверить';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Сервер доступен за $ms мс: потоков $threads, занято $queue из $capacity мест в очереди';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Сервер недоступен: $error';
+  }
+
+  @override
+  String get nodeTest => 'Проверить';
+
+  @override
+  String get nodeInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Доступна за $ms мс: высота $height, пиров $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Доступна за $ms мс, но нода ещё синхронизируется: высота $height из $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Нода недоступна: $error';
+  }
 }

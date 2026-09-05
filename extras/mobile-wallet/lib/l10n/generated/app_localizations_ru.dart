@@ -778,4 +778,106 @@ class SRu extends S {
   String ringSizeReduced(int actual, int normal) {
     return 'Размер кольца уменьшен до $actual (обычно $normal). Для отправляемых сумм в цепочке недостаточно выходов, чтобы сформировать полное кольцо, поэтому эта транзакция менее приватна, чем обычно.';
   }
+
+  @override
+  String get liteNodeTitle => 'Облегчённый узел';
+
+  @override
+  String liteNodeServesFrom(int height) {
+    return 'Этот узел хранит блоки только начиная с $height. Транзакции до этого блока через него найти невозможно.';
+  }
+
+  @override
+  String liteNodeMissesHistory(int nodeHeight, int walletHeight) {
+    return 'Этот узел начинается с блока $nodeHeight, а кошелёк — с блока $walletHeight. Всё полученное между ними здесь не видно, поэтому показанный баланс может быть занижен. Подключитесь к узлу с полной цепочкой, чтобы увидеть его.';
+  }
+
+  @override
+  String liteNodeSyncStalled(int wallet, int node) {
+    return 'Синхронизация остановлена на блоке $wallet. Этот узел не хранит ничего ниже блока $node, поэтому промежуточные блоки с него не скачать. Баланс останется неполным, пока вы не подключите узел с полной цепочкой.';
+  }
+
+  @override
+  String get liteNodeRescanRefusedTitle =>
+      'Этот узел не может пересканировать так далеко назад';
+
+  @override
+  String liteNodeRescanRefused(int height) {
+    return 'Подключённый узел — облегчённый и не хранит данные блоков ниже $height. Пересканирование с меньшей высоты отбросит уже найденные кошельком транзакции, и найти их здесь снова будет невозможно. Ничего не изменено.';
+  }
+
+  @override
+  String liteNodeRescanFromInstead(int height) {
+    return 'Пересканировать с $height';
+  }
+
+  @override
+  String liteNodeRescanHint(int height) {
+    return 'Подключённый узел может пересканировать только с блока $height и выше.';
+  }
+
+  @override
+  String get nodeServesFromLabel => 'Отдаёт блоки с';
+
+  @override
+  String get nodeFullChain => 'Полная цепочка';
+
+  @override
+  String get localNodeMobileFuture =>
+      'Запуск узла прямо на телефоне запланирован, но пока недоступен: узлу нужно несколько ГБ памяти и часы синхронизации. А пока укажите кошельку адрес своего собственного узла.';
+
+  @override
+  String get syncStoppedTitle => 'Синхронизация остановлена';
+
+  @override
+  String syncGapStalled(int covered, int servesFrom) {
+    return 'Синхронизация остановлена на блоке $covered. Узел, с которым шёл обмен, отвечает только начиная с блока $servesFrom, поэтому блоки между ними с него не скачать. Баланс неполный, пока вы не подключите узел с полной цепочкой.';
+  }
+
+  @override
+  String get txPowServerSection => 'PoW-сервер транзакций';
+
+  @override
+  String get txPowServerUse => 'Использовать внешний PoW-сервер';
+
+  @override
+  String get txPowServerSubtitle =>
+      'Отправлять proof of work транзакции на сервер вместо вычисления на этом устройстве. Если сервер не отвечает, используется процессор этого устройства.';
+
+  @override
+  String get txPowServerSaved => 'Настройки PoW-сервера сохранены';
+
+  @override
+  String get txPowServerInvalid => 'Введите корректный хост и порт';
+
+  @override
+  String get txPowServerTest => 'Проверить';
+
+  @override
+  String txPowServerTestOk(int ms, int threads, int queue, int capacity) {
+    return 'Сервер доступен за $ms мс: потоков $threads, занято $queue из $capacity мест в очереди';
+  }
+
+  @override
+  String txPowServerTestFailed(String error) {
+    return 'Сервер недоступен: $error';
+  }
+
+  @override
+  String get nodeTest => 'Проверить';
+
+  @override
+  String nodeTestOk(int ms, int height, int peers) {
+    return 'Доступна за $ms мс: высота $height, пиров $peers';
+  }
+
+  @override
+  String nodeTestSyncing(int ms, int height, int networkHeight) {
+    return 'Доступна за $ms мс, но нода ещё синхронизируется: высота $height из $networkHeight';
+  }
+
+  @override
+  String nodeTestFailed(String error) {
+    return 'Нода недоступна: $error';
+  }
 }

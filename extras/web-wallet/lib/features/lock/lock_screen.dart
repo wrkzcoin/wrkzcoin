@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth/wallet_auth.dart';
 import '../../core/providers/providers.dart';
 import '../../core/providers/app_providers.dart';
+import '../../core/providers/wallet_notifiers.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/pluton_logo.dart';
@@ -69,13 +70,28 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     );
     if (confirmed != true) return;
 
+    setState(() => _loading = true);
     final ffi = ref.read(walletCApiProvider);
     try { await ffi.save(); } catch (_) {}
-    ffi.close();
+    // Await it. Fire-and-forget left the close racing whatever the user did
+    // next: the worker handles each message in its own async task, so a close
+    // still waiting on its IndexedDB write can interleave with the open or
+    // restore that follows - either the restore is refused with "wallet
+    // already open", or close's tail runs against the wallet that just
+    // replaced it and the new wallet never autosaves.
+    try { await ffi.close(); } catch (_) {}
 
     await clearWalletPassword();
+    await clearLastWalletPath();
+    if (!mounted) return;
+    ref.invalidate(lastWalletPathProvider);
+    // Nothing from this wallet may survive into the next one.
+    beginWalletSession(ref);
     ref.read(walletLockedProvider.notifier).state = false;
     ref.read(walletOpenProvider.notifier).state = false;
+    // The router is about to replace this screen with /setup; only clear the
+    // spinner if for any reason it did not.
+    if (mounted) setState(() => _loading = false);
   }
 
   @override

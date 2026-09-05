@@ -36,6 +36,12 @@ class AppConfig {
   static const int defaultDaemonPort = 17856;
   static const bool defaultDaemonSsl = false;
 
+  /// Public transaction PoW server prefilled in Settings. Off by default; the
+  /// wallet computes the proof of work on the phone until the user enables it.
+  static const String defaultTxPowServerHost = 'txpow.wrkz.work';
+  static const int defaultTxPowServerPort = 443;
+  static const bool defaultTxPowServerSsl = true;
+
   // ── polling intervals ──────────────────────────────────────────────────────
   static const Duration statusPollInterval = Duration(seconds: 5);
   static const Duration balancePollInterval = Duration(seconds: 10);

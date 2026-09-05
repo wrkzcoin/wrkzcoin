@@ -64,6 +64,12 @@ external JSObject get _jsBridge;
 @JS('walletBridgeReady')
 external JSBoolean? get _walletBridgeReadyFlag;
 
+/// Set by index.html when walletBridge.init() rejects. Holds the reason the
+/// wallet engine could not start - a missing wallet_wasm.* file, a server that
+/// is not sending COOP/COEP, or a pthread worker that failed to load.
+@JS('walletBridgeError')
+external JSString? get _walletBridgeErrorMessage;
+
 /// Extract a readable message from a JS exception (Error or plain value).
 @JS('_extractJsError')
 external JSString _extractJsError(JSAny? err);
@@ -80,12 +86,41 @@ Never _throwJsError(Object e) {
   throw WalletCApiException(-1, msg);
 }
 
+/// How long to wait for the wallet engine before giving up on it. Loading the
+/// module is a few hundred milliseconds of network and compile on a cold cache;
+/// a minute means it is never arriving, not that it is slow.
+const Duration _bridgeStartupTimeout = Duration(seconds: 60);
+
 /// Waits until the WASM wallet module is fully loaded in the worker.
 /// Resolves immediately if already ready; polls at 100 ms intervals otherwise.
+///
+/// Reports failure instead of waiting forever. init() rejecting - a missing
+/// wallet_wasm.* file, absent COOP/COEP headers, a pthread worker that never
+/// loads - used to leave every caller awaiting a flag that would never be set,
+/// which reached the user as a button that spun for the rest of the session
+/// with the real reason sitting in the browser console.
 Future<void> _waitForBridge() async {
+  final deadline = DateTime.now().add(_bridgeStartupTimeout);
+
   for (;;) {
     final ready = _walletBridgeReadyFlag;
     if (ready != null && ready.toDart) return;
+
+    final error = _walletBridgeErrorMessage;
+    if (error != null) {
+      throw WalletCApiException(-1, 'Wallet engine failed to start: ${error.toDart}');
+    }
+
+    if (DateTime.now().isAfter(deadline)) {
+      throw WalletCApiException(
+        -1,
+        'Wallet engine did not start within ${_bridgeStartupTimeout.inSeconds}s. '
+        'Check the browser console: the usual causes are wallet_wasm.js or '
+        'wallet_wasm.wasm missing from the server, or the server not sending the '
+        'Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.',
+      );
+    }
+
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
 }
@@ -286,10 +321,14 @@ class WalletCApi {
   }
 
   Future<void> close() async {
-    if (_open) {
-      await _callLifecycle('close', {});
-      _open = false;
-    }
+    if (!_open) return;
+    // Clear the flag before awaiting, not after. The close round trip goes
+    // through IndexedDB, and if an open or restore completes while it is in
+    // flight, setting _open = false afterwards would mark the *new* wallet
+    // closed - every screen then reports "Wallet not connected" against a
+    // wallet that is perfectly open.
+    _open = false;
+    await _callLifecycle('close', {});
   }
 
   Future<void> save() async {
@@ -536,7 +575,12 @@ class WalletCApi {
       'disabled': 0, 'fatal': 1, 'warning': 2, 'info': 3, 'debug': 4, 'trace': 5,
     };
     final numericLevel = nameToLevel[levelName.toLowerCase()] ?? 3;
-    _call('setLogLevel', {'level': numericLevel});
+    // Deliberately not awaited: this is called from a Notifier during app
+    // startup, before the WASM module has finished loading, and _call waits
+    // for the bridge on its own. The catch matters though - an unawaited
+    // Future that throws is an unhandled error, and losing a log level is
+    // never worth taking the app down.
+    _call('setLogLevel', {'level': numericLevel}).catchError((Object _) => null);
   }
 
   Future<Map<String, dynamic>> takeLogsAsync() => _callMap('takeLogsJson');
@@ -567,6 +611,30 @@ class WalletCApi {
 
   void setScanCoinbase(bool scan) {
     _call('setScanCoinbase', {'scan': scan});
+  }
+
+  // --- external tx PoW server ---
+
+  /// Routes transaction PoW through an external server first, falling back to
+  /// computing it in the worker. An empty host turns it off.
+  void setTxPowServer(String host, int port, {bool ssl = false}) {
+    _call('setTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
+  }
+
+  /// Checks a Tx PoW server without configuring it. Resolves to the health
+  /// summary: {ok, url, latency_ms, threads, queue, capacity} or {ok: false,
+  /// url, error}.
+  Future<Map<String, dynamic>> testTxPowServer(String host, int port,
+      {bool ssl = false}) {
+    return _callMap('testTxPowServer', {'host': host, 'port': port, 'ssl': ssl});
+  }
+
+  /// Probes a daemon without switching the wallet onto it. Returns
+  /// {ok, url, latency_ms, height, networkHeight, peerCount, synced} or
+  /// {ok: false, url, error}.
+  Future<Map<String, dynamic>> testNode(String host, int port,
+      {bool ssl = false}) {
+    return _callMap('testNode', {'host': host, 'port': port, 'ssl': ssl});
   }
 
   // --- error helpers ---

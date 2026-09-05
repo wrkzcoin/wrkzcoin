@@ -12,6 +12,9 @@
 #include <utilities/Utilities.h>
 #include <walletbackend/JsonSerialization.h>
 #include <cryptonotecore/TransactionPoW.h>
+#include <common/IpcSocket.h>
+#include <nigel/Nigel.h>
+#include <nigel/TxPowClient.h>
 #include <walletbackend/WalletBackend.h>
 #include <logger/Logger.h>
 
@@ -618,6 +621,27 @@ wallet_status_t wallet_get_status_json(
         {"minMixin", minMixin},
         {"maxMixin", maxMixin},
         {"defaultMixin", defaultMixin},
+        /* Zero when the daemon holds the whole chain. Non zero means nothing
+           below it can be found through this daemon however far back a scan is
+           started, so a wallet older than this shows an incomplete balance.
+           See LITENODE.md. */
+        {"daemonLiteStartHeight", s.daemonLiteStartHeight},
+        /* Sync has deliberately stopped because this wallet has scanned past a
+           height the daemon cannot serve from. The balance is incomplete and
+           stays that way until a daemon holding the range is connected. */
+        {"isSyncStalledByLiteNode", s.syncStalledByLiteNode},
+        /* The heights that go with it. Both zero when there is no stall, and a
+           caller must not substitute anything else for them: the daemon now
+           connected may not be the one that stalled the sync. */
+        {"syncGapCoveredTo", s.syncGapCoveredTo},
+        {"syncGapDaemonServesFrom", s.syncGapDaemonServesFrom},
+        /* The lowest height this wallet was ever told to scan from. A caller
+           picking a lite node's start height must not go above it, or the
+           node it builds cannot serve the wallet it was built for. Zero when
+           the wallet was created from a timestamp instead - then
+           walletSyncStartTimestamp carries it. */
+        {"walletSyncStartHeight", s.walletSyncStartHeight},
+        {"walletSyncStartTimestamp", s.walletSyncStartTimestamp},
     };
 
     return alloc_out_string(j.dump(), out_json, out_len);
@@ -702,6 +726,17 @@ wallet_status_t wallet_reset(
     if (status != static_cast<wallet_status_t>(SUCCESS))
     {
         return status;
+    }
+
+    /* A lite daemon serves a rescan from its lite height whatever it is asked
+       for, so this would quietly drop every transaction the wallet holds from
+       below there and never find them again through this daemon. Refuse, so
+       the host application can put the choice to the person whose funds they
+       are. A wallet holding nothing below the floor loses nothing and is not
+       stopped. See LITENODE.md. */
+    if (std::get<1>(instance->liteRescanImpact(scan_height)) != 0)
+    {
+        return static_cast<wallet_status_t>(LITE_NODE_CANNOT_RESCAN_THAT_LOW);
     }
 
     instance->reset(scan_height, timestamp);
@@ -1734,5 +1769,119 @@ wallet_status_t wallet_clear_logs(void)
 void wallet_set_scan_coinbase(bool scan)
 {
     Config::config.wallet.skipCoinbaseTransactions = !scan;
+}
+
+void wallet_set_tx_pow_server(const char *host, uint16_t port, bool ssl)
+{
+    TxPowClient::configure(host == nullptr ? std::string() : std::string(host), port, ssl);
+}
+
+wallet_status_t wallet_test_tx_pow_server(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len)
+{
+    if (out_json == nullptr || out_len == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    std::string result;
+
+    try
+    {
+        result = TxPowClient::probe(host == nullptr ? std::string() : std::string(host), port, ssl);
+    }
+    catch (const std::exception &e)
+    {
+        result = nlohmann::json{{"ok", false}, {"url", ""}, {"error", e.what()}}.dump();
+    }
+
+    return alloc_out_string(result, out_json, out_len);
+}
+
+wallet_status_t wallet_test_node(
+    const char *host,
+    uint16_t port,
+    bool ssl,
+    char **out_json,
+    size_t *out_len)
+{
+    if (out_json == nullptr || out_len == nullptr)
+    {
+        return static_cast<wallet_status_t>(UNKNOWN_ERROR);
+    }
+
+    const std::string daemonHost = host == nullptr ? std::string() : std::string(host);
+
+    /* A local socket is addressed by path: there is no port to demand and no
+       URL to build, and Nigel switches the client to AF_UNIX off the address
+       alone. Without this a daemon reached over IPC could never be tested from
+       the settings screen, because the port it does not have reads as unset. */
+    const bool ipc = Utilities::isIpcDaemonAddress(daemonHost);
+
+    nlohmann::json r;
+    r["url"] = ipc ? Common::Ipc::describe(Utilities::ipcDaemonPath(daemonHost))
+                   : std::string(ssl ? "https://" : "http://") + daemonHost + ":" + std::to_string(port);
+
+    if (daemonHost.empty() || (!ipc && port == 0))
+    {
+        r["ok"] = false;
+        r["error"] = "host and port are required";
+        return alloc_out_string(r.dump(), out_json, out_len);
+    }
+
+    if (ipc && !Common::Ipc::supported())
+    {
+        r["ok"] = false;
+        r["error"] = Common::Ipc::unsupportedReason();
+        return alloc_out_string(r.dump(), out_json, out_len);
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+
+    try
+    {
+        /* Short timeout: this is a person waiting on a button, not a sync. */
+        Nigel probe(daemonHost, port, ssl, std::chrono::seconds(10));
+
+        /* init(false) fetches /info once and returns; the argument keeps it
+           from starting a background refresh thread we would immediately
+           throw away. getDaemonInfo() itself is private. */
+        probe.init(false);
+
+        const bool reached = probe.isOnline();
+
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
+                .count();
+
+        r["latency_ms"] = static_cast<uint64_t>(elapsed);
+
+        if (!reached)
+        {
+            r["ok"] = false;
+            r["error"] = "no response from /info";
+            return alloc_out_string(r.dump(), out_json, out_len);
+        }
+
+        const uint64_t local = probe.localDaemonBlockCount();
+        const uint64_t network = probe.networkBlockCount();
+
+        r["ok"] = true;
+        r["height"] = local;
+        r["networkHeight"] = network;
+        r["peerCount"] = probe.peerCount();
+        r["synced"] = network > 0 && local + 1 >= network;
+    }
+    catch (const std::exception &e)
+    {
+        r["ok"] = false;
+        r["error"] = e.what();
+    }
+
+    return alloc_out_string(r.dump(), out_json, out_len);
 }
 

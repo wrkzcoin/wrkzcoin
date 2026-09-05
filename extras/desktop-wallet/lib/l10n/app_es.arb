@@ -366,5 +366,181 @@
   "exportJsonWarningBody": "El archivo exportado contiene su clave de visualización privada y sus claves de gasto privadas en texto plano. Cualquiera que lo lea puede gastar sus fondos.\n\nGuárdelo solo en un almacenamiento que usted controle y elimínelo en cuanto termine.",
   "passwordTooShort": "La contraseña debe tener al menos {count} caracteres",
   "ringSize": "Tamaño del anillo",
-  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual."
+  "ringSizeReduced": "Tamaño del anillo reducido a {actual} (normalmente {normal}). Los importes que se envían no tienen suficientes salidas en la cadena para formar un anillo completo, por lo que esta transacción es menos privada de lo habitual.",
+  "liteNodeTitle": "Nodo ligero",
+  "liteNodeServesFrom": "Este nodo solo guarda bloques a partir de {height}. Las transacciones anteriores a ese bloque no se pueden encontrar a través de él.",
+  "@liteNodeServesFrom": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeMissesHistory": "Este nodo empieza en el bloque {nodeHeight}, pero esta cartera empieza en el bloque {walletHeight}. Todo lo recibido entre medias es invisible aquí, así que el saldo mostrado puede ser demasiado bajo. Conecta un nodo con la cadena completa para verlo.",
+  "@liteNodeMissesHistory": {
+    "placeholders": {
+      "nodeHeight": {
+        "type": "int"
+      },
+      "walletHeight": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeSyncStalled": "La sincronización se detuvo en el bloque {wallet}. Este nodo no guarda nada por debajo del bloque {node}, así que los bloques intermedios no se pueden descargar de él. El saldo estará incompleto hasta que conectes un nodo con la cadena completa.",
+  "@liteNodeSyncStalled": {
+    "placeholders": {
+      "wallet": {
+        "type": "int"
+      },
+      "node": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanRefusedTitle": "Este nodo no puede reescanear tan atrás",
+  "liteNodeRescanRefused": "El nodo conectado es un nodo ligero sin datos de bloque por debajo de {height}. Reescanear desde más abajo descartaría transacciones que esta cartera ya encontró, sin forma de recuperarlas aquí. No se ha cambiado nada.",
+  "@liteNodeRescanRefused": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanFromInstead": "Reescanear desde {height} en su lugar",
+  "@liteNodeRescanFromInstead": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "liteNodeRescanHint": "El nodo conectado solo puede reescanear desde el bloque {height} o superior.",
+  "@liteNodeRescanHint": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "nodeServesFromLabel": "Sirve bloques desde",
+  "nodeFullChain": "Cadena completa",
+  "sectionLocalNode": "Nodo ligero local",
+  "localNodeDescription": "Ejecuta un nodo en este ordenador y sincroniza con él en vez de con un servidor remoto. Un nodo ligero solo guarda lo que necesita una cartera, pero aun así descarga la cadena entera una vez.",
+  "localNodeSetUp": "Configurar nodo local",
+  "localNodeStart": "Iniciar",
+  "localNodeStop": "Detener",
+  "localNodeUse": "Usar este nodo",
+  "localNodeDelete": "Eliminar datos del nodo",
+  "localNodeStateStopped": "Detenido",
+  "localNodeStateStarting": "Iniciando",
+  "localNodeStateSyncing": "Sincronizando",
+  "localNodeStateReady": "Sincronizado",
+  "localNodeStateFailed": "Falló",
+  "localNodeProgress": "Bloque {height} de {network}",
+  "@localNodeProgress": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodePeers": "{count} pares",
+  "@localNodePeers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeNotReadyYet": "El nodo local todavía se está poniendo al día y aún no puede servir a la cartera. Sigue sincronizando en segundo plano: quédate en un nodo remoto hasta que esté listo y luego cambia.",
+  "localNodeInUse": "La cartera está conectada a este nodo.",
+  "localNodeBinaryMissing": "No se encontró {name}. Coloca el binario del demonio junto al ejecutable de la cartera, o en una carpeta «sidecar» al lado, e inténtalo de nuevo.",
+  "@localNodeBinaryMissing": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "localNodeSetupTitle": "Configurar un nodo ligero local",
+  "localNodeSetupCost": "Antes de empezar:\n• Unos 6 GB de espacio en disco, y la cadena entera se descarga una vez.\n• La primera sincronización tarda horas. Continúa en segundo plano y mientras tanto puedes seguir usando un nodo remoto.\n• La altura inicial de abajo es permanente. Cambiarla después implica eliminar el nodo y sincronizar otra vez desde cero.",
+  "localNodeStartHeightLabel": "Altura inicial",
+  "localNodeStartHeightHelp": "Los bloques por debajo de esta altura se descargan y comprueban, y solo se conserva el índice que necesitan los bloques posteriores. Mantenla igual o por debajo de la altura inicial de esta cartera ({height}).",
+  "@localNodeStartHeightHelp": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeStartHeightTooHigh": "Superior a la altura inicial de esta cartera ({height}). El nodo nunca podría mostrar las transacciones antiguas de esta cartera.",
+  "@localNodeStartHeightTooHigh": {
+    "placeholders": {
+      "height": {
+        "type": "int"
+      }
+    }
+  },
+  "localNodeCreate": "Crear nodo",
+  "localNodeDeleteTitle": "¿Eliminar los datos del nodo local?",
+  "localNodeDeleteWarning": "Esto detiene el nodo y elimina permanentemente su base de datos de la cadena del disco. Tu cartera, su semilla y sus fondos no se tocan, pero un nodo local nuevo volverá a sincronizar desde cero, lo que lleva horas.",
+  "localNodeDeleted": "Nodo local eliminado.",
+  "localNodeDiskUsage": "{size} en disco",
+  "@localNodeDiskUsage": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "nodePresetRemote": "Nodo remoto",
+  "nodePresetLocal": "Nodo ligero local",
+  "savingWallet": "Guardando tu monedero…",
+  "savingWalletBody": "PLUTON está escribiendo tu monedero en el disco. Puede tardar un momento en un monedero grande.",
+  "shutdownTakingLong": "Está tardando más de lo esperado. Salir ahora pierde este guardado: el archivo del monedero en el disco queda como estaba, así que no se daña nada, pero se pierde todo lo posterior al último guardado.",
+  "quitAnyway": "Salir de todos modos",
+  "stillRunningInTray": "PLUTON sigue ejecutándose en la bandeja del sistema. Haz clic en el icono para recuperarlo, o haz clic derecho y elige Salir.",
+  "browse": "Examinar…",
+  "localNodeDataFolder": "Carpeta de datos",
+  "localNodeDataFolderHelp": "Aquí se escriben unos 6 GB. Elige una unidad con espacio suficiente.",
+  "localNodeDataFolderInUse": "Esa carpeta ya contiene otros archivos. Elige una carpeta vacía o una nueva.",
+  "localNodeStartHeightRequired": "Introduce la altura a partir de la cual conservar bloques completos. Debe ser mayor que cero: un nodo lite no puede empezar en el bloque génesis.",
+  "nodeExitTitle": "El nodo local sigue en ejecución",
+  "nodeExitBodySyncing": "Su primera sincronización no ha terminado. Tarda horas y solo avanza mientras el nodo está en marcha, pero un nodo en marcha sigue usando el disco y la red después de cerrar PLUTON.",
+  "nodeExitBodySynced": "Está al día con la red. Dejarlo en marcha lo mantiene así y sigue usando CPU, ancho de banda y disco mientras PLUTON está cerrado; detenerlo cuesta una puesta al día breve la próxima vez.",
+  "nodeExitKeep": "Dejarlo en marcha",
+  "nodeExitStop": "Detenerlo",
+  "nodeExitChangeLater": "Se puede cambiar después en Ajustes, en Nodo lite local.",
+  "rememberMyChoice": "Recordar mi elección",
+  "shutdownStoppingNode": "Deteniendo el nodo local…",
+  "shutdownStoppingNodeBody": "Se le deja vaciar su base de datos para que el próximo inicio no tenga que repetir el registro de escritura.",
+  "nodeExitPolicyLabel": "Al cerrar el monedero",
+  "nodeExitPolicyAsk": "Preguntarme",
+  "nodeExitPolicyKeep": "Dejar el nodo en marcha",
+  "nodeExitPolicyStop": "Detener el nodo",
+  "localNodeStillRunningBody": "El nodo lite local sigue ejecutándose en segundo plano. Abre PLUTON para detenerlo.",
+  "syncStoppedTitle": "Sincronización detenida",
+  "syncGapStalled": "Sincronización detenida en el bloque {covered}. El nodo con el que hablaba solo responde desde el bloque {servesFrom} en adelante, así que los bloques intermedios no pueden descargarse de él. El saldo está incompleto hasta que conectes un nodo con la cadena completa.",
+  "localNodeNotReadyTitle": "Este nodo no está listo",
+  "localNodeNotReadyBody": "Al nodo local aún le faltan {behind} bloques para alcanzar la red. Si apuntas el monedero ahí ahora, la sincronización se detendrá hasta que se ponga al día, mostrando un saldo al que le falta todo lo que no ha alcanzado, y sin nada en pantalla que lo explique. Quedarte en el nodo remoto no cuesta nada; el nodo sigue sincronizando igual.",
+  "switchAnyway": "Cambiar de todos modos",
+  "switchToRemoteNode": "Cambiar al nodo remoto",
+  "nodeWillServeFromLabel": "Servirá bloques desde",
+  "txPowServerSection": "Servidor PoW de transacciones",
+  "txPowServerUse": "Usar un servidor PoW externo",
+  "txPowServerSubtitle": "Enviar la prueba de trabajo de la transacción a un servidor en lugar de calcularla en este dispositivo. Si el servidor no responde, se usa la CPU de este dispositivo.",
+  "txPowServerSaved": "Ajustes del servidor PoW guardados",
+  "txPowServerInvalid": "Introduce un host y un puerto válidos",
+  "txPowServerTest": "Probar",
+  "txPowServerTestOk": "Servidor accesible en {ms} ms: {threads} hilos, {queue} de {capacity} puestos de cola en uso",
+  "txPowServerTestFailed": "Servidor no accesible: {error}",
+  "nodeTest": "Probar",
+  "nodeInvalid": "Introduce un host y un puerto válidos",
+  "nodeTestOk": "Accesible en {ms} ms: altura {height}, {peers} pares",
+  "nodeTestSyncing": "Accesible en {ms} ms, pero el nodo aún se está sincronizando: altura {height} de {networkHeight}",
+  "nodeTestFailed": "Nodo no accesible: {error}"
 }

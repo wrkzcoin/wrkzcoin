@@ -21,6 +21,11 @@ namespace CryptoNote
 {
     const uint32_t NODE_CAPABILITY_FLAG_PRUNED = 0x1;
 
+    /* A lite node is strictly weaker than a pruned one: it cannot serve any block
+       below its lite height, not just old ones. It needs its own bit so peers can
+       tell the two apart. See LITENODE.md. */
+    const uint32_t NODE_CAPABILITY_FLAG_LITE = 0x2;
+
     struct network_config
     {
         void serialize(ISerializer &s) {KV_MEMBER(connections_count) KV_MEMBER(handshake_interval)
@@ -77,18 +82,26 @@ namespace CryptoNote
 
         uint32_t pruned_node_height;
 
+        /* Lowest height this node can serve a block for. Zero when it can serve
+           every height. Zero-defaults on input, so peers running older builds
+           that never send the field read as "serves everything", which is what
+           they are. */
+        uint32_t lite_start_height;
+
         void serialize(ISerializer &s)
         {
             if (s.type() == ISerializer::INPUT)
             {
                 capability_flags = 0;
                 pruned_node_height = 0;
+                lite_start_height = 0;
             }
 
             KV_MEMBER(current_height)
             KV_MEMBER(top_id)
             KV_MEMBER(capability_flags)
             KV_MEMBER(pruned_node_height)
+            KV_MEMBER(lite_start_height)
         }
     };
 

@@ -6,13 +6,16 @@ The daemon exposes:
 
 - JSON-RPC at `/json_rpc` (GET and POST)
 - HTTP-style endpoints (`/info`, `/height`, and others)
+- A stratum server for miners, off unless `--stratum-bind-port` is given. It is
+  a separate TCP listener, not part of the RPC surface, and is documented in
+  `MINING.md` in the repository root.
 
-RPC availability depends on daemon RPC mode:
+RPC availability depends on the daemon RPC mode, chosen with
+`--daemon-mode <standard|explorer>` (`RpcMode` in `src/rpc/RpcServer.h`):
 
-- `Default`
-- `MiningEnabled`
-- `BlockExplorerEnabled`
-- `AllMethodsEnabled`
+- `Standard` — the default. Everything except the block explorer methods.
+- `Explorer` — additionally serves the explorer routes, which walk database
+  indexes and are not something a plain node should answer for anyone who asks.
 
 Permissions are enforced in middleware before handlers run.
 
@@ -30,6 +33,7 @@ Defined in `src/daemon/DaemonConfiguration.h` and parsed in `src/daemon/DaemonCo
 - `rpc-max-global-index-range`
 - `rpc-max-block-count`
 - `rpc-trust-proxy`
+- `daemon-mode`
 
 See the other daemon RPC pages for auth, limits, and method lists.
 
