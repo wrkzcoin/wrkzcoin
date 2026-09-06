@@ -3965,6 +3965,23 @@ namespace CryptoNote
         return dbCache->compactDatabaseDetailed(rewriteBottommost);
     }
 
+    void Core::cancelDatabaseCompaction(bool cancel)
+    {
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
+
+        if (dbCache == nullptr)
+        {
+            return;
+        }
+
+        dbCache->cancelDatabaseCompaction(cancel);
+    }
+
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)
     {
         if (segment.getTopBlockIndex() < startIndex)

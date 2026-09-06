@@ -280,6 +280,10 @@ namespace CryptoNote
 
         std::pair<std::error_code, std::string> compactDatabaseDetailed(bool rewriteBottommost = false);
 
+        /* Ask a compaction in progress to stop early. Pass false to clear it
+           again before starting another. */
+        void cancelDatabaseCompaction(bool cancel);
+
       private:
         const Currency &currency;
 

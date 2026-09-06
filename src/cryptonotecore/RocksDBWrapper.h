@@ -51,6 +51,8 @@ namespace CryptoNote
 
         std::pair<std::error_code, std::string> compactDetailed(bool rewriteBottommost) override;
 
+        void cancelCompaction(bool cancel) override;
+
         void recreate() override;
 
         std::error_code iterate(
@@ -77,6 +79,10 @@ namespace CryptoNote
         std::unique_ptr<rocksdb::DB> db;
 
         std::atomic<State> state;
+
+        /* Read by RocksDB from inside CompactRange, on its own threads, for as
+           long as that call runs. */
+        std::atomic<bool> compactionCanceled {false};
 
         const DataBaseConfig m_config;
     };

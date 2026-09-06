@@ -333,6 +333,8 @@ namespace CryptoNote
 
         std::pair<std::error_code, std::string> compactDatabaseDetailed(bool rewriteBottommost = false);
 
+        void cancelDatabaseCompaction(bool cancel);
+
         /* Bulk load mode, for --import-blockchain and nothing else.
 
            Two things change while it is open. Blocks accumulate into one write

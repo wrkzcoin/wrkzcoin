@@ -377,6 +377,11 @@ void DaemonCommandsHandler::start_boot_compaction_if_needed()
             m_compactionRunning = true;
             create_compaction_marker_locked();
             logger(Logging::INFO) << "Starting DB compaction (boot background task).";
+            /* Clear any cancel left by a previous shutdown request. Done under
+               m_compactionMutex, the same lock the cancel takes, so a cancel
+               can never be lost between here and the task starting. */
+            m_core.cancelDatabaseCompaction(false);
+
             m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
 
             if (markerExists)
@@ -421,7 +426,14 @@ void DaemonCommandsHandler::wait_for_background_compaction()
         return;
     }
 
-    std::cout << InformationMsg("Waiting for background DB compaction to finish before shutdown...") << std::endl;
+    /* Only shutdown calls this. A full compaction of a large database runs for
+       many minutes and the database cannot be closed under it, so waiting it
+       out is what made a stopping node look hung. Ask it to stop instead: the
+       unfinished marker stays on disk and the next start resumes the work, so
+       nothing is lost but the time. */
+    std::cout << InformationMsg("Stopping background DB compaction; it will resume on the next start...")
+              << std::endl;
+    m_core.cancelDatabaseCompaction(true);
     m_compactionTask.wait();
     refresh_compaction_state_locked();
 }
@@ -1419,6 +1431,11 @@ bool DaemonCommandsHandler::compact_db(const std::vector<std::string> &args)
     create_compaction_marker_locked();
     logger(Logging::INFO) << "Starting DB compaction (manual console request)"
                           << (rewriteBottommost ? ", rewriting the bottommost level." : ".");
+    /* Clear any cancel left by a previous shutdown request. Done under
+       m_compactionMutex, the same lock the cancel takes, so a cancel
+       can never be lost between here and the task starting. */
+    m_core.cancelDatabaseCompaction(false);
+
     m_compactionTask = std::async(
         std::launch::async, [this, rewriteBottommost]() { return m_core.compactDatabaseDetailed(rewriteBottommost); });
 
@@ -1446,7 +1463,15 @@ void DaemonCommandsHandler::refresh_compaction_state_locked()
     m_compactionHasResult = true;
     m_compactionFinishedAt = static_cast<uint64_t>(time(nullptr));
     m_compactionFinishedAtHeight = static_cast<uint64_t>(m_core.getTopBlockIndex()) + 1;
-    clear_compaction_marker_locked();
+
+    /* The marker means "a compaction was started and did not finish", so it may
+       only be cleared when one actually finished. Clearing it unconditionally
+       made a cancelled pass - and a failed one - look complete, and the next
+       start would not pick the work back up. */
+    if (!m_compactionLastError)
+    {
+        clear_compaction_marker_locked();
+    }
 }
 
 std::string DaemonCommandsHandler::get_compaction_marker_path() const
@@ -1649,6 +1674,11 @@ void DaemonCommandsHandler::compaction_scheduler_loop()
         m_compactionRunning = true;
         create_compaction_marker_locked();
         logger(Logging::INFO) << "Starting DB compaction (automatic periodic background task).";
+        /* Clear any cancel left by a previous shutdown request. Done under
+           m_compactionMutex, the same lock the cancel takes, so a cancel
+           can never be lost between here and the task starting. */
+        m_core.cancelDatabaseCompaction(false);
+
         m_compactionTask = std::async(std::launch::async, [this]() { return m_core.compactDatabaseDetailed(); });
         std::cout << InformationMsg("Automatic periodic DB compaction started in background.") << std::endl;
     }
