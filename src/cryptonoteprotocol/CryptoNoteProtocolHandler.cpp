@@ -783,6 +783,16 @@ namespace CryptoNote
         }
         else
         {
+            /* Before the pool sees them: anything we are already holding is
+               about to be dropped from arg.txs as a duplicate, and a stem we
+               started is exactly such a duplicate. A broadcast carrying it is
+               the news that it reached the network without us, so stop waiting
+               to announce it ourselves. */
+            if (!arg.stem)
+            {
+                cancelStemEmbargo(arg.txs, context.m_connection_id);
+            }
+
             const auto it = std::remove_if(arg.txs.begin(), arg.txs.end(), [this, &context](const auto &tx) {
                 const auto [success, error] = this->m_core.addTransactionToPool(tx);
 
@@ -1819,7 +1829,7 @@ namespace CryptoNote
 
                 if (transactionHashFromBlob(blob, hash))
                 {
-                    m_dandelionEmbargo.emplace(hash, fluffAt);
+                    m_dandelionEmbargo.emplace(hash, DandelionEmbargo {fluffAt, stemPeer});
                 }
             }
         }
@@ -1831,6 +1841,43 @@ namespace CryptoNote
 
         m_p2p->externalRelayNotifyToList(
             NOTIFY_NEW_TRANSACTIONS::ID, LevinProtocol::encode(arg), {stemPeer});
+    }
+
+    void CryptoNoteProtocolHandler::cancelStemEmbargo(
+        const std::vector<BinaryArray> &txs,
+        const std::array<uint8_t, 16> &from)
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        /* The overwhelming case, and the only one worth keeping cheap: a node
+           holding no stems pays a lock and a test, not a hash of every blob in
+           the message. */
+        if (m_dandelionEmbargo.empty())
+        {
+            return;
+        }
+
+        for (const auto &blob : txs)
+        {
+            Crypto::Hash hash;
+
+            if (!transactionHashFromBlob(blob, hash))
+            {
+                continue;
+            }
+
+            const auto it = m_dandelionEmbargo.find(hash);
+
+            if (it == m_dandelionEmbargo.end() || it->second.stemPeer == from)
+            {
+                continue;
+            }
+
+            logger(Logging::DEBUGGING) << "Dandelion++ stem for " << hash
+                                       << " ended early, the transaction is already being broadcast";
+
+            m_dandelionEmbargo.erase(it);
+        }
     }
 
     void CryptoNoteProtocolHandler::processDandelionEmbargo()
@@ -1849,7 +1896,7 @@ namespace CryptoNote
 
             for (auto it = m_dandelionEmbargo.begin(); it != m_dandelionEmbargo.end();)
             {
-                if (now >= it->second)
+                if (now >= it->second.fluffAt)
                 {
                     expired.push_back(it->first);
 
@@ -1905,6 +1952,31 @@ namespace CryptoNote
 
         NOTIFY_REQUEST_TX_POOL::request notification;
         notification.txs = m_core.getPoolTransactionHashes();
+
+        /* This lists everything we hold so the peer can send back what we lack,
+           and a transaction still on its stem must not appear in it. Naming it
+           here gives the origin away as surely as relaying it would, and this
+           costs an observer nothing but a reconnect to ask again - filtering
+           handleRequestTxPool alone left the same set on offer through the door
+           next to it.
+           The peer may now send back a transaction we already hold, having been
+           told we do not. That is one wasted message, and it is also the signal
+           that our stem got out - cancelStemEmbargo reads it as such. */
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            if (!m_dandelionEmbargo.empty())
+            {
+                notification.txs.erase(
+                    std::remove_if(
+                        notification.txs.begin(),
+                        notification.txs.end(),
+                        [this](const Crypto::Hash &hash) {
+                            return m_dandelionEmbargo.find(hash) != m_dandelionEmbargo.end();
+                        }),
+                    notification.txs.end());
+            }
+        }
 
         bool ok = post_notify<NOTIFY_REQUEST_TX_POOL>(*m_p2p, notification, context);
         if (!ok)

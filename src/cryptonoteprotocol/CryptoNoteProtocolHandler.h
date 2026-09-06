@@ -357,6 +357,13 @@ namespace CryptoNote
            choice. */
         void outboundStemCandidates(std::vector<std::array<uint8_t, 16>> &candidates);
 
+        /* Ends the stem phase of any of these transactions that we are still
+           holding, because a peer has just broadcast them to us and they are
+           therefore already public - there is nothing left to wait for and
+           nothing left to hide. Called only for a broadcast, never for a stem.
+           `from` is the peer the broadcast came in on. */
+        void cancelStemEmbargo(const std::vector<BinaryArray> &txs, const std::array<uint8_t, 16> &from);
+
         mutable std::mutex m_dandelionMutex;
 
         std::chrono::steady_clock::time_point m_dandelionEpochEnd {};
@@ -367,9 +374,24 @@ namespace CryptoNote
 
         std::array<uint8_t, 16> m_dandelionStemPeer {};
 
+        struct DandelionEmbargo
+        {
+            /* When we give up on the stem and broadcast the transaction here. */
+            std::chrono::steady_clock::time_point fluffAt;
+
+            /* The peer we handed the transaction to. Remembered so that peer
+               alone cannot end the wait by handing it straight back: a stem peer
+               that wanted the transaction suppressed could otherwise return it to
+               us, cancel the fallback broadcast and then drop it, and nobody else
+               would ever see it. A broadcast from any other peer is real
+               evidence the transaction got out. */
+            std::array<uint8_t, 16> stemPeer;
+        };
+
         /* Transactions in their stem phase, and when each stops waiting. Also
-           the set held back from peer-facing pool listings. */
-        std::unordered_map<Crypto::Hash, std::chrono::steady_clock::time_point> m_dandelionEmbargo;
+           the set held back from peer-facing pool listings and from the pool
+           hashes we offer a peer at connection setup. */
+        std::unordered_map<Crypto::Hash, DandelionEmbargo> m_dandelionEmbargo;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };
