@@ -145,6 +145,27 @@ def mixin_range(height):
     return 0, None, 3
 
 
+def planned_ring(height):
+    """Largest ring the chain demands now or at any fork already scheduled.
+
+    Defaulting to the *current* era's maximum answers the wrong question
+    entirely: before the V6 height the chain still caps mixin at 1, so the
+    scan would grade every denomination against a ring of 2, pass everything,
+    and say nothing about the ring of 8 that is the reason to run it. Look
+    ahead to the forks in the table instead, so the default is the ring the
+    chain is heading for rather than the one it has left behind.
+    """
+    _, maximum, _ = mixin_range(height)
+
+    best = maximum or 0
+
+    for fork_height, _, fork_maximum, _ in MIXIN_LIMITS:
+        if fork_height > height and fork_maximum is not None:
+            best = max(best, fork_maximum)
+
+    return best + 1
+
+
 def max_tx_size(height):
     """Utilities::getMaxTxSize."""
     growth = (height * MAX_BLOCK_SIZE_GROWTH_SPEED_NUMERATOR) // MAX_BLOCK_SIZE_GROWTH_SPEED_DENOMINATOR
@@ -365,7 +386,11 @@ def classify(found, ring, probe):
     the daemon may return your own as one of the R it hands back.
     """
     if found == 0:
-        return "DEAD", "no outputs on chain - unspendable at any ring size"
+        # Nobody can be holding an output that was never created, so this is
+        # an unused denomination and not money anyone is about to lose. Kept
+        # separate from DEAD because conflating the two turns an empty part of
+        # the amount space into a fork blocker it is not.
+        return "EMPTY", "no outputs of this denomination exist - nothing held here to strand"
 
     if found == 1:
         return "DEAD", "only one output exists - the decoy filter strips your own, leaving none"
@@ -414,7 +439,7 @@ def report_denominations(results, probe, show_all):
     for amount in sorted(results):
         count, verdict, note = results[amount]
 
-        if verdict == "OK" and not show_all:
+        if verdict in ("OK", "EMPTY") and not show_all:
             hidden += 1
             continue
 
@@ -429,7 +454,7 @@ def report_denominations(results, probe, show_all):
         )
 
     if hidden:
-        print("... {} healthy denominations hidden, pass --all to list them".format(hidden))
+        print("... {} healthy or unused denominations hidden, pass --all to list them".format(hidden))
 
     print()
 
@@ -698,7 +723,7 @@ def main():
         return 2
 
     minimum, maximum, default = mixin_range(height)
-    ring = args.ring if args.ring else (maximum + 1 if maximum is not None else 8)
+    ring = args.ring if args.ring else planned_ring(height)
     probe = max(args.probe, ring)
 
     ceiling = MAX_OUTPUT_SIZE_NODE if args.legacy else MAX_OUTPUT_SIZE_CLIENT
@@ -712,9 +737,17 @@ def main():
                 int(info.get("height", 0)), height, "" if info.get("synced") else "   NOT SYNCED"
             )
         )
+        current_ring = (maximum or 0) + 1
+
         print(
-            "Mixin   min {}, max {}, default {}   (ring {} to {}, testing ring {})".format(
-                minimum, maximum, default, minimum + 1, (maximum or 0) + 1, ring
+            "Mixin   min {}, max {}, default {}   (chain allows ring {} to {} today)".format(
+                minimum, maximum, default, minimum + 1, current_ring
+            )
+        )
+        print(
+            "Testing ring {}{}".format(
+                ring,
+                "" if ring <= current_ring else "   <- ahead of the chain, which is the point",
             )
         )
 
@@ -752,6 +785,7 @@ def main():
 
     dead = [a for a, (_, verdict, _) in results.items() if verdict == "DEAD"]
     thin = [a for a, (_, verdict, _) in results.items() if verdict == "THIN"]
+    empty = [a for a, (_, verdict, _) in results.items() if verdict == "EMPTY"]
 
     amount = parse_amount(args.amount, args.atomic) if args.amount else None
 
@@ -774,6 +808,7 @@ def main():
                     },
                     "dead": sorted(dead),
                     "thin": sorted(thin),
+                    "empty": sorted(empty),
                     "amount": None
                     if amount is None
                     else {
@@ -792,31 +827,45 @@ def main():
     if amount is not None:
         report_amount(results, height, amount, ring, ring)
 
+    healthy = len(results) - len(dead) - len(thin) - len(empty)
+    shallowest = min(
+        (count for count, verdict, _ in results.values() if verdict == "OK"), default=0
+    )
+
     print("Summary")
     print("=" * 108)
     print("  {} denominations probed, {} requests".format(len(results), daemon.calls))
-    print("  {} DEAD - unspendable now, at any ring size".format(len(dead)))
+    print("  {} healthy at ring {}".format(healthy, ring))
     print(
-        "  {} THIN - spendable today only because MINIMUM_MIXIN_V6 is {}, and the".format(
-            len(thin), minimum
-        )
+        "  {} THIN - hold outputs but fewer than {}, so they need the fallback".format(len(thin), ring)
     )
-    print("           wallet falls back to a smaller ring")
-    print("  {} healthy at ring {}".format(len(results) - len(dead) - len(thin), ring))
+    print("  {} DEAD - a single output, unspendable at any ring size".format(len(dead)))
+    print("  {} EMPTY - no outputs exist, so nothing is held there".format(len(empty)))
+
+    if healthy:
+        print()
+        print(
+            "  Thinnest healthy denomination has {} outputs, {} above the {} a ring of".format(
+                shallowest, shallowest - ring, ring
+            )
+        )
+        print("  {} needs. That is the margin the fork actually rests on.".format(ring))
+
     print()
 
     if dead or thin:
         print(
-            "  Raising MINIMUM_MIXIN to {} would strand every output in the {} DEAD and".format(
-                ring - 1, len(dead)
+            "  Raising MINIMUM_MIXIN to {} would strand the {} DEAD and {} THIN denominations".format(
+                ring - 1, len(dead), len(thin)
             )
         )
-        print(
-            "  {} THIN denominations above. Measure the value sitting in them before".format(len(thin))
-        )
-        print("  scheduling that fork - there is no migration path once it activates.")
+        print("  above. Measure the value sitting in them before scheduling that fork -")
+        print("  there is no migration path once it activates.")
+        print()
+        print("  EMPTY denominations are not a blocker: an output that was never created")
+        print("  cannot be stranded.")
     else:
-        print("  No denomination would be stranded by a fixed ring of {}.".format(ring))
+        print("  No denomination holding coins would be stranded by a fixed ring of {}.".format(ring))
 
     print()
 
