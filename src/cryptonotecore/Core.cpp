@@ -3849,6 +3849,18 @@ namespace CryptoNote
         }
     }
 
+    /* The maintenance calls below all run on the scheduler thread, or on the
+       async task it spawns, while the dispatcher and the RPC threads are adding
+       blocks. Resolving chainsLeaves[0] is the part that has to be protected:
+       addBlock mutates that vector under the same mutex, and reading it while
+       it is being reallocated is undefined - a background thread quietly
+       corrupting the heap, which surfaces much later and somewhere else.
+
+       The lock is released before the database work begins. These operations
+       run for minutes, and holding even a shared lock across one would block
+       every block that arrives meanwhile. That is safe to do here because the
+       database cache itself outlives them: it is the root segment, and only the
+       segments above it are created and destroyed as chains come and go. */
     size_t Core::pruneRawBlocks(uint32_t pruneDepth)
     {
         if (pruneDepth == 0)
@@ -3856,8 +3868,12 @@ namespace CryptoNote
             return 0;
         }
 
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3869,8 +3885,12 @@ namespace CryptoNote
 
     std::map<std::string, StorageStats> Core::measureStorage() const
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3885,8 +3905,12 @@ namespace CryptoNote
         const std::function<void(const std::string &key, const std::string &value)> &sink,
         const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3903,8 +3927,12 @@ namespace CryptoNote
 
     std::pair<std::error_code, std::string> Core::compactDatabaseDetailed(bool rewriteBottommost)
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
