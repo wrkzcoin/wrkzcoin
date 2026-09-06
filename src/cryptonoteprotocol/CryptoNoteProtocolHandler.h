@@ -121,6 +121,10 @@ namespace CryptoNote
 
         void requestMissingPoolTransactions(const CryptoNoteConnectionContext &context);
 
+        /* Fluffs any transaction whose Dandelion++ stem phase has run out of
+           time. Driven from the p2p idle worker, which ticks once a second. */
+        void processDandelionEmbargo();
+
       private:
         //----------------- commands handlers ----------------------------------------------
         int handle_notify_new_block(int command, NOTIFY_NEW_BLOCK::request &arg, CryptoNoteConnectionContext &context);
@@ -292,6 +296,72 @@ namespace CryptoNote
 
         /* Block hashes already promoted to dynamic checkpoints (avoid re-adding). */
         std::unordered_set<Crypto::Hash> m_networkTrustedBlocks;
+
+        /* --- Dandelion++ stem relay --- */
+
+        /* Plain flood relay tells anyone watching enough connections which node
+           a transaction started at, because the first node to announce it is
+           almost always its author. Dandelion++ splits relay into two phases: a
+           transaction first travels a short private path, one peer per hop
+           (stem), and only then gets broadcast to everyone (fluff). An observer
+           sees the transaction appear first at whichever node fluffed it, which
+           is not the node that made it.
+           This rides the existing NOTIFY_NEW_TRANSACTIONS message, so no new
+           command and no version gate is needed, and a peer that knows nothing
+           about any of this simply fluffs immediately - that costs privacy for
+           one transaction and never correctness. */
+
+        /* How long a node keeps the same stem peer and the same role. Re-rolling
+           per transaction instead would let an observer average the choices away
+           and recover the origin. */
+        static constexpr uint64_t DANDELION_EPOCH_SECONDS = 600;
+
+        /* How long to wait for a stemmed transaction to come back to us as a
+           fluff before assuming the stem died and broadcasting it ourselves.
+           This is a failure timeout, not a per-hop delay: a healthy stem
+           forwards at network speed and never reaches it.
+           Kept short on purpose. A transaction on this chain is only valid for
+           about twenty blocks after the tip its sender saw, because the wallet
+           sets an unlock time of that tip plus a fixed offset and the daemon
+           demands the unlock time stay ahead of the height it is mined at. The
+           whole stem plus this timeout has to fit inside that window with room
+           to spare, so seconds are the right unit here, not minutes. */
+        static constexpr uint64_t DANDELION_EMBARGO_SECONDS = 30;
+
+        /* Chance, per epoch, that this node stems rather than fluffs. Some nodes
+           must fluff or nothing ever reaches the whole network. */
+        static constexpr uint32_t DANDELION_STEM_PERCENT = 90;
+
+        /* Derives the transaction hash from a relayed blob, the same way the
+           pool does, so an embargoed transaction can be recognised again.
+           Returns false for a blob that will not deserialize. Takes no locks, so
+           it is safe to call with m_dandelionMutex held. */
+        static bool transactionHashFromBlob(const BinaryArray &blob, Crypto::Hash &hash);
+
+        /* Sends to the single stem peer while this node is stemming, and to
+           everyone otherwise. */
+        void relayOrStemTransactions(
+            NOTIFY_NEW_TRANSACTIONS::request &arg,
+            const std::array<uint8_t, 16> *excludeConnection);
+
+        /* Chooses one outbound, fully connected peer at random. Outbound only:
+           an inbound connection may be the observer, and picking it would hand
+           every stemmed transaction straight to them. */
+        bool pickStemPeer(std::array<uint8_t, 16> &stemPeer);
+
+        mutable std::mutex m_dandelionMutex;
+
+        std::chrono::steady_clock::time_point m_dandelionEpochEnd {};
+
+        bool m_dandelionEpochIsStem = false;
+
+        bool m_dandelionHaveStemPeer = false;
+
+        std::array<uint8_t, 16> m_dandelionStemPeer {};
+
+        /* Transactions in their stem phase, and when each stops waiting. Also
+           the set held back from peer-facing pool listings. */
+        std::unordered_map<Crypto::Hash, std::chrono::steady_clock::time_point> m_dandelionEmbargo;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

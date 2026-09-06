@@ -9,6 +9,8 @@
 
 #include "common/CryptoNoteTools.h"
 #include "common/StringTools.h"
+#include "crypto/random.h"
+#include "cryptonotecore/CachedTransaction.h"
 #include "cryptonotecore/CryptoNoteBasicImpl.h"
 #include "cryptonotecore/CryptoNoteFormatUtils.h"
 #include "cryptonotecore/Currency.h"
@@ -788,8 +790,7 @@ namespace CryptoNote
 
             if (arg.txs.size() > 0)
             {
-                // TODO: add announce usage here
-                relay_post_notify<NOTIFY_NEW_TRANSACTIONS>(*m_p2p, arg, &context.m_connection_id);
+                relayOrStemTransactions(arg, &context.m_connection_id);
             }
         }
 
@@ -1514,6 +1515,31 @@ namespace CryptoNote
         NOTIFY_NEW_TRANSACTIONS::request notification;
         std::vector<Crypto::Hash> deletedTransactions;
         m_core.getPoolChanges(m_core.getTopBlockHash(), arg.txs, notification.txs, deletedTransactions);
+
+        /* Serving the whole pool on request would undo the stem entirely: a
+           transaction we are quietly passing along one hop at a time is handed
+           to anyone who simply asks us for our pool. Hold back the ones still in
+           their stem phase; they become visible here the moment they fluff. */
+        if (!notification.txs.empty())
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            if (!m_dandelionEmbargo.empty())
+            {
+                notification.txs.erase(
+                    std::remove_if(
+                        notification.txs.begin(),
+                        notification.txs.end(),
+                        [this](const BinaryArray &blob) {
+                            Crypto::Hash hash;
+
+                            return transactionHashFromBlob(blob, hash)
+                                   && m_dandelionEmbargo.find(hash) != m_dandelionEmbargo.end();
+                        }),
+                    notification.txs.end());
+            }
+        }
+
         if (!notification.txs.empty())
         {
             bool ok = post_notify<NOTIFY_NEW_TRANSACTIONS>(*m_p2p, notification, context);
@@ -1630,8 +1656,197 @@ namespace CryptoNote
 
     void CryptoNoteProtocolHandler::relayTransactions(const std::vector<BinaryArray> &transactions)
     {
-        auto buf = LevinProtocol::encode(NOTIFY_NEW_TRANSACTIONS::request {transactions});
-        m_p2p->externalRelayNotifyToAll(NOTIFY_NEW_TRANSACTIONS::ID, buf, nullptr);
+        /* This is the path a transaction submitted to our own RPC takes, so it
+           is the one where flood relay would name us as the author outright. */
+        NOTIFY_NEW_TRANSACTIONS::request notification {transactions};
+
+        relayOrStemTransactions(notification, nullptr);
+    }
+
+    bool CryptoNoteProtocolHandler::transactionHashFromBlob(const BinaryArray &blob, Crypto::Hash &hash)
+    {
+        Transaction transaction;
+
+        if (!fromBinaryArray<Transaction>(transaction, blob))
+        {
+            return false;
+        }
+
+        CachedTransaction cachedTransaction(std::move(transaction));
+
+        hash = cachedTransaction.getTransactionHash();
+
+        return true;
+    }
+
+    bool CryptoNoteProtocolHandler::pickStemPeer(std::array<uint8_t, 16> &stemPeer)
+    {
+        std::vector<std::array<uint8_t, 16>> candidates;
+
+        m_p2p->for_each_connection([&candidates](const CryptoNoteConnectionContext &ctx, uint64_t) {
+            /* Outbound only, and only peers past the handshake. We chose to dial
+               these, so an observer cannot make itself our stem peer just by
+               connecting to us. */
+            if (!ctx.m_is_income && ctx.m_state == CryptoNoteConnectionContext::state_normal)
+            {
+                candidates.push_back(ctx.m_connection_id);
+            }
+        });
+
+        if (candidates.empty())
+        {
+            return false;
+        }
+
+        stemPeer = candidates[Random::randomValue<uint32_t>(0, static_cast<uint32_t>(candidates.size()) - 1)];
+
+        return true;
+    }
+
+    void CryptoNoteProtocolHandler::relayOrStemTransactions(
+        NOTIFY_NEW_TRANSACTIONS::request &arg,
+        const std::array<uint8_t, 16> *excludeConnection)
+    {
+        if (arg.txs.empty())
+        {
+            return;
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+
+        bool needNewEpoch = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            needNewEpoch = now >= m_dandelionEpochEnd || !m_dandelionHaveStemPeer;
+        }
+
+        if (needNewEpoch)
+        {
+            /* Peer selection walks the connection table, so it runs outside our
+               own lock rather than holding two at once. Two threads arriving
+               here together simply both roll an epoch, which is harmless. */
+            std::array<uint8_t, 16> picked {};
+
+            const bool havePeer = pickStemPeer(picked);
+
+            const bool isStem = Random::randomValue<uint32_t>(0, 99) < DANDELION_STEM_PERCENT;
+
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            m_dandelionEpochEnd = now + std::chrono::seconds(DANDELION_EPOCH_SECONDS);
+            m_dandelionEpochIsStem = isStem;
+            m_dandelionHaveStemPeer = havePeer;
+            m_dandelionStemPeer = picked;
+        }
+
+        bool stem = false;
+
+        std::array<uint8_t, 16> stemPeer {};
+
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            stem = m_dandelionEpochIsStem && m_dandelionHaveStemPeer;
+            stemPeer = m_dandelionStemPeer;
+        }
+
+        /* Handing a transaction back down the connection it arrived on wastes
+           the hop and tells that peer nothing it did not already know. Fluff
+           instead, which is the safe direction. */
+        if (stem && excludeConnection != nullptr && *excludeConnection == stemPeer)
+        {
+            stem = false;
+        }
+
+        if (!stem)
+        {
+            relay_post_notify<NOTIFY_NEW_TRANSACTIONS>(*m_p2p, arg, excludeConnection);
+
+            return;
+        }
+
+        /* Record the embargo before sending, never after. If we sent first and
+           the process stalled here, the transaction would be neither tracked for
+           fluffing nor held back from pool listings. */
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            const auto fluffAt = now + std::chrono::seconds(DANDELION_EMBARGO_SECONDS);
+
+            for (const auto &blob : arg.txs)
+            {
+                Crypto::Hash hash;
+
+                if (transactionHashFromBlob(blob, hash))
+                {
+                    m_dandelionEmbargo.emplace(hash, fluffAt);
+                }
+            }
+        }
+
+        m_p2p->externalRelayNotifyToList(
+            NOTIFY_NEW_TRANSACTIONS::ID, LevinProtocol::encode(arg), {stemPeer});
+    }
+
+    void CryptoNoteProtocolHandler::processDandelionEmbargo()
+    {
+        std::vector<Crypto::Hash> expired;
+
+        {
+            std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            if (m_dandelionEmbargo.empty())
+            {
+                return;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+
+            for (auto it = m_dandelionEmbargo.begin(); it != m_dandelionEmbargo.end();)
+            {
+                if (now >= it->second)
+                {
+                    expired.push_back(it->first);
+
+                    it = m_dandelionEmbargo.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
+
+        if (expired.empty())
+        {
+            return;
+        }
+
+        NOTIFY_NEW_TRANSACTIONS::request notification;
+
+        for (const auto &hash : expired)
+        {
+            /* Gone from the pool means it was mined or evicted while we held it,
+               so there is nothing left to announce. */
+            const auto [found, blob] = m_core.getPoolTransaction(hash);
+
+            if (found)
+            {
+                notification.txs.push_back(blob);
+            }
+        }
+
+        if (notification.txs.empty())
+        {
+            return;
+        }
+
+        logger(Logging::DEBUGGING) << "Dandelion++ embargo expired for " << notification.txs.size()
+                                   << " transaction(s), broadcasting";
+
+        relay_post_notify<NOTIFY_NEW_TRANSACTIONS>(*m_p2p, notification, nullptr);
     }
 
     void CryptoNoteProtocolHandler::requestMissingPoolTransactions(const CryptoNoteConnectionContext &context)

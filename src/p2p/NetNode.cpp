@@ -1709,6 +1709,11 @@ namespace CryptoNote
             m_gray_housekeeping_interval.call(std::bind(&NodeServer::gray_peerlist_housekeeping, this));
             m_peerlist_store_interval.call(std::bind(&NodeServer::store_config, this));
             warn_if_isolated();
+
+            /* Every tick rather than on an interval: this decides when a
+               transaction whose stem peer went quiet finally gets broadcast, and
+               that wait is already budgeted in seconds. */
+            m_payload_handler.processDandelionEmbargo();
         }
         catch (std::exception &e)
         {
