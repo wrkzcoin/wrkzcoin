@@ -1739,6 +1739,57 @@ namespace CryptoNote
         }
     }
 
+    std::chrono::seconds CryptoNoteProtocolHandler::nextEmbargoDelay()
+    {
+        /* Inverse transform sampling: -mean * ln(u), for u drawn uniformly above
+           zero and up to one, is exponential with that mean. The draw excludes
+           zero because ln(0) has no answer; it may reach one, which lands on a
+           zero delay and is what the floor below is for.
+           Built from Random::randomValue rather than
+           std::exponential_distribution because Random::generator() hands back a
+           copy of the shared generator - drawing through it repeatedly would
+           replay the same state and hand every transaction the same deadline,
+           which is exactly the failure being fixed here. */
+        constexpr uint32_t resolution = 1000000;
+
+        const double u = static_cast<double>(Random::randomValue<uint32_t>(1, resolution)) / resolution;
+
+        const double seconds = -static_cast<double>(DANDELION_EMBARGO_AVERAGE_SECONDS) * std::log(u);
+
+        if (seconds < static_cast<double>(DANDELION_EMBARGO_MIN_SECONDS))
+        {
+            return std::chrono::seconds(DANDELION_EMBARGO_MIN_SECONDS);
+        }
+
+        if (seconds > static_cast<double>(DANDELION_EMBARGO_MAX_SECONDS))
+        {
+            return std::chrono::seconds(DANDELION_EMBARGO_MAX_SECONDS);
+        }
+
+        return std::chrono::seconds(static_cast<uint64_t>(seconds));
+    }
+
+    size_t CryptoNoteProtocolHandler::stemRelayIndex(const std::array<uint8_t, 16> &source) const
+    {
+        if (m_dandelionStemPeers.size() < 2)
+        {
+            return 0;
+        }
+
+        /* FNV-1a over the salt and the source, so the mapping is stable for the
+           epoch, spread evenly across the relays, and not something an observer
+           can predict without knowing the salt. */
+        uint64_t accumulator = 14695981039346656037ull ^ m_dandelionEpochSalt;
+
+        for (const auto byte : source)
+        {
+            accumulator ^= byte;
+            accumulator *= 1099511628211ull;
+        }
+
+        return static_cast<size_t>(accumulator % m_dandelionStemPeers.size());
+    }
+
     void CryptoNoteProtocolHandler::relayOrStemTransactions(
         NOTIFY_NEW_TRANSACTIONS::request &arg,
         const std::array<uint8_t, 16> *excludeConnection,
@@ -1763,45 +1814,90 @@ namespace CryptoNote
 
             outboundStemCandidates(candidates);
 
+            /* All zeroes stands for "this transaction is ours". It is not a
+               connection id any peer can hold, so it cannot collide with one. */
+            const std::array<uint8_t, 16> source =
+                excludeConnection != nullptr ? *excludeConnection : std::array<uint8_t, 16> {};
+
             std::lock_guard<std::mutex> lock(m_dandelionMutex);
 
             if (now >= m_dandelionEpochEnd)
             {
                 m_dandelionEpochEnd = now + std::chrono::seconds(DANDELION_EPOCH_SECONDS);
                 m_dandelionEpochIsStem = Random::randomValue<uint32_t>(0, 99) < DANDELION_STEM_PERCENT;
-                m_dandelionHaveStemPeer = false;
+                m_dandelionEpochSalt = Random::randomValue<uint64_t>();
+                m_dandelionStemPeers.clear();
             }
 
-            /* A stem peer that has gone away takes the rest of the epoch with
-               it: the send matches no connection, and the embargo timer then
-               broadcasts each transaction from here, which is precisely the node
-               naming itself that the stem exists to prevent. Notice the peer is
-               missing from the live set and replace it. The epoch's role is
-               deliberately left alone - re-rolling that on a disconnect would
-               hand an observer a lever to force fresh coin flips. */
-            if (m_dandelionHaveStemPeer
-                && std::find(candidates.begin(), candidates.end(), m_dandelionStemPeer) == candidates.end())
+            /* A relay that has gone away would take the rest of the epoch with
+               it: the send matches no connection, and the embargo then broadcasts
+               each transaction from here, which is precisely the node naming
+               itself that the stem exists to prevent. Drop the ones that are no
+               longer connected and top the set back up. The epoch's role and salt
+               are deliberately left alone - re-rolling those on a disconnect
+               would hand an observer a lever to force fresh coin flips. */
+            m_dandelionStemPeers.erase(
+                std::remove_if(
+                    m_dandelionStemPeers.begin(),
+                    m_dandelionStemPeers.end(),
+                    [&candidates](const std::array<uint8_t, 16> &peer) {
+                        return std::find(candidates.begin(), candidates.end(), peer) == candidates.end();
+                    }),
+                m_dandelionStemPeers.end());
+
+            while (m_dandelionStemPeers.size() < DANDELION_STEM_RELAYS)
             {
-                m_dandelionHaveStemPeer = false;
+                std::vector<std::array<uint8_t, 16>> unused;
+
+                for (const auto &candidate : candidates)
+                {
+                    if (std::find(m_dandelionStemPeers.begin(), m_dandelionStemPeers.end(), candidate)
+                        == m_dandelionStemPeers.end())
+                    {
+                        unused.push_back(candidate);
+                    }
+                }
+
+                /* Fewer outbound peers than relays we would like. One is still a
+                   stem; none means we have to broadcast. */
+                if (unused.empty())
+                {
+                    break;
+                }
+
+                m_dandelionStemPeers.push_back(
+                    unused[Random::randomValue<uint32_t>(0, static_cast<uint32_t>(unused.size()) - 1)]);
             }
 
-            if (!m_dandelionHaveStemPeer && !candidates.empty())
+            stem = m_dandelionEpochIsStem && !m_dandelionStemPeers.empty();
+
+            if (stem)
             {
-                m_dandelionStemPeer =
-                    candidates[Random::randomValue<uint32_t>(0, static_cast<uint32_t>(candidates.size()) - 1)];
-                m_dandelionHaveStemPeer = true;
+                stemPeer = m_dandelionStemPeers[stemRelayIndex(source)];
+
+                /* Handing a transaction back down the connection it arrived on
+                   wastes the hop and tells that peer nothing it did not already
+                   know. With a second relay we can use it instead of giving up
+                   on the stem; with only one there is nowhere else to go. */
+                if (excludeConnection != nullptr && stemPeer == *excludeConnection)
+                {
+                    const auto other = std::find_if(
+                        m_dandelionStemPeers.begin(),
+                        m_dandelionStemPeers.end(),
+                        [excludeConnection](const std::array<uint8_t, 16> &peer) {
+                            return peer != *excludeConnection;
+                        });
+
+                    if (other != m_dandelionStemPeers.end())
+                    {
+                        stemPeer = *other;
+                    }
+                    else
+                    {
+                        stem = false;
+                    }
+                }
             }
-
-            stem = m_dandelionEpochIsStem && m_dandelionHaveStemPeer;
-            stemPeer = m_dandelionStemPeer;
-        }
-
-        /* Handing a transaction back down the connection it arrived on wastes
-           the hop and tells that peer nothing it did not already know. Fluff
-           instead, which is the safe direction. */
-        if (stem && excludeConnection != nullptr && *excludeConnection == stemPeer)
-        {
-            stem = false;
         }
 
         if (!stem)
@@ -1821,15 +1917,16 @@ namespace CryptoNote
         {
             std::lock_guard<std::mutex> lock(m_dandelionMutex);
 
-            const auto fluffAt = now + std::chrono::seconds(DANDELION_EMBARGO_SECONDS);
-
             for (const auto &blob : arg.txs)
             {
                 Crypto::Hash hash;
 
                 if (transactionHashFromBlob(blob, hash))
                 {
-                    m_dandelionEmbargo.emplace(hash, DandelionEmbargo {fluffAt, stemPeer});
+                    /* Drawn per transaction, not once for the batch: two
+                       transactions that travel together should not come out of
+                       their embargo together. */
+                    m_dandelionEmbargo.emplace(hash, DandelionEmbargo {now + nextEmbargoDelay(), stemPeer});
                 }
             }
         }

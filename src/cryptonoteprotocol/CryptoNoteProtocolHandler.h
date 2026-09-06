@@ -320,16 +320,45 @@ namespace CryptoNote
            fluff before assuming the stem died and broadcasting it ourselves.
            This is a failure timeout, not a per-hop delay: a healthy stem
            forwards at network speed and never reaches it.
-           Kept short on purpose. A transaction on this chain is only valid for
-           about twenty blocks after the tip its sender saw, because the wallet
-           sets an unlock time of that tip plus a fixed offset and the daemon
-           demands the unlock time stay ahead of the height it is mined at. The
-           whole stem plus this timeout has to fit inside that window with room
-           to spare, so seconds are the right unit here, not minutes. */
-        static constexpr uint64_t DANDELION_EMBARGO_SECONDS = 30;
+           Drawn per transaction from an exponential distribution with this mean
+           rather than used as a fixed wait, and that matters more than the value
+           does. A stem that stalls stalls at every node holding it at once, so a
+           constant timeout has all of them broadcast within milliseconds of each
+           other - and the first of that burst is the node the transaction
+           started at, which is the whole of what the stem was hiding. Spreading
+           the deadlines scrambles that order.
+           The mean stays short on purpose. A transaction on this chain is only
+           valid for about twenty blocks after the tip its sender saw, because
+           the wallet sets an unlock time of that tip plus a fixed offset and the
+           daemon demands the unlock time stay ahead of the height it is mined
+           at. Stem plus timeout has to fit inside that window with room to
+           spare. */
+        static constexpr uint64_t DANDELION_EMBARGO_AVERAGE_SECONDS = 30;
+
+        /* The draw is clamped to this range. The floor keeps an unlucky sample
+           from broadcasting so fast that the stem never got a chance; the
+           ceiling keeps one from eating the validity window. */
+        static constexpr uint64_t DANDELION_EMBARGO_MIN_SECONDS = 10;
+
+        static constexpr uint64_t DANDELION_EMBARGO_MAX_SECONDS = 120;
+
+        /* How many outbound peers a stem may be handed to in one epoch.
+           Dandelion++ specifies two, and its anonymity argument rests on the
+           stem overlay being roughly d-regular. With one, every node has exactly
+           one successor, which makes the overlay a functional graph - and those
+           are full of short cycles. A transaction entering a cycle comes back to
+           a node that already has it, is dropped as a duplicate, and waits out
+           its embargo having reached nobody. That is a small-network problem
+           above all: an expected ten hop path revisits itself quickly when there
+           are only a few dozen reachable nodes. */
+        static constexpr size_t DANDELION_STEM_RELAYS = 2;
 
         /* Chance, per epoch, that this node stems rather than fluffs. Some nodes
-           must fluff or nothing ever reaches the whole network. */
+           must fluff or nothing ever reaches the whole network.
+           Ninety comes from the Dandelion++ paper, which assumes a large graph;
+           it puts the expected stem at ten hops. On a small network that is long
+           enough to be worth measuring before trusting - see the counters in
+           `dandelion_status`. */
         static constexpr uint32_t DANDELION_STEM_PERCENT = 90;
 
         /* Derives the transaction hash from a relayed blob, the same way the
@@ -364,15 +393,34 @@ namespace CryptoNote
            `from` is the peer the broadcast came in on. */
         void cancelStemEmbargo(const std::vector<BinaryArray> &txs, const std::array<uint8_t, 16> &from);
 
+        /* How long to hold the next transaction before giving up on its stem.
+           Exponential about DANDELION_EMBARGO_AVERAGE_SECONDS, clamped. */
+        static std::chrono::seconds nextEmbargoDelay();
+
+        /* Which of this epoch's relays a transaction from `source` is handed to.
+           The choice is fixed for the epoch and for that source, as Dandelion++
+           requires: picking afresh each time would let a peer that sends us many
+           transactions watch both relays and learn the pair. A per-epoch salt
+           keeps the mapping from being something an observer can work out in
+           advance. `source` is all zeroes for a transaction of our own.
+
+           Callers must hold m_dandelionMutex and must have checked that
+           m_dandelionStemPeers is not empty. */
+        size_t stemRelayIndex(const std::array<uint8_t, 16> &source) const;
+
         mutable std::mutex m_dandelionMutex;
 
         std::chrono::steady_clock::time_point m_dandelionEpochEnd {};
 
         bool m_dandelionEpochIsStem = false;
 
-        bool m_dandelionHaveStemPeer = false;
+        /* Mixed into the source-to-relay mapping and re-rolled with the epoch. */
+        uint64_t m_dandelionEpochSalt = 0;
 
-        std::array<uint8_t, 16> m_dandelionStemPeer {};
+        /* This epoch's stem relays, at most DANDELION_STEM_RELAYS of them, and
+           fewer when we have fewer outbound peers to spare. Empty means we
+           cannot stem at all and must broadcast. */
+        std::vector<std::array<uint8_t, 16>> m_dandelionStemPeers;
 
         struct DandelionEmbargo
         {
