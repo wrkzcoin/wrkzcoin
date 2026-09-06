@@ -2256,14 +2256,21 @@ namespace CryptoNote
 
     std::tuple<bool, CryptoNote::BinaryArray> Core::getPoolTransaction(const Crypto::Hash &transactionHash) const
     {
-        if (transactionPool->checkIfTransactionPresent(transactionHash))
-        {
-            return {true, transactionPool->getTransaction(transactionHash).getTransactionBinaryArray()};
-        }
-        else
+        /* One lookup under one lock. Asking whether the transaction is present
+           and then fetching it takes the pool lock twice, and anything that
+           empties the pool entry in between - a block arriving, a chain switch
+           dropping transactions that no longer validate, the cleaner, an
+           eviction - leaves the fetch looking at an iterator the pool has
+           already erased. The assert that would have caught it is compiled out
+           of a Release build, so what follows is a read through end(). */
+        const auto transaction = transactionPool->tryGetTransaction(transactionHash);
+
+        if (!transaction)
         {
             return {false, BinaryArray()};
         }
+
+        return {true, transaction->getTransactionBinaryArray()};
     }
 
     bool Core::getPoolChanges(
