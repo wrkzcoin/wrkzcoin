@@ -492,20 +492,19 @@ namespace CryptoNote
             const bool forkActive = isPruneCapabilityForkActive(currentHeight, remoteHeight);
             const bool fullNodeMustUseFullSyncPeer = forkActive && !m_isPrunedNode && context.m_remote_is_pruned_node;
 
-            /* A lite peer holds nothing below its lite start height, so it cannot
-               carry us across heights we still need. Unlike the pruned case this
-               waits on no fork - it is a plain fact about what the peer has, and
-               asking anyway would only earn a response full of missed ids. */
-            const bool peerStartsAboveUs = context.m_remote_is_lite_node
-                                           && context.m_remote_lite_start_height != 0
-                                           && currentHeight < context.m_remote_lite_start_height;
+            /* A lite or pruned peer cannot carry us across heights it does not
+               keep. Unlike the fork rule above this waits on nothing - it is a
+               plain fact about what the peer has, and asking anyway only earns
+               a response full of missed ids, which the handler below then has
+               to recover from. */
+            const bool peerStartsAboveUs = !peerCanServeOurChain(context);
 
             if (fullNodeMustUseFullSyncPeer || peerStartsAboveUs)
             {
                 if (peerStartsAboveUs)
                 {
                     logger(Logging::DEBUGGING)
-                        << context << "Peer is a lite node serving from height " << context.m_remote_lite_start_height
+                        << context << "Peer serves blocks only from height " << getPeerServingFloor(context)
                         << ", above our height " << currentHeight
                         << "; limiting this connection to relay/pool sync only.";
                 }
@@ -728,13 +727,7 @@ namespace CryptoNote
                                       << get_current_blockchain_height() << ")";
                 if (arg.current_blockchain_height > get_current_blockchain_height())
                 {
-                    logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
-                    context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                    NOTIFY_REQUEST_CHAIN::request r {};
-                    r.block_ids = m_core.buildSparseChain();
-                    logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
-                                          << r.block_ids.size();
-                    post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+                    requestChainIfPeerCanServe(context, "Peer is ahead on an alternative chain");
                 }
             }
             else
@@ -744,11 +737,7 @@ namespace CryptoNote
         }
         else if (result == error::AddBlockErrorCondition::BLOCK_REJECTED)
         {
-            context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-            NOTIFY_REQUEST_CHAIN::request r {};
-            r.block_ids = m_core.buildSparseChain();
-            logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
-            post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+            requestChainIfPeerCanServe(context, "Relayed block does not attach to our chain");
         }
         else
         {
@@ -937,10 +926,23 @@ namespace CryptoNote
                                          "chain), re-requesting chain";
                 context.m_needed_objects.clear();
                 context.m_requested_objects.clear();
-                context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request req {};
-                req.block_ids = m_core.buildSparseChain();
-                post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, req, context);
+
+                /* A peer that answered a chain request and then lost those
+                   blocks is not misbehaving, but it did cost us a round trip
+                   and no progress. Count it. A peer that keeps doing it - one
+                   that indexes heights whose bodies it does not keep, and so
+                   answers every request the same way - is a treadmill, not a
+                   sync source: without this it holds one of the sync slots and
+                   re-requests the whole chain forever. Demotion frees the slot
+                   for a peer that can actually serve the range. */
+                onSyncChunkFailure(context);
+
+                if (context.m_state == CryptoNoteConnectionContext::state_shutdown)
+                {
+                    return 1;
+                }
+
+                requestChainIfPeerCanServe(context, "Peer no longer holds the blocks it listed");
                 return 1;
             }
 
@@ -988,7 +990,16 @@ namespace CryptoNote
 
         if (result != 0)
         {
-            onSyncChunkFailure(context);
+            /* state_normal here means requestChainIfPeerCanServe put the peer
+               back on relay duty because its floor has risen above us while we
+               were syncing from it. That is a fact about the peer's storage,
+               not a failure on its part, and charging it one would eventually
+               disconnect a peer we had just decided to keep. */
+            if (context.m_state != CryptoNoteConnectionContext::state_normal)
+            {
+                onSyncChunkFailure(context);
+            }
+
             return result;
         }
 
@@ -1111,10 +1122,7 @@ namespace CryptoNote
                    Its reply is now unwanted, but the peer is not at fault. */
                 context.m_discard_next_objects_response = context.m_pipelined_objects_outstanding;
 
-                context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request req {};
-                req.block_ids = m_core.buildSparseChain();
-                post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, req, context);
+                requestChainIfPeerCanServe(context, "Block received during sync was orphaned");
                 return 1;
             }
             else if (addResult == error::AddBlockErrorCode::ALREADY_EXISTS)
@@ -1240,13 +1248,7 @@ namespace CryptoNote
                                          << get_current_blockchain_height() << ")";
                     if (arg.current_blockchain_height > get_current_blockchain_height())
                     {
-                        logger(Logging::INFO) << context << "Peer is ahead on alternative chain, requesting chain";
-                        context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                        NOTIFY_REQUEST_CHAIN::request r {};
-                        r.block_ids = m_core.buildSparseChain();
-                        logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
-                                              << r.block_ids.size();
-                        post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+                        requestChainIfPeerCanServe(context, "Peer is ahead on an alternative chain");
                     }
                 }
                 else
@@ -1256,12 +1258,7 @@ namespace CryptoNote
             }
             else if (result == error::AddBlockErrorCondition::BLOCK_REJECTED)
             {
-                context.m_state = CryptoNoteConnectionContext::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request r {};
-                r.block_ids = m_core.buildSparseChain();
-                logger(Logging::TRACE) << context
-                                       << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
-                post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+                requestChainIfPeerCanServe(context, "Relayed lite block does not attach to our chain");
             }
             else
             {
@@ -1914,6 +1911,69 @@ namespace CryptoNote
     bool CryptoNoteProtocolHandler::shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const
     {
         return context.m_sync_failures >= m_syncPeerFailureThreshold;
+    }
+
+    /* The lowest height this peer can hand us a block body for; 0 when it holds
+       everything. A lite peer stored nothing below its start height, and a
+       pruned peer dropped the bodies below the height it advertises. Both keep
+       the hashes and the height index either way, which is the whole problem:
+       asked for a chain they will happily list blocks they cannot then serve.
+       A node could be both, so the higher floor wins. */
+    uint32_t CryptoNoteProtocolHandler::getPeerServingFloor(const CryptoNoteConnectionContext &context) const
+    {
+        uint32_t floor = 0;
+
+        if (context.m_remote_is_lite_node && context.m_remote_lite_start_height != 0)
+        {
+            floor = std::max(floor, context.m_remote_lite_start_height);
+        }
+
+        if (context.m_remote_is_pruned_node && context.m_remote_pruned_node_height != 0)
+        {
+            floor = std::max(floor, context.m_remote_pruned_node_height);
+        }
+
+        return floor;
+    }
+
+    bool CryptoNoteProtocolHandler::peerCanServeOurChain(const CryptoNoteConnectionContext &context) const
+    {
+        const uint32_t floor = getPeerServingFloor(context);
+
+        return floor == 0 || get_current_blockchain_height() >= floor;
+    }
+
+    /* Every path that decides to start pulling a chain from a peer goes through
+       here. Checking the floor at the moment of the decision is what makes the
+       check reliable: the handshake gate cannot do it alone, because a relayed
+       block we fail to attach promotes a connection on its own, and because a
+       pruned peer's floor climbs while we sync and can overtake a node that is
+       falling behind - neither of which the handshake ever sees again.
+
+       A peer that cannot serve the range we need is not dropped. It is put back
+       on relay and pool duty, where it is still useful, and the next timed sync
+       promotes it again by itself once we climb above its floor. */
+    bool CryptoNoteProtocolHandler::requestChainIfPeerCanServe(
+        CryptoNoteConnectionContext &context,
+        const std::string &reason)
+    {
+        if (!peerCanServeOurChain(context))
+        {
+            logger(Logging::DEBUGGING)
+                << context << reason << ", but it serves blocks only from height " << getPeerServingFloor(context)
+                << " and we are at " << get_current_blockchain_height()
+                << "; keeping this connection on relay/pool duty instead of syncing from it";
+            context.m_state = CryptoNoteConnectionContext::state_normal;
+            return false;
+        }
+
+        context.m_state = CryptoNoteConnectionContext::state_synchronizing;
+        NOTIFY_REQUEST_CHAIN::request r {};
+        r.block_ids = m_core.buildSparseChain();
+        logger(Logging::TRACE) << context << reason << " -->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
+                               << r.block_ids.size();
+        post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
+        return true;
     }
 
     bool CryptoNoteProtocolHandler::addObserver(ICryptoNoteProtocolObserver *observer)
