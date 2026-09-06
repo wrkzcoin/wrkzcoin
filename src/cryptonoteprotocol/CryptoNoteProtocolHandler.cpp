@@ -990,16 +990,23 @@ namespace CryptoNote
 
         if (result != 0)
         {
-            /* state_normal here means requestChainIfPeerCanServe put the peer
-               back on relay duty because its floor has risen above us while we
-               were syncing from it. That is a fact about the peer's storage,
-               not a failure on its part, and charging it one would eventually
-               disconnect a peer we had just decided to keep. */
-            if (context.m_state != CryptoNoteConnectionContext::state_normal)
-            {
-                onSyncChunkFailure(context);
-            }
+            /* Deliberately no sync failure here. Every way processObjects can
+               return non-zero is already accounted for where it happens, and
+               counting it again only demoted peers for things that are not
+               their fault:
 
+               - the blocks already exist, which is what happens all the time
+                 when several sync peers fetch overlapping ranges. The peer is
+                 keeping up, not misbehaving, and two of these were enough to
+                 drop it.
+               - the block was orphaned, which has its own retry limit.
+               - the peer went back to relay duty because its floor rose above
+                 us mid-sync, which is a fact about its storage.
+               - validation failed, and the connection is already being closed.
+
+               Genuine misbehaviour is still counted at the other call sites:
+               a short answer, a peer that lost the blocks it listed, and a
+               request that could not be built at all. */
             return result;
         }
 
