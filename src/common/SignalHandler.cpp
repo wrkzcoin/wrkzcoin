@@ -72,6 +72,20 @@ namespace
 
 namespace Tools
 {
+    bool SignalHandler::blockSignals()
+    {
+#if defined(WIN32)
+        return true;
+#else
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, SIGINT);
+        sigaddset(&set, SIGTERM);
+
+        return pthread_sigmask(SIG_BLOCK, &set, nullptr) == 0;
+#endif
+    }
+
     bool SignalHandler::install(std::function<void(void)> t)
     {
 #if defined(WIN32)

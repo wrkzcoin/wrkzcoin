@@ -344,8 +344,12 @@ bool DaemonCommandsHandler::exit(const std::vector<std::string> &args)
     /* Set log to max when exiting. Sometimes this takes a while, and it helps
        to let users know the daemon is still doing stuff */
     m_logManager->setMaxLevel(Logging::TRACE);
-    m_consoleHandler.requestStop();
+
+    /* Start the shutdown before touching the console. requestStop() waits for
+       the reader thread, and doing that first meant the node had not begun
+       stopping while we waited - the daemon looked hung with nothing running. */
     m_srv.sendStopSignal();
+    m_consoleHandler.requestStop();
     return true;
 }
 
