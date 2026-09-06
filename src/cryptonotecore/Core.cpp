@@ -594,6 +594,14 @@ namespace CryptoNote
         uint32_t &fullOffset,
         std::vector<BlockFullInfo> &entries) const
     {
+        /* Serves a wallet sync request on an HTTP thread, and walks the chain
+           segments to do it, while the dispatcher and the mining RPC add blocks
+           and pruning deletes leaves. Everything below it - the segment calls,
+           findBlockchainSupplement, pushBlockHashes, fillQueryBlockFullInfo -
+           takes no lock of its own, so this is the right place for it and there
+           is nothing here to nest with. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -639,6 +647,9 @@ namespace CryptoNote
         uint32_t &fullOffset,
         std::vector<BlockShortInfo> &entries) const
     {
+        /* Same as queryBlocks above: an HTTP thread walking the chain. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -701,6 +712,9 @@ namespace CryptoNote
         std::vector<BlockDetails> &entries,
         uint32_t blockCount) const
     {
+        /* Same as queryBlocks above: an HTTP thread walking the chain. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -2008,6 +2022,11 @@ namespace CryptoNote
         std::vector<uint32_t> &globalIndexes,
         std::vector<Crypto::PublicKey> &publicKeys) const
     {
+        /* Decoy selection, served on an HTTP thread. It reads the main chain
+           leaf twice and the top index three times, and a reorg between them
+           would mix two chains into one ring. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         if (count == 0)
@@ -2079,6 +2098,10 @@ namespace CryptoNote
         const uint64_t endHeight,
         std::unordered_map<Crypto::Hash, std::vector<uint64_t>> &indexes) const
     {
+        /* Served on an HTTP thread, and the hashes it collects and the indexes
+           it then looks up have to come from the same chain. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         try
