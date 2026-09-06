@@ -152,6 +152,12 @@ namespace CryptoNote
                 transactions.begin(), transactions.end(), std::back_inserter(request.txs), [](const std::string &s) {
                     return BinaryArray(s.begin(), s.end());
                 });
+
+            /* Optional, and absent in everything older than this. The serializer
+               leaves the value alone and reports false for a key that is not
+               there, so seed it first: no flag means the sender flooded. */
+            request.stem = false;
+            s(request.stem, "stem");
         }
         else
         {
@@ -161,6 +167,11 @@ namespace CryptoNote
                     return std::string(s.begin(), s.end());
                 });
             s(transactions, "txs");
+
+            /* Older nodes read a section entry at a time and keep whatever they
+               find, asking only for the keys they know, so an extra one costs
+               them nothing but the bytes. */
+            s(request.stem, "stem");
         }
     }
 
@@ -790,7 +801,11 @@ namespace CryptoNote
 
             if (arg.txs.size() > 0)
             {
-                relayOrStemTransactions(arg, &context.m_connection_id);
+                /* Only a transaction that reached us on a stem may continue on
+                   one. Everything else arrived by broadcast and is already
+                   public, so re-stemming it would hide nothing while stalling it
+                   behind a single peer. */
+                relayOrStemTransactions(arg, &context.m_connection_id, arg.stem);
             }
         }
 
@@ -1660,7 +1675,9 @@ namespace CryptoNote
            is the one where flood relay would name us as the author outright. */
         NOTIFY_NEW_TRANSACTIONS::request notification {transactions};
 
-        relayOrStemTransactions(notification, nullptr);
+        /* Nobody has seen these yet, so this is the one caller that is always
+           free to start a stem. */
+        relayOrStemTransactions(notification, nullptr, true);
     }
 
     bool CryptoNoteProtocolHandler::transactionHashFromBlob(const BinaryArray &blob, Crypto::Hash &hash)
@@ -1679,33 +1696,43 @@ namespace CryptoNote
         return true;
     }
 
-    bool CryptoNoteProtocolHandler::pickStemPeer(std::array<uint8_t, 16> &stemPeer)
+    void CryptoNoteProtocolHandler::outboundStemCandidates(std::vector<std::array<uint8_t, 16>> &candidates)
     {
-        std::vector<std::array<uint8_t, 16>> candidates;
+        std::vector<std::array<uint8_t, 16>> legacy;
 
-        m_p2p->for_each_connection([&candidates](const CryptoNoteConnectionContext &ctx, uint64_t) {
+        m_p2p->for_each_connection([&candidates, &legacy](const CryptoNoteConnectionContext &ctx, uint64_t) {
             /* Outbound only, and only peers past the handshake. We chose to dial
                these, so an observer cannot make itself our stem peer just by
                connecting to us. */
-            if (!ctx.m_is_income && ctx.m_state == CryptoNoteConnectionContext::state_normal)
+            if (ctx.m_is_income || ctx.m_state != CryptoNoteConnectionContext::state_normal)
+            {
+                return;
+            }
+
+            if (ctx.version >= P2P_DANDELION_VERSION)
             {
                 candidates.push_back(ctx.m_connection_id);
             }
+            else
+            {
+                legacy.push_back(ctx.m_connection_id);
+            }
         });
 
+        /* A peer too old to read the stem flag broadcasts the moment it receives
+           the transaction, so the path it offers is one hop long. That is still
+           worth taking over broadcasting here: the network sees that peer
+           announce the transaction, not us. */
         if (candidates.empty())
         {
-            return false;
+            candidates = std::move(legacy);
         }
-
-        stemPeer = candidates[Random::randomValue<uint32_t>(0, static_cast<uint32_t>(candidates.size()) - 1)];
-
-        return true;
     }
 
     void CryptoNoteProtocolHandler::relayOrStemTransactions(
         NOTIFY_NEW_TRANSACTIONS::request &arg,
-        const std::array<uint8_t, 16> *excludeConnection)
+        const std::array<uint8_t, 16> *excludeConnection,
+        const bool mayStem)
     {
         if (arg.txs.empty())
         {
@@ -1714,39 +1741,46 @@ namespace CryptoNote
 
         const auto now = std::chrono::steady_clock::now();
 
-        bool needNewEpoch = false;
-
-        {
-            std::lock_guard<std::mutex> lock(m_dandelionMutex);
-
-            needNewEpoch = now >= m_dandelionEpochEnd || !m_dandelionHaveStemPeer;
-        }
-
-        if (needNewEpoch)
-        {
-            /* Peer selection walks the connection table, so it runs outside our
-               own lock rather than holding two at once. Two threads arriving
-               here together simply both roll an epoch, which is harmless. */
-            std::array<uint8_t, 16> picked {};
-
-            const bool havePeer = pickStemPeer(picked);
-
-            const bool isStem = Random::randomValue<uint32_t>(0, 99) < DANDELION_STEM_PERCENT;
-
-            std::lock_guard<std::mutex> lock(m_dandelionMutex);
-
-            m_dandelionEpochEnd = now + std::chrono::seconds(DANDELION_EPOCH_SECONDS);
-            m_dandelionEpochIsStem = isStem;
-            m_dandelionHaveStemPeer = havePeer;
-            m_dandelionStemPeer = picked;
-        }
-
         bool stem = false;
 
         std::array<uint8_t, 16> stemPeer {};
 
+        if (mayStem)
         {
+            /* Gathered before our own lock is taken. This walks the connection
+               table under the p2p mutex, and the two are never held at once. */
+            std::vector<std::array<uint8_t, 16>> candidates;
+
+            outboundStemCandidates(candidates);
+
             std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+            if (now >= m_dandelionEpochEnd)
+            {
+                m_dandelionEpochEnd = now + std::chrono::seconds(DANDELION_EPOCH_SECONDS);
+                m_dandelionEpochIsStem = Random::randomValue<uint32_t>(0, 99) < DANDELION_STEM_PERCENT;
+                m_dandelionHaveStemPeer = false;
+            }
+
+            /* A stem peer that has gone away takes the rest of the epoch with
+               it: the send matches no connection, and the embargo timer then
+               broadcasts each transaction from here, which is precisely the node
+               naming itself that the stem exists to prevent. Notice the peer is
+               missing from the live set and replace it. The epoch's role is
+               deliberately left alone - re-rolling that on a disconnect would
+               hand an observer a lever to force fresh coin flips. */
+            if (m_dandelionHaveStemPeer
+                && std::find(candidates.begin(), candidates.end(), m_dandelionStemPeer) == candidates.end())
+            {
+                m_dandelionHaveStemPeer = false;
+            }
+
+            if (!m_dandelionHaveStemPeer && !candidates.empty())
+            {
+                m_dandelionStemPeer =
+                    candidates[Random::randomValue<uint32_t>(0, static_cast<uint32_t>(candidates.size()) - 1)];
+                m_dandelionHaveStemPeer = true;
+            }
 
             stem = m_dandelionEpochIsStem && m_dandelionHaveStemPeer;
             stemPeer = m_dandelionStemPeer;
@@ -1762,6 +1796,10 @@ namespace CryptoNote
 
         if (!stem)
         {
+            /* Say so on the wire, so whoever receives this floods it on instead
+               of parking it behind one peer of their own. */
+            arg.stem = false;
+
             relay_post_notify<NOTIFY_NEW_TRANSACTIONS>(*m_p2p, arg, excludeConnection);
 
             return;
@@ -1785,6 +1823,11 @@ namespace CryptoNote
                 }
             }
         }
+
+        /* Marks the message as still on its stem, so a peer that understands the
+           flag carries it one more hop instead of broadcasting. One that does not
+           ignores it and broadcasts, ending the stem early but harmlessly. */
+        arg.stem = true;
 
         m_p2p->externalRelayNotifyToList(
             NOTIFY_NEW_TRANSACTIONS::ID, LevinProtocol::encode(arg), {stemPeer});
@@ -1824,7 +1867,11 @@ namespace CryptoNote
             return;
         }
 
+        /* The stem is over for these - this is the broadcast it failed to reach,
+           so they go out flagged as fluff and every receiver floods them on. */
         NOTIFY_NEW_TRANSACTIONS::request notification;
+
+        notification.stem = false;
 
         for (const auto &hash : expired)
         {

@@ -78,6 +78,20 @@ namespace CryptoNote
     struct NOTIFY_NEW_TRANSACTIONS_request
     {
         std::vector<BinaryArray> txs;
+
+        /* True while these transactions are still travelling their Dandelion++
+           stem, one peer per hop, and have not been broadcast yet. False means
+           the sender flooded them to every peer it has, so the receiver must
+           flood in turn rather than starting a stem of its own - a stem that
+           begins at an already public transaction hides nothing and only slows
+           it down.
+
+           Serialized as an optional field: a node that predates this reads the
+           message exactly as before and a message from such a node arrives with
+           the flag absent, which reads as false. Flooding is the safe default in
+           both directions, so the two vintages interoperate without a version
+           gate. */
+        bool stem = false;
     };
 
     struct NOTIFY_NEW_TRANSACTIONS

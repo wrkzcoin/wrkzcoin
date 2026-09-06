@@ -544,7 +544,7 @@ namespace CryptoNote
 
     // P2P Network Configuration Section - This defines our current P2P network version
     // and the minimum version for communication between nodes
-    const uint8_t P2P_CURRENT_VERSION = 19;
+    const uint8_t P2P_CURRENT_VERSION = 20;
 
     // Kept well behind P2P_CURRENT_VERSION on purpose: a node below this is refused
     // the handshake outright, so raising it to the current version would cut us off
@@ -557,6 +557,13 @@ namespace CryptoNote
 
     // This defines the minimum P2P version required for lite blocks propogation
     const uint8_t P2P_LITE_BLOCKS_PROPOGATION_VERSION = 4;
+
+    // Peers at or above this version read the Dandelion++ stem flag on
+    // NOTIFY_NEW_TRANSACTIONS and will carry a stem another hop. Anything older
+    // ignores the flag and broadcasts on receipt, which is correct but ends the
+    // stem, so these peers are preferred when one is chosen. Nothing is refused
+    // over this: it steers a relay choice and gates no message.
+    const uint8_t P2P_DANDELION_VERSION = 20;
 
     // This defines the number of versions ahead we must see peers before we start displaying
     // warning messages that we need to upgrade our software.

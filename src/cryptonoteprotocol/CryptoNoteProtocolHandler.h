@@ -339,15 +339,23 @@ namespace CryptoNote
         static bool transactionHashFromBlob(const BinaryArray &blob, Crypto::Hash &hash);
 
         /* Sends to the single stem peer while this node is stemming, and to
-           everyone otherwise. */
+           everyone otherwise, marking the message either way so the receiver
+           knows which it is looking at.
+           mayStem says whether these transactions are still private: true for
+           one of ours and for one that reached us on a stem, false for anything
+           that arrived by broadcast, which must be passed on by broadcast. */
         void relayOrStemTransactions(
             NOTIFY_NEW_TRANSACTIONS::request &arg,
-            const std::array<uint8_t, 16> *excludeConnection);
+            const std::array<uint8_t, 16> *excludeConnection,
+            const bool mayStem);
 
-        /* Chooses one outbound, fully connected peer at random. Outbound only:
-           an inbound connection may be the observer, and picking it would hand
-           every stemmed transaction straight to them. */
-        bool pickStemPeer(std::array<uint8_t, 16> &stemPeer);
+        /* The outbound, fully connected peers a stem may be handed to. Outbound
+           only: an inbound connection may be the observer, and picking it would
+           give them every stemmed transaction directly. Peers that understand
+           the stem flag are preferred, since only they can carry the path any
+           further; the older ones are offered only when there is no other
+           choice. */
+        void outboundStemCandidates(std::vector<std::array<uint8_t, 16>> &candidates);
 
         mutable std::mutex m_dandelionMutex;
 
