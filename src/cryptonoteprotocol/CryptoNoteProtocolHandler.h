@@ -382,11 +382,30 @@ namespace CryptoNote
 
         /* Chance, per epoch, that this node stems rather than fluffs. Some nodes
            must fluff or nothing ever reaches the whole network.
-           Ninety comes from the Dandelion++ paper, which assumes a large graph;
-           it puts the expected stem at ten hops. On a small network that is long
-           enough to be worth measuring before trusting - see the counters in
-           `dandelion_status`. */
-        static constexpr uint32_t DANDELION_STEM_PERCENT = 90;
+
+           Sized for THIS network, not the one in the paper. Dandelion++ uses
+           ninety, which puts the expected stem at 1/(1-p) = ten hops, and that
+           assumes a graph of hundreds of nodes. A stem walk revisits itself
+           after roughly 1.25*sqrt(N) hops, so ten hops only completes when N is
+           somewhere near a hundred. This chain's peer store holds four to ten
+           entries, so N is nearer ten, where a walk repeats after about four
+           hops - at ninety percent nearly every stem would loop back, reach
+           nobody, and wait out its full embargo before being broadcast. Every
+           transaction would pay that delay before the network ever saw it.
+
+           Fifty gives an expected two hop stem against a cycle at about four,
+           so roughly one stem in eight risks looping instead of most of them,
+           and half of all transactions are broadcast immediately with no delay
+           at all. Two hops is a smaller anonymity set than the paper wants, but
+           it is the whole of what defeats the attack that actually works here:
+           one well connected node writing down who announced each transaction
+           first. Below about fifty the stem stops buying anything.
+
+           Revisit this when the network grows - `dandelion_status` reports the
+           share of stems that timed out, which is the number that says whether
+           this is still right. Deliberately not configurable: nodes that
+           disagree about it weaken each other's anonymity set. */
+        static constexpr uint32_t DANDELION_STEM_PERCENT = 50;
 
         /* Derives the transaction hash from a relayed blob, the same way the
            pool does, so an embargoed transaction can be recognised again.
