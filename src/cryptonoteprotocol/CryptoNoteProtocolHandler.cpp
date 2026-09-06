@@ -1806,7 +1806,10 @@ namespace CryptoNote
 
         std::array<uint8_t, 16> stemPeer {};
 
-        if (mayStem)
+        /* Switched off, this falls straight through to the broadcast below and
+           records no embargo, so nothing is left half running: with no embargo
+           entries the pool filters have nothing to withhold either. */
+        if (mayStem && m_dandelionEnabled.load())
         {
             /* Gathered before our own lock is taken. This walks the connection
                table under the p2p mutex, and the two are never held at once. */
@@ -1927,6 +1930,8 @@ namespace CryptoNote
                        transactions that travel together should not come out of
                        their embargo together. */
                     m_dandelionEmbargo.emplace(hash, DandelionEmbargo {now + nextEmbargoDelay(), stemPeer});
+
+                    ++m_dandelionStemmed;
                 }
             }
         }
@@ -1974,6 +1979,8 @@ namespace CryptoNote
                                        << " ended early, the transaction is already being broadcast";
 
             m_dandelionEmbargo.erase(it);
+
+            ++m_dandelionEmbargoCancelled;
         }
     }
 
@@ -1998,6 +2005,8 @@ namespace CryptoNote
                     expired.push_back(it->first);
 
                     it = m_dandelionEmbargo.erase(it);
+
+                    ++m_dandelionEmbargoExpired;
                 }
                 else
                 {
@@ -2209,6 +2218,58 @@ namespace CryptoNote
     uint32_t CryptoNoteProtocolHandler::getSyncDemotedPeers() const
     {
         return m_syncDemotedPeers.load();
+    }
+
+    void CryptoNoteProtocolHandler::setDandelionEnabled(const bool enabled)
+    {
+        m_dandelionEnabled.store(enabled);
+    }
+
+    bool CryptoNoteProtocolHandler::isDandelionEnabled() const
+    {
+        return m_dandelionEnabled.load();
+    }
+
+    bool CryptoNoteProtocolHandler::isDandelionStemEpoch() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return m_dandelionEnabled.load() && m_dandelionEpochIsStem;
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getDandelionRelayCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return static_cast<uint32_t>(m_dandelionStemPeers.size());
+    }
+
+    uint32_t CryptoNoteProtocolHandler::getDandelionEmbargoCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return static_cast<uint32_t>(m_dandelionEmbargo.size());
+    }
+
+    uint64_t CryptoNoteProtocolHandler::getDandelionStemmedCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return m_dandelionStemmed;
+    }
+
+    uint64_t CryptoNoteProtocolHandler::getDandelionEmbargoExpiredCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return m_dandelionEmbargoExpired;
+    }
+
+    uint64_t CryptoNoteProtocolHandler::getDandelionEmbargoCancelledCount() const
+    {
+        std::lock_guard<std::mutex> lock(m_dandelionMutex);
+
+        return m_dandelionEmbargoCancelled;
     }
 
     bool CryptoNoteProtocolHandler::isPrunedNode() const

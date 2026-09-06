@@ -971,6 +971,14 @@ int main(int argc, char *argv[])
             logManager
         );
 
+        cprotocol->setDandelionEnabled(!config.noDandelion);
+
+        if (config.noDandelion)
+        {
+            logger(INFO) << "Dandelion++ disabled: new transactions will be announced to every peer "
+                            "at once, which tells the network which node they came from.";
+        }
+
         cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
         cprotocol->setLiteNodeConfig(liteHeight);
         cprotocol->setSyncTuning(

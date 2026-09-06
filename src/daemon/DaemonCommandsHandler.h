@@ -156,6 +156,8 @@ class DaemonCommandsHandler
 
     bool sync_peers(const std::vector<std::string> &args);
 
+    bool dandelion_status(const std::vector<std::string> &args);
+
     bool db_status(const std::vector<std::string> &args);
 
     bool compact_db(const std::vector<std::string> &args);

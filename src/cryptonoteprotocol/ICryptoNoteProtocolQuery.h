@@ -43,6 +43,12 @@ namespace CryptoNote
         virtual uint32_t getSyncAvgBatchSize() const = 0;
 
         virtual uint32_t getSyncDemotedPeers() const = 0;
+
+        /* No Dandelion++ state here on purpose. This interface is what the RPC
+           server reads to build /info, and that endpoint is public; a live count
+           of what a node is stemming would name the node a transaction started
+           at. The accessors live on CryptoNoteProtocolHandler, which only the
+           daemon console can reach. */
     };
 
 } // namespace CryptoNote

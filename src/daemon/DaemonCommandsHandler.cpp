@@ -224,6 +224,7 @@ DaemonCommandsHandler::DaemonCommandsHandler(
     register_command("save", &DaemonCommandsHandler::save, "Force-save blockchain state to disk");
     register_command("sync_tune", &DaemonCommandsHandler::sync_tune, "Show current sync tuning and adaptive sync stats");
     register_command("sync_peers", &DaemonCommandsHandler::sync_peers, "Show current sync peer diagnostics");
+    register_command("dandelion_status", &DaemonCommandsHandler::dandelion_status, "Show Dandelion++ transaction relay state");
     register_command("db_status", &DaemonCommandsHandler::db_status, "Show on-disk DB status for the active DB engine");
     register_command("compact_db", &DaemonCommandsHandler::compact_db, "Manage DB compaction: compact_db [start|status|wait|force]");
     register_command("snapshot_export", &DaemonCommandsHandler::snapshot_export, "Export a lite node snapshot: snapshot_export [start [height] [path] | status | cancel]");
@@ -998,6 +999,83 @@ bool DaemonCommandsHandler::sync_peers(const std::vector<std::string> &args)
           << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_avg_batch_size"))) << std::endl;
     out() << InformationMsg("Demoted Sync Peers (lifetime): ")
           << SuccessMsg(std::to_string(getUint64FromJSON(resp, "sync_demoted_peers"))) << std::endl;
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------
+bool DaemonCommandsHandler::dandelion_status(const std::vector<std::string> &args)
+{
+    /* Read straight off the protocol handler rather than through /info. This
+       state must not be on a public endpoint: "how many transactions is this
+       node stemming right now" polled once a second across every node says
+       which node each transaction was made on, which is more than the stem
+       hides. The console is local, and an attached console runs its commands
+       inside the daemon, so this is the same node either way. */
+    auto &protocol = m_srv.get_payload_object();
+
+    const bool enabled = protocol.isDandelionEnabled();
+
+    out() << InformationMsg("Dandelion++: ") << SuccessMsg(enabled ? "Enabled" : "Disabled (--no-dandelion)")
+          << std::endl;
+
+    if (!enabled)
+    {
+        out() << WarningMsg("New transactions are announced to every peer at once, which tells the "
+                            "network which node they came from.")
+              << std::endl;
+
+        return true;
+    }
+
+    const bool stemEpoch = protocol.isDandelionStemEpoch();
+    const uint64_t relays = protocol.getDandelionRelayCount();
+    const uint64_t embargoed = protocol.getDandelionEmbargoCount();
+    const uint64_t stemmed = protocol.getDandelionStemmedCount();
+    const uint64_t expired = protocol.getDandelionEmbargoExpiredCount();
+    const uint64_t cancelled = protocol.getDandelionEmbargoCancelledCount();
+
+    out() << InformationMsg("Role This Epoch: ") << SuccessMsg(stemEpoch ? "Stem" : "Fluff (broadcasting)")
+          << std::endl;
+    out() << InformationMsg("Stem Relays Held: ") << SuccessMsg(std::to_string(relays)) << std::endl;
+    out() << InformationMsg("Transactions On A Stem Now: ") << SuccessMsg(std::to_string(embargoed)) << std::endl;
+    out() << InformationMsg("Stems Started (lifetime): ") << SuccessMsg(std::to_string(stemmed)) << std::endl;
+    out() << InformationMsg("  ...that reached the network: ") << SuccessMsg(std::to_string(cancelled)) << std::endl;
+    out() << InformationMsg("  ...that timed out here: ") << SuccessMsg(std::to_string(expired)) << std::endl;
+
+    /* The number worth reading. A stem that times out was broadcast by this node
+       instead of by one further along, which is exactly the privacy the stem was
+       meant to buy. A healthy network times out rarely; a small one whose stem
+       paths keep looping back does not, and that is the signal to lower the stem
+       percentage. */
+    const uint64_t finished = cancelled + expired;
+
+    if (finished > 0)
+    {
+        const uint64_t percent = (expired * 100) / finished;
+
+        out() << InformationMsg("Stems Timing Out: ");
+
+        if (percent >= 50)
+        {
+            out() << WarningMsg(
+                std::to_string(percent)
+                + "% - most stems are not reaching the network, so this node is announcing its own "
+                  "transactions")
+                  << std::endl;
+        }
+        else
+        {
+            out() << SuccessMsg(std::to_string(percent) + "%") << std::endl;
+        }
+    }
+
+    if (stemEpoch && relays == 0)
+    {
+        out() << WarningMsg("No outbound peer is available to stem to, so transactions are being "
+                            "broadcast from here.")
+              << std::endl;
+    }
 
     return true;
 }

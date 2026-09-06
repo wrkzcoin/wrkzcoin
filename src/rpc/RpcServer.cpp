@@ -976,6 +976,15 @@ std::tuple<Error, uint16_t> RpcServer::info(
         j["sync_active_peers"] = m_syncManager->getSyncActivePeers();
         j["sync_avg_batch_size"] = m_syncManager->getSyncAvgBatchSize();
         j["sync_demoted_peers"] = m_syncManager->getSyncDemotedPeers();
+
+        /* Deliberately no Dandelion++ fields here. /info is public on any node
+           that serves wallets, and "how many transactions is this node stemming
+           right now" is an origin oracle: poll every node once a second and
+           whichever one's count just went up is where a transaction was made.
+           That would give away more than the stem hides. `dandelion_status`
+           reads it from the protocol handler instead, over the local console
+           only. */
+
         j["major_version"] = topMajorVersion;
         j["minor_version"] = topMinorVersion;
         j["version"] = PROJECT_VERSION;

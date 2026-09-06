@@ -103,6 +103,33 @@ namespace CryptoNote
 
         virtual uint32_t getSyncDemotedPeers() const override;
 
+        /* Relay state, for the `dandelion_status` console command. Kept off
+           ICryptoNoteProtocolQuery so it cannot reach the public /info: a live
+           count of what this node is stemming would identify the node a
+           transaction was made on. */
+        bool isDandelionEnabled() const;
+
+        bool isDandelionStemEpoch() const;
+
+        uint32_t getDandelionRelayCount() const;
+
+        /* Transactions waiting out a stem right now. */
+        uint32_t getDandelionEmbargoCount() const;
+
+        uint64_t getDandelionStemmedCount() const;
+
+        /* Stems whose embargo ran out, meaning this node broadcast the
+           transaction itself because nobody else did. */
+        uint64_t getDandelionEmbargoExpiredCount() const;
+
+        /* Stems that ended early because the transaction came back as a
+           broadcast - the stem worked. Read against the expired count. */
+        uint64_t getDandelionEmbargoCancelledCount() const;
+
+        /* False relays every new transaction to every peer at once, as this node
+           did before Dandelion++. */
+        void setDandelionEnabled(bool enabled);
+
         void setPrunedNodeConfig(bool isPrunedNode, uint32_t prunedNodeDepth);
 
         /* Zero for a normal node. Above zero this is the height from which full
@@ -410,6 +437,12 @@ namespace CryptoNote
 
         mutable std::mutex m_dandelionMutex;
 
+        /* Cleared by --no-dandelion. Every relay then broadcasts, no embargo is
+           ever recorded, and the filters that hide embargoed transactions have
+           nothing to hide - so the switch reverts the behaviour completely
+           rather than leaving half of it running. */
+        std::atomic<bool> m_dandelionEnabled {true};
+
         std::chrono::steady_clock::time_point m_dandelionEpochEnd {};
 
         bool m_dandelionEpochIsStem = false;
@@ -440,6 +473,13 @@ namespace CryptoNote
            the set held back from peer-facing pool listings and from the pool
            hashes we offer a peer at connection setup. */
         std::unordered_map<Crypto::Hash, DandelionEmbargo> m_dandelionEmbargo;
+
+        /* Lifetime counters, all guarded by m_dandelionMutex. */
+        uint64_t m_dandelionStemmed = 0;
+
+        uint64_t m_dandelionEmbargoExpired = 0;
+
+        uint64_t m_dandelionEmbargoCancelled = 0;
 
         Tools::ObserverManager<ICryptoNoteProtocolObserver> m_observerManager;
     };

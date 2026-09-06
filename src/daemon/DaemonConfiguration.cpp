@@ -178,6 +178,11 @@ namespace DaemonConfig
             "no-console",
             "Disable daemon console commands",
             cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "no-dandelion",
+            "Announce new transactions to every peer at once instead of relaying them through a "
+            "Dandelion++ stem first. Faster to propagate, and gives away which node a transaction "
+            "came from",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
             "attach",
             "Attach a console to a daemon already running on this machine, over its RPC IPC socket "
             "(an absolute path, @name or ipc://path), instead of starting a node",
@@ -637,6 +642,11 @@ namespace DaemonConfig
                 config.noConsole = cli["no-console"].as<bool>();
             }
 
+            if (cli.count("no-dandelion") > 0)
+            {
+                config.noDandelion = cli["no-dandelion"].as<bool>();
+            }
+
             if (cli.count("attach") > 0)
             {
                 config.attach = cli["attach"].as<std::string>();
@@ -1070,6 +1080,11 @@ namespace DaemonConfig
                 else if (cfgKey.compare("no-console") == 0)
                 {
                     config.noConsole = cfgValue.at(0) == '1';
+                    updated = true;
+                }
+                else if (cfgKey.compare("no-dandelion") == 0)
+                {
+                    config.noDandelion = cfgValue.at(0) == '1';
                     updated = true;
                 }
                 else if (cfgKey.compare("skip-boot-compaction") == 0)
@@ -1672,6 +1687,11 @@ namespace DaemonConfig
             config.noConsole = j["no-console"].get<bool>();
         }
 
+        if (j.contains("no-dandelion"))
+        {
+            config.noDandelion = j["no-dandelion"].get<bool>();
+        }
+
         if (j.contains("skip-boot-compaction"))
         {
             config.skipBootCompaction = j["skip-boot-compaction"].get<bool>();
@@ -2016,6 +2036,7 @@ namespace DaemonConfig
         j["log-file"] = config.logFile;
         j["log-level"] = config.logLevel;
         j["no-console"] = config.noConsole;
+        j["no-dandelion"] = config.noDandelion;
         j["skip-boot-compaction"] = config.skipBootCompaction;
         j["db-enable-compression"] = config.enableDbCompression;
         j["db-compression-dict-bytes"] = config.dbCompressionDictBytes;

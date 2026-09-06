@@ -46,6 +46,7 @@ namespace DaemonConfig
             rpcInterface = "127.0.0.1";
             rpcPort = CryptoNote::RPC_DEFAULT_PORT;
             noConsole = false;
+            noDandelion = false;
             daemonMode = DAEMON_MODE_STANDARD;
             localIp = false;
             hideMyPort = false;
@@ -159,6 +160,13 @@ namespace DaemonConfig
         uint32_t rewindToHeight;
 
         bool noConsole;
+
+        /* Relay new transactions to every peer at once, as this node did before
+           Dandelion++. Costs the sender's privacy - the first node to announce a
+           transaction is almost always the one that made it - and is here as the
+           way out if the stem relay misbehaves on a node that cannot afford to
+           downgrade past a fork. */
+        bool noDandelion;
 
         /* Not a daemon setting: the IPC socket of a daemon already running
            that this invocation should attach a console to instead of starting
