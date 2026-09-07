@@ -90,6 +90,7 @@ nav:
       - Configuration Reference: guides/daemon-configuration.md
       - Console Commands: guides/console-commands.md
       - Networking: guides/networking.md
+      - Network Monitor: guides/netmon.md
       - Local IPC and Console: guides/ipc-and-console.md
       - Notification Hooks: guides/notify-hooks.md
       - Lite Nodes: guides/lite-node.md
