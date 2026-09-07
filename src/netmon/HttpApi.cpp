@@ -24,6 +24,13 @@ namespace NetMon
 
         constexpr uint32_t MAX_PAGE_SIZE = 1000;
 
+        /* Mirrors NodeStore's own cap on the retained series. */
+        constexpr uint32_t MAX_SWEEP_POINTS = 1024;
+
+        /* The published shape of /api/stats. Bump it when a field changes
+           meaning or goes away, so a consumer keyed on this can tell. */
+        constexpr int STATS_SCHEMA = 1;
+
         nlohmann::json bucketsToJson(const std::vector<Bucket> &buckets)
         {
             nlohmann::json out = nlohmann::json::array();
@@ -207,6 +214,14 @@ namespace NetMon
             handleOptions(request, response);
         });
 
+        /* Aggregates only, and deliberately nothing else: this is the route
+           meant to be published, embedded in a page or polled by a chat bot,
+           so it must stay safe to expose whatever the proxy in front is
+           configured to do. Adding a per-node field here defeats the point. */
+        server.Get("/api/stats", [this](const httplib::Request &request, httplib::Response &response) {
+            handleStats(request, response);
+        });
+
         server.Get("/api/summary", [this](const httplib::Request &request, httplib::Response &response) {
             handleSummary(request, response);
         });
@@ -367,6 +382,54 @@ namespace NetMon
         response.set_content(body, "application/json");
     }
 
+    void HttpApi::replyCached(
+        const httplib::Request &request,
+        httplib::Response &response,
+        const Summary &summary,
+        const std::string &body) const
+    {
+        /* Weak, and keyed on the sweep plus the body length. ETags are
+           per-URL by definition, so two pages of /api/peers cannot collide
+           on the sweep number alone. */
+        const std::string etag = "W/\"" + std::to_string(summary.sweepNumber) + "-"
+                                 + std::to_string(body.size()) + "\"";
+
+        /* Cache for however long this answer stays true. A sweep that runs
+           late only means the cached copy is still the current one. */
+        uint64_t maxAge = m_config.sweepIntervalSeconds;
+
+        if (summary.lastSweepFinished != 0)
+        {
+            const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+            const uint64_t elapsed = now > summary.lastSweepFinished ? now - summary.lastSweepFinished : 0;
+
+            maxAge = elapsed >= m_config.sweepIntervalSeconds ? 15
+                                                              : m_config.sweepIntervalSeconds - elapsed;
+        }
+
+        if (maxAge < 15)
+        {
+            maxAge = 15;
+        }
+
+        if (!m_config.corsHeader.empty())
+        {
+            response.set_header("Access-Control-Allow-Origin", m_config.corsHeader);
+        }
+
+        response.set_header("ETag", etag);
+        response.set_header("Cache-Control", "public, max-age=" + std::to_string(maxAge));
+
+        if (request.get_header_value("If-None-Match") == etag)
+        {
+            response.status = 304;
+            return;
+        }
+
+        response.status = 200;
+        response.set_content(body, "application/json");
+    }
+
     void HttpApi::handleOptions(const httplib::Request &, httplib::Response &response) const
     {
         if (!m_config.corsHeader.empty())
@@ -394,7 +457,7 @@ namespace NetMon
         reply(response, 200, j.dump());
     }
 
-    void HttpApi::handleSummary(const httplib::Request &, httplib::Response &response) const
+    void HttpApi::handleSummary(const httplib::Request &request, httplib::Response &response) const
     {
         const Summary summary = m_store.summarise();
 
@@ -443,17 +506,27 @@ namespace NetMon
             {"asn", nlohmann::json(!summary.networks.empty())},
             {"rpcProbe", nlohmann::json(m_config.probeRpc)}};
 
+        /* The series is capped at a thousand points, which at a ten minute
+           sweep is a week - about 56 KB of JSON riding along on every poll of
+           a response that is otherwise a kilobyte. Callers say how much of the
+           tail they actually draw. */
+        const uint32_t points = std::min<uint32_t>(MAX_SWEEP_POINTS, queryUint(request, "points", 288));
+
+        const std::vector<SweepPoint> history = m_store.sweepHistory();
+
         nlohmann::json sweeps = nlohmann::json::array();
 
-        for (const SweepPoint &point : m_store.sweepHistory())
+        for (size_t i = history.size() > points ? history.size() - points : 0; i < history.size(); i++)
         {
             sweeps.push_back(
-                {{"finishedAt", point.finishedAt}, {"probed", point.probed}, {"reachable", point.reachable}});
+                {{"finishedAt", history[i].finishedAt},
+                 {"probed", history[i].probed},
+                 {"reachable", history[i].reachable}});
         }
 
         j["sweepHistory"] = sweeps;
 
-        reply(response, 200, j.dump());
+        replyCached(request, response, summary, j.dump());
     }
 
     void HttpApi::handlePeers(const httplib::Request &request, httplib::Response &response) const
@@ -596,6 +669,201 @@ namespace NetMon
         j["majorityHashNodes"] = summary.topHashes.empty() ? uint64_t {0} : summary.topHashes[0].count;
 
         reply(response, 200, j.dump());
+    }
+
+    void HttpApi::handleStats(const httplib::Request &request, httplib::Response &response) const
+    {
+        const Summary s = m_store.summarise();
+
+        const auto share = [](const uint64_t part, const uint64_t whole) {
+            if (whole == 0)
+            {
+                return 0.0;
+            }
+
+            /* One decimal place. A consumer printing this into a chat message
+               should not have to decide how to round it. */
+            const double raw = static_cast<double>(part) * 100.0 / static_cast<double>(whole);
+
+            return static_cast<double>(static_cast<int64_t>(raw * 10.0 + 0.5)) / 10.0;
+        };
+
+        const auto topList = [](const std::vector<Bucket> &buckets, const size_t limit, const char *key) {
+            nlohmann::json out = nlohmann::json::array();
+
+            for (size_t i = 0; i < buckets.size() && i < limit; i++)
+            {
+                out.push_back({{key, buckets[i].label}, {"n", buckets[i].count}});
+            }
+
+            return out;
+        };
+
+        const auto othersOf = [](const std::vector<Bucket> &buckets, const size_t limit) {
+            uint64_t total = 0;
+
+            for (size_t i = limit; i < buckets.size(); i++)
+            {
+                total += buckets[i].count;
+            }
+
+            return total;
+        };
+
+        nlohmann::json j;
+
+        j["schema"] = STATS_SCHEMA;
+        j["status"] = "OK";
+        j["monitorVersion"] = PROJECT_VERSION_LONG;
+
+        /* Unix seconds throughout: Discord renders <t:1788795591:R> as live
+           relative time on its own, so converting to a string here would only
+           take that away. */
+        j["generatedAt"] = static_cast<uint64_t>(std::time(nullptr));
+
+        j["sweep"] = {
+            {"number", s.sweepNumber},
+            {"finishedAt", s.lastSweepFinished},
+            {"probed", s.lastSweepProbed},
+            {"durationMs", s.lastSweepDurationMs},
+            {"intervalSeconds", m_config.sweepIntervalSeconds}};
+
+        j["nodes"] = {
+            {"known", s.known},
+            {"reachable", s.reachable},
+            {"grey", s.grey},
+            {"reachablePct", share(s.reachable, s.known)}};
+
+        j["chain"] = {
+            {"height", s.networkHeight},
+            {"atTip", s.atTip},
+            {"atTipPct", share(s.atTip, s.reachable)},
+            {"distinctTips", s.distinctTips},
+            /* Zero tips means nothing has handshaked yet, which is not
+               agreement - so this is deliberately not distinctTips <= 1. */
+            {"agreed", s.distinctTips == 1},
+            {"buckets", topList(s.heightBuckets, s.heightBuckets.size(), "label")}};
+
+        j["capability"] = {
+            {"full", s.full},
+            {"pruned",
+             {{"count", s.pruned},
+              {"medianDepth", s.prunedMedianDepth},
+              {"pct", share(s.pruned, s.reachable)}}},
+            {"lite",
+             {{"count", s.lite},
+              {"medianFloor", s.liteMedianFloor},
+              {"pct", share(s.lite, s.reachable)}}}};
+
+        j["transport"] = {
+            {"ipv4", s.ipv4},
+            {"ipv6", s.ipv6},
+            {"ipv6Pct", share(s.ipv6, s.reachable)}};
+
+        nlohmann::json versions = nlohmann::json::array();
+
+        for (const Bucket &bucket : s.versions)
+        {
+            uint32_t value = 0;
+
+            try
+            {
+                value = static_cast<uint32_t>(std::stoul(bucket.label.substr(1)));
+            }
+            catch (...)
+            {
+                continue;
+            }
+
+            versions.push_back({{"v", value}, {"n", bucket.count}, {"pct", share(bucket.count, s.reachable)}});
+        }
+
+        /* Newest protocol first, which is the order a version table reads in. */
+        std::sort(versions.begin(), versions.end(), [](const nlohmann::json &a, const nlohmann::json &b) {
+            return a["v"].get<uint32_t>() > b["v"].get<uint32_t>();
+        });
+
+        j["versions"] = versions;
+
+        j["protocol"] = {
+            {"current", CryptoNote::P2P_CURRENT_VERSION},
+            {"floor", CryptoNote::P2P_MINIMUM_VERSION}};
+
+        /* What raising the handshake floor would cost today. The reason this
+           endpoint is worth publishing to the people who would be cut off. */
+        nlohmann::json floors = nlohmann::json::array();
+
+        for (uint32_t candidate = CryptoNote::P2P_MINIMUM_VERSION + 1u;
+             candidate <= CryptoNote::P2P_CURRENT_VERSION;
+             candidate++)
+        {
+            uint64_t cutOff = 0;
+
+            for (const Bucket &bucket : s.versions)
+            {
+                try
+                {
+                    if (static_cast<uint32_t>(std::stoul(bucket.label.substr(1))) < candidate)
+                    {
+                        cutOff += bucket.count;
+                    }
+                }
+                catch (...)
+                {
+                    continue;
+                }
+            }
+
+            floors.push_back({{"to", candidate}, {"cutOff", cutOff}, {"pct", share(cutOff, s.reachable)}});
+        }
+
+        j["raiseFloor"] = floors;
+
+        j["geo"] = {
+            {"countries", s.countries.size()},
+            {"located", s.located},
+            {"unlocated", s.reachable > s.located ? s.reachable - s.located : 0},
+            {"top", topList(s.countries, 10, "cc")},
+            {"othersN", othersOf(s.countries, 10)},
+            {"haveDb", !m_config.geoipDb.empty()}};
+
+        j["network"] = {
+            {"asns", s.networks.size()},
+            {"top3Pct", s.top3NetworkShare},
+            {"top", topList(s.networks, 10, "asn")},
+            {"othersN", othersOf(s.networks, 10)},
+            {"haveDb", !m_config.asnDb.empty()}};
+
+        j["uptime"] = {
+            {"over99", s.uptimeOver99},
+            {"over90", s.uptimeOver90},
+            {"under50", s.uptimeUnder50}};
+
+        uint64_t oldestDays = 0;
+
+        if (s.oldestFirstSeen != 0)
+        {
+            const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+            oldestDays = now > s.oldestFirstSeen ? (now - s.oldestFirstSeen) / 86400 : 0;
+        }
+
+        j["health"] = {
+            {"rttMedianMs", s.rttMedianMs},
+            {"rttP95Ms", s.rttP95Ms},
+            {"clockWithin5s", s.clockWithin5s},
+            {"clockUnder60s", s.clockUnder60s},
+            {"clockOver60s", s.clockOver60s},
+            {"oldestNodeFirstSeen", s.oldestFirstSeen},
+            {"oldestNodeAgeDays", oldestDays}};
+
+        j["churn24h"] = {{"joined", s.joined24h}, {"left", s.left24h}};
+
+        j["software"] = {
+            {"known", s.softwareKnown},
+            {"probeEnabled", m_config.probeRpc},
+            {"pct", share(s.softwareKnown, s.reachable)}};
+
+        replyCached(request, response, s, j.dump());
     }
 
     void HttpApi::handleGeo(const httplib::Request &, httplib::Response &response) const

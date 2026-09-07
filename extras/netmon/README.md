@@ -35,6 +35,7 @@ Everything goes through one helper against `/api`:
 | Endpoint | Used by |
 | --- | --- |
 | `/api/summary` | Overview |
+| `/api/stats` | Nothing here — aggregates for bots and embeds, see NETMON.md |
 | `/api/peers` | Peers table |
 | `/api/peers/<address:port>` | Node detail |
 | `/api/geo` | Geography |

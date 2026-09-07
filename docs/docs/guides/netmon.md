@@ -26,6 +26,7 @@ hash are compiled in, so it bootstraps from the seed nodes on its own.
 - [Location data (DB-IP Lite)](#location-data-db-ip-lite)
 - [Behind nginx](#behind-nginx)
 - [The JSON API](#the-json-api)
+  - [`/api/stats`, for dashboards and bots](#apistats-for-dashboards-and-bots)
 - [Crawler etiquette](#crawler-etiquette)
 - [Data on disk](#data-on-disk)
 - [Troubleshooting](#troubleshooting)
@@ -151,6 +152,7 @@ dashboard and its JSON API on one port, so **nginx is optional**.
 | `--asn-db <file>` | *(none)* | DB-IP Lite ASN CSV |
 | `--data-dir` | `netmon-data` | Node table and history |
 | `--history-days` | `30` | Days of per-node daily reachability to keep |
+| `--backup-days` | `7` | Daily copies of the node table to keep. 0 disables |
 | `--enable-cors <origin>` | *(none)* | `Access-Control-Allow-Origin`. Quote it: `--enable-cors '*'` |
 | `--trusted-proxy <ip>` | *(none)* | Believe this proxy's `X-Real-IP` when logging. Repeatable |
 | `--log-level` | `info` | trace, debug, info, warning, fatal, disabled |
@@ -499,12 +501,88 @@ shadow a same-named route.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/summary` | Everything the overview needs: counts, height buckets, top hashes, versions, capability mix, clock skew, churn, sweep history |
+| `GET /api/stats` | **Aggregates only.** The one meant for publishing — see below |
+| `GET /api/summary` | Everything the overview needs: counts, height buckets, top hashes, versions, capability mix, clock skew, churn, sweep series (`?points=`, default 288) |
 | `GET /api/peers` | The node table. `?filter=all\|reachable\|grey\|full\|pruned\|lite\|ipv6\|behind`, `?q=`, `?offset=`, `?limit=` (max 1000) |
 | `GET /api/peers/<address:port>` | One node, including its daily history |
 | `GET /api/geo` | Country and ASN aggregates, and whether a database is loaded |
 | `GET /api/versions` | Version histogram, software builds, and what raising the floor would cost |
 | `GET /api/health` | Liveness. Also at `/health` |
+
+### Caching
+
+Every JSON answer carries an `ETag` and a `Cache-Control` whose `max-age` is
+whatever is left of the current sweep. The numbers only change once per sweep,
+so a poller that sends `If-None-Match` gets a 304 with an empty body, and a CDN
+in front serves the rest from its edge without touching this process at all.
+
+That is what makes it safe to point a chat bot or an embedded widget straight
+at a public instance: the second and subsequent polls within a sweep cost
+nothing. Without a `Cache-Control` a CDN has nothing to key on and will pass
+every request through — check for `cf-cache-status: HIT` (or your CDN's
+equivalent) once it has warmed up.
+
+### `/api/stats`, for dashboards and bots
+
+Aggregates and nothing else, about 1.5 KB. Per-node fields are deliberately
+absent: this is the route to publish, embed in a page or poll from a chat bot,
+so it has to stay safe to expose whatever the proxy in front is doing. Adding a
+per-node field here would defeat the point.
+
+```bash
+curl -s https://netmon.example.com/api/stats
+```
+
+```jsonc
+{
+  "schema": 1,                       // bumped when a field changes meaning
+  "generatedAt": 1788797553,
+  "sweep":    { "number": 1, "finishedAt": ..., "probed": 2, "intervalSeconds": 600 },
+  "nodes":    { "known": 12, "reachable": 2, "grey": 10, "reachablePct": 16.7 },
+  "chain":    { "height": 4211401, "atTip": 2, "atTipPct": 100.0,
+                "distinctTips": 1, "agreed": true, "buckets": [...] },
+  "capability": { "full": 2,
+                  "pruned": { "count": 0, "medianDepth": 0, "pct": 0.0 },
+                  "lite":   { "count": 0, "medianFloor": 0, "pct": 0.0 } },
+  "transport":  { "ipv4": 2, "ipv6": 0, "ipv6Pct": 0.0 },
+  "versions":   [ { "v": 19, "n": 2, "pct": 100.0 } ],
+  "protocol":   { "current": 19, "floor": 16 },
+  "raiseFloor": [ { "to": 17, "cutOff": 0, "pct": 0.0 } ],
+  "geo":        { "countries": 2, "located": 7, "unlocated": 0,
+                  "top": [ { "cc": "DE", "n": 6 } ], "othersN": 0, "haveDb": true },
+  "network":    { "asns": 4, "top3Pct": 70.0,
+                  "top": [ { "asn": "AS24940 Hetzner Online GmbH", "n": 2 } ],
+                  "othersN": 0, "haveDb": true },
+  "uptime":     { "over99": 2, "over90": 2, "under50": 0 },
+  "health":     { "rttMedianMs": 526, "rttP95Ms": 526, "clockOver60s": 0,
+                  "oldestNodeFirstSeen": ..., "oldestNodeAgeDays": 0 },
+  "churn24h":   { "joined": 2, "left": 0 },
+  "software":   { "known": 0, "probeEnabled": false, "pct": 0.0 }
+}
+```
+
+Notes for anything consuming it:
+
+- **`schema` is the contract.** Key off it rather than sniffing for fields; it
+  is bumped when a field changes meaning or goes away.
+- **Timestamps are unix seconds, on purpose.** Discord renders
+  `<t:1788797553:R>` as live relative time that updates itself, so converting
+  to a string in the API would take that away.
+- **`agreed` is `distinctTips == 1`, not `<= 1`.** Zero tips means nothing has
+  handshaked yet, which is not agreement.
+- **`top` lists are capped at ten with `othersN` beside them**, so a consumer
+  can render "and 32 others" without fetching the whole distribution. Discord
+  embeds allow 25 fields, 1024 characters per field value and 6000 overall, so
+  the caps are there to keep a country list inside one field.
+- **`pct` values are pre-rounded to one decimal**, so a bot does not have to
+  decide how to round them.
+- **`medianDepth` and `medianFloor` are 0 when there are no nodes of that
+  kind**, not null.
+- `haveDb` says whether a location database was loaded at all, which is the
+  difference between "no nodes located" and "we cannot locate anything".
+
+`/api/summary`, `/api/geo` and `/api/versions` are the dashboard's own richer
+feeds and stay as they are.
 
 Every peer object separates the two kinds of fact:
 
@@ -576,16 +654,58 @@ validates against.
 
 ## Data on disk
 
-`--data-dir` holds one file:
+`--data-dir` holds the node table and its daily backups:
 
 ```
-netmon-data/nodes.ndjson
+netmon-data/nodes.ndjson              <- the live table
+netmon-data/nodes-2026-09-07.ndjson   <- one copy per day, newest --backup-days kept
 ```
 
 Newline-delimited JSON: a header line with the sweep counters and the reachable
 series, then one line per address. Written to a temporary file and renamed over
 the target, so a crash mid-write leaves the previous table intact rather than a
 truncated one.
+
+### Restarting keeps the crawl
+
+Point a restart at the same `--data-dir` and it picks up where it left off —
+every known address, every node's history, and the sweep counter:
+
+```
+Resuming from 124 known addresses (10 reachable at the last sweep)
+```
+
+That matters more than it sounds. A fresh start knows only the seeds, so the
+first sweep probes two addresses instead of a hundred, and the uptime figures
+begin again from zero.
+
+### Backups and recovery
+
+One copy of the table is taken per day, after a save that worked, so a backup is
+never a copy of something that failed to write. The newest `--backup-days` (7)
+are kept and older ones are removed; `--backup-days 0` turns it off.
+
+If the live table will not parse, the monitor **refuses to start** rather than
+silently beginning again from the seeds — losing a month of history to a bad
+byte is worse than stopping. It names the file to rename:
+
+```
+Could not load the node table: line 1 of netmon-data/nodes.ndjson is not JSON
+
+Backups available in netmon-data, newest first:
+  nodes-2026-09-07.ndjson
+  nodes-2026-09-06.ndjson
+
+To recover, put the newest one back and restart:
+  mv netmon-data/nodes-2026-09-07.ndjson netmon-data/nodes.ndjson
+
+Or move nodes.ndjson aside to start a fresh crawl instead.
+```
+
+So recovery is one `mv` and a restart, and costs at most a day of history. The
+crawl itself is self-healing either way: the seeds rebuild the address set
+within a sweep or two, and only the accumulated uptime and first-seen dates are
+actually lost.
 
 It is meant to be greppable:
 
@@ -662,6 +782,25 @@ says so explicitly rather than drawing an empty map.
 Checked at startup on purpose. `set_mount_point` merely returns false for a bad
 path, and a dashboard that 404s every asset with nothing in the log to explain
 it is a bad afternoon.
+
+### It will not start: "Could not load the node table"
+
+By design — see [Backups and recovery](#backups-and-recovery). The message
+lists the backups and gives you the `mv` to run. If there are none, move
+`nodes.ndjson` aside and let the seeds rebuild.
+
+### A Discord bot or widget is hammering the monitor
+
+Check that the CDN is actually caching. Every JSON answer carries an `ETag` and
+a `Cache-Control`; if your CDN reports a miss or "dynamic" on every request,
+it is passing them all through and the cache headers are not reaching it:
+
+```bash
+curl -sI https://netmon.example.com/api/stats | grep -iE 'etag|cache'
+```
+
+A bot of your own should send `If-None-Match` with the last `ETag` it saw and
+treat a 304 as "nothing changed", which also tells it not to re-post.
 
 ### It stopped finding new nodes
 

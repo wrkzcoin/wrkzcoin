@@ -89,6 +89,11 @@ struct NetMonConfig
     /* Days of per-node daily reachability to keep. */
     uint32_t historyDays = 30;
 
+    /* Daily copies of the node table to keep beside it, so a table that will
+       not parse can be recovered by renaming yesterday's over it rather than
+       re-crawling from the seeds. 0 disables them. */
+    uint32_t backupDays = 7;
+
     /* DB-IP Lite CSVs. Both optional; without them the map is empty and every
        other view still works. See NETMON.md for how to fetch them. */
     std::string geoipDb;

@@ -157,6 +157,43 @@ namespace NetMon
 
         uint64_t left24h = 0;
 
+        /* Reachable nodes exactly at networkHeight. heightBuckets carries the
+           same figure, but a consumer building a one-line summary should not
+           have to know which bucket index means "at the tip". */
+        uint64_t atTip = 0;
+
+        /* Distinct top block hashes across reachable nodes. One is agreement;
+           more than one means somebody is on a different chain, which is the
+           single most important thing this tool can say. */
+        uint64_t distinctTips = 0;
+
+        /* Median of what the pruned and lite nodes report about themselves, or
+           0 when there are none of that kind. A count alone does not answer
+           "how much of the chain does the network actually still hold". */
+        uint64_t prunedMedianDepth = 0;
+
+        uint64_t liteMedianFloor = 0;
+
+        /* Reachable nodes by how much of their offered sweeps they answered,
+           over the whole retained history. */
+        uint64_t uptimeOver99 = 0;
+
+        uint64_t uptimeOver90 = 0;
+
+        uint64_t uptimeUnder50 = 0;
+
+        /* Reachable nodes the location database could place. */
+        uint64_t located = 0;
+
+        /* Share of reachable nodes held by the three largest autonomous
+           systems, as a percentage. The decentralisation number worth
+           publishing; the dashboard used to compute it in JavaScript. */
+        double top3NetworkShare = 0.0;
+
+        /* Earliest firstSeen across reachable nodes, so a consumer can say how
+           long the longest-serving node has been up. 0 when nothing is known. */
+        uint64_t oldestFirstSeen = 0;
+
         /* Heights relative to networkHeight. */
         std::vector<Bucket> heightBuckets;
 
@@ -235,6 +272,20 @@ namespace NetMon
         bool save(const std::string &dataDir, std::string &error) const;
 
         bool load(const std::string &dataDir, std::string &error);
+
+        /* Keeps one copy of the node table per day beside it, named
+           nodes-YYYY-MM-DD.ndjson, and prunes to the newest keepDays. Called
+           after a successful save; does nothing when keepDays is 0, and does
+           nothing more than once a day.
+
+           The point is recovery by rename: if nodes.ndjson will not parse,
+           moving a backup over it brings the crawl back with at most a day
+           lost, instead of starting again from the seeds. */
+        static bool rotateBackups(const std::string &dataDir, uint32_t keepDays, std::string &error);
+
+        /* Backup filenames present, newest first. Used to make the "table will
+           not load" message name the file to rename. */
+        static std::vector<std::string> listBackups(const std::string &dataDir);
 
       private:
         /* Caller holds m_mutex. */

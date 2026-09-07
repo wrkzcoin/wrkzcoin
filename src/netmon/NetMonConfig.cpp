@@ -138,6 +138,11 @@ NetMonConfig parseNetMonArguments(int argc, char **argv)
          cxxopts::value<uint32_t>(config.historyDays)->default_value(std::to_string(config.historyDays)),
          "#")
 
+        ("backup-days",
+         "Daily copies of the node table to keep beside it. 0 disables backups",
+         cxxopts::value<uint32_t>(config.backupDays)->default_value(std::to_string(config.backupDays)),
+         "#")
+
         ("geoip-db",
          "DB-IP Lite country CSV. Without it, locations are unknown",
          cxxopts::value<std::string>(config.geoipDb)->default_value(""),
@@ -231,6 +236,12 @@ NetMonConfig parseNetMonArguments(int argc, char **argv)
     if (config.historyDays == 0 || config.historyDays > 365)
     {
         std::cout << "--history-days must be between 1 and 365" << std::endl;
+        exit(1);
+    }
+
+    if (config.backupDays > 365)
+    {
+        std::cout << "--backup-days must be 365 or fewer (0 disables backups)" << std::endl;
         exit(1);
     }
 

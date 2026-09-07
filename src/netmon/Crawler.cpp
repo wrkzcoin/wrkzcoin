@@ -478,6 +478,14 @@ namespace NetMon
         if (!m_store.save(m_config.dataDir, error))
         {
             logLine("Could not save the node table: " + error, Logger::WARNING);
+            return;
+        }
+
+        /* Only ever after a save that worked, so a backup is always a copy of
+           a table that parsed. */
+        if (!NodeStore::rotateBackups(m_config.dataDir, m_config.backupDays, error))
+        {
+            logLine("Could not rotate the node table backups: " + error, Logger::WARNING);
         }
     }
 } // namespace NetMon

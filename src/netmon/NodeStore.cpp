@@ -11,8 +11,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -374,6 +376,8 @@ namespace NetMon
         summary.lastSweepDurationMs = m_lastSweepDurationMs;
 
         std::vector<uint64_t> rtts;
+        std::vector<uint64_t> pruneDepths;
+        std::vector<uint64_t> liteFloors;
         std::map<std::string, uint64_t> hashCounts;
         std::map<uint32_t, uint64_t> versionCounts;
         std::map<std::string, uint64_t> countryCounts;
@@ -402,14 +406,59 @@ namespace NetMon
             if (record.isLite())
             {
                 summary.lite++;
+
+                if (record.liteStartHeight != 0)
+                {
+                    liteFloors.push_back(record.liteStartHeight);
+                }
             }
             else if (record.isPruned())
             {
                 summary.pruned++;
+
+                /* A pruned node reports the height it keeps blocks from, so
+                   the depth it actually holds is measured back from the tip.
+                   Deferred to the second pass, which is where networkHeight
+                   is finally known. */
+                pruneDepths.push_back(record.prunedHeight);
             }
             else
             {
                 summary.full++;
+            }
+
+            /* Uptime over the whole retained history rather than the last
+               sweep, so one missed probe does not move a node between
+               buckets. */
+            if (record.sweepsOffered != 0)
+            {
+                const double answered =
+                    static_cast<double>(record.sweepsAnswered) / static_cast<double>(record.sweepsOffered);
+
+                if (answered >= 0.99)
+                {
+                    summary.uptimeOver99++;
+                }
+
+                if (answered >= 0.90)
+                {
+                    summary.uptimeOver90++;
+                }
+                else if (answered < 0.50)
+                {
+                    summary.uptimeUnder50++;
+                }
+            }
+
+            if (record.firstSeen != 0
+                && (summary.oldestFirstSeen == 0 || record.firstSeen < summary.oldestFirstSeen))
+            {
+                summary.oldestFirstSeen = record.firstSeen;
+            }
+
+            if (!record.country.empty())
+            {
+                summary.located++;
             }
 
             if (!record.softwareVersion.empty())
@@ -508,6 +557,31 @@ namespace NetMon
             }
         }
 
+        summary.atTip = atTip;
+
+        /* Depth below the tip, from the height each pruned node said it keeps
+           from. Clamped at zero: a node can report a prune height above the
+           tallest chain we have seen, and a negative depth is meaningless. */
+        if (!pruneDepths.empty())
+        {
+            std::vector<uint64_t> depths;
+            depths.reserve(pruneDepths.size());
+
+            for (const uint64_t from : pruneDepths)
+            {
+                depths.push_back(summary.networkHeight > from ? summary.networkHeight - from : 0);
+            }
+
+            std::sort(depths.begin(), depths.end());
+            summary.prunedMedianDepth = depths[depths.size() / 2];
+        }
+
+        if (!liteFloors.empty())
+        {
+            std::sort(liteFloors.begin(), liteFloors.end());
+            summary.liteMedianFloor = liteFloors[liteFloors.size() / 2];
+        }
+
         summary.heightBuckets = {
             {"at the tip", atTip},
             {"1-2 behind", behind1to2},
@@ -523,6 +597,8 @@ namespace NetMon
         }
 
         sortBucketsDescending(summary.topHashes);
+
+        summary.distinctTips = summary.topHashes.size();
 
         for (const auto &entry : versionCounts)
         {
@@ -542,6 +618,19 @@ namespace NetMon
         }
 
         sortBucketsDescending(summary.networks);
+
+        if (summary.reachable != 0)
+        {
+            uint64_t top3 = 0;
+
+            for (size_t i = 0; i < summary.networks.size() && i < 3; i++)
+            {
+                top3 += summary.networks[i].count;
+            }
+
+            summary.top3NetworkShare =
+                static_cast<double>(top3) * 100.0 / static_cast<double>(summary.reachable);
+        }
 
         if (!rtts.empty())
         {
@@ -686,6 +775,112 @@ namespace NetMon
         {
             error = "could not replace " + target.string() + ": " + ec.message();
             return false;
+        }
+
+        return true;
+    }
+
+    std::vector<std::string> NodeStore::listBackups(const std::string &dataDir)
+    {
+        std::vector<std::string> found;
+
+        std::error_code ec;
+
+        if (!fs::is_directory(dataDir, ec))
+        {
+            return found;
+        }
+
+        for (const auto &entry : fs::directory_iterator(dataDir, ec))
+        {
+            if (ec)
+            {
+                break;
+            }
+
+            const std::string name = entry.path().filename().string();
+
+            /* nodes-YYYY-MM-DD.ndjson */
+            if (name.rfind("nodes-", 0) == 0 && name.size() == 23
+                && name.compare(name.size() - 7, 7, ".ndjson") == 0)
+            {
+                found.push_back(name);
+            }
+        }
+
+        /* The date is fixed width, so lexicographic order is chronological. */
+        std::sort(found.begin(), found.end(), std::greater<std::string>());
+
+        return found;
+    }
+
+    bool NodeStore::rotateBackups(const std::string &dataDir, const uint32_t keepDays, std::string &error)
+    {
+        if (keepDays == 0)
+        {
+            return true;
+        }
+
+        const fs::path source = fs::path(dataDir) / "nodes.ndjson";
+
+        std::error_code ec;
+
+        if (!fs::exists(source, ec))
+        {
+            return true;
+        }
+
+        const std::time_t now = std::time(nullptr);
+
+        std::tm utc {};
+
+#ifdef _WIN32
+        gmtime_s(&utc, &now);
+#else
+        gmtime_r(&now, &utc);
+#endif
+
+        char stamp[16] = {0};
+
+        if (std::strftime(stamp, sizeof(stamp), "%Y-%m-%d", &utc) == 0)
+        {
+            error = "could not format today's date";
+            return false;
+        }
+
+        const std::string name = std::string("nodes-") + stamp + ".ndjson";
+        const fs::path target = fs::path(dataDir) / name;
+
+        /* One a day. A monitor sweeping every ten minutes would otherwise copy
+           the whole table 144 times over. */
+        if (!fs::exists(target, ec))
+        {
+            const fs::path staged = fs::path(dataDir) / (name + ".tmp");
+
+            fs::copy_file(source, staged, fs::copy_options::overwrite_existing, ec);
+
+            if (ec)
+            {
+                error = "could not copy the node table to " + staged.string() + ": " + ec.message();
+                return false;
+            }
+
+            fs::rename(staged, target, ec);
+
+            if (ec)
+            {
+                fs::remove(staged, ec);
+                error = "could not place " + target.string() + ": " + ec.message();
+                return false;
+            }
+        }
+
+        /* Prune oldest first, and only ever files this function names. */
+        const std::vector<std::string> backups = listBackups(dataDir);
+
+        for (size_t i = keepDays; i < backups.size(); i++)
+        {
+            fs::remove(fs::path(dataDir) / backups[i], ec);
         }
 
         return true;

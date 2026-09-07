@@ -103,10 +103,34 @@ int main(int argc, char **argv)
         if (!store.load(config.dataDir, error))
         {
             /* A table that will not parse is not worth starting over silently:
-               the operator loses every day of history it held. */
-            std::cout << "Could not load the node table: " << error << std::endl;
-            std::cout << "Move or delete " << config.dataDir << "/nodes.ndjson to start a fresh crawl."
-                      << std::endl;
+               the operator loses every day of history it held. Recovery is a
+               rename, so name the file to rename. */
+            std::cout << "Could not load the node table: " << error << "\n" << std::endl;
+
+            const std::vector<std::string> backups = NetMon::NodeStore::listBackups(config.dataDir);
+
+            if (backups.empty())
+            {
+                std::cout << "There are no backups in " << config.dataDir
+                          << ". Move or delete nodes.ndjson to start a fresh crawl;\n"
+                             "the seeds will rebuild the address set within a sweep or two."
+                          << std::endl;
+            }
+            else
+            {
+                std::cout << "Backups available in " << config.dataDir << ", newest first:" << std::endl;
+
+                for (const std::string &backup : backups)
+                {
+                    std::cout << "  " << backup << std::endl;
+                }
+
+                std::cout << "\nTo recover, put the newest one back and restart:\n"
+                          << "  mv " << config.dataDir << "/" << backups.front() << " "
+                          << config.dataDir << "/nodes.ndjson\n\n"
+                          << "Or move nodes.ndjson aside to start a fresh crawl instead." << std::endl;
+            }
+
             return 1;
         }
     }
@@ -144,10 +168,15 @@ int main(int argc, char **argv)
     std::cout << "\n  dashboard:  "
               << (config.webRoot.empty() ? std::string("not served (no --web-root); JSON API only")
                                          : config.webRoot)
-              << "\n  api:        /api/summary  /api/peers  /api/peers/<addr:port>  /api/geo  /api/versions"
+              << "\n  api:        /api/stats (aggregates, safe to publish)"
+              << "\n              /api/summary  /api/peers  /api/peers/<addr:port>  /api/geo  /api/versions"
               << "\n  sweep:      every " << config.sweepIntervalSeconds << " s, " << config.concurrency
               << " probes in flight, " << config.probeTimeoutMs << " ms each"
-              << "\n  data:       " << config.dataDir << " (" << config.historyDays << " days of history)"
+              << "\n  data:       " << config.dataDir << " (" << config.historyDays
+              << " days of history, "
+              << (config.backupDays == 0 ? std::string("no backups")
+                                         : std::to_string(config.backupDays) + " daily backups")
+              << ")"
               << "\n  location:   "
               << (config.geoipDb.empty() && config.asnDb.empty() ? std::string("no database loaded")
                                                                  : std::string("loaded"))
@@ -178,6 +207,10 @@ int main(int argc, char **argv)
         if (!store.save(config.dataDir, error))
         {
             std::cout << "Could not save the node table: " << error << std::endl;
+        }
+        else if (!NetMon::NodeStore::rotateBackups(config.dataDir, config.backupDays, error))
+        {
+            std::cout << "Could not rotate the node table backups: " << error << std::endl;
         }
     }
 

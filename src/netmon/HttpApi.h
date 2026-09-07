@@ -52,6 +52,22 @@ namespace NetMon
 
         void reply(httplib::Response &response, int status, const std::string &body) const;
 
+        /* Same as reply(), plus an ETag and a Cache-Control whose lifetime is
+           whatever is left of the current sweep, and a 304 when the caller
+           already has that version.
+
+           The numbers only change once per sweep - ten minutes by default -
+           so without this a dashboard tab or a Discord bot re-downloads an
+           identical body every poll, and a CDN in front cannot help because
+           it has nothing to key on. */
+        void replyCached(
+            const httplib::Request &request,
+            httplib::Response &response,
+            const Summary &summary,
+            const std::string &body) const;
+
+        void handleStats(const httplib::Request &request, httplib::Response &response) const;
+
         void handleSummary(const httplib::Request &request, httplib::Response &response) const;
 
         void handlePeers(const httplib::Request &request, httplib::Response &response) const;
