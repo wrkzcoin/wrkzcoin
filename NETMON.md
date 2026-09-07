@@ -200,6 +200,36 @@ unlike MaxMind's GeoLite2 (free but account-gated and not redistributable).
 
 ### Fetching them
 
+There is a script for this:
+
+```bash
+bash scripts/netmon/refresh-geoip.sh --dir /opt/wrkz
+```
+
+It installs two files under `--dir` with stable names, so the service
+configuration never has to name a month:
+
+```
+/opt/wrkz/dbip-country-lite.csv
+/opt/wrkz/dbip-asn-lite.csv
+```
+
+Measured against the 2026-09 release: 717,170 country ranges and 473,272 ASN
+ranges, about 60 MB of CSV on disk. `--dry-run` prints the URLs it would use,
+`--month 2026-08` pins a release, and `--restart wrkz-netmon` restarts the
+service but only when a file actually changed.
+
+It handles three things a bare `curl` does not. DB-IP does not publish the new
+month at the stroke of midnight on the 1st, so it falls back to the previous
+month rather than failing. A truncated download or an error page would
+otherwise replace a good database with rubbish, so nothing is installed until
+the archive passes `gzip -t`, the first data line looks like a range, and there
+are more than a thousand rows. And the install is a rename over the target, so
+a monitor starting up mid-refresh reads either the old file or the new one,
+never half of either.
+
+### Fetching them by hand
+
 The URLs carry the release month, so substitute the current one:
 
 ```bash
@@ -256,14 +286,20 @@ then the country code or the AS number and name.
 
 ### Keeping them current
 
-DB-IP publishes monthly. A cron entry that refetches and restarts is enough:
+DB-IP publishes monthly. One cron entry is enough:
 
 ```cron
-17 4 3 * * /opt/wrkz/refresh-geoip.sh && systemctl restart wrkz-netmon
+# 03:17 on the 3rd - late enough that the new release is up, and the script
+# falls back to last month's if it is not.
+17 3 3 * * /opt/wrkz/scripts/netmon/refresh-geoip.sh --dir /opt/wrkz --restart wrkz-netmon
 ```
 
-Stale data degrades quietly: nodes on newly allocated ranges simply show as
-unlocated.
+`--restart` only fires when a file changed, so a month DB-IP skips costs
+nothing and leaves the service alone.
+
+Both files are read **once, at startup**, so a refresh has no effect until the
+monitor restarts. Nothing breaks in the meantime: stale data degrades quietly,
+and nodes on newly allocated ranges simply show as unlocated.
 
 ### Attribution
 
