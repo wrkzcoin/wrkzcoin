@@ -44,6 +44,11 @@ file(GLOB_RECURSE Logging CONFIGURE_DEPENDS logging/*)
 file(GLOB_RECURSE Logger CONFIGURE_DEPENDS logger/*)
 file(GLOB_RECURSE miner CONFIGURE_DEPENDS miner/*)
 file(GLOB_RECURSE TxPowServer CONFIGURE_DEPENDS txpowserver/*)
+# The network monitor is a standalone crawler: it speaks the P2P handshake and
+# serves a dashboard, but it holds no chain. LevinProtocol.cpp is listed with
+# it rather than linking the whole P2P library, which would drag in miniupnpc
+# and CryptoNoteCore for the sake of one file.
+file(GLOB_RECURSE NetMon CONFIGURE_DEPENDS netmon/*)
 file(GLOB_RECURSE Mnemonics CONFIGURE_DEPENDS mnemonics/*)
 file(GLOB_RECURSE Nigel CONFIGURE_DEPENDS nigel/*)
 file(GLOB_RECURSE NodeRpcProxy CONFIGURE_DEPENDS noderpcproxy/*)
@@ -81,7 +86,7 @@ else ()
 endif ()
 
 # Group the files together in IDEs
-source_group("" FILES ${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${TxPowServer} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
+source_group("" FILES ${Common} ${Config} ${Crypto} ${CryptoNoteCore} ${CryptoNoteProtocol} ${Wrkzd} ${JsonRpcServer} ${Http} ${Logging} ${Logger} ${miner} ${TxPowServer} ${NetMon} ${Mnemonics} ${Nigel} ${NodeRpcProxy} ${P2p} ${Rpc} ${Serialization} ${System} ${Transfers} ${Wallet} ${WalletApi} ${WalletBackend} ${WalletService} ${zedwallet++} ${CryptoTest} ${Errors} ${Utilities} ${WalletUpgrader} ${SubWallets})
 
 # Define a group of files as a library to link against
 add_library(Common STATIC ${Common})
@@ -195,6 +200,9 @@ if (WIN32)
     set(TXPOW_SERVER_SOURCES_OS
             binaryinfo/txpowserver.rc
             )
+    set(NETMON_SOURCES_OS
+            binaryinfo/netmon.rc
+            )
     set(PG_SOURCES_OS
             binaryinfo/service.rc
             )
@@ -213,6 +221,10 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_executable(cryptotest ${CryptoTest} ${CT_SOURCES_OS})
     add_executable(miner ${miner} ${MINER_SOURCES_OS})
     add_executable(TxPowServer ${TxPowServer} ${TXPOW_SERVER_SOURCES_OS})
+    # Target name NetMon, output name wrkz-netmon. It may NOT be called
+    # wrkz-netmon - see the note above the convenience targets at the bottom
+    # of this file.
+    add_executable(NetMon ${NetMon} p2p/LevinProtocol.cpp ${NETMON_SOURCES_OS})
     add_executable(WalletService ${WalletService} ${PG_SOURCES_OS})
     add_executable(Wrkzd ${Wrkzd} ${DAEMON_SOURCES_OS})
     add_executable(WalletApi ${WalletApi} ${WALLET_API_SOURCES_OS})
@@ -263,7 +275,7 @@ if (WRKZ_ENABLE_PCH)
         wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
     endforeach ()
     if (WRKZ_BUILD_EXECUTABLES)
-        foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner TxPowServer)
+        foreach(_t IN ITEMS Wrkzd WalletService WalletApi zedwallet++ miner TxPowServer NetMon)
             wrkz_pch(${_t} ${WRKZ_PCH_STD} json.hpp)
         endforeach ()
     endif ()
@@ -285,6 +297,7 @@ if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(WalletApi ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(miner ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(TxPowServer ws2_32 advapi32 crypt32 gdi32 user32)
+    target_link_libraries(NetMon ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(WalletUpgrader ws2_32 advapi32 crypt32 gdi32 user32)
 endif ()
 
@@ -376,6 +389,11 @@ if (WRKZ_BUILD_EXECUTABLES)
     # The PoW server only parses prefixes, hashes them and serves HTTP: no
     # chain, no wallet, no P2P.
     target_link_libraries(TxPowServer Crypto Common Logger Serialization)
+    # No RocksDB, no CryptoNoteCore, no P2P: the crawler parses the handshake
+    # and nothing else. System supplies the dispatcher, the connector and the
+    # address types; Config supplies the network id, the seeds and the
+    # height-0 checkpoint it uses as the genesis hash.
+    target_link_libraries(NetMon System Serialization Crypto Common Logger Config __filesystem)
     target_link_libraries(WalletApi WalletBackend)
     target_link_libraries(WalletService JsonRpcServer Wallet Mnemonics Errors)
     target_link_libraries(WalletUpgrader Utilities WalletBackend Common)
@@ -484,6 +502,7 @@ if (OPENSSL_FOUND)
     if (WRKZ_BUILD_EXECUTABLES)
         target_link_libraries(miner ${OPENSSL_LIBRARIES})
         target_link_libraries(TxPowServer ${OPENSSL_LIBRARIES})
+        target_link_libraries(NetMon ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletApi ${OPENSSL_LIBRARIES})
         target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
@@ -498,6 +517,7 @@ if (ZLIB_FOUND)
     if (WRKZ_BUILD_EXECUTABLES)
         target_link_libraries(miner ${ZLIB_LIBRARIES})
         target_link_libraries(TxPowServer ${ZLIB_LIBRARIES})
+        target_link_libraries(NetMon ${ZLIB_LIBRARIES})
         target_link_libraries(WalletApi ${ZLIB_LIBRARIES})
         target_link_libraries(zedwallet++ ${ZLIB_LIBRARIES})
         target_link_libraries(WalletService ${ZLIB_LIBRARIES})
@@ -540,6 +560,7 @@ if (ANDROID AND WRKZ_ANDROID_UCONTEXT_LIB)
         target_link_libraries(cryptotest "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(miner "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(TxPowServer "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(NetMon "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletApi "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletService "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(WalletUpgrader "${WRKZ_ANDROID_UCONTEXT_LIB}")
@@ -558,6 +579,7 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_dependencies(cryptotest version)
     add_dependencies(miner version)
     add_dependencies(TxPowServer version)
+    add_dependencies(NetMon version)
     add_dependencies(Wrkzd version)
     add_dependencies(WalletUpgrader version)
     add_dependencies(WalletApi version)
@@ -579,6 +601,7 @@ if (WRKZ_BUILD_EXECUTABLES)
     set_property(TARGET WalletService PROPERTY OUTPUT_NAME "wrkz-service")
     set_property(TARGET miner PROPERTY OUTPUT_NAME "miner")
     set_property(TARGET TxPowServer PROPERTY OUTPUT_NAME "wrkz-txpow-server")
+    set_property(TARGET NetMon PROPERTY OUTPUT_NAME "wrkz-netmon")
     set_property(TARGET cryptotest PROPERTY OUTPUT_NAME "cryptotest")
     set_property(TARGET WalletApi PROPERTY OUTPUT_NAME "wrkz-wallet-api")
     set_property(TARGET WalletUpgrader PROPERTY OUTPUT_NAME "wallet-upgrader")
