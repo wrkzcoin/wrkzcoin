@@ -2943,7 +2943,11 @@ namespace CryptoNote
             logger(WARNING) << "connectionHandler() throws unknown exception";
         }
 
-        ctx.context = nullptr;
+        /* Nothing may touch ctx here. The inner context erased it from
+           m_connections - and so destroyed it - before get() returned, and it
+           already cleared ctx.context under the mutex on its way out. Writing
+           the pointer again wrote into freed heap on every closed connection,
+           which glibc reports much later as "corrupted double-linked list". */
     }
 
     void NodeServer::writeHandler(P2pConnectionContext &ctx)

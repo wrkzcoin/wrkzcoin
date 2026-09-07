@@ -306,6 +306,11 @@ std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed(bool rew
     options.change_level = true;
     options.target_level = -1;
 
+    /* RocksDB polls this while the compaction runs, so cancelCompaction() can
+       cut a long one short at shutdown. It points at a member, which outlives
+       the call. */
+    options.canceled = &compactionCanceled;
+
     /* CompactRange leaves the bottommost level alone unless there is a compaction
      * filter, and there is none here. After an earlier full compaction that level
      * holds essentially the whole database, so an ordinary compaction rewrites
@@ -323,12 +328,29 @@ std::pair<std::error_code, std::string> RocksDBWrapper::compactDetailed(bool rew
     if (!status.ok())
     {
         const std::string details = status.ToString();
-        logger(ERROR) << "RocksDB compaction failed: " << details;
+
+        /* Asked to stop, so this is the expected answer and not a fault. Still
+           an error to the caller, which is what keeps the unfinished marker in
+           place for the next start to pick up. */
+        if (status.IsIncomplete() || compactionCanceled.load())
+        {
+            logger(INFO) << "RocksDB compaction stopped early on request; it will resume on the next start.";
+        }
+        else
+        {
+            logger(ERROR) << "RocksDB compaction failed: " << details;
+        }
+
         return {make_error_code(CryptoNote::error::DataBaseErrorCodes::INTERNAL_ERROR), details};
     }
 
     logger(INFO) << "RocksDB full compaction completed.";
     return {std::error_code(), std::string()};
+}
+
+void RocksDBWrapper::cancelCompaction(bool cancel)
+{
+    compactionCanceled.store(cancel);
 }
 
 std::error_code RocksDBWrapper::iterate(

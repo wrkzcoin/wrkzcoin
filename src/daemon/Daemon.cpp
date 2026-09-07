@@ -406,6 +406,17 @@ int main(int argc, char *argv[])
         return Daemon::runAttachConsole(config.attach);
     }
 
+    /* From here on this process is going to be a node, and every thread it
+       starts must inherit a mask that blocks SIGINT and SIGTERM, so that the
+       handler installed further down is the only place they are consumed.
+       Linux delivers a process signal to any thread that has not blocked it,
+       and the default action would end the daemon where it stands - before the
+       graceful shutdown, and before the second-interrupt force exit could ever
+       be offered. This sits below the attach paths on purpose: an attach
+       client installs no handler, so blocking there would leave it unable to
+       react to Ctrl+C at all. */
+    Tools::SignalHandler::blockSignals();
+
     // If the user passed in the --config-file option, we need to handle that first
     if (!config.configFile.empty())
     {
@@ -1170,22 +1181,14 @@ int main(int argc, char *argv[])
             dch.start_handling();
         }
 
-        std::atomic<uint32_t> interruptCount {0};
-        Tools::SignalHandler::install([&dch, &interruptCount] {
-            const uint32_t count = ++interruptCount;
-
-            if (count == 1)
-            {
-                std::cout
-                    << "SIGINT received. Starting graceful shutdown and waiting for safe DB close "
-                       "(flush/WAL sync/background compaction). Press CTRL+C again to force exit."
-                          << std::endl;
-                dch.exit({});
-                return;
-            }
-
-            std::cerr << "Second interrupt received. Forcing immediate exit without waiting for shutdown." << std::endl;
-            std::_Exit(1);
+        /* Only the first interrupt reaches this. SignalHandler answers the
+           second one itself, before the handler runs, so the force exit stays
+           available even when the shutdown below is the thing that is stuck. */
+        Tools::SignalHandler::install([&dch] {
+            std::cout << "SIGINT received. Starting graceful shutdown and waiting for safe DB close "
+                         "(flush/WAL sync/background compaction). Press CTRL+C again to force exit."
+                      << std::endl;
+            dch.exit({});
         });
 
         logger(INFO) << "Starting p2p net loop...";

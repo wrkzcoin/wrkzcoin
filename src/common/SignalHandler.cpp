@@ -7,8 +7,9 @@
 #include "SignalHandler.h"
 
 #include <atomic>
+#include <cstdint>
+#include <cstdlib>
 #include <iostream>
-#include <mutex>
 #include <thread>
 
 #ifdef _WIN32
@@ -31,18 +32,31 @@ namespace
 {
     std::function<void(void)> m_handler;
 
+    std::atomic<uint32_t> interruptCount(0);
+
+    /* The second interrupt is the one a user reaches for when the first has not
+       worked, so it has to be the one that cannot get stuck. It is answered
+       here, before the handler is consulted at all: the previous code took a
+       mutex with try_lock and returned when it could not get it, so every
+       interrupt after the first was discarded precisely while the shutdown it
+       was meant to escape was still running. */
     void handleSignal()
     {
-        static std::mutex m_mutex;
-        std::unique_lock<std::mutex> lock(m_mutex, std::try_to_lock);
-        if (!lock.owns_lock())
+        if (interruptCount.fetch_add(1) > 0)
         {
-            return;
+            std::cerr << "Second interrupt received. Forcing immediate exit without waiting for shutdown."
+                      << std::endl;
+            std::_Exit(1);
         }
 
         if (m_handler)
         {
-            m_handler();
+            /* On its own thread, so whichever thread delivered this signal is
+               free again immediately. A shutdown can take a long time, and can
+               wedge; running it here would keep the POSIX sigwait loop out of
+               sigwait for the whole of it, leaving the next interrupt pending
+               and unread - the force exit above could then never be reached. */
+            std::thread(m_handler).detach();
         }
     }
 
@@ -72,6 +86,20 @@ namespace
 
 namespace Tools
 {
+    bool SignalHandler::blockSignals()
+    {
+#if defined(WIN32)
+        return true;
+#else
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, SIGINT);
+        sigaddset(&set, SIGTERM);
+
+        return pthread_sigmask(SIG_BLOCK, &set, nullptr) == 0;
+#endif
+    }
+
     bool SignalHandler::install(std::function<void(void)> t)
     {
 #if defined(WIN32)

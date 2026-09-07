@@ -211,6 +211,18 @@ namespace Common
 
         while (!m_stop)
         {
+            /* Do not enter the reader until there is something to read. On
+               POSIX this polls stdin and the stop flag together, so a shutdown
+               is noticed within one poll interval. Without it the thread sits
+               in a blocking read that nothing can wake: closing the descriptor
+               from stop() does not interrupt a read already in progress on
+               Linux, so the join in stop() waited for a keypress that a
+               shutting-down node was never going to get. */
+            if (!waitInput())
+            {
+                break;
+            }
+
             std::string line;
             const bool quit = linenoise::Readline("", line);
             if (quit)

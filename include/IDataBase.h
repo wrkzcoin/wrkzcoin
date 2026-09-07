@@ -134,6 +134,14 @@ namespace CryptoNote
            wants free space of about the database's size. */
         virtual std::pair<std::error_code, std::string> compactDetailed(bool rewriteBottommost) = 0;
 
+        /* Asks a compaction already in progress to stop early, and makes any
+           compaction started afterwards stop too until it is cleared. A
+           compaction of a large database runs for many minutes, and shutdown
+           has to wait for it before the database can be closed; without this
+           the node looks hung with no way out but killing it. Cancelling loses
+           nothing, because the work is resumed on the next start. */
+        virtual void cancelCompaction(bool cancel) = 0;
+
         virtual void recreate() = 0;
 
         /* Walks every key that begins with keyPrefix, in key order, calling the

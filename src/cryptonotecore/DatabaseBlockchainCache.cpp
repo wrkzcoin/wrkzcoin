@@ -3392,6 +3392,11 @@ namespace CryptoNote
         return database.compactDetailed(rewriteBottommost);
     }
 
+    void DatabaseBlockchainCache::cancelDatabaseCompaction(bool cancel)
+    {
+        database.cancelCompaction(cancel);
+    }
+
     std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
         DatabaseBlockchainCache::getGlobalIndexes(const std::vector<Crypto::Hash> transactionHashes) const
     {

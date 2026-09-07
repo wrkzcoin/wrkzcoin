@@ -594,6 +594,14 @@ namespace CryptoNote
         uint32_t &fullOffset,
         std::vector<BlockFullInfo> &entries) const
     {
+        /* Serves a wallet sync request on an HTTP thread, and walks the chain
+           segments to do it, while the dispatcher and the mining RPC add blocks
+           and pruning deletes leaves. Everything below it - the segment calls,
+           findBlockchainSupplement, pushBlockHashes, fillQueryBlockFullInfo -
+           takes no lock of its own, so this is the right place for it and there
+           is nothing here to nest with. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -639,6 +647,9 @@ namespace CryptoNote
         uint32_t &fullOffset,
         std::vector<BlockShortInfo> &entries) const
     {
+        /* Same as queryBlocks above: an HTTP thread walking the chain. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -701,6 +712,9 @@ namespace CryptoNote
         std::vector<BlockDetails> &entries,
         uint32_t blockCount) const
     {
+        /* Same as queryBlocks above: an HTTP thread walking the chain. */
+        std::shared_lock lock(m_chainMutex);
+
         assert(entries.empty());
         assert(!chainsLeaves.empty());
         assert(!chainsStorage.empty());
@@ -2008,6 +2022,11 @@ namespace CryptoNote
         std::vector<uint32_t> &globalIndexes,
         std::vector<Crypto::PublicKey> &publicKeys) const
     {
+        /* Decoy selection, served on an HTTP thread. It reads the main chain
+           leaf twice and the top index three times, and a reorg between them
+           would mix two chains into one ring. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         if (count == 0)
@@ -2079,6 +2098,10 @@ namespace CryptoNote
         const uint64_t endHeight,
         std::unordered_map<Crypto::Hash, std::vector<uint64_t>> &indexes) const
     {
+        /* Served on an HTTP thread, and the hashes it collects and the indexes
+           it then looks up have to come from the same chain. */
+        std::shared_lock lock(m_chainMutex);
+
         throwIfNotInitialized();
 
         try
@@ -3849,6 +3872,18 @@ namespace CryptoNote
         }
     }
 
+    /* The maintenance calls below all run on the scheduler thread, or on the
+       async task it spawns, while the dispatcher and the RPC threads are adding
+       blocks. Resolving chainsLeaves[0] is the part that has to be protected:
+       addBlock mutates that vector under the same mutex, and reading it while
+       it is being reallocated is undefined - a background thread quietly
+       corrupting the heap, which surfaces much later and somewhere else.
+
+       The lock is released before the database work begins. These operations
+       run for minutes, and holding even a shared lock across one would block
+       every block that arrives meanwhile. That is safe to do here because the
+       database cache itself outlives them: it is the root segment, and only the
+       segments above it are created and destroyed as chains come and go. */
     size_t Core::pruneRawBlocks(uint32_t pruneDepth)
     {
         if (pruneDepth == 0)
@@ -3856,8 +3891,12 @@ namespace CryptoNote
             return 0;
         }
 
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3869,8 +3908,12 @@ namespace CryptoNote
 
     std::map<std::string, StorageStats> Core::measureStorage() const
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3885,8 +3928,12 @@ namespace CryptoNote
         const std::function<void(const std::string &key, const std::string &value)> &sink,
         const std::function<bool(const std::string &table, uint64_t scanned, uint64_t kept)> &progress) const
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3903,8 +3950,12 @@ namespace CryptoNote
 
     std::pair<std::error_code, std::string> Core::compactDatabaseDetailed(bool rewriteBottommost)
     {
-        IBlockchainCache *mainChain = chainsLeaves[0];
-        auto dbCache = dynamic_cast<DatabaseBlockchainCache *>(mainChain);
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
 
         if (dbCache == nullptr)
         {
@@ -3912,6 +3963,23 @@ namespace CryptoNote
         }
 
         return dbCache->compactDatabaseDetailed(rewriteBottommost);
+    }
+
+    void Core::cancelDatabaseCompaction(bool cancel)
+    {
+        DatabaseBlockchainCache *dbCache = nullptr;
+
+        {
+            std::shared_lock lock(m_chainMutex);
+            dbCache = dynamic_cast<DatabaseBlockchainCache *>(chainsLeaves[0]);
+        }
+
+        if (dbCache == nullptr)
+        {
+            return;
+        }
+
+        dbCache->cancelDatabaseCompaction(cancel);
     }
 
     void Core::cutSegment(IBlockchainCache &segment, uint32_t startIndex)

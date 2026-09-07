@@ -178,6 +178,12 @@ namespace CryptoNote
 
         bool shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const;
 
+        uint32_t getPeerServingFloor(const CryptoNoteConnectionContext &context) const;
+
+        bool peerCanServeOurChain(const CryptoNoteConnectionContext &context) const;
+
+        bool requestChainIfPeerCanServe(CryptoNoteConnectionContext &context, const std::string &reason);
+
         bool request_missing_objects(CryptoNoteConnectionContext &context, bool check_having_blocks);
 
         bool on_connection_synchronized();

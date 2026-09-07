@@ -1618,9 +1618,16 @@ inline bool enableRawMode(int fd) {
 
     /* control modes - set 8 bit chars */
     raw.c_cflag |= (CS8);
-    /* local modes - choing off, canonical off, no extended functions,
-     * no signal chars (^Z,^C) */
-    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+    /* local modes - choing off, canonical off, no extended functions.
+     *
+     * WrkzCoin deviation from upstream linenoise: ISIG is deliberately left
+     * enabled. Upstream clears it so that ^C and ^Z are ordinary editing
+     * keystrokes, but this console belongs to a daemon, where ^C has to mean
+     * "shut down" the way it does everywhere else. With ISIG cleared the
+     * terminal never raised SIGINT, linenoise turned ^C into a read error,
+     * and the reader thread quietly ended while the node kept running - the
+     * console was gone and there was no longer any way to stop it. */
+    raw.c_lflag &= ~(ECHO | ICANON | IEXTEN);
     /* control chars - set return condition: min number of bytes and timer.
      * We want read to return every single byte, without timeout. */
     raw.c_cc[VMIN] = 1; raw.c_cc[VTIME] = 0; /* 1 byte, no timer */
