@@ -33,6 +33,7 @@ surfaces. The source of truth is always the code in
 | `wrkz-wallet-api` | HTTP wallet API, for services and the wallet apps |
 | `wrkz-service` | Legacy JSON-RPC wallet service (payment service) |
 | `wrkz-txpow-server` | Optional transaction proof-of-work helper |
+| `wrkz-netmon` | P2P network crawler and dashboard |
 | `miner` | Reference CPU miner |
 | `cryptotest` | Hash function self-test |
 | `wallet-upgrader` | Converts old wallet container files |
@@ -49,6 +50,7 @@ separately; see [Desktop, Mobile and Web Wallets](guides/wallet-apps.md).
 | `17857` | ZMQ publisher (`--zmq-pub`) |
 | `17858` | Stratum, by convention — off unless `--stratum-bind-port` is given |
 | `17870` | `wrkz-txpow-server`, if you run one |
+| `17871` | `wrkz-netmon`, if you run one |
 | `7856` | `wrkz-wallet-api` **and** `wrkz-service` |
 
 `wrkz-wallet-api` and `wrkz-service` share the same default port

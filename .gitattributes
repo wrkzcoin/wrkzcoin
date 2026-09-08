@@ -1,4 +1,5 @@
 .git* export-ignore
 /CMakeLists.txt export-subst
 scripts/docker/*.sh text eol=lf
+scripts/netmon/*.sh text eol=lf
 scripts/docker/Dockerfile text eol=lf

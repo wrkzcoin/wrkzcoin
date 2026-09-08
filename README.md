@@ -92,6 +92,10 @@ Everyone starts somewhere. If you're new or returning, you'll probably want to g
 
 - Every transaction carries a small proof of work. `wrkz-txpow-server` computes it on behalf of wallets that would rather not spend their own CPU on it, such as phones and browsers; the desktop, mobile and web wallets have a setting for it and fall back to their own CPU when the server does not answer. [TXPOWSERVER.md](TXPOWSERVER.md) covers running it and the protocol.
 
+### Network Monitor
+
+- `wrkz-netmon` walks the P2P network and serves a dashboard of what it finds: which nodes are reachable, what protocol version they run, how far behind the tip they are, whether the network agrees on one chain, and where the nodes sit. It needs no blockchain and no local daemon, and it serves its own dashboard, so one command is enough to try it. [NETMON.md](NETMON.md) covers running it, the DB-IP location files and an nginx layout.
+
 ### Daemon DB Compaction
 
 - The daemon can compact RocksDB in background while syncing.

@@ -1,8 +1,8 @@
 # Building from Source
 
 Builds the daemon and the CLI binaries: `Wrkzd`, `wrkz-wallet`,
-`wrkz-wallet-api`, `wrkz-service`, `wrkz-txpow-server`, `miner`, `cryptotest`
-and `wallet-upgrader`. For the graphical wallets see
+`wrkz-wallet-api`, `wrkz-service`, `wrkz-txpow-server`, `wrkz-netmon`, `miner`,
+`cryptotest` and `wallet-upgrader`. For the graphical wallets see
 [Building the Wallet Apps](building-wallet-apps.md).
 
 The in-repo long form is `COMPILE.md`, which this page tracks.

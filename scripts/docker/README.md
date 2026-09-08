@@ -36,7 +36,7 @@ Every package contains, flat inside a directory of the same name:
 
 ```
 Wrkzd  wrkz-wallet  wrkz-service  wrkz-wallet-api  wallet-upgrader
-miner  cryptotest  wrkz-txpow-server  LICENSE
+miner  cryptotest  wrkz-txpow-server  wrkz-netmon  LICENSE
 ```
 
 The executable list is taken from the checked-out `src/CMakeLists.txt`, so a

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WrkzCoin Network Monitor</title>
+  <!-- ?v= is a cache-busting stamp. index.html itself is served with
+       Cache-Control: no-cache, but a CDN in front will happily hold style.css
+       and app.js, which leaves a new page driving an old script - it renders
+       but nothing works. BUMP BOTH ?v= VALUES ON EVERY DEPLOY.
+       test/wiring.test.js fails if the two ever disagree. -->
+  <link rel="stylesheet" href="style.css?v=20260907" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════ HEADER ══════════════════════════════ -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="#/" class="brand">
+        <svg class="brand-icon" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="16,2 30,9 30,23 16,30 2,23 2,9" fill="var(--accent)" opacity="0.2" stroke="var(--accent)" stroke-width="2"/>
+          <polygon points="16,8 24,12.5 24,21.5 16,26 8,21.5 8,12.5" fill="var(--accent)" opacity="0.5"/>
+          <circle cx="16" cy="16" r="3" fill="var(--accent)"/>
+        </svg>
+        <span class="brand-name">WrkzCoin <span class="brand-sub">NetMon</span></span>
+      </a>
+
+      <form id="searchForm" class="search-form" role="search">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+          </svg>
+          <input id="searchInput" type="text"
+            placeholder="IP address, peer ID, country code, or AS number…"
+            autocomplete="off" spellcheck="false" />
+          <button type="submit" class="btn btn-primary search-btn">Search</button>
+        </div>
+      </form>
+
+      <div class="header-actions">
+        <a href="#/" class="nav-link" data-nav="overview">Overview</a>
+        <a href="#/peers" class="nav-link" data-nav="peers">Peers</a>
+        <a href="#/geo" class="nav-link" data-nav="geo">Geography</a>
+        <a href="#/versions" class="nav-link" data-nav="versions">Versions</a>
+        <span class="nav-sep"></span>
+        <button id="themeToggle" class="icon-btn" title="Toggle dark/light mode" aria-label="Toggle theme">
+          <svg id="iconMoon" class="theme-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z"/>
+          </svg>
+          <svg id="iconSun" class="theme-icon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ════════════════════════════ MAIN CONTENT ═══════════════════════════ -->
+  <main class="main-content">
+
+    <div id="globalError" class="error-box hidden"></div>
+
+    <!-- ─── OVERVIEW ─────────────────────────────────────────────────────── -->
+    <section id="pageOverview" class="page">
+      <div id="statusStrip" class="status-strip"></div>
+      <div id="heroStats" class="stats-grid"></div>
+
+      <div class="section two-col">
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Height distribution</span>
+            <span class="section-note">how far behind the tallest chain each reachable node sits</span>
+          </div>
+          <div class="panel-body"><div id="heightBars" class="bar-rows"></div></div>
+          <div class="panel-head" style="border-top: 1px solid var(--border); border-bottom: none">
+            <span class="stat-label" style="margin: 0">Top block hash reported</span>
+          </div>
+          <div class="panel-body" style="padding-top: 0"><div id="topHashes" class="bar-rows"></div></div>
+        </div>
+
+        <div class="side-col">
+          <div class="panel">
+            <div class="panel-head"><span class="panel-title">Node capability</span></div>
+            <div class="panel-body"><div id="capabilityPanel"></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="panel-title">Transport &amp; clocks</span></div>
+            <div class="panel-body"><div id="transportPanel"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">P2P protocol version</span>
+          <span id="versionNote" class="section-note"></span>
+        </div>
+        <div class="panel"><div class="panel-body"><div id="versionOverview"></div></div></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Reachable nodes over time</span>
+          <span class="section-note">one point per sweep</span>
+        </div>
+        <div class="panel"><div class="panel-body"><div id="churnPanel"></div></div></div>
+      </div>
+    </section>
+
+    <!-- ─── PEERS ────────────────────────────────────────────────────────── -->
+    <section id="pagePeers" class="page">
+      <div class="section-header">
+        <span class="section-title">Peers</span>
+        <span id="peersNote" class="section-note"></span>
+      </div>
+      <div id="peerFilters" class="chip-row"></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 12px"></th>
+              <th>Address</th>
+              <th>Reachability</th>
+              <th>P2P</th>
+              <th>Software</th>
+              <th>Height</th>
+              <th>Top hash</th>
+              <th>Capability</th>
+              <th>RTT</th>
+              <th>Uptime</th>
+              <th>Last seen</th>
+              <th>Loc</th>
+            </tr>
+          </thead>
+          <tbody id="peersBody"></tbody>
+        </table>
+      </div>
+      <div id="peersPager" class="pager"></div>
+    </section>
+
+    <!-- ─── GEOGRAPHY ────────────────────────────────────────────────────── -->
+    <section id="pageGeo" class="page">
+      <div class="section-header">
+        <span class="section-title">Geography</span>
+        <span class="section-note">bubble size scales with nodes per country</span>
+      </div>
+      <div id="geoNoDb" class="note hidden">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/>
+        </svg>
+        <div class="body">
+          <strong>No location database is loaded.</strong>
+          Start with <code>--geoip-db</code> and <code>--asn-db</code> to fill in the map and the network
+          breakdown. NETMON.md has the two commands that fetch them. Every other view works without them.
+        </div>
+      </div>
+      <div class="section two-col">
+        <div class="panel">
+          <div class="panel-body" id="mapPanel"></div>
+        </div>
+        <div class="side-col">
+          <div class="panel">
+            <div class="panel-head"><span class="panel-title">Countries</span></div>
+            <div class="panel-body"><div id="countryBars" class="bar-rows"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Hosting concentration by autonomous system</span>
+          <span id="asnNote" class="section-note"></span>
+        </div>
+        <div class="panel"><div class="panel-body"><div id="asnPanel"></div></div></div>
+      </div>
+      <div class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        <div class="body">
+          <strong>The map aggregates to country.</strong>
+          Node operators never opted in to being crawled. Per-node addresses appear on the Peers and node
+          detail views, so treat a publicly reachable deployment of this dashboard as a decision, not a
+          default &mdash; see the reverse proxy section of NETMON.md.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── VERSIONS ─────────────────────────────────────────────────────── -->
+    <section id="pageVersions" class="page">
+      <div class="section-header">
+        <span class="section-title">Version adoption</span>
+        <span class="section-note">share of reachable nodes</span>
+      </div>
+      <div class="section">
+        <div class="panel"><div class="panel-body"><div id="versionDetail"></div></div></div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Raising the handshake floor</span>
+          <span class="section-note">what each candidate for P2P_MINIMUM_VERSION would cut off today</span>
+        </div>
+        <div class="panel"><div class="panel-body"><div id="floorPanel"></div></div></div>
+      </div>
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Software builds</span>
+          <span id="buildsNote" class="section-note"></span>
+        </div>
+        <div class="panel"><div class="panel-body"><div id="buildsPanel"></div></div></div>
+      </div>
+    </section>
+
+    <!-- ─── NODE DETAIL ──────────────────────────────────────────────────── -->
+    <section id="pageNode" class="page">
+      <div class="breadcrumb">
+        <a href="#/peers">Peers</a>
+        <span class="breadcrumb-sep">/</span>
+        <span id="nodeCrumb" class="mono"></span>
+      </div>
+      <div id="nodeDetail"></div>
+    </section>
+
+    <!-- ─── LOADING ──────────────────────────────────────────────────────── -->
+    <section id="pageLoading" class="page active">
+      <div class="loading"><div class="spinner"></div>Contacting the monitor&hellip;</div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════════════════ FOOTER ══════════════════════════════ -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span id="footerVersion">WrkzCoin Network Monitor</span>
+      <span>&middot;</span>
+      <span id="footerSweep"></span>
+      <span style="margin-left: auto">
+        <a href="https://docs.wrkz.work/" target="_blank" rel="noopener">Docs</a>
+      </span>
+    </div>
+  </footer>
+
+  <script src="app.js?v=20260907"></script>
+</body>
+</html>
