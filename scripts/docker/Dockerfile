@@ -22,7 +22,8 @@ FROM ubuntu:${UBUNTU_VERSION}
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Static OpenSSL for the Windows target (the Linux target uses libssl-dev).
+# Static OpenSSL for the Windows target (the Linux target uses libssl-dev, and
+# the optional macOS target builds its own from this same version at run time).
 ARG OPENSSL_VERSION=3.5.8
 # Android NDK. r27 is the LTS line; the SHA1 comes from
 # https://developer.android.com/ndk/downloads. Leave it empty to skip the check
@@ -239,6 +240,36 @@ RUN set -eux; \
         ./emsdk activate "${EMSDK_VERSION}"; \
         chmod -R a+rwX "${EMSDK}"; \
     fi
+
+# ---------------------------------------------------------------------------
+# Optional: the host packages osxcross needs to build a macOS cross-toolchain.
+#
+# Only the packages live here. The toolchain itself is built by the first
+# `build.sh macos` run, into the /build bind mount, because it needs an Apple
+# SDK that Apple's licence does not let us redistribute or bake into an image
+# - see "macOS" in README.md. That also means it is cached like the ccache is:
+# built once per SDK, reused by every later run.
+# ---------------------------------------------------------------------------
+ARG WITH_OSXCROSS=0
+RUN set -eux; \
+    if [ "${WITH_OSXCROSS}" = "1" ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends \
+            clang \
+            lld \
+            llvm-dev \
+            libxml2-dev \
+            libbz2-dev \
+            uuid-dev \
+            cpio \
+            bzip2 \
+            patch; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# The macOS target builds its own OpenSSL at run time; keep it on the version
+# the Windows target is pinned to rather than introducing a second one.
+ENV WRKZ_OPENSSL_VERSION=${OPENSSL_VERSION}
 
 WORKDIR /work
 CMD ["bash"]

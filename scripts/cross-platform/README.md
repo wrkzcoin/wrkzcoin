@@ -347,6 +347,12 @@ build-aarch64/src
 
 ### macOS from Ubuntu (osxcross)
 
+> For a release package rather than a local build, prefer
+> `bash scripts/docker/build.sh macos`, which does everything below inside the
+> builder image and packages the result. See "macOS" in
+> [scripts/docker/README.md](../docker/README.md). The steps here are for
+> building on your own Ubuntu box.
+
 #### Prerequisites
 
 1. You must provide an Apple macOS SDK tarball yourself (license requirement).
@@ -374,6 +380,13 @@ bash scripts/package-macos.sh build-macos-x86_64 builds "$(date +%Y%m%d-%H%M)" x
 ```
 
 #### Build macOS arm64
+
+> **Not currently buildable.** `src/platform/osx/system/asm.s` and the
+> `mcontext` struct in `Context.h` beside it implement the dispatcher's fibre
+> context switch in x86-64 assembly, with no AArch64 version, so an arm64 build
+> fails to assemble. This is a source-tree gap, not a toolchain one: a native
+> build on an Apple Silicon Mac fails the same way. Apple Silicon runs the
+> x86_64 build under Rosetta 2 in the meantime.
 
 ```bash
 source scripts/prep-macos-osxcross.sh

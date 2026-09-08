@@ -42,8 +42,9 @@ Targets (default: all):
   linux      Linux x86_64, fully static           -> .tar.gz
   windows    Windows x86_64, MinGW-w64             -> .zip
   android    Android CLI, one package per ABI      -> .tar.gz
+  macos      macOS x86_64, osxcross                -> .tar.gz
+             (needs an Apple SDK you supply; see README.md. Not in 'all'.)
   all        linux windows android
-  macos      not available in the image yet (see README.md)
 
 Wallet applications (extras/, each pulls extra toolchains into the image):
   web        PLUTON Web, WASM + Flutter web bundle -> .tar.gz
@@ -62,6 +63,12 @@ Environment:
   VERSION=x.y.z.b        package version (default: src/config/version.h.in)
   ANDROID_ABIS="a b"     Android ABIs to build (default: arm64-v8a; also the
                          ABIs the mobile wallet ships libwallet_capi.so for)
+  MACOS_SDK=path         Apple SDK tarball for the macos target (default: the
+                         first MacOSX*.sdk.tar.xz|gz in .macos-sdk/, sorted;
+                         set this explicitly if you keep more than one)
+  MACOS_DEPLOYMENT_TARGET=x.y  oldest macOS supported (default: 10.15)
+  MACOS_ZMQ=0|1          build the daemon's ZMQ publisher (default: 1)
+  OSXCROSS_REF=ref       osxcross commit or branch (default: master)
   MOBILE_FORMATS="a b"   Android artefacts: apk, aab (default: both)
   MOBILE_MODES="a b"     Android build modes: release, debug (default: both).
                          Debug artefacts get a -debug name suffix; they are JIT
@@ -134,9 +141,64 @@ if [ -t 0 ] && [ -t 1 ]; then
   TTY_ARGS=(-it)
 fi
 
-# The wallet applications need toolchains the CLI image does not carry, so the
-# corresponding (optional, off by default) image stages are switched on for the
-# targets that need them. An explicit --build-arg in IMAGE_BUILD_ARGS wins.
+# The macos target needs an Apple SDK tarball that the image cannot carry
+# (Apple's licence). Find it here, before the image build, so a missing SDK
+# fails in seconds instead of after a toolchain build.
+find_macos_sdk() {
+  local c
+  if [ -n "${MACOS_SDK:-}" ]; then
+    [ -f "$MACOS_SDK" ] || return 1
+    printf '%s' "$MACOS_SDK"
+    return 0
+  fi
+  for c in "$REPO_ROOT"/.macos-sdk/MacOSX*.sdk.tar.xz \
+           "$REPO_ROOT"/.macos-sdk/MacOSX*.sdk.tar.gz \
+           "${HOME:-/nonexistent}"/toolchain/macos/sdk/MacOSX*.sdk.tar.xz \
+           "${HOME:-/nonexistent}"/toolchain/macos/sdk/MacOSX*.sdk.tar.gz; do
+    if [ -f "$c" ]; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+SDK_ARGS=()
+WANTS_MACOS=0
+for t in "${TARGETS[@]}"; do
+  case "$t" in macos) WANTS_MACOS=1 ;; esac
+done
+
+if [ "$WANTS_MACOS" = "1" ]; then
+  if MACOS_SDK_PATH="$(find_macos_sdk)"; then
+    MACOS_SDK_NAME="$(basename "$MACOS_SDK_PATH")"
+    echo "==> macOS SDK: $MACOS_SDK_PATH"
+    SDK_ARGS=(
+      -v "$(host_path "$MACOS_SDK_PATH"):/sdk/$MACOS_SDK_NAME:ro"
+      -e "MACOS_SDK=/sdk/$MACOS_SDK_NAME"
+    )
+  else
+    if [ -n "${MACOS_SDK:-}" ]; then
+      echo "MACOS_SDK is set to '$MACOS_SDK', which is not a file." >&2
+    fi
+    cat >&2 <<'EOF'
+The macos target needs an Apple macOS SDK tarball, which Apple's licence does
+not let this repository ship. Supply one once:
+
+  mkdir -p .macos-sdk
+  cp /path/to/MacOSX<version>.sdk.tar.xz .macos-sdk/
+
+or point MACOS_SDK at it. "macOS" in scripts/docker/README.md has the steps for
+producing that tarball from Apple's Command Line Tools package.
+EOF
+    exit 1
+  fi
+fi
+
+# Some targets need toolchains the default image does not carry (the wallet
+# applications, and osxcross for macOS), so the corresponding optional image
+# stages are switched on for the targets that need them. An explicit
+# --build-arg in IMAGE_BUILD_ARGS wins.
 AUTO_BUILD_ARGS=()
 auto_build_arg() {
   case " $IMAGE_BUILD_ARGS " in
@@ -146,6 +208,7 @@ auto_build_arg() {
 }
 for t in "${TARGETS[@]}"; do
   case "$t" in
+    macos)   auto_build_arg WITH_OSXCROSS 1 ;;
     web)     auto_build_arg WITH_FLUTTER 1; auto_build_arg WITH_EMSDK 1 ;;
     desktop) auto_build_arg WITH_FLUTTER 1 ;;
     mobile)  auto_build_arg WITH_FLUTTER 1; auto_build_arg WITH_ANDROID_SDK 1 ;;
@@ -160,7 +223,7 @@ done
 if [ "$NO_IMAGE_BUILD" != "1" ]; then
   echo "==> Building image $IMAGE ($DOCKER_PLATFORM)"
   if [ "${#AUTO_BUILD_ARGS[@]}" -gt 0 ]; then
-    echo "    application toolchains: ${AUTO_BUILD_ARGS[*]}"
+    echo "    optional toolchains: ${AUTO_BUILD_ARGS[*]}"
   fi
   # shellcheck disable=SC2086  # IMAGE_BUILD_ARGS is a list of extra arguments
   "$DOCKER" build \
@@ -187,6 +250,7 @@ RUN_ARGS=(
   # Empty-array-safe expansion (bash 3.2 on macOS trips on "${a[@]}" + set -u).
   ${USER_ARGS[@]+"${USER_ARGS[@]}"}
   ${TTY_ARGS[@]+"${TTY_ARGS[@]}"}
+  ${SDK_ARGS[@]+"${SDK_ARGS[@]}"}
   -v "$(host_path "$REPO_ROOT"):/work"
   -v "$(host_path "$BUILD_ROOT"):/build"
   -v "$(host_path "$OUT_DIR"):/out"
@@ -199,6 +263,9 @@ RUN_ARGS=(
   -e "MOBILE_FORMATS=${MOBILE_FORMATS:-apk aab}"
   -e "MOBILE_MODES=${MOBILE_MODES:-release debug}"
   -e "WEB_PTHREADS=${WEB_PTHREADS:-1}"
+  -e "MACOS_DEPLOYMENT_TARGET=${MACOS_DEPLOYMENT_TARGET:-10.15}"
+  -e "MACOS_ZMQ=${MACOS_ZMQ:-1}"
+  -e "OSXCROSS_REF=${OSXCROSS_REF:-master}"
   -e BUILD_ROOT=/build
   -e OUT_DIR=/out
   # The mounted checkout is normally owned by the container user already;

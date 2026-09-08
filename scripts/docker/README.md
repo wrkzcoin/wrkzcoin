@@ -8,7 +8,11 @@ and packs each one for release, with the root `LICENSE` inside:
 | `linux`   | `wrkzcoin-cli-linux-x86_64-<version>.tar.gz`   | native GCC, fully static glibc binaries           |
 | `windows` | `wrkzcoin-cli-windows-x86_64-<version>.zip`    | MinGW-w64 (posix threads) + static OpenSSL        |
 | `android` | `wrkzcoin-cli-android-<abi>-<version>.tar.gz`  | Android NDK, one package per ABI, API 24+         |
-| `macos`   | not yet, see [macOS](#macos) below             |                                                   |
+| `macos`   | `wrkzcoin-cli-macos-x86_64-<version>.tar.gz`   | osxcross, needs an Apple SDK you supply — see [macOS](#macos) |
+
+`linux`, `windows` and `android` are what `all` builds. `macos` is opt-in
+because it needs an SDK the image cannot ship, and it is x86_64 only (Apple
+Silicon runs it under Rosetta 2); [macOS](#macos) explains both.
 
 The same image also builds and packs the wallet applications under `extras/`,
 using toolchain stages that are off by default (see
@@ -21,9 +25,11 @@ using toolchain stages that are off by default (see
 | `mobile`  | `pluton-mobile-android-<appversion>[-debug].apk` / `.aab` | Flutter Android + `libwallet_capi.so` per ABI, release and debug |
 | `apps`    | all three                                       |                                                   |
 
-Windows and macOS desktop builds and iOS are **not** possible from this image:
-`flutter build windows` needs MSVC on Windows and the Apple targets need Xcode
-on macOS. Only the Windows `wallet_capi.dll` cross-builds, with
+The *wallet applications* for Windows and macOS, and iOS, are **not** possible
+from this image: `flutter build windows` needs MSVC on Windows and the Apple
+targets need Xcode on macOS. (The `macos` CLI target above is unaffected — it
+cross-builds command-line executables, not a Flutter bundle.) Only the Windows
+`wallet_capi.dll` cross-builds, with
 `scripts/cross-build-windows-wallet-lib.sh`.
 
 `<version>` is `MAJOR.MINOR.REV.BUILD` from `src/config/version.h.in`
@@ -53,7 +59,8 @@ than guessed, so the zip runs on a machine with nothing installed. A
 - About 12 GB of free disk for the image (the Android NDK is most of it) and
   another 6-8 GB for the build trees. The application stages add roughly
   2 GB (Flutter), 1.5 GB (Emscripten) and 3 GB (Android SDK) on top, and only
-  when you ask for a target that needs them.
+  when you ask for a target that needs them. The `macos` target adds ~1 GB of
+  packages to the image and ~4 GB to the build tree, where its toolchain lives.
 - RAM: the RocksDB and C++20 sources need roughly 1.5 GB per compile job.
   A 4 GB machine should use `JOBS=2`.
 - Network access the first time, to fetch the base image, the NDK, OpenSSL
@@ -73,6 +80,9 @@ bash scripts/docker/build.sh windows android
 
 # Both Android ABIs the image carries
 ANDROID_ABIS="arm64-v8a x86_64" bash scripts/docker/build.sh android
+
+# macOS, once an Apple SDK tarball is in .macos-sdk/ (see "macOS" below)
+bash scripts/docker/build.sh macos
 
 # Fewer compile jobs on a small machine
 JOBS=2 bash scripts/docker/build.sh
@@ -102,6 +112,7 @@ builds/
   wrkzcoin-cli-linux-x86_64-0.4.8.280.tar.gz
   wrkzcoin-cli-windows-x86_64-0.4.8.280.zip
   wrkzcoin-cli-android-arm64-v8a-0.4.8.280.tar.gz
+  wrkzcoin-cli-macos-x86_64-0.4.8.280.tar.gz
   pluton-web-1.0.0.tar.gz
   pluton-desktop-linux-x86_64-2.0.0.tar.gz
   pluton-mobile-android-2.0.0.apk
@@ -125,6 +136,10 @@ All options are environment variables. Targets are positional arguments.
 | `MOBILE_FORMATS`   | `apk aab`                     | Android artefacts the `mobile` target produces                            |
 | `MOBILE_MODES`     | `release debug`               | Android build modes; debug artefacts get a `-debug` name suffix           |
 | `WEB_PTHREADS`     | `1`                           | build the WASM module with pthreads (`0` is single-threaded and slower)   |
+| `MACOS_SDK`        | first in `.macos-sdk/`        | Apple SDK tarball for `macos`; also searched in `~/toolchain/macos/sdk/`. Set it explicitly if you keep more than one |
+| `MACOS_DEPLOYMENT_TARGET` | `10.15`                | oldest macOS the `macos` package runs on                                 |
+| `MACOS_ZMQ`        | `1`                           | build the daemon's ZMQ publisher into the `macos` package                |
+| `OSXCROSS_REF`     | `master`                      | osxcross commit or branch; pin it for a reproducible toolchain           |
 | `OUT_DIR`          | `builds/`                     | where packages and checksums go                                          |
 | `BUILD_ROOT`       | `build-docker/`               | build trees, staging directories, ccache and logs                        |
 | `CLEAN`            | `0`                           | `1` wipes each requested target's build tree before configuring          |
@@ -172,6 +187,14 @@ static libucontext the image built for the ABI, strips with `llvm-strip` and
 checks the ELF machine type. The binaries link the static libc++, so they
 only depend on bionic. They run under Termux or any shell with a writable
 directory.
+
+**macOS** uses `scripts/cross-macos-x86_64.cmake` against an osxcross toolchain
+and a macOS-target OpenSSL, both built on the first run from the SDK you supply
+(see [macOS](#macos)), strips with the osxcross `strip` and checks that every
+executable is a 64-bit x86_64 Mach-O. Unlike the Linux target it cannot run a
+`--version` smoke test, because nothing in the container executes Mach-O. The
+package carries an `INSTALL.txt` with the `xattr -dr com.apple.quarantine` step
+that unsigned downloads need.
 
 ## Wallet applications
 
@@ -259,6 +282,10 @@ these itself; set them by hand only for `--image-only`):
 | `ANDROID_SDK_NDK_VERSION`       | empty (detected from the Flutter SDK)   | the NDK Gradle wants for `flutter.ndkVersion`; separate from `/opt/android-ndk` |
 | `WITH_EMSDK`                    | `0`                                     | Emscripten for the `web` WASM module               |
 | `EMSDK_VERSION`                 | `3.1.50`                                | the version the first green web build used         |
+| `WITH_OSXCROSS`                 | `0`                                     | clang/llvm/libxml2 etc. that osxcross needs, for `macos` |
+
+`WITH_OSXCROSS` adds only the *packages* osxcross builds against. The toolchain
+itself is not in the image — see [macOS](#macos).
 
 ```bash
 # Prepare an image with every application toolchain, without building anything
@@ -283,6 +310,10 @@ rm -rf build-docker builds          # build trees, ccache, logs, packages
 docker rmi wrkzcoin-cli-builder     # the image
 ```
 
+`build-docker/` also holds the macOS toolchain, so removing it costs another
+20-40 minutes on the next `macos` build. `rm -rf build-docker/toolchain/macos`
+alone forces just that to be rebuilt.
+
 ## Troubleshooting
 
 - **Compiler killed / `c++: fatal error: Killed signal`**: out of memory.
@@ -294,7 +325,20 @@ docker rmi wrkzcoin-cli-builder     # the image
   MinGW runtime DLL the toolchain links against is missing from the image.
   Report the DLL name; the lookup lives in `find_mingw_dll` in
   `container-build.sh`.
-- **Stale configuration after switching branches**: `CLEAN=1`.
+- **Stale configuration after switching branches**: `CLEAN=1`. Note this does
+  *not* rebuild the macOS toolchain, which is keyed on the SDK rather than on
+  the build tree; delete `build-docker/toolchain/macos` to force that.
+- **`no Apple SDK tarball found`**: see [macOS](#macos). `build.sh` looks in
+  `.macos-sdk/`, in `~/toolchain/macos/sdk/`, and at `MACOS_SDK`.
+- **The macOS build fails in `libzmq`**: the bundled ZeroMQ is the least
+  exercised part of the macOS cross-build. `MACOS_ZMQ=0 bash
+  scripts/docker/build.sh macos` drops the daemon's ZMQ publisher, as the
+  Android packages already do.
+- **`osxcross produced no o64-clang wrapper`**: the osxcross build failed
+  earlier in `build-docker/logs/macos.log`. Most often the SDK tarball is not
+  one osxcross recognises (it wants a `MacOSX<version>.sdk` directory at the
+  root of the archive), or the image lacks the osxcross packages because it was
+  built with `NO_IMAGE_BUILD=1`.
 - **`no Flutter SDK in this image` / `no Emscripten SDK` / `no Android SDK`**:
   the image predates the application stages, or was built with
   `NO_IMAGE_BUILD=1`. Run `bash scripts/docker/build.sh --image-only apps`.
@@ -318,20 +362,76 @@ docker rmi wrkzcoin-cli-builder     # the image
 
 ## macOS
 
-Not in the image yet. Two things are needed that the Linux, Windows and
-Android targets do not have:
+`bash scripts/docker/build.sh macos` produces
+`wrkzcoin-cli-macos-x86_64-<version>.tar.gz` like any other target, with one
+prerequisite you supply once per machine: an Apple SDK tarball.
 
-1. An Apple macOS SDK tarball (`MacOSX*.sdk.tar.xz`), which Apple's license
-   does not allow us to redistribute or bake into a public image. It has to be
-   supplied by whoever builds the image.
-2. The osxcross toolchain built against that SDK, plus an OpenSSL built for
-   the macOS target.
+### Why the SDK is not in the image
 
-The manual flow (`scripts/prep-macos-osxcross.sh`, `scripts/cross-build-macos.sh`,
-`scripts/package-macos.sh`) already exists and is documented in
-[scripts/cross-platform/README.md](../cross-platform/README.md). Adding it here
-means an optional image stage that takes the SDK tarball as a build secret or
-a mounted file, runs the osxcross build, cross-compiles OpenSSL, and a
-`build_macos` in `container-build.sh` that packages `x86_64` and `arm64` as
-`wrkzcoin-cli-macos-<arch>-<version>.tar.gz`. Until then `build.sh macos`
-prints this explanation and exits non-zero.
+Apple's licence does not let us redistribute the macOS SDK, and it restricts
+using it to Apple-branded hardware. So the image carries only the *packages*
+osxcross needs (`--build-arg WITH_OSXCROSS=1`, which `build.sh` passes for you);
+the toolchain itself — osxcross, then a static OpenSSL for the macOS target —
+is built on the first `macos` run into `build-docker/toolchain/macos/`.
+
+That build takes 20-40 minutes and needs network access (osxcross fetches
+cctools/ld64 itself). It is then reused by every later run: a stamp file records
+the SDK's SHA-256, the osxcross ref, the deployment target and the OpenSSL
+version, and the toolchain is rebuilt only when one of those changes. Deleting
+`build-docker/` throws it away along with everything else.
+
+### Supplying the SDK
+
+Get `MacOSX<version>.sdk.tar.xz` and drop it in `.macos-sdk/` at the repository
+root (git-ignored), or point `MACOS_SDK` at it. Two ways to produce one:
+
+- **On a Mac with Xcode**: osxcross's `tools/gen_sdk_package.sh` packs the SDK
+  out of an installed Xcode.
+- **On Linux**: download the *Command Line Tools for Xcode* disk image from
+  <https://developer.apple.com/download/all/> (an Apple ID and accepting the
+  licence are required, which is the one step no script should do for you),
+  then run osxcross's `tools/gen_sdk_package_tools*.sh` against it to extract
+  the SDK without needing a Mac.
+
+Any SDK from roughly 10.15 onwards works; the toolchain triple
+(`x86_64-apple-darwin24`, …) follows the SDK version and is detected, never
+hard-coded.
+
+```bash
+mkdir -p .macos-sdk
+cp /path/to/MacOSX15.2.sdk.tar.xz .macos-sdk/
+bash scripts/docker/build.sh macos
+```
+
+If no SDK is found, `build.sh` says so and exits before building anything.
+
+### x86_64 only
+
+There is no arm64 package, and the blocker is the source tree rather than this
+image: [`src/platform/osx/system/asm.s`](../../src/platform/osx/system/asm.s)
+and `Context.h` next to it implement the fibre context switch the dispatcher
+needs in x86-64 assembly, with no AArch64 version and no architecture guard.
+An arm64 build fails to assemble — the same way a native build on an Apple
+Silicon Mac does, so this is not something a different build host would fix.
+`scripts/cross-macos-arm64.cmake` and `scripts/cross-build-macos.sh arm64`
+are dead paths until someone writes that AArch64 context switch.
+
+Apple Silicon machines run the x86_64 package under Rosetta 2 in the meantime
+(`softwareupdate --install-rosetta`).
+
+### Signing
+
+The executables are cross-built, so they are neither signed nor notarised.
+macOS quarantines anything downloaded and will refuse to run them until the
+flag is cleared; the package's `INSTALL.txt` tells the user to run
+`xattr -dr com.apple.quarantine .` once in the unpacked directory. Signing
+properly needs an Apple Developer ID and `codesign`/`notarytool` on a Mac, so
+it is a step for whoever publishes the release, not for this image.
+
+### Relation to the standalone scripts
+
+`scripts/prep-macos-osxcross.sh` and `scripts/cross-build-macos.sh` still
+document the manual flow for a developer's own Ubuntu box (see
+[scripts/cross-platform/README.md](../cross-platform/README.md)); the container
+does not use them, because the prep script installs packages with `sudo` and
+the image has neither `sudo` nor a root build user.
