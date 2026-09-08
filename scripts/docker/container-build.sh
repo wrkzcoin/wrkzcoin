@@ -33,6 +33,22 @@ MINGW_TRIPLE="${MINGW_PREFIX:-x86_64-w64-mingw32}"
 MINGW_PREFIX_DIR="${WRKZ_MINGW_PREFIX_DIR:-$HOME/toolchain/windows-x86_64/prefix}"
 ANDROID_LIBUCONTEXT_BASE="${WRKZ_ANDROID_LIBUCONTEXT_BASE:-$REPO_ROOT/.android-libucontext}"
 
+# macOS. Unlike every other toolchain this one is not in the image: it is built
+# from an Apple SDK tarball the operator supplies, which Apple's licence does
+# not let us redistribute. It lands in the build tree instead, keyed on the
+# SDK, so it is built once and then reused exactly like the ccache is.
+MACOS_TOOLCHAIN_ROOT="${MACOS_TOOLCHAIN_ROOT:-$BUILD_ROOT/toolchain/macos}"
+# The oldest macOS the package will run on. 10.15 is the floor for the
+# libc++ std::filesystem the tree uses.
+MACOS_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET:-10.15}"
+# osxcross publishes no release tags, so its own README tells you to build
+# master. Pass OSXCROSS_REF=<commit> for a toolchain you can reproduce.
+OSXCROSS_REF="${OSXCROSS_REF:-master}"
+OSXCROSS_URL="${OSXCROSS_URL:-https://github.com/tpoechtrager/osxcross.git}"
+# The daemon's ZMQ publisher. ON matches the Linux and Windows packages; set
+# MACOS_ZMQ=0 if the bundled libzmq ever refuses to cross-compile.
+MACOS_ZMQ="${MACOS_ZMQ:-1}"
+
 # Executables a package can carry (plus LICENSE), in this order. Each one is
 # packaged only if the checked-out src/CMakeLists.txt declares it, so the same
 # script serves branches with and without the newer targets (wrkz-txpow-server
@@ -410,6 +426,184 @@ bundle_mingw_dlls() {
 }
 
 # ---------------------------------------------------------------------------
+# macOS toolchain (osxcross)
+# ---------------------------------------------------------------------------
+
+# find_macos_sdk: path of the Apple SDK tarball, on stdout. build.sh mounts
+# whatever it found on the host at /sdk; the other paths let this work in a
+# --shell session or on a plain Ubuntu host.
+find_macos_sdk() {
+  local candidate
+  if [ -n "${MACOS_SDK:-}" ]; then
+    [ -f "$MACOS_SDK" ] || die "MACOS_SDK is set to '$MACOS_SDK', which is not a file"
+    printf '%s' "$MACOS_SDK"
+    return 0
+  fi
+  for candidate in /sdk/MacOSX*.sdk.tar.xz /sdk/MacOSX*.sdk.tar.gz \
+                   "$REPO_ROOT"/.macos-sdk/MacOSX*.sdk.tar.xz \
+                   "$REPO_ROOT"/.macos-sdk/MacOSX*.sdk.tar.gz; do
+    if [ -f "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  die "no Apple SDK tarball found. Put a MacOSX<version>.sdk.tar.xz in
+  .macos-sdk/ at the repository root, or point MACOS_SDK at one. Apple's
+  licence is why the image cannot carry it; 'macOS' in
+  scripts/docker/README.md has the one-off extraction steps."
+}
+
+# detect_osxcross_target <osxcross dir>: the darwin triple of the built
+# toolchain (x86_64-apple-darwin24, ...), on stdout. It follows the SDK
+# version, so nothing hard-codes it - an SDK bump changes it.
+detect_osxcross_target() {
+  local f base
+  for f in "$1/target/bin/x86_64-apple-darwin"*-clang; do
+    if [ -x "$f" ]; then
+      base="${f##*/}"
+      printf '%s' "${base%-clang}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# macos_sdk_dir <osxcross dir>: the extracted SDK directory, on stdout.
+macos_sdk_dir() {
+  local d
+  for d in "$1/target/SDK/MacOSX"*.sdk; do
+    if [ -d "$d" ]; then
+      printf '%s' "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# build_macos_toolchain <sdk tarball> <osxcross dir> <openssl prefix> <version>
+# osxcross itself, then a static OpenSSL for the macOS target. Both land in the
+# build tree, not the image.
+build_macos_toolchain() {
+  local sdk="$1" osx="$2" prefix="$3" ossl_ver="$4" triple work
+
+  log "Building the macOS cross-toolchain (once per SDK; this takes a while)"
+  echo "  SDK:      $sdk"
+  echo "  osxcross: $OSXCROSS_URL @ $OSXCROSS_REF"
+  echo "  target:   macOS $MACOS_DEPLOYMENT_TARGET+, x86_64"
+
+  rm -rf "$osx" "$prefix"
+  mkdir -p "$MACOS_TOOLCHAIN_ROOT"
+  git clone "$OSXCROSS_URL" "$osx"
+  (cd "$osx" && git checkout --quiet "$OSXCROSS_REF")
+  mkdir -p "$osx/tarballs"
+  cp -f "$sdk" "$osx/tarballs/"
+
+  # osxcross fetches and builds cctools/ld64 here, so this step needs network
+  # access even when the image is already built.
+  (cd "$osx" && UNATTENDED=1 JOBS="$JOBS" OSX_VERSION_MIN="$MACOS_DEPLOYMENT_TARGET" ./build.sh)
+  [ -x "$osx/target/bin/o64-clang" ] \
+    || die "osxcross produced no o64-clang wrapper; see the log above"
+  triple="$(detect_osxcross_target "$osx")" \
+    || die "osxcross produced no x86_64-apple-darwin*-clang"
+
+  log "Building OpenSSL $ossl_ver for the macOS target"
+  work="$BUILD_ROOT/tmp/openssl-macos"
+  rm -rf "$work"
+  mkdir -p "$work"
+  (
+    cd "$work"
+    curl -fsSL -o openssl.tar.gz \
+      "https://github.com/openssl/openssl/releases/download/openssl-${ossl_ver}/openssl-${ossl_ver}.tar.gz"
+    tar xzf openssl.tar.gz
+    cd "openssl-${ossl_ver}"
+    # OpenSSL prepends CROSS_COMPILE to every tool name, so blank it and hand
+    # it the osxcross wrappers by absolute path. Same switches as the Windows
+    # prefix the image builds, so the two behave alike.
+    export PATH="$osx/target/bin:$PATH"
+    export CROSS_COMPILE=""
+    export CC="$osx/target/bin/o64-clang"
+    export CXX="$osx/target/bin/o64-clang++"
+    export AR="$osx/target/bin/${triple}-ar"
+    export RANLIB="$osx/target/bin/${triple}-ranlib"
+    export MACOSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
+    ./Configure darwin64-x86_64-cc \
+        no-shared \
+        no-tests \
+        no-module \
+        --prefix="$prefix" \
+        --libdir=lib \
+        --openssldir="$prefix/ssl"
+    make -j"$JOBS"
+    make install_sw
+  )
+  rm -rf "$work"
+  [ -f "$prefix/lib/libcrypto.a" ] && [ -f "$prefix/lib/libssl.a" ] \
+    || die "the macOS OpenSSL build produced no static libraries under $prefix/lib"
+}
+
+# macos_toolchain_env: make sure the toolchain exists, then export what
+# scripts/cross-macos-x86_64.cmake reads. The build is skipped when an earlier
+# run already did it for this SDK, ref and deployment target, which is what the
+# stamp file records.
+macos_toolchain_env() {
+  local sdk sdk_sum stamp_file stamp_want stamp_have triple sdk_dir
+  local osx="$MACOS_TOOLCHAIN_ROOT/osxcross"
+  local prefix="$MACOS_TOOLCHAIN_ROOT/prefix-x86_64"
+  # The image exports WRKZ_OPENSSL_VERSION from the same build argument the
+  # Windows prefix uses, so both targets stay on one version. The literal is
+  # only reached on an image older than that or on a bare Ubuntu host.
+  local ossl_ver="${WRKZ_OPENSSL_VERSION:-3.5.8}"
+
+  command -v clang >/dev/null 2>&1 || die \
+    "no clang in this image, which osxcross needs to build. Rebuild it with
+    IMAGE_BUILD_ARGS=\"--build-arg WITH_OSXCROSS=1\" bash scripts/docker/build.sh --image-only
+  (build.sh adds that automatically for the macos target)."
+
+  sdk="$(find_macos_sdk)"
+  sdk_sum="$(sha256sum "$sdk" | cut -d' ' -f1)"
+  stamp_file="$MACOS_TOOLCHAIN_ROOT/.stamp"
+  stamp_want="sdk=$sdk_sum ref=$OSXCROSS_REF deployment=$MACOS_DEPLOYMENT_TARGET openssl=$ossl_ver"
+  stamp_have=""
+  if [ -f "$stamp_file" ]; then
+    stamp_have="$(cat "$stamp_file")"
+  fi
+
+  if [ "$stamp_have" != "$stamp_want" ] \
+     || [ ! -x "$osx/target/bin/o64-clang" ] \
+     || [ ! -f "$prefix/lib/libcrypto.a" ]; then
+    rm -f "$stamp_file"
+    build_macos_toolchain "$sdk" "$osx" "$prefix" "$ossl_ver"
+    printf '%s' "$stamp_want" > "$stamp_file"
+  else
+    log "macOS toolchain already built for this SDK; reusing $MACOS_TOOLCHAIN_ROOT"
+  fi
+
+  triple="$(detect_osxcross_target "$osx")" \
+    || die "no x86_64-apple-darwin*-clang under $osx/target/bin"
+  sdk_dir="$(macos_sdk_dir "$osx")" \
+    || die "no extracted MacOSX*.sdk under $osx/target/SDK"
+
+  export OSXCROSS_ROOT="$osx"
+  export OSXCROSS_TARGET="$triple"
+  export OSXCROSS_SDK="$sdk_dir"
+  export OSXCROSS_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
+  export OSXCROSS_CLANG="$osx/target/bin/o64-clang"
+  export OSXCROSS_CLANGXX="$osx/target/bin/o64-clang++"
+  export MACOSX_DEPLOYMENT_TARGET="$MACOS_DEPLOYMENT_TARGET"
+  export PATH="$osx/target/bin:$PATH"
+  # cross-macos-x86_64.cmake puts CROSS_PREFIX on CMAKE_FIND_ROOT_PATH and
+  # FindOpenSSL reads OPENSSL_ROOT_DIR - the same shape the Windows target uses.
+  export CROSS_PREFIX="$prefix"
+  export OPENSSL_ROOT_DIR="$prefix"
+  export CMAKE_PREFIX_PATH="$prefix"
+
+  echo "macOS toolchain: $triple, deployment target $MACOS_DEPLOYMENT_TARGET"
+  echo "  osxcross: $osx"
+  echo "  SDK:      $sdk_dir"
+  echo "  OpenSSL:  $prefix"
+}
+
+# ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------
 
@@ -744,8 +938,73 @@ build_mobile() {
   esac
 }
 
+# macOS x86_64, cross-built with osxcross. Apple Silicon runs the package under
+# Rosetta 2; a native arm64 package is not possible yet, because the fibre
+# context switch in src/platform/osx/system/ (asm.s, Context.h) is x86-64 only.
 build_macos() {
-  die "macOS is not built by this image yet. It needs an Apple SDK tarball you supply yourself plus an osxcross toolchain; scripts/cross-platform/README.md ('macOS from Ubuntu') has the manual flow and scripts/docker/README.md lists what adding it to the image involves."
+  local bd="$BUILD_ROOT/macos-x86_64"
+  local name="$PKG_PREFIX-macos-x86_64-$VERSION"
+  local zmq=ON
+  [ "$MACOS_ZMQ" = "1" ] || zmq=OFF
+
+  macos_toolchain_env
+
+  configure_and_build "$bd" \
+    -DCMAKE_TOOLCHAIN_FILE="$REPO_ROOT/scripts/cross-macos-x86_64.cmake" \
+    -DARCH=default \
+    -DCONSENSUS_SAFE_BUILD=ON \
+    -DPORTABLE_BINARY=ON \
+    -DENABLE_X86_AESNI=OFF \
+    -DENABLE_ZMQ="$zmq"
+
+  local stage b desc
+  stage="$(stage_dir "$name")"
+  stage_binaries "$bd/src" "$stage" ""
+
+  log "Stripping and verifying macOS executables"
+  local strip="$OSXCROSS_ROOT/target/bin/$OSXCROSS_TARGET-strip"
+  if [ -x "$strip" ]; then
+    for b in "${BINARIES[@]}"; do
+      "$strip" "$stage/$b"
+    done
+  else
+    echo "warning: $strip not found; shipping unstripped executables"
+  fi
+  print_files "$stage" ""
+  # 'file' has worded this both ways over the years ("Mach-O 64-bit x86_64
+  # executable" and "Mach-O 64-bit executable x86_64"), so check the two parts
+  # separately rather than matching one phrase.
+  for b in "${BINARIES[@]}"; do
+    desc="$(file -b "$stage/$b")"
+    case "$desc" in
+      *"Mach-O 64-bit"*) ;;
+      *) die "$b is not a 64-bit Mach-O executable ($desc)" ;;
+    esac
+    case "$desc" in
+      *x86_64*) ;;
+      *) die "$b is not an x86_64 executable ($desc)" ;;
+    esac
+  done
+
+  # Nothing here can run a Mach-O binary, so unlike the Linux target these
+  # executables are shipped without a --version smoke test.
+  cat > "$stage/INSTALL.txt" <<EOF
+WrkzCoin CLI for macOS (x86_64, macOS $MACOS_DEPLOYMENT_TARGET or newer)
+
+These executables are cross-built and are not signed or notarised, so macOS
+quarantines them after a download. Clear the flag once, in the directory you
+unpacked:
+
+    xattr -dr com.apple.quarantine .
+
+Then run them from Terminal as usual (./Wrkzd --version).
+
+On Apple Silicon they run under Rosetta 2. If it is not installed yet:
+
+    softwareupdate --install-rosetta
+EOF
+
+  make_tarball "$name"
 }
 
 # run_target <target>: run one build function with its output tee'd to a log.

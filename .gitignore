@@ -33,3 +33,7 @@ Wrkzd.log
 docs/site/
 docs/hooks/__pycache__/
 .builds/
+
+# Apple SDK tarball for the macos Docker target. Supplied by whoever builds
+# it; Apple's licence does not allow redistributing it.
+.macos-sdk/
