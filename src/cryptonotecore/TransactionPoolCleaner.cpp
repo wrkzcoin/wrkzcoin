@@ -125,28 +125,46 @@ namespace CryptoNote
             std::vector<Crypto::Hash> deletedTransactions;
             for (const auto &hash : transactionHashes)
             {
+                /* The pool is shared with the relay, block and eviction paths,
+                   so a hash listed above can already be gone. getTransaction()
+                   only asserts, which a release build compiles out, so it must
+                   never be asked for a transaction that may not be there. */
+                const auto transaction = transactionPool->tryGetTransaction(hash);
+
+                if (!transaction)
+                {
+                    continue;
+                }
+
                 uint64_t transactionAge = currentTime - transactionPool->getTransactionReceiveTime(hash);
                 if (transactionAge >= timeout)
                 {
                     logger(Logging::DEBUGGING) << "Deleting transaction " << Common::podToHex(hash) << " from pool";
                     recentlyDeletedTransactions.emplace(hash, currentTime);
-                    transactionPool->removeTransaction(hash);
-                    deletedTransactions.emplace_back(std::move(hash));
+
+                    /* Only report what this call removed, or a transaction
+                       another thread took out first is announced twice. */
+                    if (transactionPool->removeTransaction(hash))
+                    {
+                        deletedTransactions.emplace_back(hash);
+                    }
+
+                    /* It is gone - there is nothing left to check the mixin of. */
+                    continue;
                 }
 
-                CachedTransaction transaction = transactionPool->getTransaction(hash);
-                std::vector<CachedTransaction> transactions;
-                transactions.emplace_back(transaction);
-
-                auto [success, error] = Mixins::validate(transactions, height);
+                auto [success, error] = Mixins::validate({*transaction}, height);
 
                 if (!success)
                 {
                     logger(Logging::DEBUGGING)
                         << "Deleting invalid transaction " << Common::podToHex(hash) << " from pool." << error;
                     recentlyDeletedTransactions.emplace(hash, currentTime);
-                    transactionPool->removeTransaction(hash);
-                    deletedTransactions.emplace_back(std::move(hash));
+
+                    if (transactionPool->removeTransaction(hash))
+                    {
+                        deletedTransactions.emplace_back(hash);
+                    }
                 }
             }
 

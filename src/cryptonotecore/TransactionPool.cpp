@@ -468,7 +468,15 @@ namespace CryptoNote
         std::scoped_lock lock(m_transactionsMutex);
 
         auto it = m_transactionsByHash.find(hash);
-        assert(it != m_transactionsByHash.end());
+
+        /* Callers look the hash up first, but under a separate lock, so it can
+           be removed in between. The assert is compiled out of release builds;
+           read through end() and it is undefined behaviour instead of a
+           harmless "very old", which the cleaner then fails to remove. */
+        if (it == m_transactionsByHash.end())
+        {
+            return 0;
+        }
 
         return it->second->receiveTime;
     }
