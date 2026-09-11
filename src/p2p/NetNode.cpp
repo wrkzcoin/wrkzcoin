@@ -320,6 +320,22 @@ namespace CryptoNote
         int ret = 0;
         handled = true;
 
+        /* Until the handshake is done a connection may only handshake or ping.
+           Everything else used to be dispatched regardless, and only some
+           handlers checked the state for themselves - a peer that never
+           handshook could still ask for blocks, chains and our pool. An
+           outbound connection never gets here before its handshake: that
+           completes before its connection handler starts. */
+        if (ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+            && cmd.command != static_cast<uint32_t>(COMMAND_HANDSHAKE::ID)
+            && cmd.command != static_cast<uint32_t>(COMMAND_PING::ID))
+        {
+            logger(Logging::DEBUGGING) << ctx << "sent command " << cmd.command
+                                       << " before completing the handshake, closing connection";
+            ctx.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 0;
+        }
+
         if (cmd.isResponse && cmd.command == COMMAND_TIMED_SYNC::ID)
         {
             if (!handleTimedSyncResponse(cmd.buf, ctx))
@@ -2298,7 +2314,11 @@ namespace CryptoNote
             return 1;
         }
 
-        if (context.peerId)
+        /* peer_id alone is not proof: a peer that announces id 0 would pass
+           this and could handshake again, resetting its sync counters. A
+           completed handshake always moves the connection out of the
+           pre-handshake state, so check that too. */
+        if (context.peerId || context.m_state != CryptoNoteConnectionContext::state_befor_handshake)
         {
             logger(Logging::ERROR) << context
                                    << "COMMAND_HANDSHAKE came, but seems that connection already have associated "
@@ -2633,23 +2653,17 @@ namespace CryptoNote
                     continue;
                 }
 
-                size_t incomingConnections = 0;
+                std::string rejection;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
-                    for (const auto &kv : m_connections)
-                    {
-                        if (kv.second.m_is_income)
-                        {
-                            ++incomingConnections;
-                        }
-                    }
+                    rejection = inboundRejectionReason(ctx);
                 }
 
-                if (incomingConnections >= m_maxIncomingConnections)
+                if (!rejection.empty())
                 {
-                    logger(DEBUGGING) << "Rejecting incoming connection due to --in-peers limit ("
-                                      << incomingConnections << "/" << m_maxIncomingConnections << ") from "
-                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    logger(DEBUGGING) << "Rejecting incoming connection from "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port
+                                      << ": " << rejection;
                     continue;
                 }
 
@@ -2677,6 +2691,85 @@ namespace CryptoNote
         }
 
         logger(DEBUGGING) << "acceptLoop finished";
+    }
+
+    /* Why an inbound connection should be refused, or empty to accept it. The
+       caller holds m_connectionsMutex. Besides the --in-peers total, one
+       address may hold at most 3 inbound connections and one IPv4 /16 at most
+       8, so a single host or network cannot take every slot; loopback is
+       exempt. m_remote_ip is in network byte order, so its first byte is the
+       first octet. */
+    std::string NodeServer::inboundRejectionReason(const P2pConnectionContext &candidate) const
+    {
+        constexpr size_t maxPerAddress = 3;
+        constexpr size_t maxPerSubnet16 = 8;
+
+        const bool isV4 = candidate.m_remote_ipv6.empty();
+        const auto *candidateBytes = reinterpret_cast<const uint8_t *>(&candidate.m_remote_ip);
+        const bool isLoopback = isV4 ? candidateBytes[0] == 127 : candidate.m_remote_ipv6 == "::1";
+
+        size_t incoming = 0;
+        size_t sameAddress = 0;
+        size_t sameSubnet16 = 0;
+
+        for (const auto &kv : m_connections)
+        {
+            const auto &ctx = kv.second;
+
+            if (!ctx.m_is_income)
+            {
+                continue;
+            }
+
+            ++incoming;
+
+            if (isV4 != ctx.m_remote_ipv6.empty())
+            {
+                continue;
+            }
+
+            if (isV4)
+            {
+                const auto *bytes = reinterpret_cast<const uint8_t *>(&ctx.m_remote_ip);
+
+                if (ctx.m_remote_ip == candidate.m_remote_ip)
+                {
+                    ++sameAddress;
+                }
+
+                if (bytes[0] == candidateBytes[0] && bytes[1] == candidateBytes[1])
+                {
+                    ++sameSubnet16;
+                }
+            }
+            else if (ctx.m_remote_ipv6 == candidate.m_remote_ipv6)
+            {
+                ++sameAddress;
+            }
+        }
+
+        if (incoming >= m_maxIncomingConnections)
+        {
+            return "--in-peers limit (" + std::to_string(incoming) + "/" + std::to_string(m_maxIncomingConnections)
+                   + ")";
+        }
+
+        if (isLoopback)
+        {
+            return {};
+        }
+
+        if (sameAddress >= maxPerAddress)
+        {
+            return "already " + std::to_string(sameAddress) + " connections from this address";
+        }
+
+        if (isV4 && sameSubnet16 >= maxPerSubnet16)
+        {
+            return "already " + std::to_string(sameSubnet16) + " connections from this /16";
+        }
+
+        return {};
     }
 
     void NodeServer::acceptLoopIPv6()
@@ -2719,22 +2812,16 @@ namespace CryptoNote
                     }
                 }
 
-                size_t incomingConnections = 0;
+                std::string rejection;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
-                    for (const auto &kv : m_connections)
-                    {
-                        if (kv.second.m_is_income)
-                        {
-                            ++incomingConnections;
-                        }
-                    }
+                    rejection = inboundRejectionReason(ctx);
                 }
 
-                if (incomingConnections >= m_maxIncomingConnections)
+                if (!rejection.empty())
                 {
-                    logger(DEBUGGING) << "Rejecting incoming IPv6 connection due to --in-peers limit ("
-                                      << incomingConnections << "/" << m_maxIncomingConnections << ")";
+                    logger(DEBUGGING) << "Rejecting incoming IPv6-listener connection from " << ctx.remoteAddressStr()
+                                      << ":" << ctx.m_remote_port << ": " << rejection;
                     continue;
                 }
 
@@ -2812,6 +2899,19 @@ namespace CryptoNote
                         logger(DEBUGGING) << ctx << "write operation timed out, stopping connection";
                         // Avoid interrupting the connection context directly from timeoutLoop.
                         // We only request shutdown and wake the writer loop.
+                        ctx.stopWithoutContextInterrupt();
+                        continue;
+                    }
+
+                    /* An inbound connection that never sends its handshake had no
+                       deadline, so an idle socket held an --in-peers slot for
+                       good. */
+                    constexpr time_t inboundHandshakeDeadlineSeconds = 30;
+
+                    if (ctx.m_is_income && ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+                        && time(nullptr) - ctx.m_started > inboundHandshakeDeadlineSeconds)
+                    {
+                        logger(DEBUGGING) << ctx << "did not complete its handshake in time, stopping connection";
                         ctx.stopWithoutContextInterrupt();
                         continue;
                     }

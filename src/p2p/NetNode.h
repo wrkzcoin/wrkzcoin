@@ -228,6 +228,10 @@ namespace CryptoNote
             P2pConnectionContext &context,
             bool &handled);
 
+        /* Empty when an inbound connection may be accepted, otherwise why not.
+           Call with m_connectionsMutex held. */
+        std::string inboundRejectionReason(const P2pConnectionContext &candidate) const;
+
         //----------------- commands handlers ----------------------------------------------
         int handle_handshake(
             int command,
