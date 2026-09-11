@@ -179,9 +179,9 @@ class LogLevelNotifier extends Notifier<WalletLogLevel> {
 final logLevelProvider =
     NotifierProvider<LogLevelNotifier, WalletLogLevel>(LogLevelNotifier.new);
 
-// ── scan coinbase ───────────────────────────────────────────────────────────
+// ── skip coinbase ───────────────────────────────────────────────────────────
 
-class ScanCoinbaseNotifier extends Notifier<bool> {
+class SkipCoinbaseNotifier extends Notifier<bool> {
   @override
   bool build() {
     _load();
@@ -189,18 +189,18 @@ class ScanCoinbaseNotifier extends Notifier<bool> {
   }
 
   Future<void> _load() async {
-    final v = await readPref(AppConfig.skScanCoinbase);
+    final v = await readPref(AppConfig.skSkipCoinbase);
     if (v != null) state = v == 'true';
   }
 
   Future<void> set(bool enabled) async {
     state = enabled;
-    await storePref(AppConfig.skScanCoinbase, enabled.toString());
+    await storePref(AppConfig.skSkipCoinbase, enabled.toString());
   }
 }
 
-final scanCoinbaseProvider =
-    NotifierProvider<ScanCoinbaseNotifier, bool>(ScanCoinbaseNotifier.new);
+final skipCoinbaseProvider =
+    NotifierProvider<SkipCoinbaseNotifier, bool>(SkipCoinbaseNotifier.new);
 
 // ── external tx PoW server ──────────────────────────────────────────────────
 

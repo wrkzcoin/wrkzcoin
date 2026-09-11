@@ -1353,17 +1353,17 @@ abstract class S {
   /// **'Save after sync, then every 5 minutes'**
   String get autosaveSubtitle;
 
-  /// No description provided for @scanCoinbaseTx.
+  /// No description provided for @skipCoinbaseTx.
   ///
   /// In en, this message translates to:
-  /// **'Scan Coinbase Transactions'**
-  String get scanCoinbaseTx;
+  /// **'Skip Coinbase Transactions'**
+  String get skipCoinbaseTx;
 
-  /// No description provided for @scanCoinbaseSubtitle.
+  /// No description provided for @skipCoinbaseSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Include miner rewards (off by default)'**
-  String get scanCoinbaseSubtitle;
+  /// **'Faster sync, but miner rewards are not shown (off by default)'**
+  String get skipCoinbaseSubtitle;
 
   /// No description provided for @dangerZone.
   ///

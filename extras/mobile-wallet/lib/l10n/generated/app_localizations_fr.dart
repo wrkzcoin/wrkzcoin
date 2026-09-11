@@ -686,11 +686,11 @@ class SFr extends S {
       'Sauvegarder après la synchronisation, puis toutes les 5 minutes';
 
   @override
-  String get scanCoinbaseTx => 'Scanner les transactions Coinbase';
+  String get skipCoinbaseTx => 'Ignorer les transactions Coinbase';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Inclure les récompenses de minage (désactivé par défaut)';
+  String get skipCoinbaseSubtitle =>
+      'Synchronisation plus rapide, mais les récompenses de minage ne sont pas affichées (désactivé par défaut)';
 
   @override
   String get dangerZone => 'Zone dangereuse';

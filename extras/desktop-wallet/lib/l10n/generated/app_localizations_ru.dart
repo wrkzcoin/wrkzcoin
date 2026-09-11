@@ -534,11 +534,11 @@ class SRu extends S {
       'Сохранять кошелёк на диск после синхронизации и каждые 5 минут';
 
   @override
-  String get scanCoinbaseTx => 'Сканировать Coinbase-транзакции';
+  String get skipCoinbaseTx => 'Пропускать Coinbase-транзакции';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Включить награды майнера при синхронизации (по умолчанию выключено)';
+  String get skipCoinbaseSubtitle =>
+      'Синхронизация быстрее, но награды майнера не отображаются (по умолчанию выключено)';
 
   @override
   String get sectionAppearance => 'Внешний вид';

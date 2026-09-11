@@ -20,7 +20,8 @@ default and no way to disable authentication.
 | `--rpc-use-ipv6` | `false` | Start the IPv6 listener |
 | `--enable-cors <origin>` | empty | `Access-Control-Allow-Origin` value |
 | `--threads <n>` | hardware concurrency | Wallet sync worker threads |
-| `--scan-coinbase-transactions` | `false` | Scan coinbase transactions during sync |
+| `--skip-coinbase-transactions`, `--skip-coinbase` | `false` | Leave coinbase (miner reward) transactions out of the scan. Syncs much faster, but mining rewards are not found; rewards passed while skipping need a `PUT /reset` to recover |
+| `--scan-coinbase-transactions` | | Accepted for existing scripts; scanning is the default. Cannot be combined with a skip flag |
 | `--log-level <0-5>` | | Log verbosity |
 | `--log-file <path>` | | Log file |
 | `--no-console` | `false` | Do not start the interactive console |

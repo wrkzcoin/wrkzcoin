@@ -186,8 +186,8 @@
   "reset": "Redefinir",
   "autosave": "Salvamento automático",
   "autosaveSubtitle": "Salvar carteira no disco após sincronização e a cada 5 minutos",
-  "scanCoinbaseTx": "Escanear Transações Coinbase",
-  "scanCoinbaseSubtitle": "Incluir recompensas de mineração ao sincronizar (desativado por padrão)",
+  "skipCoinbaseTx": "Ignorar Transações Coinbase",
+  "skipCoinbaseSubtitle": "Sincronização mais rápida, mas as recompensas de mineração não são exibidas (desativado por padrão)",
 
   "sectionAppearance": "Aparência",
   "theme": "Tema",

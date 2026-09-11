@@ -186,8 +186,8 @@
   "reset": "リセット",
   "autosave": "自動保存",
   "autosaveSubtitle": "同期後および5分ごとにウォレットをディスクに保存",
-  "scanCoinbaseTx": "コインベーストランザクションをスキャン",
-  "scanCoinbaseSubtitle": "同期時にマイナー報酬を含める（デフォルトではオフ）",
+  "skipCoinbaseTx": "コインベーストランザクションをスキップ",
+  "skipCoinbaseSubtitle": "同期は速くなりますが、マイナー報酬は表示されません（デフォルトではオフ）",
 
   "sectionAppearance": "外観",
   "theme": "テーマ",

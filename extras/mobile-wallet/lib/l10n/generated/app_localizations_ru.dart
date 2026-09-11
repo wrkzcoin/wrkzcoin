@@ -682,11 +682,11 @@ class SRu extends S {
       'Сохранять после синхронизации, затем каждые 5 минут';
 
   @override
-  String get scanCoinbaseTx => 'Сканировать транзакции Coinbase';
+  String get skipCoinbaseTx => 'Пропускать Coinbase-транзакции';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Включить вознаграждения майнеров (по умолчанию отключено)';
+  String get skipCoinbaseSubtitle =>
+      'Синхронизация быстрее, но награды майнера не отображаются (по умолчанию выключено)';
 
   @override
   String get dangerZone => 'Опасная зона';

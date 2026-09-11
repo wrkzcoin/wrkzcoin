@@ -28,7 +28,7 @@ ApiConfig parseArguments(int argc, char **argv)
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
     bool help = false, version = false, scanCoinbaseTransactions = false, noConsole = false, rpcUseIpv6 = false,
-         notifyDuringSync = false;
+         notifyDuringSync = false, skipCoinbaseTransactions = false, skipCoinbase = false;
 
     int logLevel;
 
@@ -58,8 +58,16 @@ ApiConfig parseArguments(int argc, char **argv)
          cxxopts::value<bool>(noConsole)->default_value("false")->implicit_value("true"))
 
         ("scan-coinbase-transactions",
-         "Scan miner/coinbase transactions",
+         "Scan miner/coinbase transactions. This is the default; the flag is kept for existing scripts",
          cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"))
+
+        ("skip-coinbase-transactions",
+         "Do not scan miner/coinbase transactions. Syncs faster, but mining rewards sent to this wallet are not found",
+         cxxopts::value<bool>(skipCoinbaseTransactions)->default_value("false")->implicit_value("true"))
+
+        ("skip-coinbase",
+         "Alias of --skip-coinbase-transactions",
+         cxxopts::value<bool>(skipCoinbase)->default_value("false")->implicit_value("true"))
 
         ("threads",
          "Specify number of wallet sync threads",
@@ -212,9 +220,20 @@ ApiConfig parseArguments(int argc, char **argv)
         config.threads = threads;
     }
 
-    if (scanCoinbaseTransactions)
+    const bool skip = skipCoinbaseTransactions || skipCoinbase;
+
+    if (skip && scanCoinbaseTransactions)
     {
-        Config::config.wallet.skipCoinbaseTransactions = false;
+        std::cout << "--scan-coinbase-transactions and --skip-coinbase-transactions cannot be used together" << std::endl;
+        exit(1);
+    }
+
+    if (skip)
+    {
+        Config::config.wallet.skipCoinbaseTransactions = true;
+
+        std::cout << "Skipping coinbase transactions: mining rewards sent to this wallet will not be found "
+                  << "until it is reset without this flag." << std::endl;
     }
 
     if (!rpcIpcMode.empty() && !Common::Ipc::parseMode(rpcIpcMode, config.rpcIpcMode))

@@ -81,7 +81,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   /// the wallet library does not persist itself, record which wallet this is,
   /// and drop every cache belonging to the wallet that was open before.
   Future<void> _afterWalletOpened(WalletCApi ffi, String name) async {
-    ffi.setScanCoinbase(ref.read(scanCoinbaseProvider));
+    ffi.setScanCoinbase(!ref.read(skipCoinbaseProvider));
     ref.read(txPowServerProvider).applyTo(ffi);
     await storeWalletPassword(_passCtrl.text);
     await saveLastWalletPath(name);

@@ -683,11 +683,11 @@ class SDe extends S {
       'Nach Synchronisierung speichern, dann alle 5 Minuten';
 
   @override
-  String get scanCoinbaseTx => 'Coinbase-Transaktionen scannen';
+  String get skipCoinbaseTx => 'Coinbase-Transaktionen überspringen';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Miner-Belohnungen einschließen (standardmäßig deaktiviert)';
+  String get skipCoinbaseSubtitle =>
+      'Schnellere Synchronisierung, aber Miner-Belohnungen werden nicht angezeigt (standardmäßig aus)';
 
   @override
   String get dangerZone => 'Gefahrenzone';

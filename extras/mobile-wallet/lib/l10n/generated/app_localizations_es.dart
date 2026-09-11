@@ -682,11 +682,11 @@ class SEs extends S {
       'Guardar tras sincronización, luego cada 5 minutos';
 
   @override
-  String get scanCoinbaseTx => 'Escanear transacciones Coinbase';
+  String get skipCoinbaseTx => 'Omitir transacciones Coinbase';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Incluir recompensas de minero (desactivado por defecto)';
+  String get skipCoinbaseSubtitle =>
+      'Sincronización más rápida, pero no se muestran las recompensas de minería (desactivado por defecto)';
 
   @override
   String get dangerZone => 'Zona de peligro';

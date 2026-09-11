@@ -530,11 +530,11 @@ class SVi extends S {
   String get autosaveSubtitle => 'Lưu ví ra đĩa sau khi đồng bộ và mỗi 5 phút';
 
   @override
-  String get scanCoinbaseTx => 'Quét giao dịch Coinbase';
+  String get skipCoinbaseTx => 'Bỏ qua giao dịch Coinbase';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Bao gồm phần thưởng đào khi đồng bộ (mặc định tắt)';
+  String get skipCoinbaseSubtitle =>
+      'Đồng bộ nhanh hơn nhưng không hiển thị phần thưởng đào (mặc định tắt)';
 
   @override
   String get sectionAppearance => 'Giao diện';

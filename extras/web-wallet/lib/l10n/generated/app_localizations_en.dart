@@ -531,11 +531,11 @@ class SEn extends S {
       'Save wallet to disk after sync and every 5 minutes';
 
   @override
-  String get scanCoinbaseTx => 'Scan Coinbase Transactions';
+  String get skipCoinbaseTx => 'Skip Coinbase Transactions';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Include miner rewards when syncing (off by default)';
+  String get skipCoinbaseSubtitle =>
+      'Faster sync, but miner rewards are not shown (off by default)';
 
   @override
   String get sectionAppearance => 'Appearance';

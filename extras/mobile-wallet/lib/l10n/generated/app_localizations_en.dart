@@ -677,10 +677,11 @@ class SEn extends S {
   String get autosaveSubtitle => 'Save after sync, then every 5 minutes';
 
   @override
-  String get scanCoinbaseTx => 'Scan Coinbase Transactions';
+  String get skipCoinbaseTx => 'Skip Coinbase Transactions';
 
   @override
-  String get scanCoinbaseSubtitle => 'Include miner rewards (off by default)';
+  String get skipCoinbaseSubtitle =>
+      'Faster sync, but miner rewards are not shown (off by default)';
 
   @override
   String get dangerZone => 'Danger Zone';
