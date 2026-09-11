@@ -176,6 +176,10 @@ namespace CryptoNote
 
         void onSyncChunkFailure(CryptoNoteConnectionContext &context);
 
+        /* Score the peer that sent a block we rejected: only for what the
+           sender could have checked itself (see the definition). */
+        void reportInvalidBlock(const CryptoNoteConnectionContext &context, const std::error_code &result);
+
         bool shouldDemoteSyncPeer(const CryptoNoteConnectionContext &context) const;
 
         uint32_t getPeerServingFloor(const CryptoNoteConnectionContext &context) const;

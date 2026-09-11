@@ -745,6 +745,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << context
                                        << "Block verification failed, dropping connection: " << result.message();
+            reportInvalidBlock(context, result);
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
         }
 
@@ -872,6 +873,7 @@ namespace CryptoNote
             {
                 logger(Logging::ERROR) << context << "sent wrong block: failed to parse and validate block: \r\n"
                                        << toHex(rawBlocks[index].block) << "\r\n dropping connection";
+                m_p2p->report_misbehaviour(context, 100, "block that does not decode");
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
                 return 1;
             }
@@ -884,6 +886,11 @@ namespace CryptoNote
                 logger(Logging::ERROR) << context << "sent wrong NOTIFY_RESPONSE_GET_OBJECTS: block with id="
                                        << Common::podToHex(cachedBlocks.back().getBlockHash())
                                        << " wasn't requested, dropping connection";
+
+                /* 25, not an immediate ban: this has fired against honest
+                   seeds before, from races on our own side (a reorg between
+                   request and reply, a wiped discard flag). */
+                m_p2p->report_misbehaviour(context, 25, "block that was never requested");
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
                 return 1;
             }
@@ -1046,25 +1053,15 @@ namespace CryptoNote
             {
                 if (addResult == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
                 {
-                    static constexpr uint64_t CHECKPOINT_MISMATCH_BAN_SECONDS = 900;
-
-                    /* m_remote_ip is 0 for a pure IPv6 peer: banning it banned
-                       0.0.0.0 and let the peer straight back in. */
-                    if (context.m_remote_ipv6.empty())
-                    {
-                        m_p2p->ban_host(context.m_remote_ip, CHECKPOINT_MISMATCH_BAN_SECONDS);
-                    }
-                    else
-                    {
-                        m_p2p->ban_host6(context.m_remote_ipv6, CHECKPOINT_MISMATCH_BAN_SECONDS);
-                    }
-
                     logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
                         << context << "Checkpoint mismatch from peer for block "
-                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " ("
-                        << addResult.message() << "), temporary ban applied for "
-                        << CHECKPOINT_MISMATCH_BAN_SECONDS << "s";
+                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " (" << addResult.message()
+                        << ")";
                 }
+
+                /* A checkpoint mismatch used to earn a 900 s in-memory ban; it
+                   is now one of the offences that bans for a day, persisted. */
+                reportInvalidBlock(context, addResult);
 
                 /* A block that fails validation only ever costs the peer its
                    connection. It never becomes a checkpoint, however many peers
@@ -1134,6 +1131,7 @@ namespace CryptoNote
         if (!fromBinaryArray(newBlockTemplate, arg.blockTemplate))
         { // deserialize blockTemplate
             logger(Logging::WARNING) << context << "Deserialization of Block Template failed, dropping connection";
+            m_p2p->report_misbehaviour(context, 100, "lite block that does not decode");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1244,6 +1242,7 @@ namespace CryptoNote
             {
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << result.message();
+                reportInvalidBlock(context, result);
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
             }
         }
@@ -1289,6 +1288,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING, Logging::BRIGHT_RED)
                 << context << "Failed to handle NOTIFY_REQUEST_CHAIN. block_ids is empty";
+            m_p2p->report_misbehaviour(context, 25, "malformed chain request");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1297,6 +1297,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING)
                 << context << "Failed to handle NOTIFY_REQUEST_CHAIN. block_ids doesn't end with genesis block ID";
+            m_p2p->report_misbehaviour(context, 25, "malformed chain request");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1432,6 +1433,7 @@ namespace CryptoNote
         if (context.m_chain_requests_outstanding == 0)
         {
             logger(Logging::DEBUGGING) << context << "sent a chain entry we never requested, dropping connection";
+            m_p2p->report_misbehaviour(context, 25, "unrequested chain entry");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1445,6 +1447,7 @@ namespace CryptoNote
             logger(Logging::DEBUGGING) << context << "sent " << arg.m_block_ids.size()
                                        << " block ids in one chain entry, more than the "
                                        << BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT << " we ask for, dropping connection";
+            m_p2p->report_misbehaviour(context, 25, "oversized chain entry");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1912,6 +1915,33 @@ namespace CryptoNote
             // Fallback: grow 25% per success until BPS data is available
             const uint32_t next = context.m_sync_batch_size + std::max<uint32_t>(1, context.m_sync_batch_size / 4);
             context.m_sync_batch_size = std::min(next, m_syncBatchMax);
+        }
+    }
+
+    /* A block without the work it claims, one that contradicts a checkpoint,
+       or one that does not decode, took no mining and tells us exactly what
+       the sender is: ban at once. Any other rejection - timestamps, versions,
+       spent key images, fees, mixin - depends on the clock, the fork schedule
+       or chain state, and a block that passed its proof of work cost real
+       mining, so the likelier cause is two implementations disagreeing (near
+       a fork, or a bug on either side). Those only drop the connection: bans
+       are persisted, and a ban would keep cutting us off from honest peers
+       for a day after the bug was fixed. */
+    void CryptoNoteProtocolHandler::reportInvalidBlock(
+        const CryptoNoteConnectionContext &context,
+        const std::error_code &result)
+    {
+        if (result == error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block with too little proof of work");
+        }
+        else if (result == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block contradicting a checkpoint");
+        }
+        else if (result == error::AddBlockErrorCondition::DESERIALIZATION_FAILED)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block that does not decode");
         }
     }
 

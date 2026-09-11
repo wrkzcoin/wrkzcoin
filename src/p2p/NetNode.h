@@ -221,6 +221,11 @@ namespace CryptoNote
 
         std::vector<std::pair<std::string, uint64_t>> get_banned_hosts6();
 
+        void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) override;
+
       private:
         int handleCommand(
             const LevinProtocol::Command &cmd,
@@ -583,5 +588,23 @@ namespace CryptoNote
         bool isHostBanned(uint32_t ip);
 
         bool isHostBanned6(const std::string &addr);
+
+        struct MisbehaviourScore
+        {
+            uint32_t points = 0;
+
+            uint64_t lastOffence = 0;
+        };
+
+        /* Keyed by address text (dotted IPv4 or IpAddress::toString() IPv6).
+           Guarded by m_banMutex. */
+        std::unordered_map<std::string, MisbehaviourScore> m_misbehaviourScores;
+
+        /* Bans outlive a restart: a banned peer used to get back in simply by
+           waiting for the node to be restarted. Kept in their own small text
+           file so p2pstate's format is untouched. */
+        void loadBans();
+
+        void saveBans();
     };
 } // namespace CryptoNote

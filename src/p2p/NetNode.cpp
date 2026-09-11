@@ -57,6 +57,17 @@ namespace
         return id;
     }
 
+    /* Misbehaviour scoring. An address is banned for a day once its points
+       reach the threshold, and its points are forgotten after a day without
+       another offence. */
+    constexpr uint32_t MISBEHAVIOUR_BAN_THRESHOLD = 100;
+
+    constexpr uint64_t MISBEHAVIOUR_BAN_SECONDS = 24 * 60 * 60;
+
+    constexpr uint64_t MISBEHAVIOUR_MEMORY_SECONDS = 24 * 60 * 60;
+
+    const char P2P_BANS_FILENAME[] = "p2pbans.wrkz.txt";
+
     constexpr size_t PEER_SELECTION_RECENCY_WINDOW = 256;
     constexpr size_t PEER_SELECTION_MAX_TRIES = 16;
 
@@ -332,6 +343,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << ctx << "sent command " << cmd.command
                                        << " before completing the handshake, closing connection";
+            report_misbehaviour(ctx, 25, "command before handshake");
             ctx.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 0;
         }
@@ -711,6 +723,8 @@ namespace CryptoNote
         m_p2p_state_filename = config.getP2pStateFilename();
         m_p2p_state_reset = config.getP2pStateReset();
 
+        loadBans();
+
         if (!init_config())
         {
             logger(ERROR, BRIGHT_RED) << "Failed to init config.";
@@ -843,6 +857,9 @@ namespace CryptoNote
             StdOutputStream stream(p2p_data);
             BinaryOutputStreamSerializer a(stream);
             CryptoNote::serialize(*this, a);
+
+            saveBans();
+
             return true;
         }
         catch (const std::exception &e)
@@ -974,6 +991,7 @@ namespace CryptoNote
         if (context.m_timed_syncs_outstanding == 0)
         {
             logger(Logging::DEBUGGING) << context << "sent a COMMAND_TIMED_SYNC response we never requested";
+            report_misbehaviour(context, 25, "unrequested timed sync response");
             return false;
         }
 
@@ -2323,6 +2341,7 @@ namespace CryptoNote
             logger(Logging::ERROR) << context
                                    << "COMMAND_HANDSHAKE came, but seems that connection already have associated "
                                       "peer_id (double COMMAND_HANDSHAKE?)";
+            report_misbehaviour(context, 25, "second handshake");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -2506,6 +2525,181 @@ namespace CryptoNote
         }
 
         return bans;
+    }
+
+    void NodeServer::report_misbehaviour(
+        const CryptoNoteConnectionContext &context,
+        const uint32_t points,
+        const std::string &reason)
+    {
+        if (points == 0)
+        {
+            return;
+        }
+
+        const bool isV4 = context.m_remote_ipv6.empty();
+
+        /* m_remote_ip is in network byte order, so byte 0 is the first octet */
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&context.m_remote_ip);
+
+        if (isV4 ? bytes[0] == 127 : context.m_remote_ipv6 == "::1")
+        {
+            return;
+        }
+
+        const std::string key = isV4 ? Common::ipAddressToString(context.m_remote_ip) : context.m_remote_ipv6;
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        uint32_t total = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+
+            auto &score = m_misbehaviourScores[key];
+
+            if (now - score.lastOffence > MISBEHAVIOUR_MEMORY_SECONDS)
+            {
+                score.points = 0;
+            }
+
+            score.points += points;
+            score.lastOffence = now;
+            total = score.points;
+
+            if (total >= MISBEHAVIOUR_BAN_THRESHOLD)
+            {
+                m_misbehaviourScores.erase(key);
+            }
+        }
+
+        logger(DEBUGGING) << context << "misbehaviour: " << reason << " (+" << points << ", " << total << "/"
+                          << MISBEHAVIOUR_BAN_THRESHOLD << ")";
+
+        if (total < MISBEHAVIOUR_BAN_THRESHOLD)
+        {
+            return;
+        }
+
+        logger(INFO) << context << "reached the misbehaviour limit (last: " << reason << "), banning it";
+
+        /* ban_host takes the lock itself, so it is called with it released */
+        if (isV4)
+        {
+            ban_host(context.m_remote_ip, MISBEHAVIOUR_BAN_SECONDS);
+        }
+        else
+        {
+            ban_host6(context.m_remote_ipv6, MISBEHAVIOUR_BAN_SECONDS);
+        }
+    }
+
+    void NodeServer::loadBans()
+    {
+        const std::string path = m_config_folder + "/" + P2P_BANS_FILENAME;
+
+        std::ifstream file(path);
+
+        if (!file)
+        {
+            return;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::string family;
+        std::string address;
+        uint64_t until = 0;
+        size_t loaded = 0;
+
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        /* One ban per line: "4 <address as stored> <until>" or
+           "6 <IPv6 text> <until>". Expired ones are skipped. */
+        while (file >> family >> address >> until)
+        {
+            if (until <= now)
+            {
+                continue;
+            }
+
+            if (family == "4")
+            {
+                try
+                {
+                    m_bannedHostsUntil[static_cast<uint32_t>(std::stoul(address))] = until;
+                    ++loaded;
+                }
+                catch (const std::exception &)
+                {
+                }
+            }
+            else if (family == "6")
+            {
+                m_bannedIPv6HostsUntil[address] = until;
+                ++loaded;
+            }
+        }
+
+        if (loaded != 0)
+        {
+            logger(INFO) << "Loaded " << loaded << " peer bans from " << path;
+        }
+    }
+
+    void NodeServer::saveBans()
+    {
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::vector<std::string> lines;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+
+            for (const auto &[ip, until] : m_bannedHostsUntil)
+            {
+                if (until > now)
+                {
+                    lines.push_back("4 " + std::to_string(ip) + " " + std::to_string(until));
+                }
+            }
+
+            for (const auto &[address, until] : m_bannedIPv6HostsUntil)
+            {
+                if (until > now)
+                {
+                    lines.push_back("6 " + address + " " + std::to_string(until));
+                }
+            }
+
+            /* Forget scores nobody has added to for a day, so the map cannot
+               grow with every address that ever slipped once. */
+            for (auto it = m_misbehaviourScores.begin(); it != m_misbehaviourScores.end();)
+            {
+                if (now - it->second.lastOffence > MISBEHAVIOUR_MEMORY_SECONDS)
+                {
+                    it = m_misbehaviourScores.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
+
+        const std::string path = m_config_folder + "/" + P2P_BANS_FILENAME;
+
+        std::ofstream file(path, std::ios::out | std::ios::trunc);
+
+        if (!file)
+        {
+            logger(DEBUGGING) << "Failed to save peer bans to " << path;
+            return;
+        }
+
+        for (const auto &line : lines)
+        {
+            file << line << '\n';
+        }
     }
 
     bool NodeServer::isHostBanned(uint32_t ip)

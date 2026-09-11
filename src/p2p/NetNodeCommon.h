@@ -59,6 +59,14 @@ namespace CryptoNote
         virtual bool ban_host6(const std::string &addr, uint64_t seconds) = 0;
 
         virtual std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() = 0;
+
+        /* Charge the peer behind a connection for misbehaving. Points add up
+           per address and the address is banned once they reach the threshold;
+           0 points means "drop only" and records nothing. */
+        virtual void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) = 0;
     };
 
     struct p2p_endpoint_stub : public IP2pEndpoint
@@ -122,6 +130,13 @@ namespace CryptoNote
         virtual std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override
         {
             return {};
+        }
+
+        virtual void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) override
+        {
         }
     };
 } // namespace CryptoNote
