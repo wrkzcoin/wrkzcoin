@@ -1079,7 +1079,9 @@ std::vector<std::tuple<Error, Crypto::Hash>> WalletBackend::sweepToAddress(
         std::tie(std::ignore, recipientViewKey) = Utilities::addressToKeys(resolvedDest);
     }
 
-    const uint64_t height = m_daemon->networkBlockCount();
+    /* Mixin rules at the daemon's own top block, as its pool applies them -
+       see sendTransactionBasic in Transfer.cpp. */
+    const uint64_t height = m_daemon->localDaemonBlockCount();
     const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
     const uint64_t mixin = defaultMixin;
 
@@ -1396,7 +1398,9 @@ std::tuple<size_t, uint64_t> WalletBackend::estimateSweep(
     const std::string paymentID,
     const uint64_t amountToSweep) const
 {
-    const uint64_t height = m_daemon->networkBlockCount();
+    /* Mixin rules at the daemon's own top block, as its pool applies them -
+       see sendTransactionBasic in Transfer.cpp. */
+    const uint64_t height = m_daemon->localDaemonBlockCount();
     const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(height);
     const uint64_t mixin = defaultMixin;
 

@@ -368,7 +368,7 @@ bool confirmTransaction(
        the user approves - this send is less private than they would normally
        get, and that is not something to discover afterwards. */
     const auto [minMixin, maxMixin, defaultMixin] =
-        Utilities::getMixinAllowableRange(walletBackend->getStatus().networkBlockCount);
+        Utilities::getMixinAllowableRange(walletBackend->getStatus().localDaemonBlockCount);
 
     if (mixin < defaultMixin)
     {

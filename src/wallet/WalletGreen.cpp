@@ -3168,7 +3168,7 @@ namespace CryptoNote
         }
 
         const auto [minMixin, maxMixin, defaultMixin] =
-            Utilities::getMixinAllowableRange(m_node.getLastKnownBlockHeight());
+            Utilities::getMixinAllowableRange(m_node.getLocalBlockCount() - 1);
 
         uint16_t attemptMixin = mixIn;
 
