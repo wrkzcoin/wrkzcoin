@@ -2239,6 +2239,17 @@ namespace CryptoNote
             return {false, "Transaction already exists in pool"};
         }
 
+        /* The pool refuses a second spend of a key image it already holds, but
+           only in pushTransaction, after full validation - so many validly
+           signed spends of one output each cost a full signature check first.
+           The answer does not change, only when it is given. */
+        if (transactionPool->spendsKeyImageInPool(cachedTransaction))
+        {
+            logger(Logging::DEBUGGING) << "Transaction " << transactionHash
+                                       << " spends a key image a pool transaction already spends";
+            return {false, "Transaction was not accepted into the pool"};
+        }
+
         const auto [success, error] = isTransactionValidForPool(cachedTransaction, validatorState);
         if (!success)
         {

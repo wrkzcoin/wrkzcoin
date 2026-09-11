@@ -45,6 +45,8 @@ namespace CryptoNote
 
         virtual bool checkIfTransactionPresent(const Crypto::Hash &hash) const override;
 
+        virtual bool spendsKeyImageInPool(const CachedTransaction &transaction) const override;
+
         virtual const TransactionValidatorState &getPoolTransactionValidationState() const override;
 
         virtual std::vector<CachedTransaction> getPoolTransactions() const override;

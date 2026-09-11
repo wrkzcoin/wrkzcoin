@@ -463,6 +463,22 @@ namespace CryptoNote
         return {regularTransactions, fusionTransactions};
     }
 
+    bool TransactionPool::spendsKeyImageInPool(const CachedTransaction &transaction) const
+    {
+        std::scoped_lock lock(m_transactionsMutex);
+
+        for (const auto &input : transaction.getTransaction().inputs)
+        {
+            if (std::holds_alternative<KeyInput>(input)
+                && poolState.spentKeyImages.count(std::get<KeyInput>(input).keyImage) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     uint64_t TransactionPool::getTransactionReceiveTime(const Crypto::Hash &hash) const
     {
         std::scoped_lock lock(m_transactionsMutex);

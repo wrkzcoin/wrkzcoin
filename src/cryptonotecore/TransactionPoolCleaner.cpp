@@ -99,6 +99,11 @@ namespace CryptoNote
         return transactionPool->getPoolTransactionsForBlockTemplate();
     }
 
+    bool TransactionPoolCleanWrapper::spendsKeyImageInPool(const CachedTransaction &transaction) const
+    {
+        return transactionPool->spendsKeyImageInPool(transaction);
+    }
+
     uint64_t TransactionPoolCleanWrapper::getTransactionReceiveTime(const Crypto::Hash &hash) const
     {
         return transactionPool->getTransactionReceiveTime(hash);
@@ -185,7 +190,12 @@ namespace CryptoNote
     bool TransactionPoolCleanWrapper::isTransactionRecentlyDeleted(const Crypto::Hash &hash) const
     {
         auto it = recentlyDeletedTransactions.find(hash);
-        return it != recentlyDeletedTransactions.end() && it->second >= timeout;
+
+        /* The map holds deletion times. This compared that time with the
+           timeout itself - a timestamp against a duration - which is true for
+           any entry at all; it only held up because the cleaner prunes old
+           entries. Say what is meant: deleted less than `timeout` ago. */
+        return it != recentlyDeletedTransactions.end() && timeProvider->now() - it->second < timeout;
     }
 
     void TransactionPoolCleanWrapper::cleanRecentlyDeletedTransactions(uint64_t currentTime)
