@@ -943,6 +943,7 @@ namespace CryptoNote
                 && (conn.m_state == CryptoNoteConnectionContext::state_normal
                     || conn.m_state == CryptoNoteConnectionContext::state_idle))
             {
+                ++conn.m_timed_syncs_outstanding;
                 conn.pushMessage(P2pMessage(P2pMessage::COMMAND, COMMAND_TIMED_SYNC::ID, cmdBuf));
             }
         });
@@ -952,6 +953,16 @@ namespace CryptoNote
 
     bool NodeServer::handleTimedSyncResponse(const BinaryArray &in, P2pConnectionContext &context)
     {
+        /* Only timedSync() asks for one. Merging an unasked-for response let
+           any peer, handshaken or not, push peer lists into ours at will. */
+        if (context.m_timed_syncs_outstanding == 0)
+        {
+            logger(Logging::DEBUGGING) << context << "sent a COMMAND_TIMED_SYNC response we never requested";
+            return false;
+        }
+
+        --context.m_timed_syncs_outstanding;
+
         COMMAND_TIMED_SYNC::response rsp;
         if (!LevinProtocol::decode<COMMAND_TIMED_SYNC::response>(in, rsp))
         {
@@ -1902,7 +1913,13 @@ namespace CryptoNote
                                   << ", local_time(on remote node):" << local_time;
                 return false;
             }
-            be.last_seen += delta;
+
+            /* local_time is whatever the peer says it is, so the shift could
+               carry an entry past the present, and an entry "seen in the
+               future" outranks every honest one when the gray list is trimmed.
+               About twenty messages would replace the whole list. */
+            const int64_t shifted = static_cast<int64_t>(be.last_seen) + delta;
+            be.last_seen = shifted < 0 ? 0 : std::min<uint64_t>(static_cast<uint64_t>(shifted), static_cast<uint64_t>(now));
         }
         return true;
     }
@@ -1946,6 +1963,15 @@ namespace CryptoNote
         }
 
         std::list<PeerlistEntry6> peerlist_(peerlist.begin(), std::next(peerlist.begin(), std::min(received, limit)));
+
+        /* The IPv6 list carries no sender clock to correct against, so its
+           times were taken as sent. Never later than now, as for IPv4. */
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        for (auto &entry : peerlist_)
+        {
+            entry.last_seen = std::min<uint64_t>(entry.last_seen, now);
+        }
+
         return m_peerlist.merge_peerlist6(peerlist_);
     }
     //-----------------------------------------------------------------------------------
