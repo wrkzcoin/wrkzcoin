@@ -452,8 +452,11 @@ namespace CryptoNote
 
         void copyTransactionsToPool(IBlockchainCache *alt);
 
+        /* afterChainSwitch also checks every pool transaction's key images
+           against the whole main chain, not just the given block's. */
         void checkAndRemoveInvalidPoolTransactions(
-            const TransactionValidatorState &blockTransactionsState);
+            const TransactionValidatorState &blockTransactionsState,
+            const bool afterChainSwitch = false);
 
         bool isTransactionInChain(const Crypto::Hash &txnHash);
 

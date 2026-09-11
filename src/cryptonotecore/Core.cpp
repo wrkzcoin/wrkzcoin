@@ -198,6 +198,27 @@ namespace CryptoNote
             return false;
         }
 
+        /* Whether any of the transaction's key images is already spent anywhere
+           on the given chain. A database read per key image, so for the rare
+           paths only - a chain switch, and transactions that fit a template. */
+        bool spendsKeyImageOnChain(const IBlockchainCache &chain, const CachedTransaction &transaction)
+        {
+            for (const auto &input : transaction.getTransaction().inputs)
+            {
+                if (!std::holds_alternative<KeyInput>(input))
+                {
+                    continue;
+                }
+
+                if (chain.checkIfSpent(std::get<KeyInput>(input).keyImage))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         TransactionValidatorState extractSpentOutputs(const CachedTransaction &transaction)
         {
             TransactionValidatorState spentOutputs;
@@ -1711,10 +1732,13 @@ namespace CryptoNote
 
                         updateBlockMedianSize();
 
-                        /* Take the current block spent key images and run them
-                           against the pool to remove any transactions that may
-                           be in the pool that would now be considered invalid */
-                        checkAndRemoveInvalidPoolTransactions(validatorState);
+                        /* validatorState holds only this block's key images, but
+                           every block of the new branch below it may spend
+                           something the pool holds too - a double spend two or
+                           more blocks deep would otherwise stay in the pool and
+                           in every template until it expired. So check the pool
+                           against the whole new main chain here. */
+                        checkAndRemoveInvalidPoolTransactions(validatorState, true);
 
                         try
                         {
@@ -1831,7 +1855,8 @@ namespace CryptoNote
        throwaway validator state per entry, and taking the block state by
        reference rather than copying its key images on every call. */
     void Core::checkAndRemoveInvalidPoolTransactions(
-        const TransactionValidatorState &blockTransactionsState)
+        const TransactionValidatorState &blockTransactionsState,
+        const bool afterChainSwitch)
     {
         auto &pool = *transactionPool;
 
@@ -1872,6 +1897,11 @@ namespace CryptoNote
             }
             /* If the the transaction contains outputs that were spent in the new block, fail */
             else if (spendsKeyImageIn(blockTransactionsState, *poolTx))
+            {
+                isValid = false;
+            }
+            /* After a switch, if any block of the new main chain spent it */
+            else if (afterChainSwitch && spendsKeyImageOnChain(*chainsLeaves[0], *poolTx))
             {
                 isValid = false;
             }
@@ -4373,6 +4403,19 @@ namespace CryptoNote
 
                 /* Check to validate that the transaction is valid for a block at this height */
                 if (!validateBlockTemplateTransaction(transaction, height))
+                {
+                    transactionPool->removeTransaction(transaction.getTransactionHash());
+
+                    return false;
+                }
+
+                /* The re-validation above cannot see the chain, so a pool
+                   transaction whose input the main chain has already spent
+                   would go into the template and make every block built on it
+                   invalid. The pool sweeps should have removed it; this is the
+                   second line. Only transactions that fit get here, so the
+                   reads are bounded by the block size. */
+                if (spendsKeyImageOnChain(*chainsLeaves[0], transaction))
                 {
                     transactionPool->removeTransaction(transaction.getTransactionHash());
 
