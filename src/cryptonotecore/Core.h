@@ -25,6 +25,7 @@
 #include <WalletTypes.h>
 #include <ctime>
 #include <map>
+#include <mutex>
 #include <shared_mutex>
 #include <logging/LoggerMessage.h>
 #include <system/ContextGroup.h>
@@ -310,6 +311,14 @@ namespace CryptoNote
         std::unique_ptr<IBlockchainCacheFactory> blockchainCacheFactory;
 
         Utilities::ThreadPool<bool> m_transactionValidationThreadPool;
+
+        /* Pool transactions refused for a reason the chain cannot change, with
+           when (see isTransactionValidForPool). A remembered hash is refused
+           again without being validated again, so one bad transaction relayed
+           over and over costs its signature check once. */
+        std::unordered_map<Crypto::Hash, uint64_t> m_rejectedTransactions;
+
+        std::mutex m_rejectedTransactionsMutex;
 
         bool initialized;
 

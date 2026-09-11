@@ -219,6 +219,48 @@ namespace CryptoNote
             return false;
         }
 
+        constexpr size_t MAX_REJECTED_TRANSACTIONS = 10000;
+
+        constexpr uint64_t REJECTED_TRANSACTION_MEMORY_SECONDS = 60 * 60;
+
+        /* Rejections the chain cannot change: the transaction's own format,
+           amounts, proof of work and signatures. Signatures do depend on which
+           outputs the ring names, but a wallet builds its rings from the chain
+           of the node it sends through, and the answer is only kept for an
+           hour. Anything that can change with the next block - spent key
+           images, unknown or locked outputs, mixin, fee, unlock time, size -
+           is never remembered. */
+        bool isStateIndependentRejection(const std::error_code &result)
+        {
+            using E = error::TransactionValidationError;
+
+            for (const auto code :
+                 {E::EMPTY_INPUTS,
+                  E::INPUT_UNKNOWN_TYPE,
+                  E::INPUT_INVALID_DOMAIN_KEYIMAGES,
+                  E::INPUT_IDENTICAL_KEYIMAGES,
+                  E::INPUT_IDENTICAL_OUTPUT_INDEXES,
+                  E::INPUT_INVALID_SIGNATURES,
+                  E::INPUT_WRONG_SIGNATURES_COUNT,
+                  E::INPUT_INVALID_SIGNATURES_COUNT,
+                  E::INPUTS_AMOUNT_OVERFLOW,
+                  E::OUTPUT_ZERO_AMOUNT,
+                  E::OUTPUT_INVALID_KEY,
+                  E::OUTPUT_INVALID_REQUIRED_SIGNATURES_COUNT,
+                  E::OUTPUT_UNKNOWN_TYPE,
+                  E::OUTPUTS_AMOUNT_OVERFLOW,
+                  E::WRONG_AMOUNT,
+                  E::POW_INVALID})
+            {
+                if (result == code)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         TransactionValidatorState extractSpentOutputs(const CachedTransaction &transaction)
         {
             TransactionValidatorState spentOutputs;
@@ -2239,6 +2281,22 @@ namespace CryptoNote
             return {false, "Transaction already exists in pool"};
         }
 
+        {
+            std::lock_guard<std::mutex> lock(m_rejectedTransactionsMutex);
+
+            const auto it = m_rejectedTransactions.find(transactionHash);
+
+            if (it != m_rejectedTransactions.end())
+            {
+                if (static_cast<uint64_t>(time(nullptr)) - it->second < REJECTED_TRANSACTION_MEMORY_SECONDS)
+                {
+                    return {false, "Transaction was rejected recently"};
+                }
+
+                m_rejectedTransactions.erase(it);
+            }
+        }
+
         /* The pool refuses a second spend of a key image it already holds, but
            only in pushTransaction, after full validation - so many validly
            signed spends of one output each cost a full signature check first.
@@ -2310,6 +2368,32 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
+
+            if (isStateIndependentRejection(validationResult))
+            {
+                const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+                std::lock_guard<std::mutex> lock(m_rejectedTransactionsMutex);
+
+                if (m_rejectedTransactions.size() >= MAX_REJECTED_TRANSACTIONS)
+                {
+                    for (auto it = m_rejectedTransactions.begin(); it != m_rejectedTransactions.end();)
+                    {
+                        it = now - it->second >= REJECTED_TRANSACTION_MEMORY_SECONDS ? m_rejectedTransactions.erase(it)
+                                                                                     : std::next(it);
+                    }
+
+                    /* Still full of live entries: make room with an arbitrary
+                       one rather than letting the map grow. */
+                    if (m_rejectedTransactions.size() >= MAX_REJECTED_TRANSACTIONS)
+                    {
+                        m_rejectedTransactions.erase(m_rejectedTransactions.begin());
+                    }
+                }
+
+                m_rejectedTransactions[transactionHash] = now;
+            }
+
             return {false, validationResult.message()};
         }
 
