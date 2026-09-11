@@ -1093,6 +1093,31 @@ namespace CryptoNote
         return false;
     }
 
+    bool NodeServer::is_subnet16_connected(const uint32_t ip)
+    {
+        /* Network byte order: bytes 0 and 1 are the first two octets */
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&ip);
+
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
+
+        for (const auto &conn : m_connections)
+        {
+            if (conn.second.m_is_income || !conn.second.m_remote_ipv6.empty())
+            {
+                continue;
+            }
+
+            const auto *other = reinterpret_cast<const uint8_t *>(&conn.second.m_remote_ip);
+
+            if (other[0] == bytes[0] && other[1] == bytes[1])
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool NodeServer::try_to_connect_and_handshake_with_new_peer(
         const NetworkAddress &na,
         bool just_take_peerlist,
@@ -1472,6 +1497,17 @@ namespace CryptoNote
             /* Skipping a peer that failed lately costs nothing, so it is not a try. */
             if (is_addr_recently_failed(pe.adr))
             {
+                continue;
+            }
+
+            /* Prefer a /16 none of our outbound peers is in yet, so one network
+               cannot end up supplying all of them. For the first two thirds of
+               the draws only; after that any peer will do, or a node on a
+               small network would never fill its slots. Forgotten as tried so
+               the fallback can still pick it. */
+            if (rand_count <= (max_random_index + 1) * 2 && is_subnet16_connected(pe.adr.ip))
+            {
+                tried_peers.erase(random_index);
                 continue;
             }
 

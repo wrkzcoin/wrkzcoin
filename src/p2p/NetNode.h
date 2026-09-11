@@ -237,6 +237,9 @@ namespace CryptoNote
            Call with m_connectionsMutex held. */
         std::string inboundRejectionReason(const P2pConnectionContext &candidate) const;
 
+        /* Whether an outbound connection already goes to this IPv4 /16 */
+        bool is_subnet16_connected(uint32_t ip);
+
         //----------------- commands handlers ----------------------------------------------
         int handle_handshake(
             int command,
