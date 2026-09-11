@@ -1596,6 +1596,40 @@ namespace CryptoNote
             }
         }
 
+        /* Inside the checkpoint zone the block must match its checkpoint;
+           above it, it must carry enough work. */
+        const auto checkWork = [&]() -> std::error_code {
+            if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
+            {
+                if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
+                {
+                    logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
+                    return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
+                }
+            }
+            else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
+            {
+                logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
+                return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
+            }
+
+            return {};
+        };
+
+        /* A block with transactions checks its work first, so a block with no
+           real work behind it cannot make us verify every ring signature it
+           carries before we notice. An empty block has nothing to save and
+           keeps the old order. Every check here must pass and none of them
+           writes, so the order changes only which error a block failing
+           several of them reports - never whether it is accepted. */
+        if (!transactions.empty())
+        {
+            if (const auto workError = checkWork())
+            {
+                return workError;
+            }
+        }
+
         uint64_t cumulativeFee = 0;
 
         const uint64_t timestamp = cachedBlock.getBlock().timestamp;
@@ -1654,18 +1688,12 @@ namespace CryptoNote
             return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
         }
 
-        if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
+        if (transactions.empty())
         {
-            if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
+            if (const auto workError = checkWork())
             {
-                logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
-                return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
+                return workError;
             }
-        }
-        else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
-        {
-            logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
-            return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
         }
 
         auto ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE;
