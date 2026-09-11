@@ -30,16 +30,17 @@ namespace CryptoNote
 
         bool checkBlock(uint32_t index, const Crypto::Hash &h, bool &isCheckpoint) const;
 
-        /* Add a dynamic checkpoint at runtime (e.g. when network consensus confirms
-           a block that local validation rejected).  Returns true if inserted. */
-        bool addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash);
+        /* There is deliberately no way to add a checkpoint once the node is
+           running. Every height at or below the last checkpoint skips proof of
+           work and ring signatures, so the set is fixed at start-up: the
+           compiled table plus --load-checkpoints. */
 
       private:
         std::map<uint32_t, Crypto::Hash> points;
 
-        /* Protects `points` against concurrent reads/writes when dynamic
-           checkpoints are inserted while validation threads are reading.
-           Heap-allocated so Checkpoints remains movable (std::mutex is not). */
+        /* Protects `points` between start-up loading and the validation
+           threads reading it. Heap-allocated so Checkpoints remains movable
+           (std::mutex is not). */
         mutable std::unique_ptr<std::mutex> m_mutex;
 
         Logging::LoggerRef logger;

@@ -255,8 +255,6 @@ namespace CryptoNote
 
         virtual void rewind(const uint64_t blockIndex) override;
 
-        virtual void addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash) override;
-
         size_t pruneRawBlocks(uint32_t pruneDepth);
 
         /* Per table record counts and byte totals, for sizing a lite node
