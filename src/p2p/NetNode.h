@@ -215,7 +215,7 @@ namespace CryptoNote
 
         std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
-        bool ban_host6(const std::string &addr, uint64_t seconds);
+        bool ban_host6(const std::string &addr, uint64_t seconds) override;
 
         bool unban_host6(const std::string &addr);
 

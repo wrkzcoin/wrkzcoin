@@ -12,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <list>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -52,6 +53,10 @@ namespace CryptoNote
         virtual bool ban_host(uint32_t ip, uint64_t seconds) = 0;
 
         virtual bool unban_host(uint32_t ip) = 0;
+
+        /* A pure IPv6 peer has no uint32_t address - its m_remote_ip is 0 - so
+           it is banned by its text address instead. */
+        virtual bool ban_host6(const std::string &addr, uint64_t seconds) = 0;
 
         virtual std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() = 0;
     };
@@ -105,6 +110,11 @@ namespace CryptoNote
         }
 
         virtual bool unban_host(uint32_t ip) override
+        {
+            return false;
+        }
+
+        virtual bool ban_host6(const std::string &addr, uint64_t seconds) override
         {
             return false;
         }
