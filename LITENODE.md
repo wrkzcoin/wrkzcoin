@@ -171,7 +171,7 @@ chain over a forgotten flag would be the worst possible reading of an operator's
 | `"4"` | raw block body | no | Where ring signatures live — the bulk of the chain |
 | `"a"` | `ExtendedTransactionInfo` | no | Only needed for rescan and explorer |
 | `"1"` | block index → tx hashes | written empty | `insertCachedBlock` writes this key for every block; below `H` the list is empty |
-| `"0"` | block index → key images | no | Rewind index only; a lite node never rewinds that far |
+| `"0"` | block index → key images | no | No longer written at any height; a rewind reads the key images from the raw block. Older databases still hold it |
 | `"f"` | payment ID → tx hash | no | Explorer only |
 | `"e"`, `"g"` | timestamp indexes | no | Answer "which height was this date" for scans that cannot start below `H` anyway |
 
@@ -189,29 +189,28 @@ the per-amount counter that remains under `"b"`. What a wallet receives as
 `/get_global_indexes_for_range` — is read from `ExtendedTransactionInfo` in the
 `"a"` table, and never came from `"b"` at all.
 
-### `KeyOutputInfo.transactionHash` is zeroed below `H`
+### `KeyOutputInfo.transactionHash` is zeroed
 
 `"j"` is by far the largest table, and a third of each record is a
-`transactionHash` that a lite node can never read. Its only consumer is
-`extractKeyOtputReferences`, reached only from `Core::getTransactionDetails` to
-say which transaction a ring member came from — an explorer answer, and explorer
-mode is refused on a lite node. Ring verification and decoy serving read
-`publicKey` and `unlockTime` and nothing else.
+`transactionHash`. Its only consumer is `extractKeyOtputReferences`, reached only
+from `Core::getTransactionDetails` to say which transaction a ring member came
+from — an explorer answer. Ring verification and decoy serving read `publicKey`
+and `unlockTime` and nothing else.
 
-Below `H` the field is therefore written as zeroes. That is 32 high-entropy bytes
-per key output — on a 4.2M-block chain, ~2.3 GiB of a 9.4 GiB database, and the
-part compression cannot touch. Zeroing rather than removing keeps the record
-layout and the schema version unchanged, so nothing else in the tree needs to
-know, and 78 million identical zero hashes compress to almost nothing.
+The field was first zeroed below `H` on lite nodes, and is now written as zeroes
+at every height on every node. That is 32 high-entropy bytes per key output — on
+a 4.2M-block chain, ~2.3 GiB, and the part compression cannot touch. Zeroing
+rather than removing keeps the record layout and the schema version unchanged,
+and 78 million identical zero hashes compress to almost nothing.
 
-Above `H` the real hash is written as normal: the region a lite node calls full
-really is full.
+`extractKeyOtputReferences` recovers the hash when it finds a zero: the record's
+`blockIndex` gives the block, `"1"` lists that block's transactions, and the one
+whose `"a"` record has this key at `outputIndex` is the creator. Databases
+written with the real hash are read as they are.
 
-**Consequence:** if a lite node ever did serve `getTransactionDetails` for a
-transaction whose ring members predate `H`, it would report a null hash for those
-members rather than fail. It cannot today — explorer mode and lite mode are
-mutually exclusive — but any future work that relaxes that has to deal with this
-first.
+**Consequence:** below `H` on a lite node neither `"1"` nor `"a"` exists, so the
+hash cannot be recovered and stays null. That is reachable only through
+`getTransactionDetails`, and explorer mode and lite mode are mutually exclusive.
 
 The running transaction counter is still updated for skipped transactions, so
 `getBlockchainTransactionCount()` and `tx_count` in `/info` stay chain-wide totals.

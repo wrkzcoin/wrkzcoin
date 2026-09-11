@@ -37,8 +37,11 @@ namespace CryptoNote
     struct ExtendedTransactionInfo : CachedTransactionInfo
     {
         // CachedTransactionInfo tx;
-        std::map<IBlockchainCache::Amount, std::vector<IBlockchainCache::GlobalOutputIndex>>
-            amountToKeyIndexes; // global key output indexes spawned in this transaction
+        /* Global key output indexes spawned in this transaction, by amount. Only
+           records written by older builds fill it; it repeats globalIndexes, so
+           new records leave it empty and keyIndexesByAmount rebuilds it. Still
+           serialized so both kinds of record read the same way. */
+        std::map<IBlockchainCache::Amount, std::vector<IBlockchainCache::GlobalOutputIndex>> amountToKeyIndexes;
         void serialize(ISerializer &s);
     };
 
