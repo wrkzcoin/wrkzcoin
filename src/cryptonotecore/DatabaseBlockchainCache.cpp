@@ -2439,6 +2439,15 @@ namespace CryptoNote
 
         ShuffleGenerator<uint32_t> generator(outputsCount[amount]);
 
+        /* Candidates that turn out immature or locked cost a database read each
+           and bring nothing back. Without a bound the only limit is the whole
+           denomination's output count, so one request for a denomination whose
+           outputs are almost all unusable reads every one of them. Past this
+           many, return what was found - fewer than asked for is already a
+           normal answer (see RpcServer::getRandomOuts). */
+        const size_t maxUnusableCandidates = 256 + 100 * count;
+        size_t unusableCandidates = 0;
+
         while (outputsToPick)
         {
             std::vector<uint32_t> globalIndexes;
@@ -2487,6 +2496,12 @@ namespace CryptoNote
                 if (!isTransactionSpendTimeUnlocked(outputInfos[i].unlockTime, blockIndex)
                     || outputInfos[i].blockIndex > uppperBlockIndex)
                 {
+                    if (++unusableCandidates >= maxUnusableCandidates)
+                    {
+                        logger(Logging::TRACE) << "getRandomOutsByAmount: unusable candidate limit reached";
+                        return resultOuts;
+                    }
+
                     continue;
                 }
 
