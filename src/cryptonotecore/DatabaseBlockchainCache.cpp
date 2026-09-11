@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <common/CryptoNoteTools.h>
+#include <common/ScopeExit.h>
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
@@ -877,6 +878,10 @@ namespace CryptoNote
             mergeOutputsSplitBoundaries(keyIndexSplitBoundaries, txkeyBoundaries);
         }
 
+        /* requestDeleteKeyOutputs winds the output counts back before the write
+           that deletes the outputs - see pushBlock. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
+
         requestDeleteKeyOutputs(writeBatch, keyIndexSplitBoundaries);
 
         deleteClosestTimestampBlockIndex(writeBatch, splitBlockIndex);
@@ -889,6 +894,8 @@ namespace CryptoNote
             logger(Logging::ERROR) << "split write failed, " << err.message();
             throw std::runtime_error(err.message());
         }
+
+        dropCountsUnlessCommitted.cancel();
 
         cutTail(unitsCache, currentTop + 1 - splitBlockIndex);
 
@@ -1032,6 +1039,9 @@ namespace CryptoNote
             mergeOutputsSplitBoundaries(keyIndexSplitBoundaries, txkeyBoundaries);
         }
 
+        /* As in split(): the counts are wound back ahead of the write. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
+
         /* Remove outputs for transactions */
         requestDeleteKeyOutputs(writeBatch, keyIndexSplitBoundaries);
 
@@ -1047,6 +1057,8 @@ namespace CryptoNote
             logger(Logging::ERROR) << "split write failed, " << err.message();
             throw std::runtime_error(err.message());
         }
+
+        dropCountsUnlessCommitted.cancel();
 
         /* Remove cached blocks */
         cutTail(unitsCache, currentTop + 1 - height);
@@ -1422,6 +1434,13 @@ namespace CryptoNote
         return it->second;
     }
 
+    void DatabaseBlockchainCache::forgetUncommittedCounts() const
+    {
+        keyOutputCountsForAmounts.clear();
+        keyOutputAmountsCount = std::nullopt;
+        transactionsCount = std::nullopt;
+    }
+
     void DatabaseBlockchainCache::insertPaymentId(
         BlockchainWriteBatch &batch,
         const Crypto::Hash &transactionHash,
@@ -1558,6 +1577,16 @@ namespace CryptoNote
             batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
         }
 
+        /* pushTransaction moves the per amount output counts on in memory, ahead
+           of the write below. If the block then does not make it into the
+           database they must not stay moved on: the block would be numbered
+           again past the gap when it arrives next, every later output of those
+           amounts stored at the wrong global index, and every ring naming one
+           failing on this node alone - a node stuck on a block the rest of the
+           network accepted, curable only by a resync. So unless the block is
+           committed the counts are dropped and read back from the database. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
+
         auto transactionIndex = 0;
         pushTransaction(cachedBaseTransaction, getTopBlockIndex() + 1, transactionIndex++, batch);
 
@@ -1636,6 +1665,10 @@ namespace CryptoNote
                 throw std::runtime_error(res.message());
             }
         }
+
+        /* Committed - or, under a bulk load, handed to a batch that is written
+           or lost whole, and whose loss ends the import. */
+        dropCountsUnlessCommitted.cancel();
 
         topBlockIndex = *topBlockIndex + 1;
         topBlockHash = cachedBlock.getBlockHash();
