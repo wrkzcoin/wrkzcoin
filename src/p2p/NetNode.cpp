@@ -2787,6 +2787,36 @@ namespace CryptoNote
                         // Avoid interrupting the connection context directly from timeoutLoop.
                         // We only request shutdown and wake the writer loop.
                         ctx.stopWithoutContextInterrupt();
+                        continue;
+                    }
+
+                    /* Sync requests had no deadline: any frame, a ping included,
+                       kept a connection alive, so peers that answered pings but
+                       never delivered could hold every sync slot. Close a
+                       syncing connection whose chain request or block batch has
+                       gone unanswered for too long; the other peers take the
+                       sync over. The batch allowance grows with its size, from
+                       one to three minutes. */
+                    if (ctx.m_state == CryptoNoteConnectionContext::state_synchronizing)
+                    {
+                        constexpr auto chainRequestDeadline = std::chrono::seconds(30);
+                        const auto objectsDeadline = std::chrono::seconds(
+                            std::min<size_t>(180, 60 + ctx.m_requested_objects.size() / 10));
+
+                        const bool chainRequestExpired = ctx.m_chain_requests_outstanding != 0
+                                                         && ctx.m_chain_request_sent_at != P2pConnectionContext::TimePoint()
+                                                         && now - ctx.m_chain_request_sent_at > chainRequestDeadline;
+
+                        const bool objectsRequestExpired = !ctx.m_requested_objects.empty()
+                                                           && ctx.m_sync_chunk_start_time != P2pConnectionContext::TimePoint()
+                                                           && now - ctx.m_sync_chunk_start_time > objectsDeadline;
+
+                        if (chainRequestExpired || objectsRequestExpired)
+                        {
+                            logger(DEBUGGING) << ctx << (chainRequestExpired ? "chain request" : "block request")
+                                              << " went unanswered, stopping connection";
+                            ctx.stopWithoutContextInterrupt();
+                        }
                     }
                 }
             }

@@ -83,6 +83,10 @@ namespace CryptoNote
            was never asked for. A count rather than a flag: the relay paths
            can ask again before the first answer is in. */
         uint32_t m_chain_requests_outstanding = 0;
+
+        /* When the latest NOTIFY_REQUEST_CHAIN went out, so a peer that never
+           answers it can be timed out (NodeServer::timeoutLoop). */
+        std::chrono::steady_clock::time_point m_chain_request_sent_at {};
     };
 
     inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s)

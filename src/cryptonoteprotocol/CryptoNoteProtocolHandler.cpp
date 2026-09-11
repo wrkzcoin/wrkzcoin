@@ -297,6 +297,7 @@ namespace CryptoNote
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
             ++context.m_chain_requests_outstanding;
+            context.m_chain_request_sent_at = std::chrono::steady_clock::now();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
 
@@ -1348,6 +1349,7 @@ namespace CryptoNote
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
             ++context.m_chain_requests_outstanding;
+            context.m_chain_request_sent_at = std::chrono::steady_clock::now();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
         else
@@ -1676,10 +1678,32 @@ namespace CryptoNote
 
         {
             std::lock_guard<std::mutex> lock(m_blockchainHeightMutex);
-            if (peerHeight > m_blockchainHeight)
-            {
-                m_blockchainHeight = peerHeight;
-            }
+
+            /* The network height reported on /info (and so to every wallet)
+               used to be the highest height any single peer had ever claimed,
+               so one peer could set it to anything. Take the median of what
+               the handshaken peers claim now instead - with the reporting peer
+               counted at its new claim - and never report less than our own
+               chain. */
+            std::vector<uint32_t> peerHeights;
+            peerHeights.push_back(peerHeight);
+
+            m_p2p->for_each_connection([&peerHeights, &context](const CryptoNoteConnectionContext &ctx, uint64_t) {
+                if (ctx.m_connection_id == context.m_connection_id
+                    || ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+                    || ctx.m_state == CryptoNoteConnectionContext::state_shutdown
+                    || ctx.m_remote_blockchain_height == 0)
+                {
+                    return;
+                }
+
+                peerHeights.push_back(ctx.m_remote_blockchain_height);
+            });
+
+            const auto middle = peerHeights.begin() + peerHeights.size() / 2;
+            std::nth_element(peerHeights.begin(), middle, peerHeights.end());
+
+            m_blockchainHeight = std::max(*middle, get_current_blockchain_height());
 
             const uint64_t currentHeight = get_current_blockchain_height();
             const uint64_t remoteHeight = std::max<uint64_t>(m_blockchainHeight, peerHeight);
@@ -1963,6 +1987,7 @@ namespace CryptoNote
         logger(Logging::TRACE) << context << reason << " -->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
                                << r.block_ids.size();
         ++context.m_chain_requests_outstanding;
+        context.m_chain_request_sent_at = std::chrono::steady_clock::now();
         post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         return true;
     }
