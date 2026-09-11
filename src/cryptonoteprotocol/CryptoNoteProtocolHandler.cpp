@@ -296,6 +296,7 @@ namespace CryptoNote
             NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
+            ++context.m_chain_requests_outstanding;
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
 
@@ -1346,6 +1347,7 @@ namespace CryptoNote
             NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
+            ++context.m_chain_requests_outstanding;
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
         else
@@ -1411,6 +1413,29 @@ namespace CryptoNote
                                << "NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()=" << arg.m_block_ids.size()
                                << ", m_start_height=" << arg.start_height << ", m_total_height=" << arg.total_height;
 
+        /* Nothing asked for this. Taking it anyway let a peer grow our list of
+           wanted blocks by up to a message's worth of ids each time, and
+           trigger a get-objects request for them, as often as it liked. */
+        if (context.m_chain_requests_outstanding == 0)
+        {
+            logger(Logging::DEBUGGING) << context << "sent a chain entry we never requested, dropping connection";
+            context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
+        }
+
+        --context.m_chain_requests_outstanding;
+
+        /* An honest answer is findBlockchainSupplement(..., this count), which
+           never returns more. */
+        if (arg.m_block_ids.size() > BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT)
+        {
+            logger(Logging::DEBUGGING) << context << "sent " << arg.m_block_ids.size()
+                                       << " block ids in one chain entry, more than the "
+                                       << BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT << " we ask for, dropping connection";
+            context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
+        }
+
         if (!arg.m_block_ids.size())
         {
             logger(Logging::ERROR) << context << "sent empty m_block_ids, dropping connection";
@@ -1435,7 +1460,12 @@ namespace CryptoNote
                                    << arg.total_height << "\r\nm_start_height=" << arg.start_height
                                    << "\r\nm_block_ids.size()=" << arg.m_block_ids.size();
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
         }
+
+        /* A fresh answer replaces what an earlier one left, rather than
+           adding to it - otherwise the list only ever grows. */
+        context.m_needed_objects.clear();
 
         bool allBlocksKnown = true;
         for (auto &bl_id : arg.m_block_ids)
@@ -1932,6 +1962,7 @@ namespace CryptoNote
         r.block_ids = m_core.buildSparseChain();
         logger(Logging::TRACE) << context << reason << " -->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
                                << r.block_ids.size();
+        ++context.m_chain_requests_outstanding;
         post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         return true;
     }
