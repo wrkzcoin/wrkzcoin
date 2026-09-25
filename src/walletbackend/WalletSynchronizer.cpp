@@ -460,7 +460,9 @@ BlockScanTmpInfo WalletSynchronizer::processBlockTransactions(
 {
     BlockScanTmpInfo txData;
 
-    if (!Config::config.wallet.skipCoinbaseTransactions)
+    /* The setting can change while blocks fetched under the old one are still
+       queued, and those arrive without a coinbase. */
+    if (!Config::config.wallet.skipCoinbaseTransactions && block.coinbaseTransaction)
     {
         const auto tx = processCoinbaseTransaction(block, inputs);
 

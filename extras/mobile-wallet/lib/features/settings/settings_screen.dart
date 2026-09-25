@@ -856,7 +856,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final autosave = ref.watch(autosaveEnabledProvider);
     final biometric = ref.watch(biometricEnabledProvider);
     final autoLockIdx = ref.watch(autoLockIndexProvider);
-    final scanCoinbase = ref.watch(scanCoinbaseProvider);
+    final skipCoinbase = ref.watch(skipCoinbaseProvider);
     final status = ref.watch(statusProvider).valueOrNull;
     _syncPowForm(ref.watch(txPowServerProvider));
     final walletCaption = () {
@@ -1302,12 +1302,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ref.read(autosaveEnabledProvider.notifier).set(v),
               ),
               SwitchListTile(
-                title: Text(tr.scanCoinbaseTx),
-                subtitle: Text(tr.scanCoinbaseSubtitle),
-                value: scanCoinbase,
+                title: Text(tr.skipCoinbaseTx),
+                subtitle: Text(tr.skipCoinbaseSubtitle),
+                value: skipCoinbase,
                 onChanged: (v) {
-                  ref.read(scanCoinbaseProvider.notifier).set(v);
-                  ref.read(walletCApiProvider).setScanCoinbase(v);
+                  ref.read(skipCoinbaseProvider.notifier).set(v);
+                  ref.read(walletCApiProvider).setScanCoinbase(!v);
                 },
               ),
             ],

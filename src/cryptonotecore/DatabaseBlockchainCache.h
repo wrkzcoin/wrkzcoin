@@ -505,6 +505,10 @@ namespace CryptoNote
             PackedOutIndex output); // TODO not implemented. Should it be removed?
         uint32_t updateKeyOutputCount(Amount amount, int32_t diff) const;
 
+        /* Drops the counts updateKeyOutputCount keeps ahead of the database, so
+           the next use reads them back from what was actually committed. */
+        void forgetUncommittedCounts() const;
+
         void insertPaymentId(
             BlockchainWriteBatch &batch,
             const Crypto::Hash &transactionHash,

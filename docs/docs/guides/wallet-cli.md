@@ -31,10 +31,17 @@ Useful startup options:
 - `--password <pass>`
 - `--remote-daemon <host:port>`
 - `--threads <n>`
-- `--scan-coinbase-transactions`
+- `--skip-coinbase-transactions` (alias `--skip-coinbase`)
 - `--log-level <n>`
 - `--log-file <file>`
 - `--ssl` (when SSL support is compiled)
+
+Coinbase (miner reward) transactions are scanned by default.
+`--skip-coinbase-transactions` leaves them out, which syncs much faster but
+hides any mining rewards sent to the wallet. Rewards passed while skipping stay
+missing after the flag is dropped, until you run `reset`.
+`--scan-coinbase-transactions` is still accepted and changes nothing; combining
+it with a skip flag is an error.
 
 `--remote-daemon` also accepts an IPv6 address in brackets
 (`[2001:db8::1]:17856`) and, on POSIX, a local IPC socket — an absolute path, an

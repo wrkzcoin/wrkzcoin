@@ -463,12 +463,36 @@ namespace CryptoNote
         return {regularTransactions, fusionTransactions};
     }
 
+    bool TransactionPool::spendsKeyImageInPool(const CachedTransaction &transaction) const
+    {
+        std::scoped_lock lock(m_transactionsMutex);
+
+        for (const auto &input : transaction.getTransaction().inputs)
+        {
+            if (std::holds_alternative<KeyInput>(input)
+                && poolState.spentKeyImages.count(std::get<KeyInput>(input).keyImage) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     uint64_t TransactionPool::getTransactionReceiveTime(const Crypto::Hash &hash) const
     {
         std::scoped_lock lock(m_transactionsMutex);
 
         auto it = m_transactionsByHash.find(hash);
-        assert(it != m_transactionsByHash.end());
+
+        /* Callers look the hash up first, but under a separate lock, so it can
+           be removed in between. The assert is compiled out of release builds;
+           read through end() and it is undefined behaviour instead of a
+           harmless "very old", which the cleaner then fails to remove. */
+        if (it == m_transactionsByHash.end())
+        {
+            return 0;
+        }
 
         return it->second->receiveTime;
     }

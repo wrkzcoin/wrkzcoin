@@ -605,7 +605,7 @@ wallet_status_t wallet_get_status_json(
        compare it against, and cannot tell that a build older than the current
        fork is about to send at a ring the network no longer accepts. */
     const auto [minMixin, maxMixin, defaultMixin] =
-        Utilities::getMixinAllowableRange(s.networkBlockCount);
+        Utilities::getMixinAllowableRange(s.localDaemonBlockCount);
 
     nlohmann::json j{
         {"walletBlockCount", s.walletBlockCount},
@@ -1003,7 +1003,7 @@ wallet_status_t wallet_send_advanced_json(
     else
     {
         std::tie(std::ignore, std::ignore, mixin) =
-            Utilities::getMixinAllowableRange(instance->getStatus().networkBlockCount);
+            Utilities::getMixinAllowableRange(instance->getStatus().localDaemonBlockCount);
     }
 
     auto fee = WalletTypes::FeeType::MinimumFee();
@@ -1076,7 +1076,7 @@ wallet_status_t wallet_send_advanced_json(
     uint64_t defaultMixin = 0;
 
     std::tie(std::ignore, std::ignore, defaultMixin) =
-        Utilities::getMixinAllowableRange(instance->getStatus().networkBlockCount);
+        Utilities::getMixinAllowableRange(instance->getStatus().localDaemonBlockCount);
 
     nlohmann::json result{
         {"transactionHash", hash},

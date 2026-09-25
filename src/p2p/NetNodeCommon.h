@@ -12,6 +12,7 @@
 #include <array>
 #include <functional>
 #include <list>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -53,7 +54,19 @@ namespace CryptoNote
 
         virtual bool unban_host(uint32_t ip) = 0;
 
+        /* A pure IPv6 peer has no uint32_t address - its m_remote_ip is 0 - so
+           it is banned by its text address instead. */
+        virtual bool ban_host6(const std::string &addr, uint64_t seconds) = 0;
+
         virtual std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() = 0;
+
+        /* Charge the peer behind a connection for misbehaving. Points add up
+           per address and the address is banned once they reach the threshold;
+           0 points means "drop only" and records nothing. */
+        virtual void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) = 0;
     };
 
     struct p2p_endpoint_stub : public IP2pEndpoint
@@ -109,9 +122,21 @@ namespace CryptoNote
             return false;
         }
 
+        virtual bool ban_host6(const std::string &addr, uint64_t seconds) override
+        {
+            return false;
+        }
+
         virtual std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override
         {
             return {};
+        }
+
+        virtual void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) override
+        {
         }
     };
 } // namespace CryptoNote

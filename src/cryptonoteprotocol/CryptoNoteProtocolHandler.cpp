@@ -296,6 +296,8 @@ namespace CryptoNote
             NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
+            ++context.m_chain_requests_outstanding;
+            context.m_chain_request_sent_at = std::chrono::steady_clock::now();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
 
@@ -743,6 +745,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << context
                                        << "Block verification failed, dropping connection: " << result.message();
+            reportInvalidBlock(context, result);
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
         }
 
@@ -870,6 +873,7 @@ namespace CryptoNote
             {
                 logger(Logging::ERROR) << context << "sent wrong block: failed to parse and validate block: \r\n"
                                        << toHex(rawBlocks[index].block) << "\r\n dropping connection";
+                m_p2p->report_misbehaviour(context, 100, "block that does not decode");
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
                 return 1;
             }
@@ -882,6 +886,11 @@ namespace CryptoNote
                 logger(Logging::ERROR) << context << "sent wrong NOTIFY_RESPONSE_GET_OBJECTS: block with id="
                                        << Common::podToHex(cachedBlocks.back().getBlockHash())
                                        << " wasn't requested, dropping connection";
+
+                /* 25, not an immediate ban: this has fired against honest
+                   seeds before, from races on our own side (a reorg between
+                   request and reply, a wiped discard flag). */
+                m_p2p->report_misbehaviour(context, 25, "block that was never requested");
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
                 return 1;
             }
@@ -1044,61 +1053,22 @@ namespace CryptoNote
             {
                 if (addResult == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
                 {
-                    static constexpr uint64_t CHECKPOINT_MISMATCH_BAN_SECONDS = 900;
-                    m_p2p->ban_host(context.m_remote_ip, CHECKPOINT_MISMATCH_BAN_SECONDS);
                     logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
                         << context << "Checkpoint mismatch from peer for block "
-                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " ("
-                        << addResult.message() << "), temporary ban applied for "
-                        << CHECKPOINT_MISMATCH_BAN_SECONDS << "s";
+                        << Common::podToHex(cachedBlocks[index].getBlockHash()) << " (" << addResult.message()
+                        << ")";
                 }
 
-                /* --- Network-consensus block trust ---
-                   Track how many independent peers have sent us this same block
-                   that we rejected.  If enough peers agree on it and it is deeply
-                   buried in the network chain, the problem is almost certainly
-                   local (e.g. corrupted output-key DB).  Add a dynamic checkpoint
-                   so the next peer's copy of this block passes validation. */
-                if (addResult == error::AddBlockErrorCondition::TRANSACTION_VALIDATION_FAILED
-                    || addResult == error::AddBlockErrorCondition::BLOCK_VALIDATION_FAILED)
-                {
-                    const auto &blockHash = cachedBlocks[index].getBlockHash();
-                    const uint32_t blockHeight = cachedBlocks[index].getBlockIndex();
-                    const uint32_t observedHeight = m_observedHeight;
+                /* A checkpoint mismatch used to earn a 900 s in-memory ban; it
+                   is now one of the offences that bans for a day, persisted. */
+                reportInvalidBlock(context, addResult);
 
-                    std::lock_guard<std::mutex> lock(m_networkTrustMutex);
-
-                    /* Record this peer as a source of this rejected block. */
-                    m_rejectedBlockPeers[blockHash].insert(context.m_remote_ip);
-                    const uint32_t peerCount =
-                        static_cast<uint32_t>(m_rejectedBlockPeers[blockHash].size());
-
-                    const uint32_t depth =
-                        (observedHeight > blockHeight) ? (observedHeight - blockHeight) : 0;
-
-                    if (peerCount >= NETWORK_TRUST_PEER_THRESHOLD
-                        && depth >= DEEP_CONFIRMATION_THRESHOLD
-                        && m_networkTrustedBlocks.find(blockHash) == m_networkTrustedBlocks.end())
-                    {
-                        m_networkTrustedBlocks.insert(blockHash);
-                        logger(Logging::WARNING, Logging::BRIGHT_YELLOW)
-                            << "Block " << Common::podToHex(blockHash) << " at height "
-                            << blockHeight << " rejected by local validation but confirmed by "
-                            << peerCount << " independent peers (network height "
-                            << observedHeight << ", depth " << depth << "). "
-                            << "Adding dynamic checkpoint — consider --resync to fix local DB.";
-                        m_core.addDynamicCheckpoint(blockHeight, blockHash);
-                    }
-                    else if (peerCount > 1)
-                    {
-                        logger(Logging::INFO)
-                            << "Block " << Common::podToHex(blockHash) << " at height "
-                            << blockHeight << " rejected from " << peerCount << "/"
-                            << NETWORK_TRUST_PEER_THRESHOLD << " peers (depth "
-                            << depth << "/" << DEEP_CONFIRMATION_THRESHOLD << ")";
-                    }
-                }
-
+                /* A block that fails validation only ever costs the peer its
+                   connection. It never becomes a checkpoint, however many peers
+                   send it: a checkpoint turns off proof of work and signature
+                   checks for every height up to it, and peer count and claimed
+                   depth are both cheap to fake. A corrupted local database is
+                   repaired with --resync, not by trusting the network. */
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << addResult.message();
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
@@ -1161,6 +1131,7 @@ namespace CryptoNote
         if (!fromBinaryArray(newBlockTemplate, arg.blockTemplate))
         { // deserialize blockTemplate
             logger(Logging::WARNING) << context << "Deserialization of Block Template failed, dropping connection";
+            m_p2p->report_misbehaviour(context, 100, "lite block that does not decode");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1271,6 +1242,7 @@ namespace CryptoNote
             {
                 logger(Logging::DEBUGGING)
                     << context << "Block verification failed, dropping connection: " << result.message();
+                reportInvalidBlock(context, result);
                 context.m_state = CryptoNoteConnectionContext::state_shutdown;
             }
         }
@@ -1316,6 +1288,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING, Logging::BRIGHT_RED)
                 << context << "Failed to handle NOTIFY_REQUEST_CHAIN. block_ids is empty";
+            m_p2p->report_misbehaviour(context, 25, "malformed chain request");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1324,6 +1297,7 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING)
                 << context << "Failed to handle NOTIFY_REQUEST_CHAIN. block_ids doesn't end with genesis block ID";
+            m_p2p->report_misbehaviour(context, 25, "malformed chain request");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -1386,6 +1360,8 @@ namespace CryptoNote
             NOTIFY_REQUEST_CHAIN::request r {};
             r.block_ids = m_core.buildSparseChain();
             logger(Logging::TRACE) << context << "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()=" << r.block_ids.size();
+            ++context.m_chain_requests_outstanding;
+            context.m_chain_request_sent_at = std::chrono::steady_clock::now();
             post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         }
         else
@@ -1438,13 +1414,6 @@ namespace CryptoNote
             logger(INFO, BRIGHT_GREEN) << asciiArt << ENDL;
 
             m_observerManager.notify(&ICryptoNoteProtocolObserver::blockchainSynchronized, m_core.getTopBlockIndex());
-
-            /* Free memory used by network-trust tracking now that sync is complete. */
-            {
-                std::lock_guard<std::mutex> lock(m_networkTrustMutex);
-                m_rejectedBlockPeers.clear();
-                m_networkTrustedBlocks.clear();
-            }
         }
         return true;
     }
@@ -1457,6 +1426,31 @@ namespace CryptoNote
         logger(Logging::TRACE) << context
                                << "NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()=" << arg.m_block_ids.size()
                                << ", m_start_height=" << arg.start_height << ", m_total_height=" << arg.total_height;
+
+        /* Nothing asked for this. Taking it anyway let a peer grow our list of
+           wanted blocks by up to a message's worth of ids each time, and
+           trigger a get-objects request for them, as often as it liked. */
+        if (context.m_chain_requests_outstanding == 0)
+        {
+            logger(Logging::DEBUGGING) << context << "sent a chain entry we never requested, dropping connection";
+            m_p2p->report_misbehaviour(context, 25, "unrequested chain entry");
+            context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
+        }
+
+        --context.m_chain_requests_outstanding;
+
+        /* An honest answer is findBlockchainSupplement(..., this count), which
+           never returns more. */
+        if (arg.m_block_ids.size() > BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT)
+        {
+            logger(Logging::DEBUGGING) << context << "sent " << arg.m_block_ids.size()
+                                       << " block ids in one chain entry, more than the "
+                                       << BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT << " we ask for, dropping connection";
+            m_p2p->report_misbehaviour(context, 25, "oversized chain entry");
+            context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
+        }
 
         if (!arg.m_block_ids.size())
         {
@@ -1482,7 +1476,12 @@ namespace CryptoNote
                                    << arg.total_height << "\r\nm_start_height=" << arg.start_height
                                    << "\r\nm_block_ids.size()=" << arg.m_block_ids.size();
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 1;
         }
+
+        /* A fresh answer replaces what an earlier one left, rather than
+           adding to it - otherwise the list only ever grows. */
+        context.m_needed_objects.clear();
 
         bool allBlocksKnown = true;
         for (auto &bl_id : arg.m_block_ids)
@@ -1693,10 +1692,32 @@ namespace CryptoNote
 
         {
             std::lock_guard<std::mutex> lock(m_blockchainHeightMutex);
-            if (peerHeight > m_blockchainHeight)
-            {
-                m_blockchainHeight = peerHeight;
-            }
+
+            /* The network height reported on /info (and so to every wallet)
+               used to be the highest height any single peer had ever claimed,
+               so one peer could set it to anything. Take the median of what
+               the handshaken peers claim now instead - with the reporting peer
+               counted at its new claim - and never report less than our own
+               chain. */
+            std::vector<uint32_t> peerHeights;
+            peerHeights.push_back(peerHeight);
+
+            m_p2p->for_each_connection([&peerHeights, &context](const CryptoNoteConnectionContext &ctx, uint64_t) {
+                if (ctx.m_connection_id == context.m_connection_id
+                    || ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+                    || ctx.m_state == CryptoNoteConnectionContext::state_shutdown
+                    || ctx.m_remote_blockchain_height == 0)
+                {
+                    return;
+                }
+
+                peerHeights.push_back(ctx.m_remote_blockchain_height);
+            });
+
+            const auto middle = peerHeights.begin() + peerHeights.size() / 2;
+            std::nth_element(peerHeights.begin(), middle, peerHeights.end());
+
+            m_blockchainHeight = std::max(*middle, get_current_blockchain_height());
 
             const uint64_t currentHeight = get_current_blockchain_height();
             const uint64_t remoteHeight = std::max<uint64_t>(m_blockchainHeight, peerHeight);
@@ -1897,6 +1918,33 @@ namespace CryptoNote
         }
     }
 
+    /* A block without the work it claims, one that contradicts a checkpoint,
+       or one that does not decode, took no mining and tells us exactly what
+       the sender is: ban at once. Any other rejection - timestamps, versions,
+       spent key images, fees, mixin - depends on the clock, the fork schedule
+       or chain state, and a block that passed its proof of work cost real
+       mining, so the likelier cause is two implementations disagreeing (near
+       a fork, or a bug on either side). Those only drop the connection: bans
+       are persisted, and a ban would keep cutting us off from honest peers
+       for a day after the bug was fixed. */
+    void CryptoNoteProtocolHandler::reportInvalidBlock(
+        const CryptoNoteConnectionContext &context,
+        const std::error_code &result)
+    {
+        if (result == error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block with too little proof of work");
+        }
+        else if (result == error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block contradicting a checkpoint");
+        }
+        else if (result == error::AddBlockErrorCondition::DESERIALIZATION_FAILED)
+        {
+            m_p2p->report_misbehaviour(context, 100, "block that does not decode");
+        }
+    }
+
     void CryptoNoteProtocolHandler::onSyncChunkFailure(CryptoNoteConnectionContext &context)
     {
         ++context.m_sync_failures;
@@ -1979,6 +2027,8 @@ namespace CryptoNote
         r.block_ids = m_core.buildSparseChain();
         logger(Logging::TRACE) << context << reason << " -->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()="
                                << r.block_ids.size();
+        ++context.m_chain_requests_outstanding;
+        context.m_chain_request_sent_at = std::chrono::steady_clock::now();
         post_notify<NOTIFY_REQUEST_CHAIN>(*m_p2p, r, context);
         return true;
     }

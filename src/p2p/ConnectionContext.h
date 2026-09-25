@@ -77,6 +77,21 @@ namespace CryptoNote
            reply is still on its way and is no longer wanted, but it is not
            misbehaviour and must not cost the peer its connection. */
         bool m_discard_next_objects_response = false;
+
+        /* NOTIFY_REQUEST_CHAIN messages sent and not yet answered. A chain
+           entry is only ever an answer, so one arriving while this is zero
+           was never asked for. A count rather than a flag: the relay paths
+           can ask again before the first answer is in. */
+        uint32_t m_chain_requests_outstanding = 0;
+
+        /* When the latest NOTIFY_REQUEST_CHAIN went out, so a peer that never
+           answers it can be timed out (NodeServer::timeoutLoop). */
+        std::chrono::steady_clock::time_point m_chain_request_sent_at {};
+
+        /* COMMAND_TIMED_SYNC requests sent and not yet answered. A timed sync
+           response carries a peer list we merge, so one nobody asked for is
+           refused rather than merged. */
+        uint32_t m_timed_syncs_outstanding = 0;
     };
 
     inline std::string get_protocol_state_string(CryptoNoteConnectionContext::state s)

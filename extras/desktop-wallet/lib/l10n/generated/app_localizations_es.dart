@@ -534,11 +534,11 @@ class SEs extends S {
       'Guardar billetera en disco después de sincronizar y cada 5 minutos';
 
   @override
-  String get scanCoinbaseTx => 'Escanear transacciones Coinbase';
+  String get skipCoinbaseTx => 'Omitir transacciones Coinbase';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Incluir recompensas de minería al sincronizar (desactivado por defecto)';
+  String get skipCoinbaseSubtitle =>
+      'Sincronización más rápida, pero no se muestran las recompensas de minería (desactivado por defecto)';
 
   @override
   String get sectionAppearance => 'Apariencia';

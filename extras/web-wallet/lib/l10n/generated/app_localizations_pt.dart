@@ -536,11 +536,11 @@ class SPt extends S {
       'Salvar carteira no disco após sincronização e a cada 5 minutos';
 
   @override
-  String get scanCoinbaseTx => 'Escanear Transações Coinbase';
+  String get skipCoinbaseTx => 'Ignorar Transações Coinbase';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Incluir recompensas de mineração ao sincronizar (desativado por padrão)';
+  String get skipCoinbaseSubtitle =>
+      'Sincronização mais rápida, mas as recompensas de mineração não são exibidas (desativado por padrão)';
 
   @override
   String get sectionAppearance => 'Aparência';

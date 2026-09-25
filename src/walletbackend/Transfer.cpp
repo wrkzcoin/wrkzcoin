@@ -47,7 +47,13 @@ namespace SendTransaction
     {
         std::vector<std::pair<std::string, uint64_t>> destinations = {{destination, amount}};
 
-        const auto [minMixin, maxMixin, defaultMixin] = Utilities::getMixinAllowableRange(daemon->networkBlockCount());
+        /* The ring size rules are those of the daemon we are sending through:
+           its pool judges the transaction at its own top block. The network
+           height is only what peers claim, and one peer claiming a height past
+           a mixin fork would otherwise have every send built for rules the
+           pool does not apply yet. */
+        const auto [minMixin, maxMixin, defaultMixin] =
+            Utilities::getMixinAllowableRange(daemon->localDaemonBlockCount());
 
         WalletTypes::FeeType fee = WalletTypes::FeeType::MinimumFee();
 
@@ -141,7 +147,7 @@ namespace SendTransaction
         if (std::get<0>(result) == NOT_ENOUGH_FAKE_OUTPUTS)
         {
             const auto [minMixin, maxMixin, defaultMixin] =
-                Utilities::getMixinAllowableRange(daemon->networkBlockCount());
+                Utilities::getMixinAllowableRange(daemon->localDaemonBlockCount());
 
             const auto retryMixin =
                 Utilities::nextFallbackMixin(mixin, std::get<2>(result).tx.achievableMixin, minMixin);
@@ -229,7 +235,7 @@ namespace SendTransaction
             changeAddress,
             subWallets,
             unlockTime,
-            daemon->networkBlockCount());
+            daemon->localDaemonBlockCount());
 
         if (error)
         {

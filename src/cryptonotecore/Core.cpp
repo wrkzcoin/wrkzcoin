@@ -198,6 +198,69 @@ namespace CryptoNote
             return false;
         }
 
+        /* Whether any of the transaction's key images is already spent anywhere
+           on the given chain. A database read per key image, so for the rare
+           paths only - a chain switch, and transactions that fit a template. */
+        bool spendsKeyImageOnChain(const IBlockchainCache &chain, const CachedTransaction &transaction)
+        {
+            for (const auto &input : transaction.getTransaction().inputs)
+            {
+                if (!std::holds_alternative<KeyInput>(input))
+                {
+                    continue;
+                }
+
+                if (chain.checkIfSpent(std::get<KeyInput>(input).keyImage))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        constexpr size_t MAX_REJECTED_TRANSACTIONS = 10000;
+
+        constexpr uint64_t REJECTED_TRANSACTION_MEMORY_SECONDS = 60 * 60;
+
+        /* Rejections the chain cannot change: the transaction's own format,
+           amounts, proof of work and signatures. Signatures do depend on which
+           outputs the ring names, but a wallet builds its rings from the chain
+           of the node it sends through, and the answer is only kept for an
+           hour. Anything that can change with the next block - spent key
+           images, unknown or locked outputs, mixin, fee, unlock time, size -
+           is never remembered. */
+        bool isStateIndependentRejection(const std::error_code &result)
+        {
+            using E = error::TransactionValidationError;
+
+            for (const auto code :
+                 {E::EMPTY_INPUTS,
+                  E::INPUT_UNKNOWN_TYPE,
+                  E::INPUT_INVALID_DOMAIN_KEYIMAGES,
+                  E::INPUT_IDENTICAL_KEYIMAGES,
+                  E::INPUT_IDENTICAL_OUTPUT_INDEXES,
+                  E::INPUT_INVALID_SIGNATURES,
+                  E::INPUT_WRONG_SIGNATURES_COUNT,
+                  E::INPUT_INVALID_SIGNATURES_COUNT,
+                  E::INPUTS_AMOUNT_OVERFLOW,
+                  E::OUTPUT_ZERO_AMOUNT,
+                  E::OUTPUT_INVALID_KEY,
+                  E::OUTPUT_INVALID_REQUIRED_SIGNATURES_COUNT,
+                  E::OUTPUT_UNKNOWN_TYPE,
+                  E::OUTPUTS_AMOUNT_OVERFLOW,
+                  E::WRONG_AMOUNT,
+                  E::POW_INVALID})
+            {
+                if (result == code)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         TransactionValidatorState extractSpentOutputs(const CachedTransaction &transaction)
         {
             TransactionValidatorState spentOutputs;
@@ -1575,6 +1638,40 @@ namespace CryptoNote
             }
         }
 
+        /* Inside the checkpoint zone the block must match its checkpoint;
+           above it, it must carry enough work. */
+        const auto checkWork = [&]() -> std::error_code {
+            if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
+            {
+                if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
+                {
+                    logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
+                    return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
+                }
+            }
+            else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
+            {
+                logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
+                return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
+            }
+
+            return {};
+        };
+
+        /* A block with transactions checks its work first, so a block with no
+           real work behind it cannot make us verify every ring signature it
+           carries before we notice. An empty block has nothing to save and
+           keeps the old order. Every check here must pass and none of them
+           writes, so the order changes only which error a block failing
+           several of them reports - never whether it is accepted. */
+        if (!transactions.empty())
+        {
+            if (const auto workError = checkWork())
+            {
+                return workError;
+            }
+        }
+
         uint64_t cumulativeFee = 0;
 
         const uint64_t timestamp = cachedBlock.getBlock().timestamp;
@@ -1633,18 +1730,12 @@ namespace CryptoNote
             return error::BlockValidationError::BLOCK_REWARD_MISMATCH;
         }
 
-        if (checkpoints.isInCheckpointZone(cachedBlock.getBlockIndex()))
+        if (transactions.empty())
         {
-            if (!checkpoints.checkBlock(cachedBlock.getBlockIndex(), cachedBlock.getBlockHash()))
+            if (const auto workError = checkWork())
             {
-                logger(Logging::WARNING) << "Checkpoint block hash mismatch for block " << blockStr;
-                return error::BlockValidationError::CHECKPOINT_BLOCK_HASH_MISMATCH;
+                return workError;
             }
-        }
-        else if (!currency.checkProofOfWork(cachedBlock, currentDifficulty))
-        {
-            logger(Logging::DEBUGGING) << "Proof of work too weak for block " << blockStr;
-            return error::BlockValidationError::PROOF_OF_WORK_TOO_WEAK;
         }
 
         auto ret = error::AddBlockErrorCode::ADDED_TO_ALTERNATIVE;
@@ -1711,10 +1802,13 @@ namespace CryptoNote
 
                         updateBlockMedianSize();
 
-                        /* Take the current block spent key images and run them
-                           against the pool to remove any transactions that may
-                           be in the pool that would now be considered invalid */
-                        checkAndRemoveInvalidPoolTransactions(validatorState);
+                        /* validatorState holds only this block's key images, but
+                           every block of the new branch below it may spend
+                           something the pool holds too - a double spend two or
+                           more blocks deep would otherwise stay in the pool and
+                           in every template until it expired. So check the pool
+                           against the whole new main chain here. */
+                        checkAndRemoveInvalidPoolTransactions(validatorState, true);
 
                         try
                         {
@@ -1831,7 +1925,8 @@ namespace CryptoNote
        throwaway validator state per entry, and taking the block state by
        reference rather than copying its key images on every call. */
     void Core::checkAndRemoveInvalidPoolTransactions(
-        const TransactionValidatorState &blockTransactionsState)
+        const TransactionValidatorState &blockTransactionsState,
+        const bool afterChainSwitch)
     {
         auto &pool = *transactionPool;
 
@@ -1872,6 +1967,11 @@ namespace CryptoNote
             }
             /* If the the transaction contains outputs that were spent in the new block, fail */
             else if (spendsKeyImageIn(blockTransactionsState, *poolTx))
+            {
+                isValid = false;
+            }
+            /* After a switch, if any block of the new main chain spent it */
+            else if (afterChainSwitch && spendsKeyImageOnChain(*chainsLeaves[0], *poolTx))
             {
                 isValid = false;
             }
@@ -2181,6 +2281,33 @@ namespace CryptoNote
             return {false, "Transaction already exists in pool"};
         }
 
+        {
+            std::lock_guard<std::mutex> lock(m_rejectedTransactionsMutex);
+
+            const auto it = m_rejectedTransactions.find(transactionHash);
+
+            if (it != m_rejectedTransactions.end())
+            {
+                if (static_cast<uint64_t>(time(nullptr)) - it->second < REJECTED_TRANSACTION_MEMORY_SECONDS)
+                {
+                    return {false, "Transaction was rejected recently"};
+                }
+
+                m_rejectedTransactions.erase(it);
+            }
+        }
+
+        /* The pool refuses a second spend of a key image it already holds, but
+           only in pushTransaction, after full validation - so many validly
+           signed spends of one output each cost a full signature check first.
+           The answer does not change, only when it is given. */
+        if (transactionPool->spendsKeyImageInPool(cachedTransaction))
+        {
+            logger(Logging::DEBUGGING) << "Transaction " << transactionHash
+                                       << " spends a key image a pool transaction already spends";
+            return {false, "Transaction was not accepted into the pool"};
+        }
+
         const auto [success, error] = isTransactionValidForPool(cachedTransaction, validatorState);
         if (!success)
         {
@@ -2241,6 +2368,32 @@ namespace CryptoNote
         {
             logger(Logging::DEBUGGING) << "Transaction " << transactionHash
                                        << " is not valid. Reason: " << validationResult.message();
+
+            if (isStateIndependentRejection(validationResult))
+            {
+                const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+                std::lock_guard<std::mutex> lock(m_rejectedTransactionsMutex);
+
+                if (m_rejectedTransactions.size() >= MAX_REJECTED_TRANSACTIONS)
+                {
+                    for (auto it = m_rejectedTransactions.begin(); it != m_rejectedTransactions.end();)
+                    {
+                        it = now - it->second >= REJECTED_TRANSACTION_MEMORY_SECONDS ? m_rejectedTransactions.erase(it)
+                                                                                     : std::next(it);
+                    }
+
+                    /* Still full of live entries: make room with an arbitrary
+                       one rather than letting the map grow. */
+                    if (m_rejectedTransactions.size() >= MAX_REJECTED_TRANSACTIONS)
+                    {
+                        m_rejectedTransactions.erase(m_rejectedTransactions.begin());
+                    }
+                }
+
+                m_rejectedTransactions[transactionHash] = now;
+            }
+
             return {false, validationResult.message()};
         }
 
@@ -3862,16 +4015,6 @@ namespace CryptoNote
         logger(Logging::INFO) << "Blockchain rewound to: " << blockIndex << std::endl;
     }
 
-    void Core::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
-    {
-        if (checkpoints.addDynamicCheckpoint(height, hash))
-        {
-            logger(Logging::WARNING) << "Dynamic checkpoint registered at height " << height
-                                     << " (hash " << hash << "). "
-                                     << "Consider --resync to repair local database.";
-        }
-    }
-
     /* The maintenance calls below all run on the scheduler thread, or on the
        async task it spawns, while the dispatcher and the RPC threads are adding
        blocks. Resolving chainsLeaves[0] is the part that has to be protected:
@@ -4383,6 +4526,19 @@ namespace CryptoNote
 
                 /* Check to validate that the transaction is valid for a block at this height */
                 if (!validateBlockTemplateTransaction(transaction, height))
+                {
+                    transactionPool->removeTransaction(transaction.getTransactionHash());
+
+                    return false;
+                }
+
+                /* The re-validation above cannot see the chain, so a pool
+                   transaction whose input the main chain has already spent
+                   would go into the template and make every block built on it
+                   invalid. The pool sweeps should have removed it; this is the
+                   second line. Only transactions that fit get here, so the
+                   reads are bounded by the block size. */
+                if (spendsKeyImageOnChain(*chainsLeaves[0], transaction))
                 {
                     transactionPool->removeTransaction(transaction.getTransactionHash());
 

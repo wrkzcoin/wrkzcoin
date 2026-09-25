@@ -668,10 +668,10 @@ class SZh extends S {
   String get autosaveSubtitle => '同步后保存，之后每5分钟保存一次';
 
   @override
-  String get scanCoinbaseTx => '扫描Coinbase交易';
+  String get skipCoinbaseTx => '跳过 Coinbase 交易';
 
   @override
-  String get scanCoinbaseSubtitle => '包括矿工奖励（默认关闭）';
+  String get skipCoinbaseSubtitle => '同步更快，但不会显示矿工奖励（默认关闭）';
 
   @override
   String get dangerZone => '危险区域';

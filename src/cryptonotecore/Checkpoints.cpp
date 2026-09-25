@@ -145,18 +145,4 @@ namespace CryptoNote
         return checkBlock(index, h, ignored);
     }
 
-    //---------------------------------------------------------------------------
-    bool Checkpoints::addDynamicCheckpoint(uint32_t height, const Crypto::Hash &hash)
-    {
-        std::lock_guard<std::mutex> lock(*m_mutex);
-        auto result = points.insert({height, hash});
-        if (!result.second)
-        {
-            /* Height already has a checkpoint — only accept if the hash matches. */
-            return result.first->second == hash;
-        }
-        logger(INFO) << "Dynamic checkpoint added at height " << height << " hash " << hash;
-        return true;
-    }
-
 } // namespace CryptoNote

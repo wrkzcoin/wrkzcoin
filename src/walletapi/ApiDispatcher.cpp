@@ -1030,7 +1030,7 @@ std::tuple<Error, uint16_t> ApiDispatcher::makeAdvancedTransaction(
     {
         /* Get the default mixin */
         std::tie(std::ignore, std::ignore, mixin) =
-            Utilities::getMixinAllowableRange(m_walletBackend->getStatus().networkBlockCount);
+            Utilities::getMixinAllowableRange(m_walletBackend->getStatus().localDaemonBlockCount);
     }
 
     auto fee = WalletTypes::FeeType::MinimumFee();

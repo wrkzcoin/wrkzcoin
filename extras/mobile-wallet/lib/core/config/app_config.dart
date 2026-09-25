@@ -76,7 +76,7 @@ class AppConfig {
   static const String skBiometricEnabled = 'pref_biometric';
   static const String skSeedBackupConfirmed = 'pref_seed_backup_confirmed';
   static const String skLogLevel = 'pref_log_level';
-  static const String skScanCoinbase = 'pref_scan_coinbase';
+  static const String skSkipCoinbase = 'pref_skip_coinbase';
   static const String skLocale = 'pref_locale';
   static const String skFirstLaunchDone = 'pref_first_launch_done';
   // Per-wallet password key: "wallet_pw_<filename>"

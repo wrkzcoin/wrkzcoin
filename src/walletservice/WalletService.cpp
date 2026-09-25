@@ -1650,7 +1650,9 @@ namespace PaymentService
                 validateAddresses({request.changeAddress}, currency, logger);
             }
 
-            auto [success, error, error_code] = validateMixin(request.anonymity, node.getLastKnownBlockHeight());
+            /* The daemon's own top block, where its pool applies the mixin
+               rules - not the height peers claim (see getDefaultMixin). */
+            auto [success, error, error_code] = validateMixin(request.anonymity, node.getLocalBlockCount() - 1);
 
             if (!success)
             {
@@ -2069,7 +2071,11 @@ namespace PaymentService
 
     uint64_t WalletService::getDefaultMixin() const
     {
-        return CryptoNote::getDefaultMixinByHeight(node.getLastKnownBlockHeight());
+        /* getLocalBlockCount() is the daemon's top index + 1, and never 0. The
+           ring size rules are the ones its pool applies at that top block;
+           getLastKnownBlockHeight() is the highest height any peer claims, so
+           one peer could otherwise move every send onto a mixin fork early. */
+        return CryptoNote::getDefaultMixinByHeight(node.getLocalBlockCount() - 1);
     }
 
     void WalletService::refresh()

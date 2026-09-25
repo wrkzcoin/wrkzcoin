@@ -29,7 +29,8 @@ ZedConfig parseArguments(int argc, char **argv)
 
     cxxopts::Options options(argv[0], CryptoNote::getProjectCLIHeader());
 
-    bool help = false, version = false, scanCoinbaseTransactions = false;
+    bool help = false, version = false, scanCoinbaseTransactions = false, skipCoinbaseTransactions = false,
+         skipCoinbase = false;
 
     std::string remoteDaemon;
 
@@ -90,8 +91,16 @@ ZedConfig parseArguments(int argc, char **argv)
          "#")
 
         ("scan-coinbase-transactions",
-         "Scan miner/coinbase transactions",
-         cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"));
+         "Scan miner/coinbase transactions. This is the default; the flag is kept for existing scripts",
+         cxxopts::value<bool>(scanCoinbaseTransactions)->default_value("false")->implicit_value("true"))
+
+        ("skip-coinbase-transactions",
+         "Do not scan miner/coinbase transactions. Syncs faster, but mining rewards sent to this wallet are not found",
+         cxxopts::value<bool>(skipCoinbaseTransactions)->default_value("false")->implicit_value("true"))
+
+        ("skip-coinbase",
+         "Alias of --skip-coinbase-transactions",
+         cxxopts::value<bool>(skipCoinbase)->default_value("false")->implicit_value("true"));
 
     try
     {
@@ -174,9 +183,20 @@ ZedConfig parseArguments(int argc, char **argv)
         }
     }
 
-    if (scanCoinbaseTransactions)
+    const bool skip = skipCoinbaseTransactions || skipCoinbase;
+
+    if (skip && scanCoinbaseTransactions)
     {
-        Config::config.wallet.skipCoinbaseTransactions = false;
+        std::cout << "--scan-coinbase-transactions and --skip-coinbase-transactions cannot be used together" << std::endl;
+        exit(1);
+    }
+
+    if (skip)
+    {
+        Config::config.wallet.skipCoinbaseTransactions = true;
+
+        std::cout << "Skipping coinbase transactions: mining rewards sent to this wallet will not be found "
+                  << "until it is reset without this flag." << std::endl;
     }
 
     return config;

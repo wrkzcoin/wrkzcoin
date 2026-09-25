@@ -668,10 +668,10 @@ class SJa extends S {
   String get autosaveSubtitle => '同期後に保存し、その後5分ごとに保存';
 
   @override
-  String get scanCoinbaseTx => 'コインベーストランザクションをスキャン';
+  String get skipCoinbaseTx => 'コインベーストランザクションをスキップ';
 
   @override
-  String get scanCoinbaseSubtitle => 'マイナー報酬を含める（デフォルトはオフ）';
+  String get skipCoinbaseSubtitle => '同期は速くなりますが、マイナー報酬は表示されません（デフォルトではオフ）';
 
   @override
   String get dangerZone => '危険ゾーン';

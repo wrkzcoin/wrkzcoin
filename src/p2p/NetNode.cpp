@@ -57,6 +57,17 @@ namespace
         return id;
     }
 
+    /* Misbehaviour scoring. An address is banned for a day once its points
+       reach the threshold, and its points are forgotten after a day without
+       another offence. */
+    constexpr uint32_t MISBEHAVIOUR_BAN_THRESHOLD = 100;
+
+    constexpr uint64_t MISBEHAVIOUR_BAN_SECONDS = 24 * 60 * 60;
+
+    constexpr uint64_t MISBEHAVIOUR_MEMORY_SECONDS = 24 * 60 * 60;
+
+    const char P2P_BANS_FILENAME[] = "p2pbans.wrkz.txt";
+
     constexpr size_t PEER_SELECTION_RECENCY_WINDOW = 256;
     constexpr size_t PEER_SELECTION_MAX_TRIES = 16;
 
@@ -319,6 +330,23 @@ namespace CryptoNote
     {
         int ret = 0;
         handled = true;
+
+        /* Until the handshake is done a connection may only handshake or ping.
+           Everything else used to be dispatched regardless, and only some
+           handlers checked the state for themselves - a peer that never
+           handshook could still ask for blocks, chains and our pool. An
+           outbound connection never gets here before its handshake: that
+           completes before its connection handler starts. */
+        if (ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+            && cmd.command != static_cast<uint32_t>(COMMAND_HANDSHAKE::ID)
+            && cmd.command != static_cast<uint32_t>(COMMAND_PING::ID))
+        {
+            logger(Logging::DEBUGGING) << ctx << "sent command " << cmd.command
+                                       << " before completing the handshake, closing connection";
+            report_misbehaviour(ctx, 25, "command before handshake");
+            ctx.m_state = CryptoNoteConnectionContext::state_shutdown;
+            return 0;
+        }
 
         if (cmd.isResponse && cmd.command == COMMAND_TIMED_SYNC::ID)
         {
@@ -695,6 +723,8 @@ namespace CryptoNote
         m_p2p_state_filename = config.getP2pStateFilename();
         m_p2p_state_reset = config.getP2pStateReset();
 
+        loadBans();
+
         if (!init_config())
         {
             logger(ERROR, BRIGHT_RED) << "Failed to init config.";
@@ -827,6 +857,9 @@ namespace CryptoNote
             StdOutputStream stream(p2p_data);
             BinaryOutputStreamSerializer a(stream);
             CryptoNote::serialize(*this, a);
+
+            saveBans();
+
             return true;
         }
         catch (const std::exception &e)
@@ -943,6 +976,7 @@ namespace CryptoNote
                 && (conn.m_state == CryptoNoteConnectionContext::state_normal
                     || conn.m_state == CryptoNoteConnectionContext::state_idle))
             {
+                ++conn.m_timed_syncs_outstanding;
                 conn.pushMessage(P2pMessage(P2pMessage::COMMAND, COMMAND_TIMED_SYNC::ID, cmdBuf));
             }
         });
@@ -952,6 +986,17 @@ namespace CryptoNote
 
     bool NodeServer::handleTimedSyncResponse(const BinaryArray &in, P2pConnectionContext &context)
     {
+        /* Only timedSync() asks for one. Merging an unasked-for response let
+           any peer, handshaken or not, push peer lists into ours at will. */
+        if (context.m_timed_syncs_outstanding == 0)
+        {
+            logger(Logging::DEBUGGING) << context << "sent a COMMAND_TIMED_SYNC response we never requested";
+            report_misbehaviour(context, 25, "unrequested timed sync response");
+            return false;
+        }
+
+        --context.m_timed_syncs_outstanding;
+
         COMMAND_TIMED_SYNC::response rsp;
         if (!LevinProtocol::decode<COMMAND_TIMED_SYNC::response>(in, rsp))
         {
@@ -1045,6 +1090,31 @@ namespace CryptoNote
                 return true;
             }
         }
+        return false;
+    }
+
+    bool NodeServer::is_subnet16_connected(const uint32_t ip)
+    {
+        /* Network byte order: bytes 0 and 1 are the first two octets */
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&ip);
+
+        std::lock_guard<std::mutex> lock(m_connectionsMutex);
+
+        for (const auto &conn : m_connections)
+        {
+            if (conn.second.m_is_income || !conn.second.m_remote_ipv6.empty())
+            {
+                continue;
+            }
+
+            const auto *other = reinterpret_cast<const uint8_t *>(&conn.second.m_remote_ip);
+
+            if (other[0] == bytes[0] && other[1] == bytes[1])
+            {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -1427,6 +1497,17 @@ namespace CryptoNote
             /* Skipping a peer that failed lately costs nothing, so it is not a try. */
             if (is_addr_recently_failed(pe.adr))
             {
+                continue;
+            }
+
+            /* Prefer a /16 none of our outbound peers is in yet, so one network
+               cannot end up supplying all of them. For the first two thirds of
+               the draws only; after that any peer will do, or a node on a
+               small network would never fill its slots. Forgotten as tried so
+               the fallback can still pick it. */
+            if (rand_count <= (max_random_index + 1) * 2 && is_subnet16_connected(pe.adr.ip))
+            {
+                tried_peers.erase(random_index);
                 continue;
             }
 
@@ -1902,7 +1983,13 @@ namespace CryptoNote
                                   << ", local_time(on remote node):" << local_time;
                 return false;
             }
-            be.last_seen += delta;
+
+            /* local_time is whatever the peer says it is, so the shift could
+               carry an entry past the present, and an entry "seen in the
+               future" outranks every honest one when the gray list is trimmed.
+               About twenty messages would replace the whole list. */
+            const int64_t shifted = static_cast<int64_t>(be.last_seen) + delta;
+            be.last_seen = shifted < 0 ? 0 : std::min<uint64_t>(static_cast<uint64_t>(shifted), static_cast<uint64_t>(now));
         }
         return true;
     }
@@ -1946,6 +2033,15 @@ namespace CryptoNote
         }
 
         std::list<PeerlistEntry6> peerlist_(peerlist.begin(), std::next(peerlist.begin(), std::min(received, limit)));
+
+        /* The IPv6 list carries no sender clock to correct against, so its
+           times were taken as sent. Never later than now, as for IPv4. */
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+        for (auto &entry : peerlist_)
+        {
+            entry.last_seen = std::min<uint64_t>(entry.last_seen, now);
+        }
+
         return m_peerlist.merge_peerlist6(peerlist_);
     }
     //-----------------------------------------------------------------------------------
@@ -2272,11 +2368,16 @@ namespace CryptoNote
             return 1;
         }
 
-        if (context.peerId)
+        /* peer_id alone is not proof: a peer that announces id 0 would pass
+           this and could handshake again, resetting its sync counters. A
+           completed handshake always moves the connection out of the
+           pre-handshake state, so check that too. */
+        if (context.peerId || context.m_state != CryptoNoteConnectionContext::state_befor_handshake)
         {
             logger(Logging::ERROR) << context
                                    << "COMMAND_HANDSHAKE came, but seems that connection already have associated "
                                       "peer_id (double COMMAND_HANDSHAKE?)";
+            report_misbehaviour(context, 25, "second handshake");
             context.m_state = CryptoNoteConnectionContext::state_shutdown;
             return 1;
         }
@@ -2462,6 +2563,181 @@ namespace CryptoNote
         return bans;
     }
 
+    void NodeServer::report_misbehaviour(
+        const CryptoNoteConnectionContext &context,
+        const uint32_t points,
+        const std::string &reason)
+    {
+        if (points == 0)
+        {
+            return;
+        }
+
+        const bool isV4 = context.m_remote_ipv6.empty();
+
+        /* m_remote_ip is in network byte order, so byte 0 is the first octet */
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&context.m_remote_ip);
+
+        if (isV4 ? bytes[0] == 127 : context.m_remote_ipv6 == "::1")
+        {
+            return;
+        }
+
+        const std::string key = isV4 ? Common::ipAddressToString(context.m_remote_ip) : context.m_remote_ipv6;
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        uint32_t total = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+
+            auto &score = m_misbehaviourScores[key];
+
+            if (now - score.lastOffence > MISBEHAVIOUR_MEMORY_SECONDS)
+            {
+                score.points = 0;
+            }
+
+            score.points += points;
+            score.lastOffence = now;
+            total = score.points;
+
+            if (total >= MISBEHAVIOUR_BAN_THRESHOLD)
+            {
+                m_misbehaviourScores.erase(key);
+            }
+        }
+
+        logger(DEBUGGING) << context << "misbehaviour: " << reason << " (+" << points << ", " << total << "/"
+                          << MISBEHAVIOUR_BAN_THRESHOLD << ")";
+
+        if (total < MISBEHAVIOUR_BAN_THRESHOLD)
+        {
+            return;
+        }
+
+        logger(INFO) << context << "reached the misbehaviour limit (last: " << reason << "), banning it";
+
+        /* ban_host takes the lock itself, so it is called with it released */
+        if (isV4)
+        {
+            ban_host(context.m_remote_ip, MISBEHAVIOUR_BAN_SECONDS);
+        }
+        else
+        {
+            ban_host6(context.m_remote_ipv6, MISBEHAVIOUR_BAN_SECONDS);
+        }
+    }
+
+    void NodeServer::loadBans()
+    {
+        const std::string path = m_config_folder + "/" + P2P_BANS_FILENAME;
+
+        std::ifstream file(path);
+
+        if (!file)
+        {
+            return;
+        }
+
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::string family;
+        std::string address;
+        uint64_t until = 0;
+        size_t loaded = 0;
+
+        std::lock_guard<std::mutex> lock(m_banMutex);
+
+        /* One ban per line: "4 <address as stored> <until>" or
+           "6 <IPv6 text> <until>". Expired ones are skipped. */
+        while (file >> family >> address >> until)
+        {
+            if (until <= now)
+            {
+                continue;
+            }
+
+            if (family == "4")
+            {
+                try
+                {
+                    m_bannedHostsUntil[static_cast<uint32_t>(std::stoul(address))] = until;
+                    ++loaded;
+                }
+                catch (const std::exception &)
+                {
+                }
+            }
+            else if (family == "6")
+            {
+                m_bannedIPv6HostsUntil[address] = until;
+                ++loaded;
+            }
+        }
+
+        if (loaded != 0)
+        {
+            logger(INFO) << "Loaded " << loaded << " peer bans from " << path;
+        }
+    }
+
+    void NodeServer::saveBans()
+    {
+        const uint64_t now = static_cast<uint64_t>(time(nullptr));
+
+        std::vector<std::string> lines;
+
+        {
+            std::lock_guard<std::mutex> lock(m_banMutex);
+
+            for (const auto &[ip, until] : m_bannedHostsUntil)
+            {
+                if (until > now)
+                {
+                    lines.push_back("4 " + std::to_string(ip) + " " + std::to_string(until));
+                }
+            }
+
+            for (const auto &[address, until] : m_bannedIPv6HostsUntil)
+            {
+                if (until > now)
+                {
+                    lines.push_back("6 " + address + " " + std::to_string(until));
+                }
+            }
+
+            /* Forget scores nobody has added to for a day, so the map cannot
+               grow with every address that ever slipped once. */
+            for (auto it = m_misbehaviourScores.begin(); it != m_misbehaviourScores.end();)
+            {
+                if (now - it->second.lastOffence > MISBEHAVIOUR_MEMORY_SECONDS)
+                {
+                    it = m_misbehaviourScores.erase(it);
+                }
+                else
+                {
+                    ++it;
+                }
+            }
+        }
+
+        const std::string path = m_config_folder + "/" + P2P_BANS_FILENAME;
+
+        std::ofstream file(path, std::ios::out | std::ios::trunc);
+
+        if (!file)
+        {
+            logger(DEBUGGING) << "Failed to save peer bans to " << path;
+            return;
+        }
+
+        for (const auto &line : lines)
+        {
+            file << line << '\n';
+        }
+    }
+
     bool NodeServer::isHostBanned(uint32_t ip)
     {
         const uint64_t now = static_cast<uint64_t>(time(nullptr));
@@ -2607,23 +2883,17 @@ namespace CryptoNote
                     continue;
                 }
 
-                size_t incomingConnections = 0;
+                std::string rejection;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
-                    for (const auto &kv : m_connections)
-                    {
-                        if (kv.second.m_is_income)
-                        {
-                            ++incomingConnections;
-                        }
-                    }
+                    rejection = inboundRejectionReason(ctx);
                 }
 
-                if (incomingConnections >= m_maxIncomingConnections)
+                if (!rejection.empty())
                 {
-                    logger(DEBUGGING) << "Rejecting incoming connection due to --in-peers limit ("
-                                      << incomingConnections << "/" << m_maxIncomingConnections << ") from "
-                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port;
+                    logger(DEBUGGING) << "Rejecting incoming connection from "
+                                      << Common::ipAddressToString(ctx.m_remote_ip) << ":" << ctx.m_remote_port
+                                      << ": " << rejection;
                     continue;
                 }
 
@@ -2651,6 +2921,85 @@ namespace CryptoNote
         }
 
         logger(DEBUGGING) << "acceptLoop finished";
+    }
+
+    /* Why an inbound connection should be refused, or empty to accept it. The
+       caller holds m_connectionsMutex. Besides the --in-peers total, one
+       address may hold at most 3 inbound connections and one IPv4 /16 at most
+       8, so a single host or network cannot take every slot; loopback is
+       exempt. m_remote_ip is in network byte order, so its first byte is the
+       first octet. */
+    std::string NodeServer::inboundRejectionReason(const P2pConnectionContext &candidate) const
+    {
+        constexpr size_t maxPerAddress = 3;
+        constexpr size_t maxPerSubnet16 = 8;
+
+        const bool isV4 = candidate.m_remote_ipv6.empty();
+        const auto *candidateBytes = reinterpret_cast<const uint8_t *>(&candidate.m_remote_ip);
+        const bool isLoopback = isV4 ? candidateBytes[0] == 127 : candidate.m_remote_ipv6 == "::1";
+
+        size_t incoming = 0;
+        size_t sameAddress = 0;
+        size_t sameSubnet16 = 0;
+
+        for (const auto &kv : m_connections)
+        {
+            const auto &ctx = kv.second;
+
+            if (!ctx.m_is_income)
+            {
+                continue;
+            }
+
+            ++incoming;
+
+            if (isV4 != ctx.m_remote_ipv6.empty())
+            {
+                continue;
+            }
+
+            if (isV4)
+            {
+                const auto *bytes = reinterpret_cast<const uint8_t *>(&ctx.m_remote_ip);
+
+                if (ctx.m_remote_ip == candidate.m_remote_ip)
+                {
+                    ++sameAddress;
+                }
+
+                if (bytes[0] == candidateBytes[0] && bytes[1] == candidateBytes[1])
+                {
+                    ++sameSubnet16;
+                }
+            }
+            else if (ctx.m_remote_ipv6 == candidate.m_remote_ipv6)
+            {
+                ++sameAddress;
+            }
+        }
+
+        if (incoming >= m_maxIncomingConnections)
+        {
+            return "--in-peers limit (" + std::to_string(incoming) + "/" + std::to_string(m_maxIncomingConnections)
+                   + ")";
+        }
+
+        if (isLoopback)
+        {
+            return {};
+        }
+
+        if (sameAddress >= maxPerAddress)
+        {
+            return "already " + std::to_string(sameAddress) + " connections from this address";
+        }
+
+        if (isV4 && sameSubnet16 >= maxPerSubnet16)
+        {
+            return "already " + std::to_string(sameSubnet16) + " connections from this /16";
+        }
+
+        return {};
     }
 
     void NodeServer::acceptLoopIPv6()
@@ -2693,22 +3042,16 @@ namespace CryptoNote
                     }
                 }
 
-                size_t incomingConnections = 0;
+                std::string rejection;
                 {
                     std::lock_guard<std::mutex> lock(m_connectionsMutex);
-                    for (const auto &kv : m_connections)
-                    {
-                        if (kv.second.m_is_income)
-                        {
-                            ++incomingConnections;
-                        }
-                    }
+                    rejection = inboundRejectionReason(ctx);
                 }
 
-                if (incomingConnections >= m_maxIncomingConnections)
+                if (!rejection.empty())
                 {
-                    logger(DEBUGGING) << "Rejecting incoming IPv6 connection due to --in-peers limit ("
-                                      << incomingConnections << "/" << m_maxIncomingConnections << ")";
+                    logger(DEBUGGING) << "Rejecting incoming IPv6-listener connection from " << ctx.remoteAddressStr()
+                                      << ":" << ctx.m_remote_port << ": " << rejection;
                     continue;
                 }
 
@@ -2787,6 +3130,49 @@ namespace CryptoNote
                         // Avoid interrupting the connection context directly from timeoutLoop.
                         // We only request shutdown and wake the writer loop.
                         ctx.stopWithoutContextInterrupt();
+                        continue;
+                    }
+
+                    /* An inbound connection that never sends its handshake had no
+                       deadline, so an idle socket held an --in-peers slot for
+                       good. */
+                    constexpr time_t inboundHandshakeDeadlineSeconds = 30;
+
+                    if (ctx.m_is_income && ctx.m_state == CryptoNoteConnectionContext::state_befor_handshake
+                        && time(nullptr) - ctx.m_started > inboundHandshakeDeadlineSeconds)
+                    {
+                        logger(DEBUGGING) << ctx << "did not complete its handshake in time, stopping connection";
+                        ctx.stopWithoutContextInterrupt();
+                        continue;
+                    }
+
+                    /* Sync requests had no deadline: any frame, a ping included,
+                       kept a connection alive, so peers that answered pings but
+                       never delivered could hold every sync slot. Close a
+                       syncing connection whose chain request or block batch has
+                       gone unanswered for too long; the other peers take the
+                       sync over. The batch allowance grows with its size, from
+                       one to three minutes. */
+                    if (ctx.m_state == CryptoNoteConnectionContext::state_synchronizing)
+                    {
+                        constexpr auto chainRequestDeadline = std::chrono::seconds(30);
+                        const auto objectsDeadline = std::chrono::seconds(
+                            std::min<size_t>(180, 60 + ctx.m_requested_objects.size() / 10));
+
+                        const bool chainRequestExpired = ctx.m_chain_requests_outstanding != 0
+                                                         && ctx.m_chain_request_sent_at != P2pConnectionContext::TimePoint()
+                                                         && now - ctx.m_chain_request_sent_at > chainRequestDeadline;
+
+                        const bool objectsRequestExpired = !ctx.m_requested_objects.empty()
+                                                           && ctx.m_sync_chunk_start_time != P2pConnectionContext::TimePoint()
+                                                           && now - ctx.m_sync_chunk_start_time > objectsDeadline;
+
+                        if (chainRequestExpired || objectsRequestExpired)
+                        {
+                            logger(DEBUGGING) << ctx << (chainRequestExpired ? "chain request" : "block request")
+                                              << " went unanswered, stopping connection";
+                            ctx.stopWithoutContextInterrupt();
+                        }
                     }
                 }
             }

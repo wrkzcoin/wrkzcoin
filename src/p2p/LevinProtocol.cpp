@@ -6,6 +6,10 @@
 
 #include "LevinProtocol.h"
 
+#include "P2pProtocolDefinitions.h"
+#include "cryptonoteprotocol/CryptoNoteProtocolDefinitions.h"
+
+#include <string>
 #include <system/TcpConnection.h>
 
 using namespace CryptoNote;
@@ -33,6 +37,43 @@ namespace
         uint32_t m_protocol_version;
     };
 #pragma pack(pop)
+
+    /* The body is allocated in full from the header's length before a byte of
+       it is read, so one limit for every command let a peer make us reserve
+       100 MB for a ping. Commands whose honest bodies are always small get a
+       cap of their own, each several times the largest honest body: a 250 +
+       250 entry peer list for handshake and timed sync, 10,000 block ids for
+       chain traffic, a whole block for block announcements. The ones that
+       really are large - a pool's worth of transactions, a batch of blocks -
+       and any command not listed here (other branches add their own) keep the
+       general limit. */
+    uint64_t maxPayloadSize(const uint32_t command)
+    {
+        constexpr uint64_t KiB = 1024;
+        constexpr uint64_t MiB = 1024 * KiB;
+
+        switch (command)
+        {
+            case COMMAND_HANDSHAKE::ID:
+            case COMMAND_TIMED_SYNC::ID:
+                return 256 * KiB;
+            case COMMAND_PING::ID:
+                return 16 * KiB;
+            case NOTIFY_REQUEST_CHAIN::ID:
+            case NOTIFY_RESPONSE_CHAIN_ENTRY::ID:
+            case NOTIFY_MISSING_TXS::ID:
+                return 1 * MiB;
+            case NOTIFY_REQUEST_GET_OBJECTS::ID:
+                return 2 * MiB;
+            case NOTIFY_REQUEST_TX_POOL::ID:
+                return 4 * MiB;
+            case NOTIFY_NEW_BLOCK::ID:
+            case NOTIFY_NEW_LITE_BLOCK::ID:
+                return 16 * MiB;
+            default:
+                return LEVIN_DEFAULT_MAX_PACKET_SIZE;
+        }
+    }
 
 } // namespace
 
@@ -78,9 +119,11 @@ bool LevinProtocol::readCommand(Command &cmd)
         throw std::runtime_error("Levin signature mismatch");
     }
 
-    if (head.m_cb > LEVIN_DEFAULT_MAX_PACKET_SIZE)
+    if (head.m_cb > maxPayloadSize(head.m_command))
     {
-        throw std::runtime_error("Levin packet size is too big");
+        throw std::runtime_error(
+            "Levin packet size is too big for command " + std::to_string(head.m_command) + ": "
+            + std::to_string(head.m_cb) + " bytes");
     }
 
     BinaryArray buf;

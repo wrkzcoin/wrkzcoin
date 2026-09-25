@@ -311,6 +311,25 @@ bool PeerlistManager::append_with_peer_gray(const PeerlistEntry &newPeer)
 
         if (grayListIterator == m_peers_gray.end())
         {
+            /* At most this many gray entries per /16, so one network cannot
+               fill the list with its own addresses and push every other out.
+               The address is in network byte order: bytes 0 and 1 are the
+               first two octets. */
+            constexpr size_t MAX_GRAY_PEERS_PER_SUBNET16 = 16;
+
+            const auto *bytes = reinterpret_cast<const uint8_t *>(&newPeer.adr.ip);
+
+            const auto sameSubnet16 = std::count_if(
+                m_peers_gray.begin(), m_peers_gray.end(), [bytes](const PeerlistEntry &peer) {
+                    const auto *other = reinterpret_cast<const uint8_t *>(&peer.adr.ip);
+                    return other[0] == bytes[0] && other[1] == bytes[1];
+                });
+
+            if (static_cast<size_t>(sameSubnet16) >= MAX_GRAY_PEERS_PER_SUBNET16)
+            {
+                return true;
+            }
+
             // put new record into white list
             m_peers_gray.push_back(newPeer);
             trim_gray_peerlist();

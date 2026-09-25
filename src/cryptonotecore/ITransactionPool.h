@@ -43,6 +43,11 @@ namespace CryptoNote
 
         virtual bool checkIfTransactionPresent(const Crypto::Hash &hash) const = 0;
 
+        /* Whether any key image the transaction spends is already spent by a
+           transaction in the pool. Cheap, so admission can refuse a second
+           spend before paying for its signatures. */
+        virtual bool spendsKeyImageInPool(const CachedTransaction &transaction) const = 0;
+
         virtual const TransactionValidatorState &getPoolTransactionValidationState() const = 0;
 
         virtual std::vector<CachedTransaction> getPoolTransactions() const = 0;

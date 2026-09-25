@@ -215,11 +215,16 @@ namespace CryptoNote
 
         std::vector<std::pair<uint32_t, uint64_t>> get_banned_hosts() override;
 
-        bool ban_host6(const std::string &addr, uint64_t seconds);
+        bool ban_host6(const std::string &addr, uint64_t seconds) override;
 
         bool unban_host6(const std::string &addr);
 
         std::vector<std::pair<std::string, uint64_t>> get_banned_hosts6();
+
+        void report_misbehaviour(
+            const CryptoNoteConnectionContext &context,
+            uint32_t points,
+            const std::string &reason) override;
 
       private:
         int handleCommand(
@@ -227,6 +232,13 @@ namespace CryptoNote
             BinaryArray &buff_out,
             P2pConnectionContext &context,
             bool &handled);
+
+        /* Empty when an inbound connection may be accepted, otherwise why not.
+           Call with m_connectionsMutex held. */
+        std::string inboundRejectionReason(const P2pConnectionContext &candidate) const;
+
+        /* Whether an outbound connection already goes to this IPv4 /16 */
+        bool is_subnet16_connected(uint32_t ip);
 
         //----------------- commands handlers ----------------------------------------------
         int handle_handshake(
@@ -579,5 +591,23 @@ namespace CryptoNote
         bool isHostBanned(uint32_t ip);
 
         bool isHostBanned6(const std::string &addr);
+
+        struct MisbehaviourScore
+        {
+            uint32_t points = 0;
+
+            uint64_t lastOffence = 0;
+        };
+
+        /* Keyed by address text (dotted IPv4 or IpAddress::toString() IPv6).
+           Guarded by m_banMutex. */
+        std::unordered_map<std::string, MisbehaviourScore> m_misbehaviourScores;
+
+        /* Bans outlive a restart: a banned peer used to get back in simply by
+           waiting for the node to be restarted. Kept in their own small text
+           file so p2pstate's format is untouched. */
+        void loadBans();
+
+        void saveBans();
     };
 } // namespace CryptoNote

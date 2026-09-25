@@ -9,10 +9,12 @@ namespace Config
     class WalletConfig
     {
       public:
-        /* Pretty self explanatory, this configures whether we process
-           coinbase transactions in the wallet. Most wallets have not received
-           coinbase transactions. */
-        bool skipCoinbaseTransactions = true;
+        /* Whether the wallet leaves coinbase (miner reward) transactions out
+           of the scan. Off by default, so mining rewards are always found.
+           Turning it on lets the daemon drop coinbase-only blocks, which syncs
+           much faster, but rewards passed while it is on are only found again
+           by a reset. */
+        bool skipCoinbaseTransactions = false;
     };
 
     class DaemonConfig
@@ -26,7 +28,7 @@ namespace Config
     };
 
     /* Global config, exposed as `config`.
-       Example: `if (Config::config.wallet.scanCoinbaseTransactions)` */
+       Example: `if (Config::config.wallet.skipCoinbaseTransactions)` */
     class Config
     {
       public:

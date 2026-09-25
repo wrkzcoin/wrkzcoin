@@ -426,7 +426,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeProvider);
     final logLevel = ref.watch(logLevelProvider);
     final notificationsEnabled = ref.watch(notificationsEnabledProvider);
-    final scanCoinbase = ref.watch(scanCoinbaseProvider);
+    final skipCoinbase = ref.watch(skipCoinbaseProvider);
     final autosaveEnabled = ref.watch(autosaveEnabledProvider);
     _syncPowForm(ref.watch(txPowServerProvider));
 
@@ -685,16 +685,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(tr?.scanCoinbaseTx ?? 'Scan Coinbase Transactions', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
-                                Text(tr?.scanCoinbaseSubtitle ?? 'Include miner rewards when syncing (off by default)', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                                Text(tr?.skipCoinbaseTx ?? 'Skip Coinbase Transactions', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14)),
+                                Text(tr?.skipCoinbaseSubtitle ?? 'Faster sync, but miner rewards are not shown (off by default)', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                               ],
                             ),
                           ),
                           Switch(
-                            value: scanCoinbase,
+                            value: skipCoinbase,
                             onChanged: (v) {
-                              ref.read(scanCoinbaseProvider.notifier).set(v);
-                              ref.read(walletCApiProvider).setScanCoinbase(v);
+                              ref.read(skipCoinbaseProvider.notifier).set(v);
+                              ref.read(walletCApiProvider).setScanCoinbase(!v);
                             },
                           ),
                         ],

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <common/CryptoNoteTools.h>
+#include <common/ScopeExit.h>
 #include <common/ShuffleGenerator.h>
 #include <common/StringTools.h>
 #include <common/TransactionExtra.h>
@@ -578,6 +579,42 @@ namespace CryptoNote
             return minIndexes;
         }
 
+        /* The global indexes a transaction's key outputs took, grouped by amount -
+           what a rewind needs to know how far to wind each amount's count back.
+           Records written before amountToKeyIndexes stopped being stored carry it;
+           newer ones leave it empty, and the same answer comes from outputAmounts
+           and globalIndexes, which the record keeps for wallet sync anyway. */
+        std::map<IBlockchainCache::Amount, std::vector<IBlockchainCache::GlobalOutputIndex>>
+            keyIndexesByAmount(const ExtendedTransactionInfo &transaction)
+        {
+            if (!transaction.amountToKeyIndexes.empty())
+            {
+                return transaction.amountToKeyIndexes;
+            }
+
+            std::map<IBlockchainCache::Amount, std::vector<IBlockchainCache::GlobalOutputIndex>> result;
+            size_t keyOutputIndex = 0;
+
+            for (size_t i = 0; i < transaction.outputs.size(); ++i)
+            {
+                if (!std::holds_alternative<KeyOutput>(transaction.outputs[i]))
+                {
+                    continue;
+                }
+
+                if (i >= transaction.outputAmounts.size() || keyOutputIndex >= transaction.globalIndexes.size())
+                {
+                    throw std::runtime_error(
+                        "Transaction record " + Common::podToHex(transaction.transactionHash)
+                        + " has fewer output amounts or global indexes than key outputs");
+                }
+
+                result[transaction.outputAmounts[i]].push_back(transaction.globalIndexes[keyOutputIndex++]);
+            }
+
+            return result;
+        }
+
         void mergeOutputsSplitBoundaries(
             std::map<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex> &dest,
             const std::map<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex> &src)
@@ -873,9 +910,13 @@ namespace CryptoNote
         std::map<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex> keyIndexSplitBoundaries;
         for (const auto &transaction : extendedTransactions)
         {
-            auto txkeyBoundaries = getMinGlobalIndexesByAmount(transaction.amountToKeyIndexes);
+            auto txkeyBoundaries = getMinGlobalIndexesByAmount(keyIndexesByAmount(transaction));
             mergeOutputsSplitBoundaries(keyIndexSplitBoundaries, txkeyBoundaries);
         }
+
+        /* requestDeleteKeyOutputs winds the output counts back before the write
+           that deletes the outputs - see pushBlock. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
 
         requestDeleteKeyOutputs(writeBatch, keyIndexSplitBoundaries);
 
@@ -889,6 +930,8 @@ namespace CryptoNote
             logger(Logging::ERROR) << "split write failed, " << err.message();
             throw std::runtime_error(err.message());
         }
+
+        dropCountsUnlessCommitted.cancel();
 
         cutTail(unitsCache, currentTop + 1 - splitBlockIndex);
 
@@ -1028,9 +1071,12 @@ namespace CryptoNote
         std::map<IBlockchainCache::Amount, IBlockchainCache::GlobalOutputIndex> keyIndexSplitBoundaries;
         for (const auto &transaction : extendedTransactions)
         {
-            auto txkeyBoundaries = getMinGlobalIndexesByAmount(transaction.amountToKeyIndexes);
+            auto txkeyBoundaries = getMinGlobalIndexesByAmount(keyIndexesByAmount(transaction));
             mergeOutputsSplitBoundaries(keyIndexSplitBoundaries, txkeyBoundaries);
         }
+
+        /* As in split(): the counts are wound back ahead of the write. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
 
         /* Remove outputs for transactions */
         requestDeleteKeyOutputs(writeBatch, keyIndexSplitBoundaries);
@@ -1047,6 +1093,8 @@ namespace CryptoNote
             logger(Logging::ERROR) << "split write failed, " << err.message();
             throw std::runtime_error(err.message());
         }
+
+        dropCountsUnlessCommitted.cancel();
 
         /* Remove cached blocks */
         cutTail(unitsCache, currentTop + 1 - height);
@@ -1280,23 +1328,20 @@ namespace CryptoNote
 
         std::set<Amount> newKeyAmounts;
 
-        /* KeyOutputInfo::transactionHash has exactly one consumer in the tree:
-           extractKeyOtputReferences, reached only from Core::getTransactionDetails
-           to answer which transaction a ring member came from. That is an explorer
-           answer, and explorer mode is refused on a lite node. Ring verification
-           (extractKeyOutputKeys) and decoy serving (getRandomOutsByAmount) read
-           publicKey and unlockTime and nothing else.
+        /* KeyOutputInfo::transactionHash is written as zeroes at every height. It
+           has exactly one consumer in the tree: extractKeyOtputReferences, reached
+           only from Core::getTransactionDetails to answer which transaction a ring
+           member came from. Ring verification (extractKeyOutputKeys) and decoy
+           serving (getRandomOutsByAmount) read publicKey and unlockTime and
+           nothing else.
 
-           So below the lite height this is 32 bytes of high entropy per key output
-           that the node can never read - on a mainnet sized chain about a quarter
-           of the entire database, and the one part of it a compressor cannot help
-           with. Zeroed rather than removed: the record layout and the schema
-           version stay exactly as they are, no reader needs to know, and seventy
-           eight million identical zero hashes cost almost nothing once RocksDB has
-           compressed them. Above the lite height the real hash is kept, so the
-           region a lite node calls full really is. */
-        const bool dropOutputTransactionHash = isLiteIndexOnlyHeight(blockIndex);
-
+           That is 32 bytes of high entropy per key output - about 2.5 GB on a
+           mainnet sized chain, and the one part of the table a compressor cannot
+           help with - to answer an explorer question that blockIndex and
+           outputIndex already answer: extractKeyOtputReferences finds the
+           transaction through the block's transaction records instead. Zeroed
+           rather than removed, so the record layout and the schema version stay
+           as they are and databases written with the real hash still read. */
         for (auto &output : tx.outputs)
         {
             transactionCacheInfo.outputs.push_back(output.target);
@@ -1318,14 +1363,13 @@ namespace CryptoNote
 
                 assert(outputCountForAmount > 0);
                 auto globalIndex = outputCountForAmount - 1;
+                /* amountToKeyIndexes is left empty: it was globalIndexes again,
+                   grouped by amount, and keyIndexesByAmount rebuilds it. */
                 transactionCacheInfo.globalIndexes.push_back(globalIndex);
-                // output global index:
-                transactionCacheInfo.amountToKeyIndexes[output.amount].push_back(globalIndex);
 
                 KeyOutputInfo outputInfo;
                 outputInfo.publicKey = std::get<KeyOutput>(output.target).key;
-                outputInfo.transactionHash =
-                    dropOutputTransactionHash ? Crypto::Hash {} : transactionCacheInfo.transactionHash;
+                outputInfo.transactionHash = Crypto::Hash {};
                 outputInfo.unlockTime = transactionCacheInfo.unlockTime;
                 outputInfo.outputIndex = poi.outputIndex;
                 outputInfo.blockIndex = blockIndex;
@@ -1420,6 +1464,13 @@ namespace CryptoNote
         it->second += diff;
         assert(it->second >= 0);
         return it->second;
+    }
+
+    void DatabaseBlockchainCache::forgetUncommittedCounts() const
+    {
+        keyOutputCountsForAmounts.clear();
+        keyOutputAmountsCount = std::nullopt;
+        transactionsCount = std::nullopt;
     }
 
     void DatabaseBlockchainCache::insertPaymentId(
@@ -1537,11 +1588,11 @@ namespace CryptoNote
         /* Below a lite node's lite height only the indexes that later blocks
            actually read are kept: the key image -> block index entries, the key
            output info and per amount counts written by pushTransaction, and the
-           block info itself. The block body, its transaction hash list and the
-           rewind index all go. See LITENODE.md. */
+           block info itself. The block body and its transaction hash list go.
+           See LITENODE.md. */
         const bool indexOnly = isLiteIndexOnlyHeight(getTopBlockIndex() + 1);
 
-        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages, !indexOnly);
+        batch.insertSpentKeyImages(getTopBlockIndex() + 1, validatorState.spentKeyImages);
 
         auto txHashes = cachedBlock.getBlock().transactionHashes;
         auto baseTransaction = cachedBlock.getBlock().baseTransaction;
@@ -1557,6 +1608,16 @@ namespace CryptoNote
         {
             batch.insertRawBlock(getTopBlockIndex() + 1, std::move(rawBlock));
         }
+
+        /* pushTransaction moves the per amount output counts on in memory, ahead
+           of the write below. If the block then does not make it into the
+           database they must not stay moved on: the block would be numbered
+           again past the gap when it arrives next, every later output of those
+           amounts stored at the wrong global index, and every ring naming one
+           failing on this node alone - a node stuck on a block the rest of the
+           network accepted, curable only by a resync. So unless the block is
+           committed the counts are dropped and read back from the database. */
+        Tools::ScopeExit dropCountsUnlessCommitted([this]() { forgetUncommittedCounts(); });
 
         auto transactionIndex = 0;
         pushTransaction(cachedBaseTransaction, getTopBlockIndex() + 1, transactionIndex++, batch);
@@ -1636,6 +1697,10 @@ namespace CryptoNote
                 throw std::runtime_error(res.message());
             }
         }
+
+        /* Committed - or, under a bulk load, handed to a batch that is written
+           or lost whole, and whose loss ends the import. */
+        dropCountsUnlessCommitted.cancel();
 
         topBlockIndex = *topBlockIndex + 1;
         topBlockHash = cachedBlock.getBlockHash();
@@ -1756,14 +1821,101 @@ namespace CryptoNote
         Common::ArrayView<uint32_t> globalIndexes,
         std::vector<std::pair<Crypto::Hash, size_t>> &outputReferences) const
     {
-        return extractKeyOutputs(
-            amount,
-            getTopBlockIndex(),
-            globalIndexes,
-            [&outputReferences](const CachedTransactionInfo &info, PackedOutIndex index, uint32_t globalIndex) {
-                outputReferences.push_back(std::make_pair(info.transactionHash, index.outputIndex));
-                return ExtractOutputKeysResult::SUCCESS;
-            });
+        BlockchainReadBatch batch;
+        for (const auto globalIndex : globalIndexes)
+        {
+            batch.requestKeyOutputInfo(amount, globalIndex);
+        }
+
+        const auto result = readDatabase(batch).getKeyOutputInfo();
+
+        std::map<GlobalOutputIndex, KeyOutputInfo> outputs;
+        for (const auto &kv : result)
+        {
+            outputs.emplace(kv.first.second, kv.second);
+        }
+
+        /* KeyOutputInfo no longer carries the hash of the transaction that
+           created the output - see pushTransaction. Databases written before
+           that still have it; otherwise it is found the long way, which is fine
+           for the one explorer answer that asks: the output's block lists its
+           transactions, and the one whose output at outputIndex is this key is
+           the one. Below a lite node's lite height neither list is stored, and
+           the hash stays zero as it always has there. */
+        std::set<uint32_t> blocksToSearch;
+        for (const auto &kv : outputs)
+        {
+            if (kv.second.transactionHash == Crypto::Hash {})
+            {
+                blocksToSearch.insert(kv.second.blockIndex);
+            }
+        }
+
+        std::unordered_map<uint32_t, std::vector<Crypto::Hash>> hashesByBlock;
+        std::unordered_map<Crypto::Hash, ExtendedTransactionInfo> transactions;
+
+        if (!blocksToSearch.empty())
+        {
+            BlockchainReadBatch hashesBatch;
+            for (const auto blockIndex : blocksToSearch)
+            {
+                hashesBatch.requestTransactionHashesByBlock(blockIndex);
+            }
+
+            hashesByBlock = readDatabase(hashesBatch).getTransactionHashesByBlocks();
+
+            BlockchainReadBatch transactionsBatch;
+            bool haveTransactions = false;
+            for (const auto &kv : hashesByBlock)
+            {
+                for (const auto &hash : kv.second)
+                {
+                    transactionsBatch.requestCachedTransaction(hash);
+                    haveTransactions = true;
+                }
+            }
+
+            if (haveTransactions)
+            {
+                transactions = readDatabase(transactionsBatch).getCachedTransactions();
+            }
+        }
+
+        for (const auto &[globalIndex, info] : outputs)
+        {
+            Crypto::Hash transactionHash = info.transactionHash;
+
+            const auto hashesIt = transactionHash == Crypto::Hash {} ? hashesByBlock.find(info.blockIndex)
+                                                                     : hashesByBlock.end();
+
+            if (hashesIt != hashesByBlock.end())
+            {
+                for (const auto &hash : hashesIt->second)
+                {
+                    const auto txIt = transactions.find(hash);
+
+                    if (txIt == transactions.end())
+                    {
+                        continue;
+                    }
+
+                    const auto &tx = txIt->second;
+
+                    if (info.outputIndex < tx.outputs.size() && info.outputIndex < tx.outputAmounts.size()
+                        && tx.outputAmounts[info.outputIndex] == amount
+                        && std::holds_alternative<KeyOutput>(tx.outputs[info.outputIndex])
+                        && std::get<KeyOutput>(tx.outputs[info.outputIndex]).key == info.publicKey)
+                    {
+                        transactionHash = hash;
+                        break;
+                    }
+                }
+            }
+
+            outputReferences.push_back(std::make_pair(transactionHash, info.outputIndex));
+        }
+
+        return ExtractOutputKeysResult::SUCCESS;
     }
 
     uint32_t DatabaseBlockchainCache::getTopBlockIndex() const
@@ -2439,6 +2591,15 @@ namespace CryptoNote
 
         ShuffleGenerator<uint32_t> generator(outputsCount[amount]);
 
+        /* Candidates that turn out immature or locked cost a database read each
+           and bring nothing back. Without a bound the only limit is the whole
+           denomination's output count, so one request for a denomination whose
+           outputs are almost all unusable reads every one of them. Past this
+           many, return what was found - fewer than asked for is already a
+           normal answer (see RpcServer::getRandomOuts). */
+        const size_t maxUnusableCandidates = 256 + 100 * count;
+        size_t unusableCandidates = 0;
+
         while (outputsToPick)
         {
             std::vector<uint32_t> globalIndexes;
@@ -2487,6 +2648,12 @@ namespace CryptoNote
                 if (!isTransactionSpendTimeUnlocked(outputInfos[i].unlockTime, blockIndex)
                     || outputInfos[i].blockIndex > uppperBlockIndex)
                 {
+                    if (++unusableCandidates >= maxUnusableCandidates)
+                    {
+                        logger(Logging::TRACE) << "getRandomOutsByAmount: unusable candidate limit reached";
+                        return resultOuts;
+                    }
+
                     continue;
                 }
 
@@ -3138,7 +3305,7 @@ namespace CryptoNote
             {"raw blocks (lite drops)", DB::BLOCK_INDEX_TO_RAW_BLOCK_PREFIX},
             {"transaction info (lite drops)", DB::TRANSACTION_HASH_TO_TRANSACTION_INFO_PREFIX},
             {"block tx hashes (lite drops)", DB::BLOCK_INDEX_TO_TX_HASHES_PREFIX},
-            {"block key images (lite drops)", DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX},
+            {"block key images (no longer written)", DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX},
             {"payment ids (lite drops)", DB::PAYMENT_ID_TO_TX_HASH_PREFIX},
             {"timestamp to hashes (lite drops)", DB::TIMESTAMP_TO_BLOCKHASHES_PREFIX},
             {"closest timestamp (lite drops)", DB::CLOSEST_TIMESTAMP_BLOCK_INDEX_PREFIX},
@@ -3426,10 +3593,7 @@ namespace CryptoNote
     {
         assert(blockIndex <= getTopBlockIndex());
 
-        auto batch = BlockchainReadBatch()
-                         .requestRawBlock(blockIndex)
-                         .requestCachedBlock(blockIndex)
-                         .requestSpentKeyImagesByBlock(blockIndex);
+        auto batch = BlockchainReadBatch().requestRawBlock(blockIndex).requestCachedBlock(blockIndex);
 
         if (blockIndex > 0)
         {
@@ -3470,9 +3634,28 @@ namespace CryptoNote
         extendedInfo.pushedBlockInfo.generatedCoins =
             blockInfo.alreadyGeneratedCoins - previousBlockInfo.alreadyGeneratedCoins;
 
-        const auto &spentKeyImages = dbResult.getSpentKeyImagesByBlock().at(blockIndex);
+        /* The key images this block spent, which undoing it has to release. They
+           used to come from a block index -> key images list stored for nothing
+           else, a second copy of every key image on the chain. The block's own
+           transactions say the same thing, and the raw block is in hand. */
+        std::vector<CachedTransaction> transactions;
 
-        extendedInfo.pushedBlockInfo.validatorState.spentKeyImages.insert(spentKeyImages.begin(), spentKeyImages.end());
+        if (!Utils::restoreCachedTransactions(extendedInfo.pushedBlockInfo.rawBlock.transactions, transactions))
+        {
+            throw std::runtime_error("Failed to parse the transactions of block " + std::to_string(blockIndex));
+        }
+
+        for (const auto &transaction : transactions)
+        {
+            for (const auto &input : transaction.getTransaction().inputs)
+            {
+                if (std::holds_alternative<KeyInput>(input))
+                {
+                    extendedInfo.pushedBlockInfo.validatorState.spentKeyImages.insert(
+                        std::get<KeyInput>(input).keyImage);
+                }
+            }
+        }
 
         extendedInfo.timestamp = blockInfo.timestamp;
 

@@ -19,14 +19,9 @@ BlockchainWriteBatch::~BlockchainWriteBatch() {}
 
 BlockchainWriteBatch &BlockchainWriteBatch::insertSpentKeyImages(
     uint32_t blockIndex,
-    const std::unordered_set<Crypto::KeyImage> &spentKeyImages,
-    bool storeRewindIndex)
+    const std::unordered_set<Crypto::KeyImage> &spentKeyImages)
 {
-    rawDataToInsert.reserve(rawDataToInsert.size() + spentKeyImages.size() + 1);
-    if (storeRewindIndex)
-    {
-        rawDataToInsert.emplace_back(DB::serialize(DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX, blockIndex, spentKeyImages));
-    }
+    rawDataToInsert.reserve(rawDataToInsert.size() + spentKeyImages.size());
     for (const Crypto::KeyImage &keyImage : spentKeyImages)
     {
         rawDataToInsert.emplace_back(DB::serialize(DB::KEY_IMAGE_TO_BLOCK_INDEX_PREFIX, keyImage, blockIndex));
@@ -141,6 +136,7 @@ BlockchainWriteBatch &
     BlockchainWriteBatch::removeSpentKeyImages(uint32_t blockIndex, const std::vector<Crypto::KeyImage> &spentKeyImages)
 {
     rawKeysToRemove.reserve(rawKeysToRemove.size() + spentKeyImages.size() + 1);
+    /* No longer written, but databases from before still hold one per block. */
     rawKeysToRemove.emplace_back(DB::serializeKey(DB::BLOCK_INDEX_TO_KEY_IMAGE_PREFIX, blockIndex));
 
     for (const Crypto::KeyImage &keyImage : spentKeyImages)

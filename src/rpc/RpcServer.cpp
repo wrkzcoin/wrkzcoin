@@ -1157,10 +1157,43 @@ std::tuple<Error, uint16_t> RpcServer::getRandomOuts(
     const nlohmann::json &body)
 {
     const uint64_t numOutputs = getUint64FromJSON(body, "outs_count");
+    const auto amounts = getArrayFromJSON(body, "amounts");
+
+    /* Anyone can call this, and each amount costs database reads for every
+       output asked for, so bound the request before doing any of it.
+       Wallets ask for mixin + 1 outputs per input - 2 before 4,300,000, 8
+       after, 31 at the highest mixin this chain ever allowed - and send one
+       amount per input. Their fetch runs before the transaction size check,
+       so a large dust sweep can send far more amounts than a transaction
+       holds; the amount cap stays well clear of that. The product cap is
+       what bounds the response: the largest real request is about 8 x 690.
+       Checked before the cast below, which used to truncate outs_count to
+       16 bits (65,536 became 0). */
+    constexpr uint64_t maxOutputsPerAmount = 100;
+    constexpr uint64_t maxAmounts = 10000;
+    constexpr uint64_t maxOutputsTotal = 100000;
+
+    if (numOutputs > maxOutputsPerAmount)
+    {
+        failRequest(400, "outs_count exceeds " + std::to_string(maxOutputsPerAmount), res);
+        return {SUCCESS, 400};
+    }
+
+    if (amounts.size() > maxAmounts)
+    {
+        failRequest(400, "amounts has more than " + std::to_string(maxAmounts) + " entries", res);
+        return {SUCCESS, 400};
+    }
+
+    if (amounts.size() * numOutputs > maxOutputsTotal)
+    {
+        failRequest(400, "amounts x outs_count exceeds " + std::to_string(maxOutputsTotal), res);
+        return {SUCCESS, 400};
+    }
 
     nlohmann::json outsArr = nlohmann::json::array();
 
-    for (const auto &jsonAmount : getArrayFromJSON(body, "amounts"))
+    for (const auto &jsonAmount : amounts)
     {
         const uint64_t amount = jsonAmount.get<uint64_t>();
 

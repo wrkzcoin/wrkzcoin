@@ -535,11 +535,11 @@ class SDe extends S {
       'Wallet nach Synchronisierung und alle 5 Minuten auf die Festplatte speichern';
 
   @override
-  String get scanCoinbaseTx => 'Coinbase-Transaktionen scannen';
+  String get skipCoinbaseTx => 'Coinbase-Transaktionen überspringen';
 
   @override
-  String get scanCoinbaseSubtitle =>
-      'Miner-Belohnungen beim Synchronisieren einbeziehen (standardmäßig aus)';
+  String get skipCoinbaseSubtitle =>
+      'Schnellere Synchronisierung, aber Miner-Belohnungen werden nicht angezeigt (standardmäßig aus)';
 
   @override
   String get sectionAppearance => 'Erscheinungsbild';
