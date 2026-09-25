@@ -162,13 +162,40 @@ void WalletSynchronizer::mainLoop()
             /* Nothing else should be pushing to the queue here, since the
                child threads are waiting for a new chunk, so don't need to
                use mutex to access */
-            while (!m_processedBlocks.empty_unsafe() && !m_shouldStop)
+            std::vector<SemiProcessedBlock> processedBlocks;
+
+            processedBlocks.reserve(chunkSize);
+
+            while (!m_processedBlocks.empty_unsafe())
             {
-                const auto [block, ourInputs, arrivalIndex] = m_processedBlocks.top_unsafe();
-                completeBlockProcessing(block, ourInputs);
-                if (!m_processedBlocks.empty_unsafe() && !m_shouldStop)
+                processedBlocks.push_back(m_processedBlocks.top_unsafe());
+                m_processedBlocks.pop_unsafe();
+            }
+
+            GlobalIndexCache globalIndexes;
+
+            size_t applied = 0;
+
+            /* A block only leaves the downloader's store once it is applied, so
+               anything we stop short of is still there, and is picked up again
+               from the front of it. */
+            while (applied < processedBlocks.size() && !m_shouldStop)
+            {
+                auto backoff = std::chrono::seconds(0);
+
+                const size_t ready = resolveGlobalIndexes(processedBlocks, applied, globalIndexes, backoff);
+
+                for (size_t i = applied; i < applied + ready && !m_shouldStop; i++)
                 {
-                    m_processedBlocks.pop_unsafe();
+                    const auto &[block, ourInputs, arrivalIndex] = processedBlocks[i];
+                    completeBlockProcessing(block, ourInputs);
+                }
+
+                applied += ready;
+
+                if (applied < processedBlocks.size())
+                {
+                    Utilities::sleepUnlessStopping(backoff, m_shouldStop);
                 }
             }
         }
@@ -256,71 +283,9 @@ void WalletSynchronizer::blockProcessingThread()
                         "Processing block " + std::to_string(block.blockHeight), Logger::DEBUG, {Logger::SYNC});
                 }
 
-                auto ourInputs = processBlockOutputs(block);
-
-                std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
-
-                for (auto &[publicKey, input] : ourInputs)
-                {
-                    if (!m_subWallets->isViewWallet() && !input.globalOutputIndex)
-                    {
-                        if (globalIndexes.empty())
-                        {
-                            globalIndexes = getGlobalIndexes(block.blockHeight);
-                        }
-
-                        auto it = globalIndexes.find(input.parentTransactionHash);
-
-                        /* Daemon returns indexes for hashes in a range. If we don't
-                           find our hash, either the chain has forked, or the daemon
-                           is faulty. Print a warning message, then return so we
-                           can fetch new blocks, in the likely case the daemon has
-                           forked.
-
-                           Also need to check there are enough indexes for the one we want */
-                        size_t globalIndexRetries = 0;
-                        constexpr size_t GLOBAL_INDEX_MAX_RETRIES = 3;
-
-                        while (it == globalIndexes.end() || it->second.size() <= input.transactionIndex)
-                        {
-                            if (m_shouldStop)
-                            {
-                                return;
-                            }
-
-                            Logger::logger.log(
-                                "Warning: Failed to get correct global indexes from daemon."
-                                "\nThe daemon may have gone offline or the chain may have just forked.",
-                                Logger::FATAL,
-                                {Logger::SYNC, Logger::DAEMON});
-
-                            if (++globalIndexRetries >= GLOBAL_INDEX_MAX_RETRIES)
-                            {
-                                Logger::logger.log(
-                                    "Skipping unresolved global output index for tx "
-                                        + Common::podToHex(input.parentTransactionHash) + " at block "
-                                        + std::to_string(block.blockHeight)
-                                        + ". Sync will continue, but spending this output may require a full node rescan.",
-                                    Logger::WARNING,
-                                    {Logger::SYNC, Logger::DAEMON});
-                                break;
-                            }
-
-                            std::this_thread::sleep_for(std::chrono::seconds(5));
-
-                            globalIndexes = getGlobalIndexes(block.blockHeight);
-
-                            it = globalIndexes.find(input.parentTransactionHash);
-                        }
-
-                        if (it != globalIndexes.end() && it->second.size() > input.transactionIndex)
-                        {
-                            input.globalOutputIndex = it->second[input.transactionIndex];
-                        }
-                    }
-                }
-
-                processedBlocks.push_back({block, ourInputs, arrivalIndex});
+                /* Global indexes are filled in afterwards, for the whole chunk
+                   at once - see resolveGlobalIndexes(). */
+                processedBlocks.push_back({block, processBlockOutputs(block), arrivalIndex});
             }
 
             chunk = m_blockProcessingQueue.front_n_and_remove(chunkSize);
@@ -702,22 +667,170 @@ std::vector<std::tuple<Crypto::PublicKey, WalletTypes::TransactionInput>> Wallet
    To do this, we get the global indexes for all transactions in a range.
 
    For example, if we want the global indexes for a transaction in block
-   17, we get all the indexes from block 10 to block 20. */
-std::unordered_map<Crypto::Hash, std::vector<uint64_t>>
-    WalletSynchronizer::getGlobalIndexes(const uint64_t blockHeight) const
+   17, we get all the indexes from block 10 to block 20.
+
+   This used to be one request per block holding an output of ours, made as
+   each block was scanned. A pool or a miner has outputs in most blocks, so
+   that was hundreds of requests per chunk, often for the same window twice.
+   Now every window the chunk needs is known before any of it is applied, so
+   each is asked for once, and neighbouring windows share a request. */
+size_t WalletSynchronizer::resolveGlobalIndexes(
+    std::vector<SemiProcessedBlock> &blocks,
+    const size_t first,
+    GlobalIndexCache &cache,
+    std::chrono::seconds &backoff)
 {
-    uint64_t startHeight = Utilities::getLowerBound(blockHeight, Constants::GLOBAL_INDEXES_OBSCURITY);
-
-    uint64_t endHeight = Utilities::getUpperBound(blockHeight, Constants::GLOBAL_INDEXES_OBSCURITY);
-
-    const auto [success, indexes] = m_daemon->getGlobalIndexesForRange(startHeight, endHeight);
-
-    if (!success)
+    /* A view wallet cannot spend, so has no use for the indexes. */
+    if (m_subWallets->isViewWallet())
     {
-        return {};
+        return blocks.size() - first;
     }
 
-    return indexes;
+    const auto windowOf = [](const uint64_t height) {
+        return Utilities::getLowerBound(height, Constants::GLOBAL_INDEXES_OBSCURITY);
+    };
+
+    std::vector<uint64_t> heightsToAsk;
+
+    for (size_t i = first; i < blocks.size(); i++)
+    {
+        const auto &[block, inputs, arrivalIndex] = blocks[i];
+
+        const bool needsIndex = std::any_of(inputs.begin(), inputs.end(), [](const auto &input) {
+            return !std::get<1>(input).globalOutputIndex;
+        });
+
+        if (needsIndex && cache.answeredWindows.count(windowOf(block.blockHeight)) == 0)
+        {
+            heightsToAsk.push_back(block.blockHeight);
+        }
+    }
+
+    const auto ranges = Utilities::planGlobalIndexRanges(
+        heightsToAsk, Constants::GLOBAL_INDEXES_OBSCURITY, Constants::GLOBAL_INDEXES_MAX_MERGED_RANGE);
+
+    for (const auto &[start, end] : ranges)
+    {
+        /* No answer means the daemon is rate limiting us or is gone, and
+           either way the next request would fare no better. */
+        if (!fetchGlobalIndexes(start, end, cache, backoff))
+        {
+            break;
+        }
+    }
+
+    for (size_t i = first; i < blocks.size(); i++)
+    {
+        auto &[block, inputs, arrivalIndex] = blocks[i];
+
+        const uint64_t window = windowOf(block.blockHeight);
+
+        for (auto &[publicKey, input] : inputs)
+        {
+            if (input.globalOutputIndex)
+            {
+                continue;
+            }
+
+            /* Never answered. Stop here and keep this block and everything
+               after it queued; fetchGlobalIndexes() set the backoff. */
+            if (cache.answeredWindows.count(window) == 0)
+            {
+                return i - first;
+            }
+
+            const auto it = cache.indexes.find(input.parentTransactionHash);
+
+            /* Also need to check there are enough indexes for the one we want */
+            if (it != cache.indexes.end() && it->second.size() > input.transactionIndex)
+            {
+                input.globalOutputIndex = it->second[input.transactionIndex];
+                continue;
+            }
+
+            /* The daemon answered for this block's window and our transaction
+               was not in it. Either the chain has forked, or the daemon is
+               faulty. Wait a little and ask again for just this window, in
+               the likely case the daemon has forked. */
+            const size_t misses = m_globalIndexMissBlock == block.blockHash ? m_globalIndexMisses + 1 : 1;
+
+            m_globalIndexMissBlock = block.blockHash;
+            m_globalIndexMisses = misses;
+
+            if (misses < Constants::GLOBAL_INDEX_MAX_RETRIES)
+            {
+                Logger::logger.log(
+                    "Warning: Failed to get correct global indexes from daemon."
+                    "\nThe daemon may have gone offline or the chain may have just forked.",
+                    Logger::FATAL,
+                    {Logger::SYNC, Logger::DAEMON});
+
+                cache.answeredWindows.erase(window);
+
+                backoff = std::chrono::seconds(5);
+
+                return i - first;
+            }
+
+            Logger::logger.log(
+                "Skipping unresolved global output index for tx " + Common::podToHex(input.parentTransactionHash)
+                    + " at block " + std::to_string(block.blockHeight)
+                    + ". Sync will continue, but spending this output may require a full node rescan.",
+                Logger::WARNING,
+                {Logger::SYNC, Logger::DAEMON});
+        }
+
+        if (m_globalIndexMissBlock == block.blockHash)
+        {
+            m_globalIndexMisses = 0;
+        }
+    }
+
+    return blocks.size() - first;
+}
+
+bool WalletSynchronizer::fetchGlobalIndexes(
+    const uint64_t start,
+    const uint64_t end,
+    GlobalIndexCache &cache,
+    std::chrono::seconds &backoff) const
+{
+    /* A lite daemon refuses any range starting below its lite start height,
+       and a window rounded down from a block just above it starts below it.
+       We never scan below that height, so nothing of ours is in the part cut
+       off. */
+    const uint64_t liteStartHeight = m_daemon->liteStartHeight();
+
+    const uint64_t requestStart = start < liteStartHeight && liteStartHeight < end ? liteStartHeight : start;
+
+    const auto response = m_daemon->getGlobalIndexesForRange(requestStart, end);
+
+    if (response.transient)
+    {
+        /* Same waits as the block downloader: a rate limited daemon keeps
+           refusing us for the rest of its window, so sit out most of it. */
+        backoff = response.rateLimited ? std::chrono::seconds(20) : std::chrono::seconds(5);
+
+        return false;
+    }
+
+    /* Any other failure is still an answer - the daemon heard us and will not
+       serve this range - so it counts as one that left our transactions out,
+       and goes through the same retries before the index is given up on. */
+    if (response.success)
+    {
+        for (const auto &[hash, indexes] : response.indexes)
+        {
+            cache.indexes[hash] = indexes;
+        }
+    }
+
+    for (uint64_t window = start; window < end; window += Constants::GLOBAL_INDEXES_OBSCURITY)
+    {
+        cache.answeredWindows.insert(window);
+    }
+
+    return true;
 }
 
 void WalletSynchronizer::checkLockedTransactions()
@@ -891,6 +1004,14 @@ bool WalletSynchronizer::syncStep()
        cadence the background thread uses. */
     const auto now = std::chrono::steady_clock::now();
 
+    /* The last step left blocks queued because the daemon could not tell us
+       their global indexes. Asking again before the backoff is up would only
+       spend another of its rate limit slots. */
+    if (now < m_syncStepRetryAt)
+    {
+        return false;
+    }
+
     if (m_lastInfoRefresh == std::chrono::steady_clock::time_point()
         || now - m_lastInfoRefresh >= std::chrono::seconds(10))
     {
@@ -909,53 +1030,41 @@ bool WalletSynchronizer::syncStep()
         return false;
     }
 
-    /* Process each block synchronously (replaces the multi-threaded pipeline).
-       Note: completeBlockProcessing() already calls dropBlock() internally —
-       do NOT call it again here. */
+    std::vector<SemiProcessedBlock> processedBlocks;
+
+    processedBlocks.reserve(blocks.size());
+
     for (const auto &[block, arrivalIndex] : blocks)
     {
-        auto ourInputs = processBlockOutputs(block);
+        processedBlocks.push_back({block, processBlockOutputs(block), arrivalIndex});
+    }
 
-        /* The daemon's getWalletSyncData never supplies globalOutputIndex
-           ("Daemon doesn't supply this, blockchain cache api does" — WalletTypes.h).
-           Fetch them here so spending these outputs doesn't fail with
-           "Missing global output index". Mirrors blockProcessingThread logic. */
-        if (!m_subWallets->isViewWallet() && !ourInputs.empty())
-        {
-            std::unordered_map<Crypto::Hash, std::vector<uint64_t>> globalIndexes;
+    /* The daemon's getWalletSyncData never supplies globalOutputIndex
+       ("Daemon doesn't supply this, blockchain cache api does" — WalletTypes.h).
+       Fetch them here so spending these outputs doesn't fail with
+       "Missing global output index". */
+    GlobalIndexCache globalIndexes;
 
-            for (auto &[publicKey, input] : ourInputs)
-            {
-                if (!input.globalOutputIndex)
-                {
-                    if (globalIndexes.empty())
-                    {
-                        globalIndexes = getGlobalIndexes(block.blockHeight);
-                    }
+    auto backoff = std::chrono::seconds(0);
 
-                    auto it = globalIndexes.find(input.parentTransactionHash);
+    const size_t ready = resolveGlobalIndexes(processedBlocks, 0, globalIndexes, backoff);
 
-                    if (it != globalIndexes.end() && it->second.size() > input.transactionIndex)
-                    {
-                        input.globalOutputIndex = it->second[input.transactionIndex];
-                    }
-                    else
-                    {
-                        Logger::logger.log(
-                            "Could not resolve global output index for input in block "
-                                + std::to_string(block.blockHeight)
-                                + " — spending this output may fail",
-                            Logger::WARNING,
-                            {Logger::SYNC});
-                    }
-                }
-            }
-        }
-
+    /* Process each block synchronously (replaces the multi-threaded pipeline).
+       Note: completeBlockProcessing() already calls dropBlock() internally —
+       do NOT call it again here. The blocks past `ready` stay in the store and
+       are picked up again by a later step. */
+    for (size_t i = 0; i < ready; i++)
+    {
+        const auto &[block, ourInputs, arrivalIndex] = processedBlocks[i];
         completeBlockProcessing(block, ourInputs);
     }
 
-    return true;
+    if (ready < processedBlocks.size())
+    {
+        m_syncStepRetryAt = std::chrono::steady_clock::now() + backoff;
+    }
+
+    return ready > 0;
 }
 
 uint64_t WalletSynchronizer::getCurrentScanHeight() const

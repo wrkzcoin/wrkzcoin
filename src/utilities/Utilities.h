@@ -23,6 +23,18 @@ namespace Utilities
 
     uint64_t getLowerBound(const uint64_t val, const uint64_t nearestMultiple);
 
+    /* Plans the global index requests for blocks at these heights. Each height
+       stands for its whole window of windowSize blocks, which is what hides
+       the block we care about among its neighbours. Windows are deduplicated,
+       and runs of adjacent ones are joined into one half open [start, end)
+       range for as long as end - start stays within maxSpan. A joined range
+       names exactly the heights the windows would have, so it gives away no
+       more than asking for them one at a time. Ascending order. */
+    std::vector<std::pair<uint64_t, uint64_t>> planGlobalIndexRanges(
+        std::vector<uint64_t> heights,
+        const uint64_t windowSize,
+        const uint64_t maxSpan);
+
     bool isInputUnlocked(const uint64_t unlockTime, const uint64_t currentHeight);
 
     uint64_t getMaxTxSize(const uint64_t currentHeight);

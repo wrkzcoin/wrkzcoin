@@ -8,6 +8,7 @@
 #include <utilities/Utilities.h>
 ////////////////////////////////
 
+#include <algorithm>
 #include <atomic>
 #include <common/Base58.h>
 #include <config/CryptoNoteConfig.h>
@@ -40,6 +41,40 @@ namespace Utilities
     uint64_t getUpperBound(const uint64_t val, const uint64_t nearestMultiple)
     {
         return getLowerBound(val, nearestMultiple) + nearestMultiple;
+    }
+
+    std::vector<std::pair<uint64_t, uint64_t>> planGlobalIndexRanges(
+        std::vector<uint64_t> heights,
+        const uint64_t windowSize,
+        const uint64_t maxSpan)
+    {
+        for (auto &height : heights)
+        {
+            height = getLowerBound(height, windowSize);
+        }
+
+        std::sort(heights.begin(), heights.end());
+
+        heights.erase(std::unique(heights.begin(), heights.end()), heights.end());
+
+        std::vector<std::pair<uint64_t, uint64_t>> ranges;
+
+        for (const uint64_t windowStart : heights)
+        {
+            const uint64_t windowEnd = windowStart + windowSize;
+
+            if (!ranges.empty() && ranges.back().second == windowStart
+                && windowEnd - ranges.back().first <= maxSpan)
+            {
+                ranges.back().second = windowEnd;
+            }
+            else
+            {
+                ranges.emplace_back(windowStart, windowEnd);
+            }
+        }
+
+        return ranges;
     }
 
     bool isInputUnlocked(const uint64_t unlockTime, const uint64_t currentHeight)

@@ -68,6 +68,18 @@ namespace Constants
        This value determines how many blocks to take from. */
     const uint64_t GLOBAL_INDEXES_OBSCURITY = 10;
 
+    /* Adjacent windows of the size above are fetched as one request, up to
+       this many heights. A daemon refuses a range once end - start reaches its
+       --rpc-max-global-index-range, which it never lets drop below 100, so
+       this stays under that with whole windows to spare. */
+    const uint64_t GLOBAL_INDEXES_MAX_MERGED_RANGE = 90;
+
+    /* How many answers a daemon may give that leave out a transaction of ours
+       before we stop asking and leave that output without a global index.
+       That is a fork or a faulty daemon; a daemon that could not answer at all
+       does not count towards this. */
+    const size_t GLOBAL_INDEX_MAX_RETRIES = 3;
+
     /* Amount of blocks to take in one chunk from the block downloader, and
        then split into threads and process. Too large will result in large
        jumps in the sync height, but should offer better performance from a

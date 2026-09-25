@@ -12,6 +12,7 @@
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
 #include <common/PlatformCaCerts.h>
+#include <config/Config.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
@@ -384,6 +385,8 @@ Nigel::Nigel(
 
     m_requestHeaders = {{"User-Agent", userAgent.str()}};
     m_nodeClient = getClient(m_daemonHost, m_daemonPort, m_daemonSSL, m_timeout);
+
+    resetBlockCountLimits();
 }
 
 Nigel::~Nigel()
@@ -399,8 +402,7 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
 {
     stop();
 
-    m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
-    m_maxBlockCount = WalletConfig::maxBlocksPerSyncRequest;
+    resetBlockCountLimits();
     m_lastRequestRateLimited = false;
     m_localDaemonBlockCount = 0;
     m_networkBlockCount = 0;
@@ -428,6 +430,16 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     }
 
     init();
+}
+
+void Nigel::resetBlockCountLimits()
+{
+    const uint64_t configured = Config::config.wallet.syncMaxBlocks;
+
+    const uint64_t ceiling = configured != 0 ? configured : WalletConfig::maxBlocksPerSyncRequest;
+
+    m_maxBlockCount = ceiling;
+    m_blockCount = std::min(CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, ceiling);
 }
 
 void Nigel::decreaseRequestedBlockCount()
@@ -994,6 +1006,18 @@ uint64_t Nigel::networkBlockCount() const
     return m_networkBlockCount;
 }
 
+void Nigel::noteDaemonHeight(const uint64_t height)
+{
+    for (auto *count : {&m_localDaemonBlockCount, &m_networkBlockCount})
+    {
+        uint64_t current = count->load();
+
+        while (current < height && !count->compare_exchange_weak(current, height))
+        {
+        }
+    }
+}
+
 uint64_t Nigel::liteStartHeight() const
 {
     return m_liteStartHeight;
@@ -1208,15 +1232,16 @@ std::tuple<bool, bool, std::string> Nigel::sendTransaction(const CryptoNote::Tra
     return {success, connectionError, error};
 }
 
-std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
-    Nigel::getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const
+GlobalIndexesResponse Nigel::getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const
 {
+    GlobalIndexesResponse response;
+
     /* Blockchain cache API does not support this method and we
        don't need it to because it returns the global indexes
        with the key outputs when we get the wallet sync data */
     if (m_isBlockchainCache)
     {
-        return {false, {}};
+        return response;
     }
 
     json j = {{"startHeight", startHeight}, {"endHeight", endHeight}};
@@ -1237,21 +1262,30 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
     auto res = m_nodeClient->Post("/get_global_indexes_for_range", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
-    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> result;
+    /* No answer, as opposed to an answer saying no. A 400, 404 or failed
+       status is the daemon telling us it will not serve this range, and asking
+       again will not change that; these can. */
+    if (!res || res->status == 429)
+    {
+        response.transient = true;
+        response.rateLimited = res && res->status == 429;
+    }
 
-    const auto parsedResponse = tryParseJSONResponse(res, "Failed to get global indexes for range", [&result](const nlohmann::json j) {
+    const auto parsedResponse = tryParseJSONResponse(res, "Failed to get global indexes for range", [&response](const nlohmann::json j) {
         /* The daemon doesn't serialize the way nlohmann::json does, so
            we can't just .get<std::unordered_map ...> */
         nlohmann::json indexes = j.at("indexes");
 
         for (const auto &index : indexes)
         {
-            result[index.at("key").get<Crypto::Hash>()] = index.at("value").get<std::vector<uint64_t>>();
+            response.indexes[index.at("key").get<Crypto::Hash>()] = index.at("value").get<std::vector<uint64_t>>();
         }
 
         return true;
     });
 
-    return {parsedResponse.has_value(), result};
+    response.success = parsedResponse.has_value();
+
+    return response;
 }
 

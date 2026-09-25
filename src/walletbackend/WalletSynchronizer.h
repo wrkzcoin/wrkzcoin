@@ -11,6 +11,8 @@
 #include <nigel/Nigel.h>
 #include <subwallets/SubWallets.h>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <utilities/ThreadSafeDeque.h>
 #include <utilities/ThreadSafePriorityQueue.h>
 #include <walletbackend/BlockDownloader.h>
@@ -35,6 +37,17 @@ struct BlockScanTmpInfo
 
     /* Need to mark these as spent so we don't include them later */
     std::vector<std::tuple<Crypto::PublicKey, Crypto::KeyImage>> keyImagesToMarkSpent;
+};
+
+/* Global output indexes gathered for the blocks being applied, and which
+   GLOBAL_INDEXES_OBSCURITY windows have been asked about. A window is only
+   recorded once the daemon answered for it, so one missing here has not been
+   asked about yet, or got no answer. */
+struct GlobalIndexCache
+{
+    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> indexes;
+
+    std::unordered_set<uint64_t> answeredWindows;
 };
 
 class OrderByArrivalIndex
@@ -161,7 +174,30 @@ class WalletSynchronizer
        else and we return nothing rather than noise - see the implementation. */
     std::string decryptPaymentID(const WalletTypes::RawTransaction &tx, const bool weSpentInputs) const;
 
-    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> getGlobalIndexes(const uint64_t blockHeight) const;
+    /* Fills in the global output index of each input of ours in
+       blocks[first..] that the daemon did not index for us. Returns how many
+       of those blocks, counting from `first`, are ready to apply.
+
+       Fewer than all means the rest have to stay queued - applying one without
+       its index would leave that output unspendable until a rescan - and
+       backoff is set to how long to wait before calling again with the same
+       cache. That happens when the daemon could not be asked (rate limited or
+       unreachable), and when it answered without a transaction of ours, which
+       is retried a few times before the index is given up on. */
+    size_t resolveGlobalIndexes(
+        std::vector<SemiProcessedBlock> &blocks,
+        const size_t first,
+        GlobalIndexCache &cache,
+        std::chrono::seconds &backoff);
+
+    /* Asks for the global indexes of the half open range [start, end) and
+       records the answer in the cache. Returns false, with backoff set and
+       nothing recorded, when there was no answer to record. */
+    bool fetchGlobalIndexes(
+        const uint64_t start,
+        const uint64_t end,
+        GlobalIndexCache &cache,
+        std::chrono::seconds &backoff) const;
 
     void removeForkedTransactions(const uint64_t forkHeight);
 
@@ -225,4 +261,16 @@ class WalletSynchronizer
     /* When syncStep last asked the daemon for its height. Only used on the
        no-background-thread path, where nothing else refreshes it. */
     std::chrono::steady_clock::time_point m_lastInfoRefresh;
+
+    /* syncStep has blocks it could not apply yet and must not try again
+       before this. It has no thread to sleep on - the caller polls it - so it
+       waits by returning early. */
+    std::chrono::steady_clock::time_point m_syncStepRetryAt;
+
+    /* The block whose global index answers have left out one of our
+       transactions, and how many times in a row. Kept here rather than in a
+       local so the count survives between syncStep calls. */
+    Crypto::Hash m_globalIndexMissBlock {};
+
+    size_t m_globalIndexMisses = 0;
 };

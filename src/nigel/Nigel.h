@@ -64,6 +64,25 @@ struct RandomOutsResponse
     std::vector<CryptoNote::RandomOuts> outs;
 };
 
+/* What one global indexes request came back with. */
+struct GlobalIndexesResponse
+{
+    /* The daemon answered and `indexes` is usable. */
+    bool success = false;
+
+    /* There was no answer to read: the daemon rate limited us, or could not be
+       reached at all. Kept apart from a daemon that answered with an error,
+       because only this one can come right by asking again later - and a
+       caller that reads it as "these heights hold nothing of ours" gives up on
+       outputs that are perfectly spendable. */
+    bool transient = false;
+
+    /* Set alongside transient when the daemon answered 429. */
+    bool rateLimited = false;
+
+    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> indexes;
+};
+
 class Nigel
 {
   public:
@@ -109,6 +128,13 @@ class Nigel
     uint64_t localDaemonBlockCount() const;
 
     uint64_t networkBlockCount() const;
+
+    /* The daemon has just served us a block at this height, so it evidently
+       holds it. Raises the heights /info last reported to at least that, never
+       lowers them. Without this a block arriving between two /info refreshes
+       puts the wallet above the daemon's cached height, and sync waits for the
+       next refresh before asking for anything more. */
+    void noteDaemonHeight(const uint64_t height);
 
     /* The lowest height this daemon can be scanned from. Zero when it holds the
        whole chain. A wallet asked to scan from lower than this cannot find its
@@ -177,8 +203,9 @@ class Nigel
     /* {success, connectionError, errorMessage} */
     std::tuple<bool, bool, std::string> sendTransaction(const CryptoNote::Transaction tx) const;
 
-    std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
-        getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const;
+    /* Global output indexes for every transaction in the half open height
+       range [startHeight, endHeight). */
+    GlobalIndexesResponse getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const;
 
   private:
     //////////////////////////////
@@ -190,6 +217,11 @@ class Nigel
     void backgroundRefresh();
 
     bool getDaemonInfo();
+
+    /* Puts the batch size and its ceiling back where a fresh connection
+       starts: the ceiling the user configured, and the default batch or that
+       ceiling if it is lower. */
+    void resetBlockCountLimits();
 
     /* Validates the HTTP result, parses the JSON body and (optionally) checks
        the "status":"OK" field. Lives in Nigel.cpp so this header does not need
