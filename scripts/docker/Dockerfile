@@ -169,7 +169,9 @@ ENV FLUTTER_ROOT=/opt/flutter \
 
 # Flutter SDK + the Linux desktop toolchain (clang/GTK). Needed by every
 # application target. The apps ask for Flutter 3.38+ / Dart 3.10+ in their
-# pubspec.yaml, so keep FLUTTER_VERSION at or above that. The desktop wallet's
+# pubspec.yaml, so keep FLUTTER_VERSION at or above that. lld is needed because
+# Flutter's native-assets build (dart_build) looks for ld.lld next to clang in
+# /usr/lib/llvm-*/bin and fails without it. The desktop wallet's
 # native plugins need libsecret (flutter_secure_storage_linux), libnotify
 # (local_notifier) and ayatana-appindicator (system_tray).
 ARG WITH_FLUTTER=0
@@ -179,6 +181,7 @@ RUN set -eux; \
         apt-get update; \
         apt-get install -y --no-install-recommends \
             clang \
+            lld \
             libgtk-3-dev \
             liblzma-dev \
             libglu1-mesa \
