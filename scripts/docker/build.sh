@@ -61,6 +61,8 @@ Options:
 Environment:
   JOBS=N                 parallel compile jobs (default: all container CPUs)
   VERSION=x.y.z.b        package version (default: src/config/version.h.in)
+  WRKZ_COMMIT_ID=id      commit id stamped into the binaries (default: this
+                         checkout's HEAD, with -dirty for uncommitted changes)
   ANDROID_ABIS="a b"     Android ABIs to build (default: arm64-v8a; also the
                          ABIs the mobile wallet ships libwallet_capi.so for)
   MACOS_SDK=path         Apple SDK tarball for the macos target (default: the
@@ -244,6 +246,18 @@ fi
 
 mkdir -p "$OUT_DIR" "$BUILD_ROOT"
 
+# The commit stamped into the binaries (src/version.cmake). Worked out here
+# because the container cannot always read this checkout's git metadata: a
+# linked worktree's .git points outside the mount. Left empty, the build asks
+# git inside the container instead.
+if [ -z "${WRKZ_COMMIT_ID:-}" ] && command -v git >/dev/null 2>&1; then
+  WRKZ_COMMIT_ID="$(git -C "$REPO_ROOT" rev-parse --short=8 HEAD 2>/dev/null || true)"
+  if [ -n "$WRKZ_COMMIT_ID" ] \
+    && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+    WRKZ_COMMIT_ID="$WRKZ_COMMIT_ID-dirty"
+  fi
+fi
+
 RUN_ARGS=(
   run --rm
   --platform "$DOCKER_PLATFORM"
@@ -257,6 +271,7 @@ RUN_ARGS=(
   -w /work
   -e "JOBS=$JOBS"
   -e "VERSION=$VERSION"
+  -e "WRKZ_COMMIT_ID=${WRKZ_COMMIT_ID:-}"
   -e "ANDROID_ABIS=$ANDROID_ABIS"
   -e "CLEAN=$CLEAN"
   -e "KEEP_GOING=$KEEP_GOING"

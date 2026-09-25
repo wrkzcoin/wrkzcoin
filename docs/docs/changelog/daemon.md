@@ -11,6 +11,18 @@ in `src/config/version.h.in`. Full commit history is on
 
 ---
 
+## 0.4.9 (build 281) — unreleased
+
+### Build
+
+- The version string carries the commit again, e.g. `0.4.9.281 (364df861)`,
+  with `-dirty` for a tree with uncommitted changes. It had been empty on every
+  build: the stamp looked for tags named `v*`, and release tags are named
+  `wrkzcoin_v*`. Set `WRKZ_COMMIT_ID` to supply the id where the build cannot
+  run git; `scripts/docker/build.sh` does so from the host checkout.
+
+---
+
 ## 0.4.8 (build 280) — 2026-09-05
 
 The largest release since 0.4.4. Lite nodes, snapshots, a stratum server, an
