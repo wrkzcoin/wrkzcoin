@@ -541,7 +541,7 @@ int main(int argc, char **argv)
 
     if (command == "-v" || command == "--version")
     {
-        std::cout << getProjectCLIHeader();
+        std::cout << CryptoNote::getProjectCLIHeader();
         return 0;
     }
 
