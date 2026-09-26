@@ -124,6 +124,10 @@ void WalletSynchronizer::mainLoop()
 
     while (!m_shouldStop)
     {
+        /* Read before looking for blocks, so an announcement that lands while
+           we look still cuts the wait below short. */
+        const uint64_t seenEvents = m_daemon->chainEventCount();
+
         const auto blocks = m_blockDownloader.fetchBlocks(Constants::BLOCK_PROCESSING_CHUNK);
 
         if (!blocks.empty())
@@ -221,7 +225,16 @@ void WalletSynchronizer::mainLoop()
                 lastCheckedLockedTxHeight = currentScanHeight;
             }
 
-            Utilities::sleepUnlessStopping(std::chrono::seconds(5), m_shouldStop);
+            /* While the daemon's event stream is up it tells us about every
+               block, so a longer wait costs nothing: a block the downloader
+               fetches in response lands in the store, and is applied from
+               there within a slice of the sleep rather than at its end. */
+            const auto idle = m_daemon->eventStreamLive() ? std::chrono::seconds(30) : std::chrono::seconds(5);
+
+            Utilities::sleepUnless(idle, [this, seenEvents] {
+                return m_shouldStop || m_daemon->chainEventCount() != seenEvents
+                       || m_blockDownloader.hasStoredBlocks();
+            });
         }
     }
 }

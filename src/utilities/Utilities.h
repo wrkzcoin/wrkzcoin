@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <errors/Errors.h>
+#include <functional>
 #include <iomanip>
 #include <string>
 #include <type_traits>
@@ -40,6 +41,11 @@ namespace Utilities
     uint64_t getMaxTxSize(const uint64_t currentHeight);
 
     void sleepUnlessStopping(const std::chrono::milliseconds duration, std::atomic<bool> &condition);
+
+    /* Sleeps for about duration, in slices short enough that the caller hears
+       about wake() turning true within ~100 ms. Returns whether it did - false
+       means the whole duration went by without it. */
+    bool sleepUnless(const std::chrono::milliseconds duration, const std::function<bool()> &wake);
 
     uint64_t scanHeightToTimestamp(const uint64_t scanHeight);
 

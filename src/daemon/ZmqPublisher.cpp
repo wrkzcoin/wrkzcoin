@@ -5,6 +5,7 @@
 #include "ZmqPublisher.h"
 
 #include <common/CryptoNoteTools.h>
+#include <rpc/ChainEvents.h>
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -167,63 +168,10 @@ namespace Daemon
         (void)message;
         return;
 #else
-        message.match(
-            [this](const CryptoNote::Messages::NewBlock &m) {
-                std::ostringstream body;
-                body << "{\"height\":" << m.blockIndex << ",\"hash\":\"" << hashToString(m.blockHash) << "\"}";
-                sendMultipart("hashblock", body.str());
-
-                /* A lite node stores no body for blocks below its lite height, so
-                   the transaction hash list this payload carries cannot be built
-                   for them. Catching the read failure per block would work but
-                   would warn once for every block of the initial sync. */
-                if (m_liteHeight != 0 && m.blockIndex < m_liteHeight)
-                {
-                    return;
-                }
-
-                try
-                {
-                    const auto block = m_core.getBlockByHash(m.blockHash);
-                    std::vector<Crypto::Hash> transactionHashes;
-                    transactionHashes.reserve(block.transactionHashes.size() + 1);
-                    transactionHashes.push_back(CryptoNote::getObjectHash(block.baseTransaction));
-                    transactionHashes.insert(
-                        transactionHashes.end(), block.transactionHashes.begin(), block.transactionHashes.end());
-
-                    std::ostringstream prefetchBody;
-                    prefetchBody << "{\"height\":" << m.blockIndex << ",\"hash\":\"" << hashToString(m.blockHash)
-                                 << "\",\"transaction_hashes\":" << hashesToJsonArray(transactionHashes) << "}";
-                    sendMultipart("chain_main", prefetchBody.str());
-                }
-                catch (const std::exception &e)
-                {
-                    m_logger(Logging::WARNING) << "Failed to build chain_main prefetch payload for block "
-                                               << hashToString(m.blockHash) << ": " << e.what();
-                }
-            },
-            [this](const CryptoNote::Messages::NewAlternativeBlock &m) {
-                std::ostringstream body;
-                body << "{\"height\":" << m.blockIndex << ",\"hash\":\"" << hashToString(m.blockHash) << "\"}";
-                sendMultipart("hashblock_alt", body.str());
-            },
-            [this](const CryptoNote::Messages::ChainSwitch &m) {
-                std::ostringstream body;
-                body << "{\"common_root_height\":" << m.commonRootIndex << ",\"hashes\":"
-                     << hashesToJsonArray(m.blocksFromCommonRoot) << "}";
-                sendMultipart("chainswitch", body.str());
-            },
-            [this](const CryptoNote::Messages::AddTransaction &m) {
-                std::ostringstream body;
-                body << "{\"hashes\":" << hashesToJsonArray(m.hashes) << "}";
-                sendMultipart("txpool_add", body.str());
-            },
-            [this](const CryptoNote::Messages::DeleteTransaction &m) {
-                std::ostringstream body;
-                body << "{\"hashes\":" << hashesToJsonArray(m.hashes) << ",\"reason\":\""
-                     << deleteReasonToString(m.reason) << "\"}";
-                sendMultipart("txpool_del", body.str());
-            });
+        for (const auto &[topic, body] : ChainEvents::describe(message, m_core, m_liteHeight, m_logger))
+        {
+            sendMultipart(topic, body);
+        }
 #endif
     }
 
@@ -266,30 +214,6 @@ namespace Daemon
 #endif
     }
 
-    std::string ZmqPublisher::hashToString(const Crypto::Hash &hash)
-    {
-        std::ostringstream out;
-        out << hash;
-        return out.str();
-    }
-
-    std::string ZmqPublisher::hashesToJsonArray(const std::vector<Crypto::Hash> &hashes)
-    {
-        std::ostringstream out;
-        out << "[";
-        for (size_t i = 0; i < hashes.size(); ++i)
-        {
-            if (i != 0)
-            {
-                out << ",";
-            }
-
-            out << "\"" << hashToString(hashes[i]) << "\"";
-        }
-        out << "]";
-        return out.str();
-    }
-
     bool ZmqPublisher::isNonLoopbackTcpEndpoint(const std::string &endpoint)
     {
         if (endpoint.rfind("tcp://", 0) != 0)
@@ -327,20 +251,5 @@ namespace Daemon
             [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
         return !(host == "127.0.0.1" || host == "localhost" || host == "::1");
-    }
-
-    const char *ZmqPublisher::deleteReasonToString(CryptoNote::Messages::DeleteTransaction::Reason reason)
-    {
-        switch (reason)
-        {
-            case CryptoNote::Messages::DeleteTransaction::Reason::InBlock:
-                return "InBlock";
-            case CryptoNote::Messages::DeleteTransaction::Reason::Outdated:
-                return "Outdated";
-            case CryptoNote::Messages::DeleteTransaction::Reason::NotActual:
-                return "NotActual";
-        }
-
-        return "Unknown";
     }
 } // namespace Daemon

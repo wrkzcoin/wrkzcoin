@@ -160,6 +160,33 @@ namespace Utilities
         }
     }
 
+    bool sleepUnless(const std::chrono::milliseconds duration, const std::function<bool()> &wake)
+    {
+        /* Finer than sleepUnlessStopping: this one is what lets a block the
+           daemon announces reach the wallet at once, and half a second of
+           latency per hop would add up across the loops that pass it on. */
+        const auto slice = std::chrono::milliseconds(100);
+
+        const auto deadline = std::chrono::steady_clock::now() + duration;
+
+        while (true)
+        {
+            if (wake())
+            {
+                return true;
+            }
+
+            const auto now = std::chrono::steady_clock::now();
+
+            if (now >= deadline)
+            {
+                return false;
+            }
+
+            std::this_thread::sleep_for(std::min<std::chrono::steady_clock::duration>(slice, deadline - now));
+        }
+    }
+
     /* Converts a height to a timestamp */
     uint64_t scanHeightToTimestamp(const uint64_t scanHeight)
     {

@@ -24,6 +24,16 @@
 #include <errors/Errors.h>
 #include <p2p/NetNode.h>
 
+namespace httplib
+{
+    namespace ws
+    {
+        class WebSocket;
+    }
+} // namespace httplib
+
+class EventStream;
+
 enum class RpcMode
 {
     Standard = 0,
@@ -110,7 +120,10 @@ class RpcServer
         const RpcMode rpcMode,
         const std::shared_ptr<CryptoNote::Core> core,
         const std::shared_ptr<CryptoNote::NodeServer> p2p,
-        const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager);
+        const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager,
+        /* GET /ws (--enable-websocket) is served from this when it is given,
+           and is the 404 of any unrouted path when it is not. */
+        const std::shared_ptr<EventStream> eventStream = nullptr);
 
     ~RpcServer();
 
@@ -191,6 +204,20 @@ class RpcServer
         httplib::Response &res);
 
     std::string getClientIp(const httplib::Request &req) const;
+
+    /* Whether the request carries the access token, when one is required of
+       it: X-API-Key, or Authorization: Bearer. */
+    bool isAuthorized(const httplib::Request &req, const bool isIpc) const;
+
+    /* The checks a GET /ws upgrade goes through before its 101, in the order
+       every route's middleware applies them - access token, then rate limit,
+       where the upgrade counts as one request - then the browser origin, the
+       topics asked for and a place in the stream. False when it was refused,
+       with the answer already in res. */
+    bool admitWebSocket(const httplib::Request &req, httplib::Response &res);
+
+    /* Serves one upgraded GET /ws connection until it closes. */
+    void serveWebSocket(const httplib::Request &req, httplib::ws::WebSocket &ws);
 
     bool isRateLimited(const std::string &clientIp);
 
@@ -372,6 +399,9 @@ class RpcServer
 
     /* RPC methods that are enabled */
     const RpcMode m_rpcMode;
+
+    /* The GET /ws subscribers, or null when --enable-websocket is off */
+    const std::shared_ptr<EventStream> m_eventStream;
 
     /* A pointer to our CryptoNoteCore instance */
     const std::shared_ptr<CryptoNote::Core> m_core;

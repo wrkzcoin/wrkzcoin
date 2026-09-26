@@ -109,6 +109,14 @@ namespace DaemonConfig
             "Height at and above which a lite node stores full block data (required with --lite)",
             cxxopts::value<uint32_t>()->default_value(std::to_string(config.liteHeight)),
             "#")(
+            "simnet",
+            "Run a private test network, not mainnet: its own network id (it never peers with mainnet), blocks need "
+            "no proof of work and have difficulty 1, no checkpoints, seeds or UPnP, and ports "
+                + std::to_string(CryptoNote::SIMNET_P2P_DEFAULT_PORT) + " (P2P), "
+                + std::to_string(CryptoNote::SIMNET_RPC_DEFAULT_PORT) + " (RPC) and "
+                + std::to_string(CryptoNote::SIMNET_ZMQ_PUB_DEFAULT_PORT)
+                + " (ZMQ) unless given. Its coins are worthless. Permanent for the database",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
             "snapshot-stats",
             "Report per-table record counts and byte totals, then exit. Takes minutes on a synced chain",
             cxxopts::value<bool>(config.snapshotStats)->default_value("false")->implicit_value("true"))(
@@ -297,7 +305,19 @@ namespace DaemonConfig
             "<cmd|url>")(
             "notify-during-sync",
             "Also fire *-notify hooks while the node is still synchronizing (default: suppressed)",
-            cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "enable-websocket",
+            "Serve GET /ws on the RPC port: blocks, reorganisations and pool changes as a WebSocket stream, the ZMQ "
+            "topics and bodies (same access token and rate limit; a browser needs --enable-cors)",
+            cxxopts::value<bool>()->default_value("false")->implicit_value("true"))(
+            "ws-max-clients",
+            "WebSocket subscribers at once",
+            cxxopts::value<size_t>()->default_value(std::to_string(config.wsMaxClients)),
+            "#")(
+            "ws-max-clients-per-ip",
+            "WebSocket subscribers from one address, loopback exempt. 0 is no per-address cap",
+            cxxopts::value<size_t>()->default_value(std::to_string(config.wsMaxClientsPerIp)),
+            "#");
 
         options.add_options("Network")(
             "allow-local-ip",
@@ -893,6 +913,26 @@ namespace DaemonConfig
                 config.notifyDuringSync = cli["notify-during-sync"].as<bool>();
             }
 
+            if (cli.count("enable-websocket") > 0)
+            {
+                config.enableWebSocket = cli["enable-websocket"].as<bool>();
+            }
+
+            if (cli.count("ws-max-clients") > 0)
+            {
+                config.wsMaxClients = cli["ws-max-clients"].as<size_t>();
+            }
+
+            if (cli.count("ws-max-clients-per-ip") > 0)
+            {
+                config.wsMaxClientsPerIp = cli["ws-max-clients-per-ip"].as<size_t>();
+            }
+
+            if (cli.count("simnet") > 0)
+            {
+                config.simnet = cli["simnet"].as<bool>();
+            }
+
             if (cli.count("transaction-validation-threads") > 0)
             {
                 config.transactionValidationThreads = cli["transaction-validation-threads"].as<uint32_t>();
@@ -1429,6 +1469,40 @@ namespace DaemonConfig
                     config.notifyDuringSync = cfgValue.at(0) == '1';
                     updated = true;
                 }
+                else if (cfgKey.compare("enable-websocket") == 0)
+                {
+                    config.enableWebSocket = cfgValue.at(0) == '1';
+                    updated = true;
+                }
+                else if (cfgKey.compare("ws-max-clients") == 0)
+                {
+                    try
+                    {
+                        config.wsMaxClients = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("ws-max-clients-per-ip") == 0)
+                {
+                    try
+                    {
+                        config.wsMaxClientsPerIp = std::stoul(cfgValue);
+                        updated = true;
+                    }
+                    catch (std::exception &e)
+                    {
+                        throw std::runtime_error(std::string(e.what()) + " - Invalid value for " + cfgKey);
+                    }
+                }
+                else if (cfgKey.compare("simnet") == 0)
+                {
+                    config.simnet = cfgValue.at(0) == '1';
+                    updated = true;
+                }
                 else if (cfgKey.compare("transaction-validation-threads") == 0)
                 {
                     try
@@ -1939,6 +2013,26 @@ namespace DaemonConfig
             config.notifyDuringSync = j["notify-during-sync"].get<bool>();
         }
 
+        if (j.contains("enable-websocket"))
+        {
+            config.enableWebSocket = j["enable-websocket"].get<bool>();
+        }
+
+        if (j.contains("ws-max-clients"))
+        {
+            config.wsMaxClients = j["ws-max-clients"].get<size_t>();
+        }
+
+        if (j.contains("ws-max-clients-per-ip"))
+        {
+            config.wsMaxClientsPerIp = j["ws-max-clients-per-ip"].get<size_t>();
+        }
+
+        if (j.contains("simnet"))
+        {
+            config.simnet = j["simnet"].get<bool>();
+        }
+
         if (j.contains("transaction-validation-threads"))
         {
             config.transactionValidationThreads = j["transaction-validation-threads"].get<int>();
@@ -2070,6 +2164,10 @@ namespace DaemonConfig
         j["reorg-notify"] = config.reorgNotify;
         j["tx-notify"] = config.txNotify;
         j["notify-during-sync"] = config.notifyDuringSync;
+        j["enable-websocket"] = config.enableWebSocket;
+        j["ws-max-clients"] = config.wsMaxClients;
+        j["ws-max-clients-per-ip"] = config.wsMaxClientsPerIp;
+        j["simnet"] = config.simnet;
         j["transaction-validation-threads"] = config.transactionValidationThreads;
         j["prune"] = config.prune;
         j["prune-depth"] = config.pruneDepth;

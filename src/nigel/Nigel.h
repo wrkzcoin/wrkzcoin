@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+class TipWatch;
+
 /* What one wallet sync request came back with. */
 struct WalletSyncResponse
 {
@@ -135,6 +137,16 @@ class Nigel
        puts the wallet above the daemon's cached height, and sync waits for the
        next refresh before asking for anything more. */
     void noteDaemonHeight(const uint64_t height);
+
+    /* How many wake-worthy messages (new blocks, reorgs, pool changes) the
+       daemon's event stream has delivered. Only ever increases, so a loop
+       reads it before it starts waiting and stops waiting once it differs.
+       Stays at zero for a daemon without the stream. */
+    uint64_t chainEventCount() const;
+
+    /* Whether the daemon's event stream is up, which is what lets a synced
+       wallet poll far less often without hearing about blocks any later. */
+    bool eventStreamLive() const;
 
     /* The lowest height this daemon can be scanned from. Zero when it holds the
        whole chain. A wallet asked to scan from lower than this cannot find its
@@ -352,4 +364,9 @@ class Nigel
 
     /* Whether we should use /getrawblocks instead of /getwalletsyncdata */
     bool m_useRawBlocks = false;
+
+    /* Follows the daemon's event stream while the background thread runs.
+       Declared last so it is torn down first: its callback writes the heights
+       above, and must be gone before they are. */
+    std::unique_ptr<TipWatch> m_tipWatch;
 };

@@ -215,6 +215,10 @@ void BlockDownloader::downloader()
 
         while (shouldFetchMoreBlocks() && !m_shouldStop)
         {
+            /* Read before asking, so a block announced while the request is in
+               flight - which the answer may not include - still wakes us. */
+            const uint64_t seenEvents = m_daemon->chainEventCount();
+
             /* Once the sequential path has established where on the chain we
                are, and while that is far enough behind the tip that no window
                can straddle a reorganisation, fetch several windows at once.
@@ -228,11 +232,30 @@ void BlockDownloader::downloader()
                    its current window, and every rejected request burns another
                    slot. Wait out a larger part of the window instead of
                    retrying on the standard interval. */
-                const auto backoff = m_daemon->lastRequestWasRateLimited()
-                    ? std::chrono::seconds(20)
-                    : std::chrono::seconds(5);
+                if (m_daemon->lastRequestWasRateLimited())
+                {
+                    Utilities::sleepUnlessStopping(std::chrono::seconds(20), m_shouldStop);
+                    break;
+                }
 
-                Utilities::sleepUnlessStopping(backoff, m_shouldStop);
+                /* The daemon's event stream announcing something is reason to
+                   ask again straight away. Retrying from here rather than
+                   leaving the loop matters: the main loop wakes on the same
+                   announcement, and its nudge to the downloader can land
+                   before we get back to waiting for one, which would leave
+                   the block unfetched until the next poll. With no stream this
+                   is the plain five second wait it always was. */
+                const auto idle = m_daemon->eventStreamLive() ? std::chrono::seconds(30) : std::chrono::seconds(5);
+
+                const bool woken = Utilities::sleepUnless(idle, [this, seenEvents] {
+                    return m_shouldStop || m_daemon->chainEventCount() != seenEvents;
+                });
+
+                if (woken && !m_shouldStop)
+                {
+                    continue;
+                }
+
                 break;
             }
         }
@@ -311,6 +334,11 @@ std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> BlockDownloader:
     }
 
     return blocks;
+}
+
+bool BlockDownloader::hasStoredBlocks() const
+{
+    return m_storedBlocks.size() > 0;
 }
 
 std::vector<Crypto::Hash> BlockDownloader::getStoredBlockCheckpoints() const

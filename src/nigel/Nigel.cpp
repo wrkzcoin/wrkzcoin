@@ -18,6 +18,7 @@
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
 #include <errors/Errors.h>
+#include <nigel/TipWatch.h>
 #include <sstream>
 #include <utilities/Utilities.h>
 #include <version.h>
@@ -387,11 +388,20 @@ Nigel::Nigel(
     m_nodeClient = getClient(m_daemonHost, m_daemonPort, m_daemonSSL, m_timeout);
 
     resetBlockCountLimits();
+
+    m_tipWatch = std::make_unique<TipWatch>();
+
+    /* A block the daemon announces is one it holds, so the sync loops can ask
+       for it now rather than after the next /info. */
+    m_tipWatch->setOnBlock([this](const uint64_t height) { noteDaemonHeight(height); });
 }
 
 Nigel::~Nigel()
 {
     stop();
+
+    /* Before any member it calls back into goes away. */
+    m_tipWatch.reset();
 }
 
 //////////////////////
@@ -830,6 +840,8 @@ void Nigel::stop()
 {
     m_shouldStop = true;
 
+    m_tipWatch->unfollow();
+
     if (m_backgroundThread.joinable())
     {
         m_backgroundThread.join();
@@ -853,6 +865,10 @@ void Nigel::init(bool startBackgroundThread)
     if (startBackgroundThread)
     {
         m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
+
+        /* Only alongside the background thread: without one (the single
+           threaded web wallet) nothing here would be waiting to be woken. */
+        m_tipWatch->follow(m_daemonHost, m_daemonPort, m_daemonSSL);
     }
 }
 
@@ -985,9 +1001,22 @@ void Nigel::backgroundRefresh()
 {
     while (!m_shouldStop)
     {
+        const uint64_t seen = m_tipWatch->blockEvents();
+
         getDaemonInfo();
 
-        Utilities::sleepUnlessStopping(std::chrono::seconds(10), m_shouldStop);
+        /* A new block on the event stream refreshes /info at once, so the
+           heights, fees and peer count it carries are current too. At least a
+           second apart all the same, so a burst of blocks - a reorg, or a
+           daemon catching up - cannot turn into a burst of requests. */
+        if (Utilities::sleepUnless(std::chrono::seconds(1), [this] { return m_shouldStop.load(); }))
+        {
+            break;
+        }
+
+        Utilities::sleepUnless(
+            std::chrono::seconds(9),
+            [this, seen] { return m_shouldStop || m_tipWatch->blockEvents() != seen; });
     }
 }
 
@@ -1016,6 +1045,16 @@ void Nigel::noteDaemonHeight(const uint64_t height)
         {
         }
     }
+}
+
+uint64_t Nigel::chainEventCount() const
+{
+    return m_tipWatch->events();
+}
+
+bool Nigel::eventStreamLive() const
+{
+    return m_tipWatch->isLive();
 }
 
 uint64_t Nigel::liteStartHeight() const

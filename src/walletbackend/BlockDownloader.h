@@ -43,6 +43,10 @@ class BlockDownloader
        available. May be empty (this is the norm when synced.) */
     std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> fetchBlocks(const size_t blockCount);
 
+    /* Whether any downloaded block is waiting to be applied. Lets a sleeping
+       main loop pick up a block the downloader fetched on its own. */
+    bool hasStoredBlocks() const;
+
     /* Drops the oldest block from the internal queue */
     void dropBlock(const uint64_t blockHeight, const Crypto::Hash blockHash);
 

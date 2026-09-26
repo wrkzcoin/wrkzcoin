@@ -1,0 +1,80 @@
+# A private WrkzCoin simnet: three nodes in a line and a miner, from the
+# runtime image (scripts/docker/Dockerfile.node). Nothing here touches
+# mainnet: --simnet gives the nodes their own network id, no proof of work,
+# difficulty 1, no seeds and no checkpoints. Its coins are worthless.
+#
+#   scripts/docker/build.sh linux
+#   docker build -t wrkzcoin -f scripts/docker/Dockerfile.node \
+#       --build-arg PACKAGE=wrkzcoin-cli-linux-x86_64-<version>.tar.gz builds
+#   docker compose -f compose.simnet.yml up -d
+#   docker compose -f compose.simnet.yml logs miner   # the keys it mines to
+#
+# Each node's RPC, with its GET /ws event stream, on loopback:
+#   node1 http://127.0.0.1:27856   node2 http://127.0.0.1:27866
+#   node3 http://127.0.0.1:27876
+# Import the miner's keys into a wallet with scan height 0, point the wallet
+# at a node, and spend. `docker compose -f compose.simnet.yml down -v` wipes it.
+#
+# A partition, by hand: `docker compose -f compose.simnet.yml stop node2`, mine
+# on, and start it again to watch node3 catch up.
+#
+# The nodes find each other by address, not by name - Wrkzd takes an exclusive
+# node as ip:port - so each has a fixed one on the simnet's own network, and
+# --allow-local-ip lets them dial those private addresses.
+
+name: wrkz-simnet
+
+x-node: &node
+  image: wrkzcoin
+  restart: unless-stopped
+  stop_grace_period: 2m
+
+services:
+  node1:
+    <<: *node
+    command: ["--simnet", "--enable-websocket", "--allow-local-ip"]
+    ports: ["127.0.0.1:27856:27856"]
+    volumes: ["node1:/data"]
+    networks:
+      simnet:
+        ipv4_address: 172.28.55.11
+
+  node2:
+    <<: *node
+    command: ["--simnet", "--enable-websocket", "--allow-local-ip", "--add-exclusive-node", "172.28.55.11:27855"]
+    ports: ["127.0.0.1:27866:27856"]
+    volumes: ["node2:/data"]
+    depends_on: [node1]
+    networks:
+      simnet:
+        ipv4_address: 172.28.55.12
+
+  node3:
+    <<: *node
+    command: ["--simnet", "--enable-websocket", "--allow-local-ip", "--add-exclusive-node", "172.28.55.12:27855"]
+    ports: ["127.0.0.1:27876:27856"]
+    volumes: ["node3:/data"]
+    depends_on: [node2]
+    networks:
+      simnet:
+        ipv4_address: 172.28.55.13
+
+  # A block every ten seconds on node1, to fresh keys printed at start; add
+  # "--address", "Wrkz..." to mine to your own.
+  miner:
+    image: wrkzcoin
+    restart: unless-stopped
+    entrypoint: ["wrkz-simnet", "mine", "--daemon", "http://172.28.55.11:27856", "--interval", "10"]
+    depends_on: [node1]
+    networks: [simnet]
+
+networks:
+  simnet:
+    ipam:
+      config:
+        - subnet: 172.28.55.0/24
+
+volumes:
+  node1:
+  node2:
+  node3:

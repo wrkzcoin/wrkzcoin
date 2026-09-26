@@ -22,6 +22,8 @@
 #include <common/IpcSocket.h>
 #include <errors/ValidateParameters.h>
 #include <logger/Logger.h>
+#include <rpc/ChainEvents.h>
+#include <rpc/EventStream.h>
 #include <serialization/SerializationTools.h>
 #include <utilities/Addresses.h>
 #include <utilities/ColouredMsg.h>
@@ -91,7 +93,8 @@ RpcServer::RpcServer(
     const RpcMode rpcMode,
     const std::shared_ptr<CryptoNote::Core> core,
     const std::shared_ptr<CryptoNote::NodeServer> p2p,
-    const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager):
+    const std::shared_ptr<CryptoNote::ICryptoNoteProtocolHandler> syncManager,
+    const std::shared_ptr<EventStream> eventStream):
     m_port(bindPort),
     m_host(rpcBindIp),
     m_ipv6Host(rpcUseIpv6 && !rpcBindIpv6Address.empty() ? rpcBindIpv6Address : ""),
@@ -109,6 +112,7 @@ RpcServer::RpcServer(
     m_ipcGroup(rpcIpcGroup),
     m_ipcRequireToken(rpcIpcRequireToken),
     m_rpcMode(rpcMode),
+    m_eventStream(eventStream),
     m_core(core),
     m_p2p(p2p),
     m_syncManager(syncManager),
@@ -324,6 +328,42 @@ void RpcServer::setupRoutes(httplib::Server &srv, const bool isIpc)
     {
         srv.Post("/console", router(&RpcServer::console, RpcMode::Standard, bodyRequired, syncNotRequired));
     }
+
+    /* GET /ws: the chain and pool events as a WebSocket stream. On the TCP
+       listeners only - a local wallet has nothing to gain from it over the
+       socket, and the wallets do not follow an IPC daemon's stream. */
+    if (m_eventStream && !isIpc)
+    {
+        /* httplib consults this before it writes the 101, so a refused upgrade
+           gets an ordinary HTTP answer. It sees every request; all but a /ws
+           upgrade pass straight through. */
+        srv.set_pre_routing_handler([this](const httplib::Request &req, httplib::Response &res) {
+            if (req.path != "/ws" || !httplib::detail::is_websocket_upgrade(req))
+            {
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+
+            return admitWebSocket(req, res) ? httplib::Server::HandlerResponse::Unhandled
+                                            : httplib::Server::HandlerResponse::Handled;
+        });
+
+        srv.WebSocket("/ws", [this](const httplib::Request &req, httplib::ws::WebSocket &ws) {
+            serveWebSocket(req, ws);
+        });
+
+        /* A GET that did not ask to upgrade, or asked in a version other than
+           13, is told what this path speaks (RFC 6455 section 4.4). */
+        srv.Get("/ws", [this](const httplib::Request &, httplib::Response &res) {
+            if (!m_corsHeader.empty())
+            {
+                res.set_header("Access-Control-Allow-Origin", m_corsHeader);
+            }
+
+            res.set_header("Content-Type", "application/json");
+            res.set_header("Sec-WebSocket-Version", "13");
+            failRequest(426, "WebSocket upgrade required", res);
+        });
+    }
 }
 
 RpcServer::~RpcServer()
@@ -410,6 +450,13 @@ void RpcServer::listenIpc()
 
 void RpcServer::stop()
 {
+    /* Before the listeners: each subscriber holds a worker thread until it is
+       closed, and stopping a listener waits for its workers. */
+    if (m_eventStream)
+    {
+        m_eventStream->stop();
+    }
+
     m_server->stop();
 
     if (!m_ipv6Host.empty())
@@ -545,25 +592,10 @@ void RpcServer::middleware(
        secret on top adds nothing, and would mean every local integration has
        to be handed the token to do what its uid already entitles it to. An
        operator who wants both can set --rpc-ipc-require-token. */
-    if (!m_rpcAccessToken.empty() && (!isIpc || m_ipcRequireToken))
+    if (!isAuthorized(req, isIpc))
     {
-        std::string providedToken = req.get_header_value("X-API-Key");
-
-        if (providedToken.empty())
-        {
-            const std::string authHeader = req.get_header_value("Authorization");
-            static const std::string bearerPrefix = "Bearer ";
-            if (authHeader.rfind(bearerPrefix, 0) == 0)
-            {
-                providedToken = authHeader.substr(bearerPrefix.size());
-            }
-        }
-
-        if (providedToken != m_rpcAccessToken)
-        {
-            failRequest(401, "Unauthorized RPC request", res);
-            return;
-        }
+        failRequest(401, "Unauthorized RPC request", res);
+        return;
     }
 
     /* IPC callers are exempt for the same reason loopback is: the rate limiter
@@ -663,6 +695,154 @@ void RpcServer::middleware(
         }
 
         failRequest(500, "Internal server error: " + std::string(e.what()), res);
+    }
+}
+
+bool RpcServer::isAuthorized(const httplib::Request &req, const bool isIpc) const
+{
+    if (m_rpcAccessToken.empty() || (isIpc && !m_ipcRequireToken))
+    {
+        return true;
+    }
+
+    std::string providedToken = req.get_header_value("X-API-Key");
+
+    if (providedToken.empty())
+    {
+        const std::string authHeader = req.get_header_value("Authorization");
+        static const std::string bearerPrefix = "Bearer ";
+        if (authHeader.rfind(bearerPrefix, 0) == 0)
+        {
+            providedToken = authHeader.substr(bearerPrefix.size());
+        }
+    }
+
+    return providedToken == m_rpcAccessToken;
+}
+
+bool RpcServer::admitWebSocket(const httplib::Request &req, httplib::Response &res)
+{
+    const std::string clientIp = getClientIp(req);
+
+    Logger::logger.log(
+        "[" + clientIp + "] Incoming WebSocket upgrade: " + req.target + ", User-Agent: " + req.get_header_value("User-Agent"),
+        Logger::DEBUG,
+        { Logger::DAEMON_RPC }
+    );
+
+    const auto refuse = [this, &res](const uint16_t statusCode, const std::string &message) {
+        if (!m_corsHeader.empty())
+        {
+            res.set_header("Access-Control-Allow-Origin", m_corsHeader);
+        }
+
+        res.set_header("Content-Type", "application/json");
+        failRequest(statusCode, message, res);
+        return false;
+    };
+
+    if (!isAuthorized(req, false))
+    {
+        return refuse(401, "Unauthorized RPC request");
+    }
+
+    const bool loopback = clientIp == "127.0.0.1" || clientIp == "::1";
+
+    if (!clientIp.empty() && !loopback && isRateLimited(clientIp))
+    {
+        return refuse(429, "Too many RPC requests, please retry later");
+    }
+
+    /* A page may subscribe only where it may already call the RPC: the same
+       --enable-cors decides both. A program sends no Origin at all. And a page
+       cannot set headers on a WebSocket, so with --rpc-access-token set only
+       programs can subscribe. */
+    if (req.has_header("Origin"))
+    {
+        const std::string origin = req.get_header_value("Origin");
+
+        if (!(m_corsHeader == "*" || (!m_corsHeader.empty() && m_corsHeader == origin)))
+        {
+            return refuse(403, "This origin may not subscribe; the daemon's --enable-cors does not allow it");
+        }
+    }
+
+    std::vector<std::string> prefixes;
+
+    if (const auto error = EventStream::parseTopics(req.get_param_value("topics"), prefixes))
+    {
+        return refuse(400, *error);
+    }
+
+    switch (m_eventStream->wouldRefuse(clientIp, loopback))
+    {
+        case EventStream::Refusal::TooManyFromAddress:
+        {
+            return refuse(429, "Too many WebSocket subscriptions from this address");
+        }
+        case EventStream::Refusal::Full:
+        {
+            return refuse(503, "WebSocket subscriptions are full, retry later");
+        }
+        case EventStream::Refusal::None:
+        {
+            break;
+        }
+    }
+
+    return true;
+}
+
+void RpcServer::serveWebSocket(const httplib::Request &req, httplib::ws::WebSocket &ws)
+{
+    /* httplib does not catch what a WebSocket handler throws, and the thread
+       it runs on is a pool worker, so nothing may escape. */
+    try
+    {
+        const std::string clientIp = getClientIp(req);
+        const bool loopback = clientIp == "127.0.0.1" || clientIp == "::1";
+
+        /* Already validated before the 101. */
+        std::vector<std::string> prefixes;
+        EventStream::parseTopics(req.get_param_value("topics"), prefixes);
+
+        uint32_t topIndex = 0;
+        Crypto::Hash topHash = Constants::NULL_HASH;
+
+        try
+        {
+            topIndex = m_core->getTopBlockIndex();
+            topHash = m_core->getBlockHashByIndex(topIndex);
+        }
+        catch (const std::exception &)
+        {
+            /* A reorganisation between the two reads. The hello is only a
+               starting point; the client catches up over the RPC anyway. */
+        }
+
+        const std::string hello = ChainEvents::hello(topIndex, topHash, EventStream::carriedTopics(prefixes));
+
+        m_eventStream->serve(ws, clientIp, loopback, prefixes, hello);
+    }
+    catch (const std::exception &e)
+    {
+        Logger::logger.log(
+            "WebSocket subscriber error: " + std::string(e.what()),
+            Logger::WARNING,
+            { Logger::DAEMON_RPC }
+        );
+
+        if (ws.is_open())
+        {
+            ws.close(httplib::ws::CloseStatus::InternalError, "internal error");
+        }
+    }
+    catch (...)
+    {
+        if (ws.is_open())
+        {
+            ws.close(httplib::ws::CloseStatus::InternalError, "internal error");
+        }
     }
 }
 

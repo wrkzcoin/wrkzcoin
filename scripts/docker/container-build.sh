@@ -64,6 +64,7 @@ BINARY_CANDIDATES=(
   cryptotest
   wrkz-txpow-server
   wrkz-netmon
+  wrkz-simnet
 )
 BINARIES=()
 PKG_PREFIX="${PKG_PREFIX:-wrkzcoin-cli}"
