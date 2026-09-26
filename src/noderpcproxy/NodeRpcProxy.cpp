@@ -22,6 +22,7 @@
 #include <http/HttpRequest.h>
 #include <http/HttpResponse.h>
 #include <logging/DummyLogger.h>
+#include <nigel/TipWatch.h>
 #include <system/ContextGroup.h>
 #include <system/Dispatcher.h>
 #include <system/Event.h>
@@ -73,7 +74,8 @@ namespace CryptoNote
         m_connected(true),
         m_peerCount(0),
         m_networkHeight(0),
-        m_nodeHeight(0)
+        m_nodeHeight(0),
+        m_tipWatch(std::make_shared<TipWatch>())
     {
         resetInternalState();
     }
@@ -88,7 +90,8 @@ namespace CryptoNote
         m_connected(true),
         m_peerCount(0),
         m_networkHeight(0),
-        m_nodeHeight(0)
+        m_nodeHeight(0),
+        m_tipWatch(std::make_shared<TipWatch>())
     {
         resetInternalState();
     }
@@ -102,6 +105,10 @@ namespace CryptoNote
         catch (std::exception &)
         {
         }
+
+        /* The pull fiber may still hold a reference, but with nothing being
+           followed any more the watch is idle. */
+        m_tipWatch.reset();
     }
 
     void NodeRpcProxy::resetInternalState()
@@ -136,10 +143,15 @@ namespace CryptoNote
         m_state = STATE_INITIALIZING;
         resetInternalState();
         m_workerThread = std::thread([this, callback] { workerThread(callback); });
+
+        /* Plain TCP only, as for every other request this proxy makes. */
+        m_tipWatch->follow(m_nodeHost, m_nodePort, false);
     }
 
     bool NodeRpcProxy::shutdown()
     {
+        m_tipWatch->unfollow();
+
         if (m_workerThread.joinable())
         {
             m_workerThread.detach();
@@ -189,14 +201,28 @@ namespace CryptoNote
 
             getFeeInfo();
 
-            contextGroup.spawn([this]() {
+            contextGroup.spawn([this, watch = m_tipWatch]() {
                 Timer pullTimer(*m_dispatcher);
                 while (!m_stop)
                 {
+                    /* Read before the update, so an announcement that lands
+                       during it still cuts the wait short. */
+                    const uint64_t seenEvents = watch->events();
+
                     updateNodeStatus();
-                    if (!m_stop)
+
+                    /* While the event stream is up it announces every block,
+                       so the poll only has to catch what it might miss.
+                       Sleeping in short slices rather than blocking on the
+                       watch keeps this dispatcher thread free for the
+                       requests it also serves. */
+                    const auto interval = std::chrono::milliseconds(watch->isLive() ? 30000 : m_pullInterval);
+
+                    const auto deadline = std::chrono::steady_clock::now() + interval;
+
+                    while (!m_stop && watch->events() == seenEvents && std::chrono::steady_clock::now() < deadline)
                     {
-                        pullTimer.sleep(std::chrono::milliseconds(m_pullInterval));
+                        pullTimer.sleep(std::chrono::milliseconds(100));
                     }
                 }
             });

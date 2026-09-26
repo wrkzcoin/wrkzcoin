@@ -58,6 +58,9 @@ file(GLOB_RECURSE Serialization CONFIGURE_DEPENDS serialization/*)
 file(GLOB_RECURSE SubWallets CONFIGURE_DEPENDS subwallets/*)
 file(GLOB_RECURSE Transfers CONFIGURE_DEPENDS transfers/*)
 file(GLOB_RECURSE Wrkzd CONFIGURE_DEPENDS daemon/*)
+# wrkz-simnet runs whole simnet nodes in its own process, so it links what the
+# daemon links; the daemon's own sources (its main, its console) stay out.
+file(GLOB_RECURSE SimNet CONFIGURE_DEPENDS simnet/*)
 file(GLOB_RECURSE Utilities CONFIGURE_DEPENDS utilities/*)
 file(GLOB_RECURSE Wallet CONFIGURE_DEPENDS wallet/*)
 file(GLOB_RECURSE WalletApi CONFIGURE_DEPENDS walletapi/*)
@@ -203,6 +206,9 @@ if (WIN32)
     set(NETMON_SOURCES_OS
             binaryinfo/netmon.rc
             )
+    set(SIMNET_SOURCES_OS
+            binaryinfo/simnet.rc
+            )
     set(PG_SOURCES_OS
             binaryinfo/service.rc
             )
@@ -225,6 +231,8 @@ if (WRKZ_BUILD_EXECUTABLES)
     # wrkz-netmon - see the note above the convenience targets at the bottom
     # of this file.
     add_executable(NetMon ${NetMon} p2p/LevinProtocol.cpp ${NETMON_SOURCES_OS})
+    # Target name SimNet, output name wrkz-simnet, for the same reason.
+    add_executable(SimNet ${SimNet} ${SIMNET_SOURCES_OS})
     add_executable(WalletService ${WalletService} ${PG_SOURCES_OS})
     add_executable(Wrkzd ${Wrkzd} ${DAEMON_SOURCES_OS})
     add_executable(WalletApi ${WalletApi} ${WALLET_API_SOURCES_OS})
@@ -298,6 +306,7 @@ if (WIN32 AND WRKZ_BUILD_EXECUTABLES)
     target_link_libraries(miner ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(TxPowServer ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(NetMon ws2_32 advapi32 crypt32 gdi32 user32)
+    target_link_libraries(SimNet ws2_32 advapi32 crypt32 gdi32 user32)
     target_link_libraries(WalletUpgrader ws2_32 advapi32 crypt32 gdi32 user32)
 endif ()
 
@@ -363,6 +372,9 @@ if (WRKZ_BUILD_EXECUTABLES)
     # WRKZ_ROCKSDB_LIBS is set by external/CMakeLists.txt and names whichever
     # RocksDB (plus bundled zstd, when we build it) this configuration uses.
     target_link_libraries(Wrkzd System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} ${WRKZ_ZSTD_LIBS} Errors)
+    # Nigel for the wallet's TipWatch, which its tests follow a node with;
+    # Mnemonics for the seed of the keys it mines to.
+    target_link_libraries(SimNet System CryptoNoteCore ${WRKZ_ROCKSDB_LIBS} ${WRKZ_ZSTD_LIBS} Errors Nigel Mnemonics Logger)
 endif ()
 
 # Add the dependencies we need
@@ -371,8 +383,8 @@ target_link_libraries(Crypto argon2)
 target_link_libraries(CryptoNoteCore Utilities Common Logging Crypto P2P Rpc Http Serialization System)
 target_link_libraries(Errors Crypto SubWallets Utilities)
 target_link_libraries(Logging Common)
-target_link_libraries(Nigel Errors CryptoNoteCore)
-target_link_libraries(NodeRpcProxy Rpc)
+target_link_libraries(Nigel Errors CryptoNoteCore Config)
+target_link_libraries(NodeRpcProxy Rpc Nigel)
 target_link_libraries(P2P libminiupnpc-static Serialization System CryptoNoteCore)
 target_link_libraries(Rpc P2P Utilities CryptoNoteCore)
 target_link_libraries(Serialization Common Crypto)
@@ -507,6 +519,7 @@ if (OPENSSL_FOUND)
         target_link_libraries(zedwallet++ ${OPENSSL_LIBRARIES})
         target_link_libraries(WalletService ${OPENSSL_LIBRARIES})
         target_link_libraries(Wrkzd ${OPENSSL_LIBRARIES})
+        target_link_libraries(SimNet ${OPENSSL_LIBRARIES})
     endif ()
 endif ()
 
@@ -522,6 +535,7 @@ if (ZLIB_FOUND)
         target_link_libraries(zedwallet++ ${ZLIB_LIBRARIES})
         target_link_libraries(WalletService ${ZLIB_LIBRARIES})
         target_link_libraries(Wrkzd ${ZLIB_LIBRARIES})
+        target_link_libraries(SimNet ${ZLIB_LIBRARIES})
     endif ()
 endif ()
 
@@ -547,6 +561,7 @@ endif ()
 if (WIN32 AND NOT MSVC AND WRKZ_BUILD_EXECUTABLES)
     # RocksDB Windows objects require shlwapi and rpc symbols; keep them late.
     target_link_libraries(Wrkzd shlwapi rpcrt4)
+    target_link_libraries(SimNet shlwapi rpcrt4)
 endif ()
 
 if (ANDROID AND WRKZ_ANDROID_UCONTEXT_LIB)
@@ -566,6 +581,7 @@ if (ANDROID AND WRKZ_ANDROID_UCONTEXT_LIB)
         target_link_libraries(WalletUpgrader "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(zedwallet++ "${WRKZ_ANDROID_UCONTEXT_LIB}")
         target_link_libraries(Wrkzd "${WRKZ_ANDROID_UCONTEXT_LIB}")
+        target_link_libraries(SimNet "${WRKZ_ANDROID_UCONTEXT_LIB}")
     endif ()
 endif ()
 
@@ -581,6 +597,7 @@ if (WRKZ_BUILD_EXECUTABLES)
     add_dependencies(TxPowServer version)
     add_dependencies(NetMon version)
     add_dependencies(Wrkzd version)
+    add_dependencies(SimNet version)
     add_dependencies(WalletUpgrader version)
     add_dependencies(WalletApi version)
     add_dependencies(WalletService version)
@@ -602,6 +619,7 @@ if (WRKZ_BUILD_EXECUTABLES)
     set_property(TARGET miner PROPERTY OUTPUT_NAME "miner")
     set_property(TARGET TxPowServer PROPERTY OUTPUT_NAME "wrkz-txpow-server")
     set_property(TARGET NetMon PROPERTY OUTPUT_NAME "wrkz-netmon")
+    set_property(TARGET SimNet PROPERTY OUTPUT_NAME "wrkz-simnet")
     set_property(TARGET cryptotest PROPERTY OUTPUT_NAME "cryptotest")
     set_property(TARGET WalletApi PROPERTY OUTPUT_NAME "wrkz-wallet-api")
     set_property(TARGET WalletUpgrader PROPERTY OUTPUT_NAME "wallet-upgrader")

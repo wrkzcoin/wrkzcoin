@@ -107,6 +107,10 @@ namespace DaemonConfig
             reorgNotify = "";
             txNotify = "";
             notifyDuringSync = false;
+            enableWebSocket = false;
+            wsMaxClients = 128;
+            wsMaxClientsPerIp = 4;
+            simnet = false;
             skipBootCompaction = false;
             autoPruneMinGapBlocks = 120;
             autoCompactionMinGapBlocks = 720;
@@ -296,6 +300,22 @@ namespace DaemonConfig
         std::string txNotify;
 
         bool notifyDuringSync;
+
+        /* GET /ws on the RPC port: the ZMQ topics and bodies as a WebSocket
+           stream, behind the RPC's token and rate limit. See WEBSOCKET.md. */
+        bool enableWebSocket;
+
+        /* Subscribers at once; past it an upgrade is a 503. */
+        size_t wsMaxClients;
+
+        /* Subscribers from one address, loopback exempt; past it a 429. 0 is no
+           per-address cap. */
+        size_t wsMaxClientsPerIp;
+
+        /* A private test network: its own network id, no proof of work,
+           difficulty 1, no checkpoints, seeds or UPnP, and the SIMNET_* ports
+           unless others are given. Permanent for the database. See SIMNET.md. */
+        bool simnet;
 
         bool skipBootCompaction;
 

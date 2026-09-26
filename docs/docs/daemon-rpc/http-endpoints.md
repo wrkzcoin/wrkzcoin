@@ -96,7 +96,7 @@ which for these would mean silently getting a different answer than expected.
 | --- | --- | --- |
 | `skipEmptyBlocks` | `skipEmptyBlocks` | Leaves out blocks holding nothing but a coinbase. Only takes effect together with `skipCoinbaseTransactions`, since otherwise the coinbase is wanted. One response can then carry a wallet across far more heights than its `blockCount`. |
 | `encoding` | `base64` | `"hex"` (default) or `"base64"`. Hashes and keys are 44 characters as base64 against 64 as hex. |
-| `endHeight` | `heightRange` | Exclusive upper bound on the heights the response may cover. Lets a client name several windows before it has seen any of the answers, and fetch them at once. `0` or absent means unbounded. |
+| `endHeight` | `heightRange` | Exclusive upper bound on the heights the response may cover. Lets a client name several windows before it has seen any of the answers, and fetch them at once. `0` or absent means unbounded. A window wider than `blockCount` only fills when `skipEmptyBlocks` is in effect; otherwise the answer still stops after `blockCount` blocks, and the windows after it were asked for nothing. |
 
 | Response field | Meaning |
 | --- | --- |

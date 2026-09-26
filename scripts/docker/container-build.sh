@@ -64,6 +64,7 @@ BINARY_CANDIDATES=(
   cryptotest
   wrkz-txpow-server
   wrkz-netmon
+  wrkz-simnet
 )
 BINARIES=()
 PKG_PREFIX="${PKG_PREFIX:-wrkzcoin-cli}"
@@ -206,6 +207,29 @@ flutter_env() {
   export FLUTTER_SUPPRESS_ANALYTICS=true
   mkdir -p "$PUB_CACHE"
   flutter --version
+}
+
+# flutter_linux_preflight: fail in seconds, not after the wallet_capi build,
+# when the image lacks something `flutter build linux` needs. Flutter resolves
+# clang++ to its real directory and requires a compiler, linker and archiver
+# there; the desktop wallet's plugins need the pkg-config modules below.
+flutter_linux_preflight() {
+  local clangpp dir names n found mod probe
+  clangpp="$(command -v clang++)" || die "clang++ is not on PATH"
+  dir="$(dirname "$(readlink -f "$clangpp")")"
+  for names in "clang" "ld.lld ld" "llvm-ar ar"; do
+    found=""
+    for n in $names; do [ -x "$dir/$n" ] && { found="$n"; break; }; done
+    [ -n "$found" ] || die "flutter needs one of [$names] in $dir; rebuild the image (Dockerfile Flutter layer)"
+  done
+  for mod in gtk+-3.0 libsecret-1 libnotify ayatana-appindicator3-0.1; do
+    pkg-config --exists "$mod" || die "pkg-config module $mod is missing; rebuild the image (Dockerfile Flutter layer)"
+  done
+  probe="$(mktemp -d)"
+  printf 'int main() { return 0; }\n' >"$probe/t.cpp"
+  clang++ "$probe/t.cpp" -o "$probe/t" \
+    || die "clang++ cannot link a C++ program (libstdc++ for the GCC version clang picked is missing?)"
+  rm -rf "$probe"
 }
 
 # emsdk_env: put emcc/emcmake on PATH with a writable cache.
@@ -813,6 +837,7 @@ EOF
 build_desktop() {
   local app name stage appver bundle
   flutter_env
+  flutter_linux_preflight
 
   local bd="$BUILD_ROOT/wallet-capi-linux"
   configure_and_build_target "$bd" wallet_capi \

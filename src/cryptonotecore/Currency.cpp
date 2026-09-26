@@ -543,6 +543,11 @@ namespace CryptoNote
         std::vector<uint64_t> timestamps,
         std::vector<uint64_t> cumulativeDifficulties) const
     {
+        if (m_isSimnet)
+        {
+            return CryptoNote::SIMNET_DIFFICULTY;
+        }
+
         if (blockIndex >= CryptoNote::parameters::LWMA_2_DIFFICULTY_BLOCK_INDEX_V3)
         {
             return nextDifficultyV5(timestamps, cumulativeDifficulties);
@@ -716,7 +721,9 @@ namespace CryptoNote
             return false;
         }
 
-        return check_hash(block.getBlockLongHash(), currentDifficulty);
+        /* On a simnet the long hash is not even computed: the check is what
+           the network does without. */
+        return m_isSimnet || check_hash(block.getBlockLongHash(), currentDifficulty);
     }
 
     bool Currency::checkProofOfWorkV2(const CachedBlock &cachedBlock, uint64_t currentDifficulty) const
@@ -727,7 +734,10 @@ namespace CryptoNote
             return false;
         }
 
-        if (!check_hash(cachedBlock.getBlockLongHash(), currentDifficulty))
+        /* The merge mining tag below is still checked on a simnet - it is part
+           of the block's structure, which getblocktemplate already builds - but
+           the work is not. */
+        if (!m_isSimnet && !check_hash(cachedBlock.getBlockLongHash(), currentDifficulty))
         {
             return false;
         }
@@ -792,6 +802,7 @@ namespace CryptoNote
         m_rewardBlocksWindow(currency.m_rewardBlocksWindow),
         m_blockGrantedFullRewardZone(currency.m_blockGrantedFullRewardZone),
         m_isBlockexplorer(currency.m_isBlockexplorer),
+        m_isSimnet(currency.m_isSimnet),
         m_minerTxBlobReservedSize(currency.m_minerTxBlobReservedSize),
         m_numberOfDecimalPlaces(currency.m_numberOfDecimalPlaces),
         m_coin(currency.m_coin),

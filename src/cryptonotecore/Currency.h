@@ -278,6 +278,14 @@ namespace CryptoNote
             return m_isBlockexplorer;
         }
 
+        /* A private test network: every block needs difficulty 1 and no work at
+           all. Only ever set by --simnet and the wrkz-simnet tool, whose chains
+           are kept apart from mainnet by their network id and database marker. */
+        bool isSimnet() const
+        {
+            return m_isSimnet;
+        }
+
         const BlockTemplate &genesisBlock() const
         {
             return cachedGenesisBlock->getBlock();
@@ -456,6 +464,8 @@ namespace CryptoNote
         uint32_t m_upgradeWindow;
 
         bool m_isBlockexplorer;
+
+        bool m_isSimnet = false;
 
         BlockTemplate genesisBlockTemplate;
 
@@ -726,6 +736,12 @@ namespace CryptoNote
         CurrencyBuilder &isBlockexplorer(const bool val)
         {
             m_currency.m_isBlockexplorer = val;
+            return *this;
+        }
+
+        CurrencyBuilder &isSimnet(const bool val)
+        {
+            m_currency.m_isSimnet = val;
             return *this;
         }
 

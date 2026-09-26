@@ -18,6 +18,8 @@
 #include <thread>
 #include <unordered_set>
 
+class TipWatch;
+
 namespace System
 {
     class ContextGroup;
@@ -281,5 +283,10 @@ namespace CryptoNote
         std::string m_fee_address;
 
         uint32_t m_fee_amount = 0;
+
+        /* Follows the daemon's event stream so a new block is picked up when
+           it is announced, not on the next poll. Shared with the pull fiber,
+           which runs on a worker thread that shutdown() only detaches. */
+        std::shared_ptr<TipWatch> m_tipWatch;
     };
 } // namespace CryptoNote

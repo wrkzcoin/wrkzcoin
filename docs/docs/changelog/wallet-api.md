@@ -9,6 +9,37 @@ report the same `<major>.<minor>.<revision>.<build>` string.
 
 ---
 
+## 0.4.9 (build 281) — unreleased
+
+### New options
+
+- `--sync-max-blocks <1-10000>` on `wrkz-wallet-api` and `wrkz-wallet` — the
+  most blocks one sync request may ask for (default 1000). Only helps against a
+  daemon whose `--rpc-max-block-count` is raised too; a daemon that refuses the
+  size answers 400 and the wallet settles on half.
+
+### Behaviour
+
+- **Global indexes fetched per chunk.** Every 10-block window a chunk needs is
+  asked for once, and adjacent windows share a request of up to 90 heights,
+  instead of one request per block holding an output of ours.
+- **A rate limited or unreachable daemon no longer costs spendability.** A 429
+  or a connection failure while fetching global indexes keeps the blocks queued
+  and backs off (20 s after a 429) instead of counting towards the three
+  retries, after which the output used to be left unspendable until a rescan.
+- **Lite daemons.** A global index window reaching below the daemon's
+  `lite_start_height` now starts at that height instead of being refused.
+- **Parallel height windows** are only used while coinbase transactions are
+  skipped and the daemon advertises `skipEmptyBlocks`. Without both, a window
+  holds one batch and the extra requests bought nothing.
+- The single-threaded sync path (web wallet) no longer downloads while a
+  processing chunk is already stored, which let the store grow by half a batch
+  on every step.
+- A block served between two `/info` refreshes no longer stalls sync until the
+  next refresh.
+
+---
+
 ## 0.4.8 (build 280) — 2026-09-05
 
 ### Endpoints

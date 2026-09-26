@@ -9,6 +9,7 @@
 
 #include "common/StringTools.h"
 
+#include <algorithm>
 #include <common/Util.h>
 #include <config/CryptoNoteConfig.h>
 #include <crypto/random.h>
@@ -70,6 +71,50 @@ namespace CryptoNote
         p2pStateReset = false;
         m_bindIpv6Address = "";
         m_bindPortIpv6 = 0;
+        m_networkId = CryptoNote::CRYPTONOTE_NETWORK;
+        m_useDefaultSeeds = true;
+        m_upnp = true;
+        m_timedSyncIntervalSeconds = CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL;
+    }
+
+    void NetNodeConfig::setNetworkId(const std::array<uint8_t, 16> &networkId)
+    {
+        m_networkId = networkId;
+    }
+
+    std::array<uint8_t, 16> NetNodeConfig::getNetworkId() const
+    {
+        return m_networkId;
+    }
+
+    void NetNodeConfig::setUseDefaultSeeds(const bool useDefaultSeeds)
+    {
+        m_useDefaultSeeds = useDefaultSeeds;
+    }
+
+    bool NetNodeConfig::getUseDefaultSeeds() const
+    {
+        return m_useDefaultSeeds;
+    }
+
+    void NetNodeConfig::setUpnp(const bool upnp)
+    {
+        m_upnp = upnp;
+    }
+
+    bool NetNodeConfig::getUpnp() const
+    {
+        return m_upnp;
+    }
+
+    void NetNodeConfig::setTimedSyncIntervalSeconds(const uint32_t seconds)
+    {
+        m_timedSyncIntervalSeconds = std::max<uint32_t>(1, seconds);
+    }
+
+    uint32_t NetNodeConfig::getTimedSyncIntervalSeconds() const
+    {
+        return m_timedSyncIntervalSeconds;
     }
 
     bool NetNodeConfig::init(

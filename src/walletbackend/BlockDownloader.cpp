@@ -215,6 +215,10 @@ void BlockDownloader::downloader()
 
         while (shouldFetchMoreBlocks() && !m_shouldStop)
         {
+            /* Read before asking, so a block announced while the request is in
+               flight - which the answer may not include - still wakes us. */
+            const uint64_t seenEvents = m_daemon->chainEventCount();
+
             /* Once the sequential path has established where on the chain we
                are, and while that is far enough behind the tip that no window
                can straddle a reorganisation, fetch several windows at once.
@@ -228,11 +232,30 @@ void BlockDownloader::downloader()
                    its current window, and every rejected request burns another
                    slot. Wait out a larger part of the window instead of
                    retrying on the standard interval. */
-                const auto backoff = m_daemon->lastRequestWasRateLimited()
-                    ? std::chrono::seconds(20)
-                    : std::chrono::seconds(5);
+                if (m_daemon->lastRequestWasRateLimited())
+                {
+                    Utilities::sleepUnlessStopping(std::chrono::seconds(20), m_shouldStop);
+                    break;
+                }
 
-                Utilities::sleepUnlessStopping(backoff, m_shouldStop);
+                /* The daemon's event stream announcing something is reason to
+                   ask again straight away. Retrying from here rather than
+                   leaving the loop matters: the main loop wakes on the same
+                   announcement, and its nudge to the downloader can land
+                   before we get back to waiting for one, which would leave
+                   the block unfetched until the next poll. With no stream this
+                   is the plain five second wait it always was. */
+                const auto idle = m_daemon->eventStreamLive() ? std::chrono::seconds(30) : std::chrono::seconds(5);
+
+                const bool woken = Utilities::sleepUnless(idle, [this, seenEvents] {
+                    return m_shouldStop || m_daemon->chainEventCount() != seenEvents;
+                });
+
+                if (woken && !m_shouldStop)
+                {
+                    continue;
+                }
+
                 break;
             }
         }
@@ -313,6 +336,11 @@ std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> BlockDownloader:
     return blocks;
 }
 
+bool BlockDownloader::hasStoredBlocks() const
+{
+    return m_storedBlocks.size() > 0;
+}
+
 std::vector<Crypto::Hash> BlockDownloader::getStoredBlockCheckpoints() const
 {
     /* Project straight to the hashes under the queue's lock. Copying the
@@ -361,6 +389,17 @@ std::vector<Crypto::Hash> BlockDownloader::getBlockCheckpoints() const
 
 bool BlockDownloader::downloadStep()
 {
+    /* Each step applies at most one processing chunk, and a response can carry
+       twice that. Downloading regardless would grow the store by the
+       difference every step - most of the chain, by the end of a first sync -
+       and spend a request on every step instead of every other. Apply what we
+       hold first. The threaded path has no such need: its downloader runs
+       alongside processing and is held back by shouldFetchMoreBlocks(). */
+    if (m_storedBlocks.size() >= Constants::BLOCK_PROCESSING_CHUNK)
+    {
+        return false;
+    }
+
     return downloadBlocks();
 }
 
@@ -479,6 +518,18 @@ bool BlockDownloader::downloadBlocks()
         m_nextDownloadHeight = 0;
     }
 
+    /* Whatever the daemon just served, it holds. Its height as of the last
+       /info can be older than that by a block or two, and the check at the top
+       of this function would then stop us asking until the next refresh. */
+    if (success && !blocks.empty())
+    {
+        m_daemon->noteDaemonHeight(std::max(blocks.back().blockHeight, scannedToHeight));
+    }
+    else if (success && topBlock)
+    {
+        m_daemon->noteDaemonHeight(topBlock->height);
+    }
+
     /* A daemon with no blocks for us has nothing it is failing to serve, so a
        recorded gap has outlived its cause. Only on a successful answer: a
        timeout also returns nothing, and that says nothing about the gap.
@@ -513,8 +564,16 @@ bool BlockDownloader::downloadBlocks()
     {
         /* We may have also failed because we requested
            more data than could be returned in a reasonable
-           amount of time, so we'll back off a little bit */
-        m_daemon->decreaseRequestedBlockCount();
+           amount of time, so we'll back off a little bit.
+
+           Not when the daemon answered and simply had nothing past the blocks
+           we already hold: that is the tip, not an oversized request, and
+           halving on it shrank the batch every time the download got ahead of
+           processing near the tip. */
+        if (!success)
+        {
+            m_daemon->decreaseRequestedBlockCount();
+        }
 
         Logger::logger.log("Zero blocks received from daemon, possibly fully synced", Logger::DEBUG, {Logger::SYNC});
 
@@ -665,8 +724,18 @@ bool BlockDownloader::downloadBlocksInParallel()
 {
     const uint64_t firstHeight = m_nextDownloadHeight.load();
 
+    /* Read once, so every window is asked for the same way. The GUI wallets
+       can flip it while we run. */
+    const bool skipCoinbaseTransactions = Config::config.wallet.skipCoinbaseTransactions;
+
+    /* A window only reaches past one batch when the daemon may leave empty
+       blocks out, which it does only when told to skip both coinbases and
+       empty blocks. Otherwise it stops each answer at the block count like any
+       other request, the first window comes back short, the run ends there,
+       and the other windows were requests for nothing. */
     if (WalletConfig::syncRequestConcurrency < 2 || firstHeight == 0 || m_shouldStop
-        || m_syncGapDetected || !m_daemon->daemonSupportsHeightRange())
+        || m_syncGapDetected || !m_daemon->daemonSupportsHeightRange()
+        || !skipCoinbaseTransactions || !m_daemon->daemonSkipsEmptyBlocks())
     {
         return false;
     }
@@ -702,9 +771,8 @@ bool BlockDownloader::downloadBlocksInParallel()
     {
         const uint64_t start = firstHeight + (window * i);
 
-        pending.push_back(std::async(std::launch::async, [this, i, start, window] {
-            return m_daemon->getWalletSyncDataRange(
-                i, start, start + window, Config::config.wallet.skipCoinbaseTransactions);
+        pending.push_back(std::async(std::launch::async, [this, i, start, window, skipCoinbaseTransactions] {
+            return m_daemon->getWalletSyncDataRange(i, start, start + window, skipCoinbaseTransactions);
         }));
     }
 
