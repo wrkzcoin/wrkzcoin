@@ -8,8 +8,10 @@ It is mainnet with three differences:
 
 - **its own network id** (`"wrkz simnet 0001"`), so a simnet node and a
   mainnet node never finish a handshake;
-- **no proof of work**: a block template is a valid block as it is, and the
-  long hash is never even computed;
+- **no proof of work**: there is no nonce to search for, and the long hash is
+  never even computed. A block template becomes a valid block once its
+  merge mining tag is written - the commitment every miner fills in, simnet or
+  not;
 - **difficulty 1 for every block**, so blocks can come as fast as you like and
   the longest chain wins a reorganisation.
 
@@ -88,8 +90,9 @@ carries no record at all, so nothing about an existing node changes. A
 `--load-checkpoints` file and `--import-lite-snapshot` are refused with
 `--simnet`, since both are mainnet's.
 
-`wrkz-simnet mine` asks for a template and submits it unchanged. A mainnet
-node refuses such a block, so pointing it at the wrong node fails at once. It
+`wrkz-simnet mine` asks for a template, writes its merge mining tag and
+submits it with no work behind it. A mainnet node refuses such a block, so
+pointing it at the wrong node fails at once. It
 retries a node that is not answering yet, every five seconds.
 
 ## Docker: `compose.simnet.yml`

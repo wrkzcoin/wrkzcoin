@@ -16,12 +16,70 @@
 
 #include <algorithm>
 #include <common/FileSystemShim.h>
+#include <common/StringTools.h>
+#include <common/TransactionExtra.h>
+#include <config/CryptoNoteConfig.h>
+#include <cryptonotecore/CachedBlock.h>
+#include <serialization/SerializationTools.h>
 #include <mnemonics/Mnemonics.h>
 #include <thread>
 #include <utilities/Addresses.h>
 
 namespace Simnet
 {
+    namespace
+    {
+        /* From block version 2 on, getblocktemplate leaves the parent block's
+           merge mining tag as a placeholder for the miner to fill in with the
+           commitment to this block - the bundled miner does it in
+           adjustMergeMiningTag(), the stratum server before it hands out a
+           job. It is the one part of a template that is not ready as it comes,
+           and a simnet checks it like mainnet does: without it a block is
+           refused with "Aux block hash wasn't found in merkle tree". */
+        bool sealMergeMiningTag(std::string &blob, std::string &error)
+        {
+            std::vector<uint8_t> raw;
+
+            if (!Common::fromHex(blob, raw))
+            {
+                error = "the block template is not hex";
+                return false;
+            }
+
+            CryptoNote::BlockTemplate block;
+
+            if (!CryptoNote::fromBinaryArray(block, raw))
+            {
+                error = "the block template does not parse";
+                return false;
+            }
+
+            if (block.majorVersion < CryptoNote::BLOCK_MAJOR_VERSION_2)
+            {
+                return true;
+            }
+
+            CryptoNote::TransactionExtraMergeMiningTag mmTag;
+            mmTag.depth = 0;
+
+            {
+                const CryptoNote::CachedBlock unsealed(block);
+                mmTag.merkleRoot = unsealed.getAuxiliaryBlockHeaderHash();
+            }
+
+            block.parentBlock.baseTransaction.extra.clear();
+
+            if (!CryptoNote::appendMergeMiningTagToExtra(block.parentBlock.baseTransaction.extra, mmTag))
+            {
+                error = "could not write the merge mining tag";
+                return false;
+            }
+
+            blob = Common::toHex(CryptoNote::toBinaryArray(block));
+            return true;
+        }
+    } // namespace
+
     Keys Keys::random()
     {
         Keys keys;
@@ -110,6 +168,13 @@ namespace Simnet
 
         blob = answer["blocktemplate_blob"].get<std::string>();
         height = answer.value("height", uint64_t(0));
+
+        if (!sealMergeMiningTag(blob, error))
+        {
+            error = "getblocktemplate: " + error;
+            return false;
+        }
+
         return true;
     }
 
@@ -131,7 +196,7 @@ namespace Simnet
     {
         std::string blob;
 
-        /* Submitted as it came: a simnet asks for no work. */
+        /* No nonce search: a simnet asks for no work. */
         return blockTemplate(address, blob, height, error) && submitBlock(blob, error);
     }
 

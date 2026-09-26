@@ -53,6 +53,19 @@ namespace Simnet
             }
         }
 
+        /* For a call that reports its failure in error: taken by reference,
+           so it is read after the call has filled it in. Building
+           "what" + error at the call site would not be - the order function
+           arguments are evaluated in is unspecified, and GCC builds the
+           message before it makes the call. */
+        void check(const bool condition, const std::string &what, const std::string &error)
+        {
+            if (!condition)
+            {
+                throw Failure(what + error);
+            }
+        }
+
         /* Waits for condition, checking every 50 ms. */
         bool eventually(const std::chrono::milliseconds timeout, const std::function<bool()> &condition)
         {
@@ -80,7 +93,7 @@ namespace Simnet
             for (size_t i = 0; i < blocks; i++)
             {
                 std::string error;
-                check(client.mine(address, height, error), "mining on node " + std::to_string(node.index()) + ": " + error);
+                check(client.mine(address, height, error), "mining on node " + std::to_string(node.index()) + ": ", error);
             }
 
             return height;
@@ -123,8 +136,13 @@ namespace Simnet
             auto cluster = std::make_unique<Cluster>(logger);
 
             std::string error;
-            check(cluster->start(options, error), "starting the cluster: " + error);
-            check(cluster->waitForConnections(1, 30s), "the nodes did not connect within 30 seconds");
+            check(cluster->start(options, error), "starting the cluster: ", error);
+
+            /* A lone node has nobody to connect to. */
+            if (nodes > 1)
+            {
+                check(cluster->waitForConnections(1, 30s), "the nodes did not connect within 30 seconds");
+            }
 
             return cluster;
         }
@@ -230,7 +248,7 @@ namespace Simnet
             Node stranger(1, options, logger);
 
             std::string error;
-            check(stranger.start(error), "starting the stranger: " + error);
+            check(stranger.start(error), "starting the stranger: ", error);
 
             /* Plenty of dial attempts at a two second timed sync. */
             std::this_thread::sleep_for(8s);
@@ -258,8 +276,8 @@ namespace Simnet
             Node nodeB(1, b, logger);
 
             std::string error;
-            check(nodeA->start(error), "starting node a: " + error);
-            check(nodeB.start(error), "starting node b: " + error);
+            check(nodeA->start(error), "starting node a: ", error);
+            check(nodeB.start(error), "starting node b: ", error);
 
             mineOn(*nodeA, Keys::random().address, 3);
             const uint64_t longer = mineOn(nodeB, Keys::random().address, 6);
@@ -269,7 +287,7 @@ namespace Simnet
             nodeA->stop();
             a.exclusiveNodes = {nodeB.p2pAddress()};
             nodeA = std::make_unique<Node>(0, a, logger);
-            check(nodeA->start(error), "restarting node a: " + error);
+            check(nodeA->start(error), "restarting node a: ", error);
 
             check(
                 eventually(30s, [&] { return nodeA->topHash() == longerTop; }),
@@ -296,7 +314,7 @@ namespace Simnet
 
                 Node node(0, options, logger);
                 std::string error;
-                check(node.start(error), "starting a simnet node: " + error);
+                check(node.start(error), "starting a simnet node: ", error);
                 mineOn(node, Keys::random().address, 2);
             }
 

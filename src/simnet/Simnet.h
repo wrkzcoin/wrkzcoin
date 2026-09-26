@@ -44,10 +44,12 @@ namespace Simnet
 
         ~Client();
 
-        /* A block template paying address; height is the new block's index. */
+        /* A block template paying address, with its merge mining tag already
+           written, so it can be submitted as it is; height is the new block's
+           index. */
         bool blockTemplate(const std::string &address, std::string &blob, uint64_t &height, std::string &error);
 
-        /* Submits a block. A template submitted unchanged is accepted by a
+        /* Submits a block. A template from blockTemplate() is accepted by a
            simnet and refused by mainnet, which wants proof of work. */
         bool submitBlock(const std::string &blob, std::string &error);
 
