@@ -618,4 +618,21 @@ namespace CryptoNote
     const char *const DNS_SEED_NODES[] = {
         "seeds.wrkz.work"
     };
+
+    /* Simnet: a private test network (Wrkzd --simnet, wrkz-simnet). It starts
+       from the mainnet genesis block and runs the mainnet rules of each height,
+       except that blocks carry no proof of work and every block's difficulty is
+       SIMNET_DIFFICULTY. Its own network id keeps its nodes and mainnet's from
+       ever completing a handshake. The id and the ports are the same as the Rust
+       node's, so the two implementations can share a simnet. See SIMNET.md. */
+    const static std::array<uint8_t, 16> SIMNET_NETWORK = {
+        {'w', 'r', 'k', 'z', ' ', 's', 'i', 'm', 'n', 'e', 't', ' ', '0', '0', '0', '1'}};
+
+    const int SIMNET_P2P_DEFAULT_PORT = 27855;
+
+    const int SIMNET_RPC_DEFAULT_PORT = 27856;
+
+    const int SIMNET_ZMQ_PUB_DEFAULT_PORT = 27857;
+
+    const uint64_t SIMNET_DIFFICULTY = 1;
 } // namespace CryptoNote

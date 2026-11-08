@@ -19,6 +19,7 @@
 
 #include <array>
 #include <atomic>
+#include <config/CryptoNoteConfig.h>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -580,6 +581,13 @@ namespace CryptoNote
         std::list<PeerlistEntry> m_command_line_peers;
 
         std::array<uint8_t, 16> m_network_id;
+
+        /* Off on a simnet: the compiled-in seeds are mainnet nodes. */
+        bool m_use_default_seeds = true;
+
+        bool m_upnp = true;
+
+        uint32_t m_timed_sync_interval = CryptoNote::P2P_DEFAULT_HANDSHAKE_INTERVAL;
 
         std::mutex m_banMutex;
 

@@ -34,6 +34,8 @@ ApiConfig parseArguments(int argc, char **argv)
 
     unsigned int threads;
 
+    uint64_t syncMaxBlocks;
+
     std::string logFilePath;
 
     std::string rpcIpcMode;
@@ -73,6 +75,13 @@ ApiConfig parseArguments(int argc, char **argv)
          "Specify number of wallet sync threads",
          cxxopts::value<unsigned int>(threads)->default_value(
              std::to_string(std::max(1u, std::thread::hardware_concurrency()))),
+         "#")
+
+        ("sync-max-blocks",
+         "The most blocks to ask the daemon for in one sync request, from 1 to "
+             + std::to_string(CryptoNote::BLOCKS_SYNCHRONIZING_MAX_COUNT)
+             + ". Going above the default only helps against a daemon whose --rpc-max-block-count is raised too",
+         cxxopts::value<uint64_t>(syncMaxBlocks)->default_value(std::to_string(WalletConfig::maxBlocksPerSyncRequest)),
          "#")
 
         ("v,version",
@@ -219,6 +228,15 @@ ApiConfig parseArguments(int argc, char **argv)
     {
         config.threads = threads;
     }
+
+    if (syncMaxBlocks == 0 || syncMaxBlocks > CryptoNote::BLOCKS_SYNCHRONIZING_MAX_COUNT)
+    {
+        std::cout << "--sync-max-blocks must be between 1 and " << CryptoNote::BLOCKS_SYNCHRONIZING_MAX_COUNT
+                  << std::endl;
+        exit(1);
+    }
+
+    Config::config.wallet.syncMaxBlocks = syncMaxBlocks;
 
     const bool skip = skipCoinbaseTransactions || skipCoinbase;
 

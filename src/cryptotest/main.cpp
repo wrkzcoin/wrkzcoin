@@ -12,6 +12,7 @@
 
 #include "ContainerTests.h"
 #include "EncodingTests.h"
+#include "GlobalIndexPlanTests.h"
 #include "PaymentIdTests.h"
 #include "WalletCryptoTests.h"
 
@@ -386,6 +387,8 @@ int main(int argc, char **argv)
         EncodingTests::runAll();
 
         PaymentIdTests::runAll();
+
+        GlobalIndexPlanTests::runAll();
 
         std::cout << std::endl << "Test Crypto Primitives" << std::endl << std::endl;
 

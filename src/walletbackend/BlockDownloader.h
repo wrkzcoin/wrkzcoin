@@ -43,6 +43,10 @@ class BlockDownloader
        available. May be empty (this is the norm when synced.) */
     std::vector<std::tuple<WalletTypes::WalletBlockInfo, uint32_t>> fetchBlocks(const size_t blockCount);
 
+    /* Whether any downloaded block is waiting to be applied. Lets a sleeping
+       main loop pick up a block the downloader fetched on its own. */
+    bool hasStoredBlocks() const;
+
     /* Drops the oldest block from the internal queue */
     void dropBlock(const uint64_t blockHeight, const Crypto::Hash blockHash);
 
@@ -71,7 +75,8 @@ class BlockDownloader
     void initializeAfterLoad(const std::shared_ptr<Nigel> daemon);
 
     /* Single synchronous download attempt — used in WASM no-thread mode
-       instead of the background downloader thread. */
+       instead of the background downloader thread. Does nothing while a
+       processing chunk's worth of blocks is already stored. */
     bool downloadStep();
 
     /* Re-enable the internal block store without starting the download thread.
@@ -103,8 +108,9 @@ class BlockDownloader
     /* Fetches several consecutive height windows at once, so the wait for one
        response overlaps the wait for the next instead of following it. Only
        used a long way behind the chain tip, where the windows cannot straddle
-       a reorganisation, and only once downloadBlocks() has established where
-       we are. Returns false when it could not run or did not finish a window,
+       a reorganisation, only once downloadBlocks() has established where we
+       are, and only while the daemon is leaving empty blocks out - without
+       that a window holds no more than one batch. Returns false when it could not run or did not finish a window,
        which sends the caller back to the sequential path. */
     bool downloadBlocksInParallel();
 

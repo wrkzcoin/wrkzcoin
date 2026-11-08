@@ -1,0 +1,40 @@
+# A runtime image of the command line binaries: Wrkzd, the wallets and
+# wrkz-simnet, from the fully static Linux package that
+# `scripts/docker/build.sh linux` writes to builds/. Nothing is compiled here.
+#
+#   scripts/docker/build.sh linux
+#   docker build -t wrkzcoin -f scripts/docker/Dockerfile.node \
+#       --build-arg PACKAGE=wrkzcoin-cli-linux-x86_64-<version>.tar.gz builds
+#
+# The build context is builds/, not the repository, so only the package is
+# sent to the daemon. The image runs Wrkzd with its data in /data and its RPC
+# on every interface of the container; arguments given to `docker run` (or a
+# compose `command:`) are appended. compose.simnet.yml runs a simnet from it.
+
+FROM debian:bookworm-slim
+
+ARG PACKAGE
+
+# The binaries are static, but a daemon or wallet talking to an https node
+# still needs root certificates.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY ${PACKAGE} /tmp/wrkzcoin.tar.gz
+
+RUN mkdir -p /opt/wrkzcoin \
+ && tar -xzf /tmp/wrkzcoin.tar.gz -C /opt/wrkzcoin --strip-components=1 \
+ && rm /tmp/wrkzcoin.tar.gz \
+ && useradd --system --create-home --home-dir /data wrkz
+
+ENV PATH=/opt/wrkzcoin:$PATH
+
+USER wrkz
+WORKDIR /data
+VOLUME /data
+
+# Mainnet P2P and RPC, then the simnet's.
+EXPOSE 17855 17856 27855 27856
+
+ENTRYPOINT ["Wrkzd", "--data-dir", "/data", "--no-console", "--rpc-bind-ip", "0.0.0.0"]

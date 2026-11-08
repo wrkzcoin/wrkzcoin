@@ -9,6 +9,7 @@
 
 #include "P2pProtocolTypes.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -70,6 +71,31 @@ namespace CryptoNote
 
         uint16_t getBindPortIpv6() const;
 
+        /* The network id every handshake carries and demands of the peer.
+           Mainnet's CRYPTONOTE_NETWORK unless a simnet sets its own. */
+        void setNetworkId(const std::array<uint8_t, 16> &networkId);
+
+        std::array<uint8_t, 16> getNetworkId() const;
+
+        /* Whether the compiled-in SEED_NODES and DNS_SEED_NODES are used. Off
+           for a simnet, which must never dial a mainnet node. --seed-node
+           addresses are used either way. */
+        void setUseDefaultSeeds(const bool useDefaultSeeds);
+
+        bool getUseDefaultSeeds() const;
+
+        /* Whether to ask the router for a UPnP port mapping. */
+        void setUpnp(const bool upnp);
+
+        bool getUpnp() const;
+
+        /* How often peers compare heights (timed sync). A simnet mines far
+           faster than mainnet and wants a node that missed a relay to notice
+           within seconds, not a minute. */
+        void setTimedSyncIntervalSeconds(const uint32_t seconds);
+
+        uint32_t getTimedSyncIntervalSeconds() const;
+
       private:
         std::string bindIp;
 
@@ -103,6 +129,14 @@ namespace CryptoNote
         std::string m_bindIpv6Address;
 
         uint16_t m_bindPortIpv6;
+
+        std::array<uint8_t, 16> m_networkId;
+
+        bool m_useDefaultSeeds;
+
+        bool m_upnp;
+
+        uint32_t m_timedSyncIntervalSeconds;
     };
 
 } // namespace CryptoNote

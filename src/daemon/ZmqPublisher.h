@@ -46,13 +46,7 @@ namespace Daemon
 
         bool sendMultipart(const std::string &topic, const std::string &payload);
 
-        static std::string hashToString(const Crypto::Hash &hash);
-
-        static std::string hashesToJsonArray(const std::vector<Crypto::Hash> &hashes);
-
         static bool isNonLoopbackTcpEndpoint(const std::string &endpoint);
-
-        static const char *deleteReasonToString(CryptoNote::Messages::DeleteTransaction::Reason reason);
 
         System::Dispatcher &m_dispatcher;
         CryptoNote::ICore &m_core;

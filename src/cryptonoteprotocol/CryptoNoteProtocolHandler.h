@@ -53,7 +53,16 @@ namespace CryptoNote
         // ICore& get_core() { return m_core; }
         virtual bool isSynchronized() const override
         {
-            return m_synchronized;
+            /* A simnet node on its own is the whole network, so it counts as
+               synchronized and its RPC takes transactions without a peer.
+               Mainnet always waits for a peer to say so. */
+            return m_synchronized || (m_simnet && getPeerCount() == 0);
+        }
+
+        /* Wrkzd --simnet, and wrkz-simnet's nodes. */
+        void setSimnet(bool simnet)
+        {
+            m_simnet = simnet;
         }
 
         void log_connections();
@@ -252,6 +261,8 @@ namespace CryptoNote
 
         /* 0 = full node. Above 0, the height this node stores full blocks from. */
         uint32_t m_liteHeight = 0;
+
+        bool m_simnet = false;
 
         /* The lite height is only safe once we know how tall the network is, and
            that is first knowable at the opening handshake. Set once the question

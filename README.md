@@ -18,6 +18,8 @@
     <li><a href="#network-monitor">Network Monitor</a></li>
     <li><a href="#daemon-db-compaction">Daemon DB Compaction</a></li>
     <li><a href="#daemon-zmq-quick-test">Daemon ZMQ (Quick Test)</a></li>
+    <li><a href="#websocket-events">WebSocket Events</a></li>
+    <li><a href="#simnet">Simnet</a></li>
     <li><a href="#notification-hooks-monero-style---block-notify----tx-notify">Notification Hooks</a></li>
     <li><a href="#a-note-for-contributing-developers">A note for contributing developers</a></li>
     <li><a href="#contributing-projects">Contributing Projects</a></li>
@@ -202,6 +204,16 @@ cross-linked versions at [Lite Nodes](https://docs.wrkz.work/guides/lite-node/) 
 - Test subscriber script:
   - `pip install pyzmq`
   - `python scripts/zmq_sub_test.py --endpoint tcp://127.0.0.1:17857 --topics hashblock chain_main`
+
+### WebSocket Events
+
+- `Wrkzd --enable-websocket` serves `GET /ws` on the RPC port: the ZMQ topics and bodies over a WebSocket, behind the RPC's access token and rate limit, e.g. `websocat 'ws://127.0.0.1:17856/ws?topics=hashblock'`.
+- Every wallet here follows its node's stream by itself: it syncs the moment a block arrives, and while the stream is live a synced wallet polls every 30 s instead of every 5. [WEBSOCKET.md](WEBSOCKET.md) covers the messages, the limits and the wallets.
+
+### Simnet
+
+- `Wrkzd --simnet` runs a private test network: its own network id, no proof of work, difficulty 1, no checkpoints or seeds, recorded in the database so it can never mix with mainnet.
+- `wrkz-simnet run` starts a cluster of simnet nodes in one process and mines to fresh keys; `wrkz-simnet mine` mines against any `Wrkzd --simnet`; `wrkz-simnet test` checks whole nodes end to end; `compose.simnet.yml` runs one in Docker. [SIMNET.md](SIMNET.md) covers all of it.
 
 ### Notification Hooks (Monero-style `--block-notify` / `--tx-notify`)
 

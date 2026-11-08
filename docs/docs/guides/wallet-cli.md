@@ -32,6 +32,8 @@ Useful startup options:
 - `--remote-daemon <host:port>`
 - `--threads <n>`
 - `--skip-coinbase-transactions` (alias `--skip-coinbase`)
+- `--sync-max-blocks <n>` (1 to 10000, default 1000; only worth raising against
+  a daemon whose `--rpc-max-block-count` is raised too)
 - `--log-level <n>`
 - `--log-file <file>`
 - `--ssl` (when SSL support is compiled)

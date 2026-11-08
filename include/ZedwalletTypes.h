@@ -44,30 +44,6 @@ struct WalletInfo
     CryptoNote::WalletGreen &wallet;
 };
 
-struct Config
-{
-    /* Was the wallet file specified on CLI */
-    bool walletGiven = false;
-
-    /* Was the wallet pass specified on CLI */
-    bool passGiven = false;
-
-    /* Should we log walletd logs to a file */
-    bool debug = false;
-
-    /* The daemon host */
-    std::string host = "127.0.0.1";
-
-    /* The daemon port */
-    int port = CryptoNote::RPC_DEFAULT_PORT;
-
-    /* The wallet file path */
-    std::string walletFile = "";
-
-    /* The wallet password */
-    std::string walletPass = "";
-};
-
 struct AddressBookEntry
 {
     AddressBookEntry() {}

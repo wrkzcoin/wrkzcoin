@@ -33,7 +33,7 @@ cross-builds command-line executables, not a Flutter bundle.) Only the Windows
 `scripts/cross-build-windows-wallet-lib.sh`.
 
 `<version>` is `MAJOR.MINOR.REV.BUILD` from `src/config/version.h.in`
-(for example `0.4.8.280`); override it with `VERSION=`. The applications carry
+(for example `0.4.9.281`); override it with `VERSION=`. The applications carry
 their own `<appversion>` from their `pubspec.yaml` (PLUTON 2.0.0 desktop and
 mobile, 1.0.0 web), because they release on their own schedule; every package
 produced by a run is still listed in that run's `SHA256SUMS-<version>.txt`.
@@ -109,17 +109,17 @@ Packages land in `builds/`:
 
 ```
 builds/
-  wrkzcoin-cli-linux-x86_64-0.4.8.280.tar.gz
-  wrkzcoin-cli-windows-x86_64-0.4.8.280.zip
-  wrkzcoin-cli-android-arm64-v8a-0.4.8.280.tar.gz
-  wrkzcoin-cli-macos-x86_64-0.4.8.280.tar.gz
+  wrkzcoin-cli-linux-x86_64-0.4.9.281.tar.gz
+  wrkzcoin-cli-windows-x86_64-0.4.9.281.zip
+  wrkzcoin-cli-android-arm64-v8a-0.4.9.281.tar.gz
+  wrkzcoin-cli-macos-x86_64-0.4.9.281.tar.gz
   pluton-web-1.0.0.tar.gz
   pluton-desktop-linux-x86_64-2.0.0.tar.gz
   pluton-mobile-android-2.0.0.apk
   pluton-mobile-android-2.0.0.aab
   pluton-mobile-android-2.0.0-debug.apk
   pluton-mobile-android-2.0.0-debug.aab
-  SHA256SUMS-0.4.8.280.txt
+  SHA256SUMS-0.4.9.281.txt
 ```
 
 Per-target logs are in `build-docker/logs/`.
@@ -132,6 +132,7 @@ All options are environment variables. Targets are positional arguments.
 |--------------------|-------------------------------|--------------------------------------------------------------------------|
 | `JOBS`             | all CPUs in the container     | parallel compile jobs (also used for the nested RocksDB build)           |
 | `VERSION`          | from `src/config/version.h.in`| version string in the package names                                      |
+| `WRKZ_COMMIT_ID`   | host checkout's HEAD         | commit id stamped into the binaries (`--version`), `-dirty` appended for uncommitted changes. Empty lets the container ask git itself |
 | `ANDROID_ABIS`     | `arm64-v8a`                   | ABIs to build for `android`; space or comma separated. Also the ABIs the `mobile` package carries and targets |
 | `MOBILE_FORMATS`   | `apk aab`                     | Android artefacts the `mobile` target produces                            |
 | `MOBILE_MODES`     | `release debug`               | Android build modes; debug artefacts get a `-debug` name suffix           |

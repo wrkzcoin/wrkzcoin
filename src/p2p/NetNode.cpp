@@ -29,6 +29,7 @@
 #include <future>
 #include <iomanip>
 #include <iterator>
+#include <limits>
 #include <miniupnpc.h>
 #include <upnpcommands.h>
 #include <system/Context.h>
@@ -514,6 +515,10 @@ namespace CryptoNote
         m_seed_node_hosts = config.getSeedNodeAddresses();
 
         m_hide_my_port = config.getHideMyPort();
+        m_network_id = config.getNetworkId();
+        m_use_default_seeds = config.getUseDefaultSeeds();
+        m_upnp = config.getUpnp();
+        m_timed_sync_interval = config.getTimedSyncIntervalSeconds();
         m_bind_ipv6 = config.getBindIpv6Address();
         m_port_ipv6 = config.getBindPortIpv6();
         m_enableIPv6 = !m_bind_ipv6.empty();
@@ -584,15 +589,18 @@ namespace CryptoNote
             resolveHost(host, port, "seed node");
         };
 
-        for (const auto &seed : CryptoNote::SEED_NODES)
+        if (m_use_default_seeds)
         {
-            resolveHostAndPort(seed);
-        }
+            for (const auto &seed : CryptoNote::SEED_NODES)
+            {
+                resolveHostAndPort(seed);
+            }
 
-        /* DNS seeds carry no port: every address they return runs on the default one. */
-        for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
-        {
-            resolveHost(dnsHost, CryptoNote::P2P_DEFAULT_PORT, "DNS seed");
+            /* DNS seeds carry no port: every address they return runs on the default one. */
+            for (const auto &dnsHost : CryptoNote::DNS_SEED_NODES)
+            {
+                resolveHost(dnsHost, CryptoNote::P2P_DEFAULT_PORT, "DNS seed");
+            }
         }
 
         for (const auto &seed : extraHosts)
@@ -713,6 +721,12 @@ namespace CryptoNote
         {
             m_seed_resolve_due = now + CryptoNote::P2P_SEED_RERESOLVE_INTERVAL_SECONDS;
         }
+        else if (!m_use_default_seeds && m_seed_node_hosts.empty())
+        {
+            /* A simnet with no --seed-node: there is nothing to look up, now
+               or ever, so do not keep a background lookup going for nothing. */
+            m_seed_resolve_due = std::numeric_limits<time_t>::max();
+        }
         else
         {
             /* DNS down at boot, most likely: look again as soon as a seed round wants it. */
@@ -777,7 +791,10 @@ namespace CryptoNote
             logger(INFO) << "External port defined as " << m_external_port;
         }
 
-        addPortMapping(logger, m_listeningPort);
+        if (m_upnp)
+        {
+            addPortMapping(logger, m_listeningPort);
+        }
 
         return true;
     }
@@ -3197,7 +3214,7 @@ namespace CryptoNote
         {
             for (;;)
             {
-                m_timedSyncTimer.sleep(std::chrono::seconds(P2P_DEFAULT_HANDSHAKE_INTERVAL));
+                m_timedSyncTimer.sleep(std::chrono::seconds(m_timed_sync_interval));
                 timedSync();
             }
         }

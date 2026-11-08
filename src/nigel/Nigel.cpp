@@ -12,11 +12,13 @@
 #include <common/CryptoNoteTools.h>
 #include <common/IpcSocket.h>
 #include <common/PlatformCaCerts.h>
+#include <config/Config.h>
 #include <config/CryptoNoteConfig.h>
 #include <cryptonotecore/CachedBlock.h>
 #include <cryptonotecore/Core.h>
 #include <CryptoNote.h>
 #include <errors/Errors.h>
+#include <nigel/TipWatch.h>
 #include <sstream>
 #include <utilities/Utilities.h>
 #include <version.h>
@@ -384,11 +386,22 @@ Nigel::Nigel(
 
     m_requestHeaders = {{"User-Agent", userAgent.str()}};
     m_nodeClient = getClient(m_daemonHost, m_daemonPort, m_daemonSSL, m_timeout);
+
+    resetBlockCountLimits();
+
+    m_tipWatch = std::make_unique<TipWatch>();
+
+    /* A block the daemon announces is one it holds, so the sync loops can ask
+       for it now rather than after the next /info. */
+    m_tipWatch->setOnBlock([this](const uint64_t height) { noteDaemonHeight(height); });
 }
 
 Nigel::~Nigel()
 {
     stop();
+
+    /* Before any member it calls back into goes away. */
+    m_tipWatch.reset();
 }
 
 //////////////////////
@@ -399,8 +412,7 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
 {
     stop();
 
-    m_blockCount = CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT;
-    m_maxBlockCount = WalletConfig::maxBlocksPerSyncRequest;
+    resetBlockCountLimits();
     m_lastRequestRateLimited = false;
     m_localDaemonBlockCount = 0;
     m_networkBlockCount = 0;
@@ -428,6 +440,16 @@ void Nigel::swapNode(const std::string daemonHost, const uint16_t daemonPort, co
     }
 
     init();
+}
+
+void Nigel::resetBlockCountLimits()
+{
+    const uint64_t configured = Config::config.wallet.syncMaxBlocks;
+
+    const uint64_t ceiling = configured != 0 ? configured : WalletConfig::maxBlocksPerSyncRequest;
+
+    m_maxBlockCount = ceiling;
+    m_blockCount = std::min(CryptoNote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT, ceiling);
 }
 
 void Nigel::decreaseRequestedBlockCount()
@@ -818,6 +840,8 @@ void Nigel::stop()
 {
     m_shouldStop = true;
 
+    m_tipWatch->unfollow();
+
     if (m_backgroundThread.joinable())
     {
         m_backgroundThread.join();
@@ -841,6 +865,10 @@ void Nigel::init(bool startBackgroundThread)
     if (startBackgroundThread)
     {
         m_backgroundThread = std::thread(&Nigel::backgroundRefresh, this);
+
+        /* Only alongside the background thread: without one (the single
+           threaded web wallet) nothing here would be waiting to be woken. */
+        m_tipWatch->follow(m_daemonHost, m_daemonPort, m_daemonSSL);
     }
 }
 
@@ -973,9 +1001,22 @@ void Nigel::backgroundRefresh()
 {
     while (!m_shouldStop)
     {
+        const uint64_t seen = m_tipWatch->blockEvents();
+
         getDaemonInfo();
 
-        Utilities::sleepUnlessStopping(std::chrono::seconds(10), m_shouldStop);
+        /* A new block on the event stream refreshes /info at once, so the
+           heights, fees and peer count it carries are current too. At least a
+           second apart all the same, so a burst of blocks - a reorg, or a
+           daemon catching up - cannot turn into a burst of requests. */
+        if (Utilities::sleepUnless(std::chrono::seconds(1), [this] { return m_shouldStop.load(); }))
+        {
+            break;
+        }
+
+        Utilities::sleepUnless(
+            std::chrono::seconds(9),
+            [this, seen] { return m_shouldStop || m_tipWatch->blockEvents() != seen; });
     }
 }
 
@@ -992,6 +1033,28 @@ uint64_t Nigel::localDaemonBlockCount() const
 uint64_t Nigel::networkBlockCount() const
 {
     return m_networkBlockCount;
+}
+
+void Nigel::noteDaemonHeight(const uint64_t height)
+{
+    for (auto *count : {&m_localDaemonBlockCount, &m_networkBlockCount})
+    {
+        uint64_t current = count->load();
+
+        while (current < height && !count->compare_exchange_weak(current, height))
+        {
+        }
+    }
+}
+
+uint64_t Nigel::chainEventCount() const
+{
+    return m_tipWatch->events();
+}
+
+bool Nigel::eventStreamLive() const
+{
+    return m_tipWatch->isLive();
 }
 
 uint64_t Nigel::liteStartHeight() const
@@ -1208,15 +1271,16 @@ std::tuple<bool, bool, std::string> Nigel::sendTransaction(const CryptoNote::Tra
     return {success, connectionError, error};
 }
 
-std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
-    Nigel::getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const
+GlobalIndexesResponse Nigel::getGlobalIndexesForRange(const uint64_t startHeight, const uint64_t endHeight) const
 {
+    GlobalIndexesResponse response;
+
     /* Blockchain cache API does not support this method and we
        don't need it to because it returns the global indexes
        with the key outputs when we get the wallet sync data */
     if (m_isBlockchainCache)
     {
-        return {false, {}};
+        return response;
     }
 
     json j = {{"startHeight", startHeight}, {"endHeight", endHeight}};
@@ -1237,21 +1301,30 @@ std::tuple<bool, std::unordered_map<Crypto::Hash, std::vector<uint64_t>>>
     auto res = m_nodeClient->Post("/get_global_indexes_for_range", toHeaders(m_requestHeaders), requestBody, "application/json");
 #endif
 
-    std::unordered_map<Crypto::Hash, std::vector<uint64_t>> result;
+    /* No answer, as opposed to an answer saying no. A 400, 404 or failed
+       status is the daemon telling us it will not serve this range, and asking
+       again will not change that; these can. */
+    if (!res || res->status == 429)
+    {
+        response.transient = true;
+        response.rateLimited = res && res->status == 429;
+    }
 
-    const auto parsedResponse = tryParseJSONResponse(res, "Failed to get global indexes for range", [&result](const nlohmann::json j) {
+    const auto parsedResponse = tryParseJSONResponse(res, "Failed to get global indexes for range", [&response](const nlohmann::json j) {
         /* The daemon doesn't serialize the way nlohmann::json does, so
            we can't just .get<std::unordered_map ...> */
         nlohmann::json indexes = j.at("indexes");
 
         for (const auto &index : indexes)
         {
-            result[index.at("key").get<Crypto::Hash>()] = index.at("value").get<std::vector<uint64_t>>();
+            response.indexes[index.at("key").get<Crypto::Hash>()] = index.at("value").get<std::vector<uint64_t>>();
         }
 
         return true;
     });
 
-    return {parsedResponse.has_value(), result};
+    response.success = parsedResponse.has_value();
+
+    return response;
 }
 

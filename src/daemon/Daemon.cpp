@@ -26,10 +26,13 @@
 #include "cryptonotecore/Currency.h"
 #include "cryptonotecore/DatabaseBlockchainCache.h"
 #include "cryptonotecore/DatabaseBlockchainCacheFactory.h"
+#include "cryptonotecore/NetworkProfile.h"
 #include "cryptonotecore/RocksDBWrapper.h"
 #include "cryptonoteprotocol/CryptoNoteProtocolHandler.h"
 #include "p2p/NetNode.h"
 #include "p2p/NetNodeConfig.h"
+#include "rpc/EventStream.h"
+#include "rpc/EventStreamFeed.h"
 #include "rpc/RpcServer.h"
 #include "StratumServer.h"
 #include "serialization/BinaryInputStreamSerializer.h"
@@ -460,6 +463,56 @@ int main(int argc, char *argv[])
     // Load in the CLI specified parameters again to overwrite anything from the config file
     handleSettings(argc, argv, config);
 
+    /* Nothing of mainnet's reaches a simnet: not its checkpoints, not its
+       seeds, not its lite snapshots, not its ports, not its data directory.
+       Only what was left at its default moves - an operator who names a port
+       or a directory gets that one. */
+    if (config.simnet)
+    {
+        if (!config.checkPoints.empty() && config.checkPoints != "default")
+        {
+            std::cout << "--simnet has no checkpoints, so --load-checkpoints cannot be used with it" << std::endl;
+            exit(1);
+        }
+
+        if (!config.importLiteSnapshot.empty())
+        {
+            std::cout << "--simnet cannot import a lite snapshot: every snapshot is of mainnet" << std::endl;
+            exit(1);
+        }
+
+        config.checkPoints = "";
+
+        if (config.p2pPort == CryptoNote::P2P_DEFAULT_PORT)
+        {
+            config.p2pPort = CryptoNote::SIMNET_P2P_DEFAULT_PORT;
+        }
+
+        if (config.rpcPort == CryptoNote::RPC_DEFAULT_PORT)
+        {
+            config.rpcPort = CryptoNote::SIMNET_RPC_DEFAULT_PORT;
+        }
+
+        if (config.zmqPub == "tcp://127.0.0.1:" + std::to_string(CryptoNote::ZMQ_PUB_DEFAULT_PORT))
+        {
+            config.zmqPub = "tcp://127.0.0.1:" + std::to_string(CryptoNote::SIMNET_ZMQ_PUB_DEFAULT_PORT);
+        }
+
+        /* A mainnet database refuses to open as a simnet, so the default
+           directory - where a mainnet chain most likely already is - would
+           only ever produce that refusal. */
+        if (config.dataDirectory == Tools::getDefaultDataDirectory())
+        {
+            config.dataDirectory = (fs::path(config.dataDirectory) / "simnet").string();
+        }
+    }
+
+    if (config.enableWebSocket && config.wsMaxClients == 0)
+    {
+        std::cout << "--ws-max-clients must be at least 1; leave out --enable-websocket instead" << std::endl;
+        exit(1);
+    }
+
     /* Describing a snapshot needs the file and nothing else - no data
        directory, no database, no core - so it answers here, before any of that
        is built. A caller deciding whether to spend half an hour importing can
@@ -604,6 +657,14 @@ int main(int argc, char *argv[])
 
         CryptoNote::CurrencyBuilder currencyBuilder(logManager);
         currencyBuilder.isBlockexplorer(explorerMode);
+        currencyBuilder.isSimnet(config.simnet);
+
+        if (config.simnet)
+        {
+            logger(WARNING, BRIGHT_YELLOW)
+                << "SIMNET: a private test network, not mainnet. Blocks need no proof of work and its coins are "
+                   "worthless; it never connects to a mainnet node.";
+        }
 
         try
         {
@@ -674,6 +735,14 @@ int main(int argc, char *argv[])
             config.p2pBindIpv6Address,
             config.p2pBindPortIpv6);
 
+        if (config.simnet)
+        {
+            netNodeConfig.setNetworkId(CryptoNote::SIMNET_NETWORK);
+            netNodeConfig.setUseDefaultSeeds(false);
+            netNodeConfig.setUpnp(false);
+            netNodeConfig.setTimedSyncIntervalSeconds(2);
+        }
+
         if (!Tools::create_directories_if_necessary(dbConfig.dataDir))
         {
             throw std::runtime_error("Can't create directory: " + dbConfig.dataDir);
@@ -705,6 +774,21 @@ int main(int argc, char *argv[])
                    "uses; --resync removes the chain and the peer state, then syncs from the network.";
             logger(ERROR, BRIGHT_RED)
                 << "If you want a fallback first, stop the daemon and take a copy of the data directory.";
+
+            database->shutdown();
+            dbShutdownOnExit.cancel();
+
+            exit(1);
+        }
+
+        /* Before the core loads, which writes the genesis block: a new
+           database is marked as a simnet's here, and a database of the other
+           network is refused. */
+        const std::string networkError = CryptoNote::settleNetworkProfile(*database, config.simnet);
+
+        if (!networkError.empty())
+        {
+            logger(ERROR, BRIGHT_RED) << networkError;
 
             database->shutdown();
             dbShutdownOnExit.cancel();
@@ -973,6 +1057,7 @@ int main(int argc, char *argv[])
 
         cprotocol->setPrunedNodeConfig(config.prune, config.pruneDepth);
         cprotocol->setLiteNodeConfig(liteHeight);
+        cprotocol->setSimnet(config.simnet);
         cprotocol->setSyncTuning(
             config.syncMaxPeers,
             config.syncPeerFailureThreshold,
@@ -1018,6 +1103,19 @@ int main(int argc, char *argv[])
             }
         }
 
+        /* Made before the RPC server, which takes connections over to it, and
+           fed from the core once the server is up. */
+        std::shared_ptr<EventStream> eventStream;
+
+        if (config.enableWebSocket)
+        {
+            EventStreamConfig eventStreamConfig;
+            eventStreamConfig.maxClients = config.wsMaxClients;
+            eventStreamConfig.maxClientsPerIp = config.wsMaxClientsPerIp;
+
+            eventStream = std::make_shared<EventStream>(eventStreamConfig);
+        }
+
         RpcServer rpcServer(
             config.rpcPort,
             config.rpcInterface,
@@ -1040,7 +1138,8 @@ int main(int argc, char *argv[])
             rpcMode,
             ccore,
             p2psrv,
-            cprotocol
+            cprotocol,
+            eventStream
         );
 
         cprotocol->set_p2p_endpoint(&(*p2psrv));
@@ -1081,6 +1180,18 @@ int main(int argc, char *argv[])
         }
 
         rpcServer.start();
+
+        std::unique_ptr<EventStreamFeed> eventStreamFeed;
+
+        if (eventStream)
+        {
+            eventStreamFeed = std::make_unique<EventStreamFeed>(dispatcher, *ccore, logManager, eventStream, liteHeight);
+            eventStreamFeed->start();
+
+            logger(INFO) << "WebSocket events on ws://" << config.rpcInterface << ":" << config.rpcPort
+                         << "/ws (at most " << config.wsMaxClients << " subscribers, "
+                         << config.wsMaxClientsPerIp << " per address)";
+        }
 
         std::unique_ptr<Daemon::ZmqPublisher> zmqPublisher;
 #ifdef WRKZ_ENABLE_ZMQ
@@ -1217,6 +1328,13 @@ int main(int argc, char *argv[])
         {
             logger(INFO) << "Stopping ZMQ publisher...";
             zmqPublisher->stop();
+        }
+
+        /* Stop feeding first; stopping the RPC server then closes every
+           subscriber with 1001. */
+        if (eventStreamFeed)
+        {
+            eventStreamFeed->stop();
         }
 
         logger(INFO) << "Stopping core rpc server...";
